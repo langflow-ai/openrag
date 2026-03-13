@@ -322,6 +322,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               },
             });
           }
+
+          // Option B UX: if completion includes failures, surface the panel
+          // automatically so users can inspect failure details immediately.
+          if (failedFiles > 0) {
+            setIsMenuOpen(true);
+            setIsRecentTasksExpanded(true);
+          }
+
           setTimeout(() => {
             // Only remove files from THIS specific task that completed
             setFiles((prevFiles) =>

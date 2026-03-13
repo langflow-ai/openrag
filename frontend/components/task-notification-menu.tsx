@@ -1,14 +1,11 @@
 "use client";
 
+import { Bell, CheckCircle, Clock, Loader2, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-  Bell,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
-  X,
-} from "lucide-react";
+import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
+import { TaskErrorContent } from "@/components/task-error-content";
+import { TaskPanelHeader } from "@/components/task-panel-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,13 +14,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useTask, Task } from "@/contexts/task-context";
-import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
+import { Task, useTask } from "@/contexts/task-context";
 
 export function TaskNotificationMenu() {
-  const { tasks, isFetching, isMenuOpen, isRecentTasksExpanded, cancelTask } =
-    useTask();
+  const {
+    tasks,
+    isFetching,
+    isMenuOpen,
+    isRecentTasksExpanded,
+    cancelTask,
+    closeMenu,
+  } = useTask();
   const [isRecentOpen, setIsRecentOpen] = useState(false);
 
   // Sync local state with context state
@@ -203,26 +204,11 @@ export function TaskNotificationMenu() {
   return (
     <div className="h-full bg-background border-l">
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="py-4 border-t border-muted">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-muted-foreground" />
-              <h3 className="font-semibold">Tasks</h3>
-              {isFetching && (
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            {activeTasks.length > 0 && (
-              <Badge
-                variant="secondary"
-                className="bg-blue-500/10 text-blue-500"
-              >
-                {activeTasks.length}
-              </Badge>
-            )}
-          </div>
-        </div>
+        <TaskPanelHeader
+          activeCount={activeTasks.length}
+          isFetching={isFetching}
+          onClose={closeMenu}
+        />
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
@@ -331,41 +317,68 @@ export function TaskNotificationMenu() {
                 contentClassName="transition-all duration-200"
                 renderItem={(task) => {
                   const progress = formatTaskProgress(task);
+                  const hasFailedFiles =
+                    (task.failed_files ?? 0) > 0 ||
+                    Object.values(task.files ?? {}).some(
+                      (file) =>
+                        file?.status === "failed" || file?.status === "error",
+                    );
+
+                  if (task.status === "failed" || task.status === "error") {
+                    return (
+                      <TaskErrorContent
+                        key={task.task_id}
+                        task={task}
+                        mode="recent"
+                      />
+                    );
+                  }
 
                   return (
                     <div
                       key={task.task_id}
-                      className="flex items-center gap-3 p-2 hover:bg-muted/50 transition-colors"
+                      className="p-2 hover:bg-muted/50 transition-colors"
                     >
-                      {getTaskIcon(task.status)}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">
-                          Task {task.task_id.substring(0, 8)}...
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatRelativeTime(task.updated_at)}
-                          {formatDuration(task.duration_seconds) && (
-                            <span className="ml-2">
-                              • {formatDuration(task.duration_seconds)}
-                            </span>
-                          )}
-                        </div>
-                        {task.status === "completed" && progress?.detailed && (
+                      <div className="flex items-start gap-3">
+                        {getTaskIcon(task.status)}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">
+                            Task {task.task_id.substring(0, 8)}...
+                          </div>
                           <div className="text-xs text-muted-foreground">
-                            {progress.detailed.successful} success,{" "}
-                            {progress.detailed.failed} failed
-                            {(progress.detailed.running || 0) > 0 && (
-                              <span>, {progress.detailed.running} running</span>
+                            {formatRelativeTime(task.updated_at)}
+                            {formatDuration(task.duration_seconds) && (
+                              <span className="ml-2">
+                                • {formatDuration(task.duration_seconds)}
+                              </span>
                             )}
                           </div>
-                        )}
-                        {task.status === "failed" && task.error && (
-                          <div className="text-xs text-red-600 truncate">
-                            {task.error}
-                          </div>
-                        )}
+                          {task.status === "completed" &&
+                            progress?.detailed && (
+                              <div className="text-xs text-muted-foreground">
+                                {progress.detailed.successful} success,{" "}
+                                {progress.detailed.failed} failed
+                                {(progress.detailed.running || 0) > 0 && (
+                                  <span>
+                                    , {progress.detailed.running} running
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                        </div>
+                        <div className="self-start pt-0.5">
+                          {getStatusBadge(task.status)}
+                        </div>
                       </div>
-                      {getStatusBadge(task.status)}
+                      {hasFailedFiles && (
+                        <div className="w-full mt-2">
+                          <TaskErrorContent
+                            task={task}
+                            mode="recent"
+                            showHeader={false}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 }}

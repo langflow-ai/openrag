@@ -1,18 +1,19 @@
-import { type Task } from "@/contexts/task-context";
-import { Bell, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { TaskErrorContent } from "@/components/task-error-content";
-import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { parseTimestampMs } from "@/lib/time-utils";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
+import { TaskErrorContent } from "@/components/task-error-content";
+import { TaskPanelHeader } from "@/components/task-panel-header";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { type Task } from "@/contexts/task-context";
+import { parseTimestampMs } from "@/lib/time-utils";
 
 interface FailedTasksInfoProps {
   failedTasks: Task[];
 }
 
 export const FailedTasksInfo = ({ failedTasks }: FailedTasksInfoProps) => {
-  const [openSections, setOpenSections] = useState<Record<"recent" | "past", boolean>>({
+  const [openSections, setOpenSections] = useState<
+    Record<"recent" | "past", boolean>
+  >({
     recent: true,
     past: false,
   });
@@ -76,26 +77,12 @@ export const FailedTasksInfo = ({ failedTasks }: FailedTasksInfoProps) => {
 
   return (
     <div className="h-full bg-background border-l overflow-y-auto">
-      <div className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-muted-foreground" />
-            <h3 className="font-semibold">Tasks</h3>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={closePanelOnly}
-            aria-label="Close task panel"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <TaskPanelHeader onClose={closePanelOnly} />
 
       {failedTasks.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground space-x-3">No failed tasks.</div>
+        <div className="p-4 text-sm text-muted-foreground space-x-3">
+          No failed tasks.
+        </div>
       ) : (
         <div>
           {sections.map((section) => (
