@@ -26,31 +26,27 @@ class FlowsService:
         from config.config_manager import config_manager
         config = config_manager.get_config()
 
+        from utils.container_utils import is_localhost_url, replace_localhost_patterns, get_container_host, transform_localhost_url
+
         # If not forcing, check if we already have a resolved endpoint for this original endpoint
         if not force_refresh and config.providers.ollama.resolved_endpoint:
             # We only use the cached one if the original endpoint is still a localhost one
-            # and the cached one actually looks like a transformed version of it
-            localhost_patterns = ["localhost", "127.0.0.1"]
-            if any(p in endpoint for p in localhost_patterns):
+            if is_localhost_url(endpoint):
                 logger.debug(f"Using cached resolved Ollama URL: {config.providers.ollama.resolved_endpoint}")
                 return config.providers.ollama.resolved_endpoint
 
-        localhost_patterns = ["localhost", "127.0.0.1"]
-        if not any(p in endpoint for p in localhost_patterns):
+        if not is_localhost_url(endpoint):
             return endpoint
 
         # Candidates to probe
         candidates = ["host.containers.internal", "host.docker.internal"]
-        from utils.container_utils import get_container_host
         detected_host = get_container_host()
         if detected_host and detected_host not in candidates:
             candidates.insert(0, detected_host)
 
         resolved_url = None
         for cand in candidates:
-            test_url = endpoint
-            for p in localhost_patterns:
-                test_url = test_url.replace(p, cand)
+            test_url = replace_localhost_patterns(endpoint, cand)
             
             logger.debug(f"Probing Ollama candidate via Langflow: {test_url}")
             try:
@@ -68,7 +64,6 @@ class FlowsService:
         
         if not resolved_url:
             # Fallback to simple transformation if probing fails
-            from utils.container_utils import transform_localhost_url
             resolved_url = transform_localhost_url(endpoint)
 
         # Cache the result if it changed

@@ -102,6 +102,18 @@ def get_container_host() -> str | None:
     return None
 
 
+def is_localhost_url(url: str) -> bool:
+    """Check if the URL contains a localhost pattern."""
+    localhost_patterns = ["localhost", "127.0.0.1"]
+    return any(pattern in url for pattern in localhost_patterns)
+
+def replace_localhost_patterns(url: str, replacement: str) -> str:
+    """Replace localhost patterns in a URL with a given string."""
+    localhost_patterns = ["localhost", "127.0.0.1"]
+    for pattern in localhost_patterns:
+        url = url.replace(pattern, replacement)
+    return url
+
 def transform_localhost_url(url: str) -> str:
     """Transform localhost URLs to container-accessible hostnames.
 
@@ -111,20 +123,14 @@ def transform_localhost_url(url: str) -> str:
     Returns:
         Transformed URL with container-host if applicable, otherwise original URL.
     """
-    localhost_patterns = ["localhost", "127.0.0.1"]
-    if not any(pattern in url for pattern in localhost_patterns):
+    if not is_localhost_url(url):
         return url
 
     container_host = get_container_host()
     if not container_host:
         return url
 
-    # Replace localhost patterns with the container host
-    for pattern in localhost_patterns:
-        if pattern in url:
-            return url.replace(pattern, container_host)
-
-    return url
+    return replace_localhost_patterns(url, container_host)
 
 
 def guess_host_ip_for_containers(logger=None) -> str:
