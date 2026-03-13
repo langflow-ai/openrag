@@ -7,16 +7,8 @@ test("has onboarding content", async ({ page }) => {
   // Expect a title "to contain" a substring.
   await expect(page).toHaveTitle(/OpenRAG/);
 
-  // Depending on app state, users can land on onboarding or directly on chat.
-  const onboardingContent = page.getByTestId("onboarding-content");
-  const chatInput = page.getByPlaceholder("Ask a question...");
-
-  await Promise.race([
-    onboardingContent.waitFor({ state: "visible", timeout: 30000 }),
-    chatInput.waitFor({ state: "visible", timeout: 30000 }),
-  ]);
-
-  expect(
-    (await onboardingContent.isVisible()) || (await chatInput.isVisible()),
-  ).toBeTruthy();
+  // Expect the onboarding content to be visible using the test id.
+  await expect(page.getByTestId("onboarding-content")).toBeVisible({
+    timeout: 30000,
+  });
 });
