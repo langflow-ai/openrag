@@ -23,19 +23,13 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { type Status, StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { parseTimestampMs } from "@/lib/time-utils";
 import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
@@ -72,22 +66,23 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
-interface IngestionStatus {
-  status: Status;
-  error?: string;
-  data?: File;
-}
-
 function SearchPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { files: taskFiles, tasks, refreshTasks } = useTask();
+  const {
+    files: taskFiles,
+    tasks,
+    refreshTasks,
+    openMenu,
+    setRecentTasksExpanded,
+    selectTask,
+  } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
-  const [ingestionStatus, setIngestionStatus] =
-    useState<IngestionStatus | null>(null);
+  const hasInitializedFailedFilesRef = useRef(false);
+  const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
@@ -96,6 +91,100 @@ function SearchPage() {
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
+
+  const getFailedFileKey = useCallback(
+    (file: (typeof taskFiles)[number]) =>
+      `${file.task_id}:${file.source_url || file.filename}`,
+    [],
+  );
+
+  const getTaskIdForRow = useCallback(
+    (file?: File): string | null => {
+      if (!file) return null;
+      const sourceUrl = file.source_url || "";
+      const filename = file.filename || "";
+      const matches = taskFiles.filter(
+        (taskFile) =>
+          (sourceUrl && taskFile.source_url === sourceUrl) ||
+          taskFile.filename === filename,
+      );
+      if (matches.length === 0) return null;
+
+      const failedMatches =
+        file.status === "failed"
+          ? matches.filter((taskFile) => taskFile.status === "failed")
+          : matches;
+      const candidates = failedMatches.length > 0 ? failedMatches : matches;
+
+      const taskTimestampMsById = new Map(
+        tasks.map((task) => [
+          task.task_id,
+          parseTimestampMs(task.updated_at) ??
+            parseTimestampMs(task.created_at) ??
+            0,
+        ]),
+      );
+
+      const mostRecent = [...candidates].sort((a, b) => {
+        const aMs =
+          taskTimestampMsById.get(a.task_id) ??
+          parseTimestampMs(a.updated_at) ??
+          parseTimestampMs(a.created_at) ??
+          0;
+        const bMs =
+          taskTimestampMsById.get(b.task_id) ??
+          parseTimestampMs(b.updated_at) ??
+          parseTimestampMs(b.created_at) ??
+          0;
+        return bMs - aMs;
+      })[0];
+
+      return mostRecent?.task_id || null;
+    },
+    [taskFiles, tasks],
+  );
+
+  // Auto-open unified task panel only when a NEW task file transitions to failed
+  // (skip initial failed files that already existed on page load).
+  useEffect(() => {
+    const failedFiles = taskFiles.filter((file) => file.status === "failed");
+    const seenKeys = seenFailedFileKeysRef.current;
+
+    if (!hasInitializedFailedFilesRef.current) {
+      failedFiles.forEach((file) => {
+        seenKeys.add(getFailedFileKey(file));
+      });
+      hasInitializedFailedFilesRef.current = true;
+      return;
+    }
+
+    let firstNewFailureTaskId: string | null = null;
+    const hasNewFailure = failedFiles.some((file) => {
+      const key = getFailedFileKey(file);
+      if (seenKeys.has(key)) {
+        return false;
+      }
+      seenKeys.add(key);
+      if (!firstNewFailureTaskId) {
+        firstNewFailureTaskId = file.task_id;
+      }
+      return true;
+    });
+
+    if (hasNewFailure) {
+      if (firstNewFailureTaskId) {
+        selectTask(firstNewFailureTaskId);
+      }
+      openMenu();
+      setRecentTasksExpanded(true);
+    }
+  }, [
+    taskFiles,
+    openMenu,
+    setRecentTasksExpanded,
+    selectTask,
+    getFailedFileKey,
+  ]);
 
   const {
     data: searchData = [],
@@ -352,10 +441,6 @@ function SearchPage() {
         const status = data?.status || "active";
         const showOpenragRefreshCue =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
-        const error =
-          typeof data?.error === "string" && data.error.trim().length > 0
-            ? data.error.trim()
-            : undefined;
         if (showOpenragRefreshCue) {
           return (
             <div className="inline-flex items-center justify-center h-5 w-5">
@@ -366,14 +451,17 @@ function SearchPage() {
             </div>
           );
         }
-        if (status === "failed" && error) {
+        if (status === "failed") {
           return (
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+              className="inline-flex h-full w-full items-center text-red-500 transition hover:text-red-400"
               aria-label="View ingestion error"
+              data-testid="failed-status-cell-trigger"
               onClick={() => {
-                setIngestionStatus({ status, error, data });
+                selectTask(getTaskIdForRow(data));
+                openMenu();
+                setRecentTasksExpanded(true);
               }}
             >
               <StatusBadge status={status} className="pointer-events-none" />
@@ -618,26 +706,6 @@ function SearchPage() {
           )}
         />
       </div>
-
-      {/* Status dialog */}
-      {ingestionStatus && (
-        <Dialog
-          open={!!ingestionStatus}
-          onOpenChange={(open) => !open && setIngestionStatus(null)}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Ingestion failed</DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                {ingestionStatus.data?.filename || "Unknown file"}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
-              {ingestionStatus.error}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
 
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

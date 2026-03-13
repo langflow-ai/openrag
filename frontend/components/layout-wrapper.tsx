@@ -20,26 +20,28 @@ import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
+import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
 import { Header } from "./header";
+import FailedTasksInfo from "./tasks_details";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isMenuOpen, closeMenu } = useTask();
-  const { isPanelOpen, closePanelOnly } = useKnowledgeFilter();
+  const { tasks, isMenuOpen } = useTask();
+  const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
+  const failedTasks = tasks.filter(isFailureLikeTask);
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   // Only one panel can be open at a time
   useEffect(() => {
-    if (isMenuOpen) closePanelOnly();
+    if (isMenuOpen) {
+      closePanelOnly();
+    }
   }, [isMenuOpen, closePanelOnly]);
-  useEffect(() => {
-    if (isPanelOpen) closeMenu();
-  }, [isPanelOpen, closeMenu]);
 
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { isOnboardingComplete } = useChat();
@@ -129,9 +131,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             "overflow-hidden bg-sidebar flex flex-row justify-end transition-[width] duration-200 ease-linear",
             isRightPanelOpen && "border-l border-sidebar-border",
           )}
-          style={{ width: isRightPanelOpen ? "320px" : "0px" }}
+          style={{ width: isRightPanelOpen ? "360px" : "0px" }}
         >
-          <div className="w-[320px] h-full shrink-0">
+          <div className="w-[360px] h-full shrink-0">
             <AnimatePresence mode="wait">
               {isMenuOpen && (
                 <motion.div
@@ -154,7 +156,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <KnowledgeFilterPanel />
+                  {panelMode === "ingestion-status" ? (
+                    <FailedTasksInfo failedTasks={failedTasks} />
+                  ) : (
+                    <KnowledgeFilterPanel />
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
