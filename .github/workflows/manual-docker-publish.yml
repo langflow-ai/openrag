@@ -33,12 +33,28 @@ jobs:
       - name: Determine Tag
         id: vars
         run: |
+          # Choose raw tag: user input if provided, otherwise branch name
           if [ -z "${{ github.event.inputs.tag }}" ]; then
-            TAG=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            RAW_TAG="${{ github.ref_name }}"
           else
-            TAG="${{ github.event.inputs.tag }}"
+            RAW_TAG="${{ github.event.inputs.tag }}"
           fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Replace invalid characters with '-', keep only [A-Za-z0-9_.-]
+          SANITIZED_TAG=$(echo "$RAW_TAG" | sed 's/[^A-Za-z0-9_.-]/-/g')
+
+          # Ensure the tag starts with an alphanumeric character by stripping leading non-alphanumerics
+          SANITIZED_TAG=$(echo "$SANITIZED_TAG" | sed 's/^[^A-Za-z0-9]*//')
+
+          # Fallback to a safe default if the tag becomes empty
+          if [ -z "$SANITIZED_TAG" ]; then
+            SANITIZED_TAG="latest"
+          fi
+
+          # Truncate to Docker's maximum tag length (128 characters)
+          TAG=$(printf '%.128s' "$SANITIZED_TAG")
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Backend
         uses: docker/build-push-action@v6
