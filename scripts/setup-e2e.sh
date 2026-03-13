@@ -13,27 +13,30 @@ if [ ! -f "$E2E_ENV" ]; then
     cp "$E2E_ENV_EXAMPLE" "$E2E_ENV"
 fi
 
-# Auto-generate a strong OpenSearch password if not already set in the env file.
+# Auto-generate a strong OpenSearch password if not already set in the env file or environment.
 # OpenSearch requires: uppercase, lowercase, digit, special char, min 8 chars.
 CURRENT_PASSWORD=$(grep -E '^OPENSEARCH_PASSWORD=' "$E2E_ENV" | cut -d'=' -f2-)
-if [ -z "$CURRENT_PASSWORD" ]; then
+if [ -n "$OPENSEARCH_PASSWORD" ]; then
+    echo "Using OpenSearch password from environment."
+    GENERATED_PASSWORD="$OPENSEARCH_PASSWORD"
+elif [ -z "$CURRENT_PASSWORD" ]; then
     # Generate a random base (alphanumeric) and append required character classes
     RANDOM_BASE=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 12)
     GENERATED_PASSWORD="${RANDOM_BASE}Aa1@"
     echo "Auto-generated OpenSearch password for E2E tests."
-
-    # Write the password into the env file
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
-    else
-        sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
-    fi
-
-    export OPENSEARCH_PASSWORD="$GENERATED_PASSWORD"
 else
     echo "Using existing OpenSearch password from $E2E_ENV."
-    export OPENSEARCH_PASSWORD="$CURRENT_PASSWORD"
+    GENERATED_PASSWORD="$CURRENT_PASSWORD"
 fi
+
+# Write the password into the env file
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+else
+    sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+fi
+
+export OPENSEARCH_PASSWORD="$GENERATED_PASSWORD"
 
 # Detect container runtime
 if command -v docker >/dev/null 2>&1; then

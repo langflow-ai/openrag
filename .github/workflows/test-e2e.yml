@@ -39,6 +39,7 @@ jobs:
       GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
 
     steps:
       - name: Cleanup Docker cache
@@ -161,6 +162,7 @@ jobs:
           OPENSEARCH_HOST: localhost
           OPENSEARCH_PORT: "9200"
           OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
         run: npx playwright test
