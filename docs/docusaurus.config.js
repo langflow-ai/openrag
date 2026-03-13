@@ -221,8 +221,8 @@ const config = {
         // title: 'OpenRAG',
         logo: {
           alt: 'OpenRAG Logo',
-          src: "img/logo-openrag-light.svg",
-          srcDark: "img/logo-openrag-dark.svg",
+          src: "img/logo-openrag-docs-light.svg",
+          srcDark: "img/logo-openrag-docs-dark.svg",
           href: '/',
         },
         items: [

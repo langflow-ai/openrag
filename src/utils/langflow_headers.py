@@ -21,7 +21,7 @@ def add_provider_credentials_to_headers(headers: Dict[str, str], config) -> None
     
     # Add WatsonX credentials
     if config.providers.watsonx.api_key:
-        headers["X-LANGFLOW-GLOBAL-VAR-WATSONX_API_KEY"] = str(config.providers.watsonx.api_key)
+        headers["X-LANGFLOW-GLOBAL-VAR-WATSONX_APIKEY"] = str(config.providers.watsonx.api_key)
     
     if config.providers.watsonx.project_id:
         headers["X-LANGFLOW-GLOBAL-VAR-WATSONX_PROJECT_ID"] = str(config.providers.watsonx.project_id)
@@ -53,7 +53,7 @@ def build_mcp_global_vars_from_config(config) -> Dict[str, str]:
     
     # Add WatsonX credentials
     if config.providers.watsonx.api_key:
-        global_vars["WATSONX_API_KEY"] = config.providers.watsonx.api_key
+        global_vars["WATSONX_APIKEY"] = config.providers.watsonx.api_key
     
     if config.providers.watsonx.project_id:
         global_vars["WATSONX_PROJECT_ID"] = config.providers.watsonx.project_id
