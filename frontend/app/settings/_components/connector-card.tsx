@@ -41,8 +41,8 @@ export default function ConnectorCard({
 }: ConnectorCardProps) {
   console.log(connector);
   const isConnected =
-    connector?.name === "Google Drive" ||
-    (connector?.status === "connected" && connector?.connectionId);
+    connector.status === "connected" && connector.connectionId;
+  connector?.status === "connected" && connector?.connectionId;
 
   return (
     <Card className="group relative flex flex-col hover:bg-secondary-hover hover:border-muted-foreground transition-colors">
