@@ -68,9 +68,15 @@ function getSourceIcon(connectorType?: string) {
 function SearchPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { files: taskFiles, tasks, refreshTasks } = useTask();
-  const { parsedFilterData, queryOverride, openIngestionStatusPanel } =
-    useKnowledgeFilter();
+  const {
+    files: taskFiles,
+    tasks,
+    refreshTasks,
+    openMenu,
+    setRecentTasksExpanded,
+    setSelectedTaskId,
+  } = useTask();
+  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
@@ -91,7 +97,22 @@ function SearchPage() {
     [],
   );
 
-  // Auto-open ingestion-status panel only when a NEW task file transitions to failed
+  const getTaskIdForRow = useCallback(
+    (file?: File): string | null => {
+      if (!file) return null;
+      const sourceUrl = file.source_url || "";
+      const filename = file.filename || "";
+      const match = taskFiles.find(
+        (taskFile) =>
+          (sourceUrl && taskFile.source_url === sourceUrl) ||
+          taskFile.filename === filename,
+      );
+      return match?.task_id || null;
+    },
+    [taskFiles],
+  );
+
+  // Auto-open unified task panel only when a NEW task file transitions to failed
   // (skip initial failed files that already existed on page load).
   useEffect(() => {
     const failedFiles = taskFiles.filter((file) => file.status === "failed");
@@ -105,19 +126,33 @@ function SearchPage() {
       return;
     }
 
+    let firstNewFailureTaskId: string | null = null;
     const hasNewFailure = failedFiles.some((file) => {
       const key = getFailedFileKey(file);
       if (seenKeys.has(key)) {
         return false;
       }
       seenKeys.add(key);
+      if (!firstNewFailureTaskId) {
+        firstNewFailureTaskId = file.task_id;
+      }
       return true;
     });
 
     if (hasNewFailure) {
-      openIngestionStatusPanel();
+      if (firstNewFailureTaskId) {
+        setSelectedTaskId(firstNewFailureTaskId);
+      }
+      openMenu();
+      setRecentTasksExpanded(true);
     }
-  }, [taskFiles, openIngestionStatusPanel, getFailedFileKey]);
+  }, [
+    taskFiles,
+    openMenu,
+    setRecentTasksExpanded,
+    setSelectedTaskId,
+    getFailedFileKey,
+  ]);
 
   const {
     data: searchData = [],
@@ -391,7 +426,9 @@ function SearchPage() {
               className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
               aria-label="View ingestion error"
               onClick={() => {
-                openIngestionStatusPanel();
+                setSelectedTaskId(getTaskIdForRow(data));
+                openMenu();
+                setRecentTasksExpanded(true);
               }}
             >
               <StatusBadge status={status} className="pointer-events-none" />

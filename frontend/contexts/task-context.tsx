@@ -48,10 +48,13 @@ interface TaskContextType {
   isPolling: boolean;
   isFetching: boolean;
   isMenuOpen: boolean;
+  openMenu: () => void;
   toggleMenu: () => void;
   closeMenu: () => void;
   isRecentTasksExpanded: boolean;
   setRecentTasksExpanded: (expanded: boolean) => void;
+  selectedTaskId: string | null;
+  setSelectedTaskId: (taskId: string | null) => void;
   // React Query states
   isLoading: boolean;
   error: Error | null;
@@ -63,6 +66,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<TaskFile[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const previousTasksRef = useRef<Task[]>([]);
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
@@ -317,6 +321,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               action: {
                 label: "View",
                 onClick: () => {
+                  setSelectedTaskId(currentTask.task_id);
                   setIsMenuOpen(true);
                   setIsRecentTasksExpanded(true);
                 },
@@ -345,6 +350,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
+          setSelectedTaskId(currentTask.task_id);
+          setIsMenuOpen(true);
+          setIsRecentTasksExpanded(true);
           // Task just failed - show error toast
           toast.error("Task failed", {
             description: `Task ${currentTask.task_id} failed: ${
@@ -404,8 +412,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setIsMenuOpen((prev) => !prev);
   }, []);
 
+  const openMenu = useCallback(() => {
+    setIsMenuOpen(true);
+  }, []);
+
   const closeMenu = useCallback(() => {
     setIsMenuOpen(false);
+    setSelectedTaskId(null);
   }, []);
 
   // Determine if we're polling based on React Query's refetch interval
@@ -428,10 +441,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isPolling,
     isFetching,
     isMenuOpen,
+    openMenu,
     toggleMenu,
     closeMenu,
     isRecentTasksExpanded,
     setRecentTasksExpanded: setIsRecentTasksExpanded,
+    selectedTaskId,
+    setSelectedTaskId,
     isLoading,
     error,
   };

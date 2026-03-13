@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ChevronDown, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -17,6 +17,7 @@ interface TaskErrorContentProps {
   mode?: "recent" | "past";
   nowMs?: number;
   showHeader?: boolean;
+  defaultExpanded?: boolean;
 }
 
 export function TaskErrorContent({
@@ -24,15 +25,21 @@ export function TaskErrorContent({
   mode = "recent",
   nowMs = Date.now(),
   showHeader = true,
+  defaultExpanded = false,
 }: TaskErrorContentProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  useEffect(() => {
+    if (defaultExpanded) {
+      setIsExpanded(true);
+    }
+  }, [defaultExpanded]);
   const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
 
   const failedCount = task.failed_files ?? failedEntries.length;
   const successCount = task.successful_files ?? 0;
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
-  const statusLabel = "Failed";
+  const statusLabel = "INCOMPLETE";
   const statusPillClassName =
     "text-destructive border-failure-pill bg-failure-soft";
 
@@ -78,6 +85,7 @@ export function TaskErrorContent({
         type="single"
         collapsible
         className="border-0"
+        value={isExpanded ? "failure-log" : undefined}
         onValueChange={(value) => setIsExpanded(Boolean(value))}
       >
         <AccordionItem value="failure-log" className="border-0 rounded-none">
