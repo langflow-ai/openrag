@@ -29,11 +29,21 @@ else
     GENERATED_PASSWORD="$CURRENT_PASSWORD"
 fi
 
-# Write the password into the env file, wrapping in single quotes to prevent issues with characters like '#'
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD='${GENERATED_PASSWORD}'|" "$E2E_ENV"
+# Make's `include` treats `#` as comments. If the password contains `#`, remove it from the file
+# and rely entirely on the exported environment variable below.
+if [[ "$GENERATED_PASSWORD" == *"#"* ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' '/^OPENSEARCH_PASSWORD=/d' "$E2E_ENV"
+    else
+        sed -i '/^OPENSEARCH_PASSWORD=/d' "$E2E_ENV"
+    fi
 else
-    sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD='${GENERATED_PASSWORD}'|" "$E2E_ENV"
+    # Write the password into the env file (no quotes needed if no #)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+    else
+        sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+    fi
 fi
 
 export OPENSEARCH_PASSWORD="$GENERATED_PASSWORD"
@@ -60,6 +70,9 @@ chmod 777 langflow-data
 # Start infrastructure using make (this will use the new .env)
 echo "Starting infrastructure..."
 make dev-local-cpu ENV_FILE=$E2E_ENV
+
+echo "Starting docling..."
+make docling
 
 # On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
 if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then
