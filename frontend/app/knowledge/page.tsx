@@ -455,7 +455,7 @@ function SearchPage() {
           return (
             <button
               type="button"
-              className="inline-flex h-full w-full items-center justify-center gap-1 px-1 text-red-500 transition hover:text-red-400"
+              className="inline-flex h-full w-full items-center text-red-500 transition hover:text-red-400"
               aria-label="View ingestion error"
               data-testid="failed-status-cell-trigger"
               onClick={() => {
