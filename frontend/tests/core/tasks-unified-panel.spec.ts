@@ -72,16 +72,26 @@ const expandFirstFailureAccordion = async (page: Page) => {
 };
 
 const openTasksPanel = async (page: Page) => {
-  await page.getByTestId("task-menu-toggle").click();
   const panelTitle = page.getByTestId("tasks-panel-title");
+  if (!(await panelTitle.isVisible())) {
+    await page.getByTestId("task-menu-toggle").click();
+  }
   await expect(panelTitle).toBeVisible({ timeout: 15000 });
 };
 
 const openRecentTasksSection = async (page: Page) => {
+  const failureAccordionTrigger = page.getByRole("button", {
+    name: /\d+\s*success,\s*\d+\s*failed/i,
+  });
+  if (await failureAccordionTrigger.count()) {
+    return;
+  }
+
   const recentTasksToggle = page.getByRole("button", { name: /Recent Tasks/i });
   if (await recentTasksToggle.count()) {
     await recentTasksToggle.first().click();
   }
+  await expect(failureAccordionTrigger.first()).toBeVisible({ timeout: 15000 });
 };
 
 test("completed task with failures keeps failure log in Tasks panel", async ({
