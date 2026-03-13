@@ -20,6 +20,7 @@ import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
+import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
@@ -31,20 +32,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { tasks, isMenuOpen, closeMenu } = useTask();
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
-  const failedTasks = tasks.filter((task) => {
-    if (task.status === "failed" || task.status === "error") {
-      return true;
-    }
-
-    // Some tasks can be marked completed while still containing failed files.
-    if ((task.failed_files ?? 0) > 0) {
-      return true;
-    }
-
-    return Object.values(task.files ?? {}).some(
-      (file) => file?.status === "failed" || file?.status === "error",
-    );
-  });
+  const failedTasks = tasks.filter(isFailureLikeTask);
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
@@ -148,9 +136,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             "overflow-hidden bg-sidebar flex flex-row justify-end transition-[width] duration-200 ease-linear",
             isRightPanelOpen && "border-l border-sidebar-border",
           )}
-          style={{ width: isRightPanelOpen ? "320px" : "0px" }}
+          style={{ width: isRightPanelOpen ? "360px" : "0px" }}
         >
-          <div className="w-[320px] h-full shrink-0">
+          <div className="w-[360px] h-full shrink-0">
             <AnimatePresence mode="wait">
               {isMenuOpen && (
                 <motion.div
@@ -174,7 +162,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                   transition={{ duration: 0.15 }}
                 >
                   {panelMode === "ingestion-status" ? (
-                    <FailedTasksInfo failedTasks={failedTasks}/>
+                    <FailedTasksInfo failedTasks={failedTasks} />
                   ) : (
                     <KnowledgeFilterPanel />
                   )}

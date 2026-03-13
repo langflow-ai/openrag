@@ -16,11 +16,13 @@ export function TaskPanelHeader({
   onClose,
 }: TaskPanelHeaderProps) {
   return (
-    <div className="p-4 border-t border-muted">
+    <div className="p-4 border-t border-muted" data-testid="tasks-panel-header">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bell className="h-5 w-5 text-muted-foreground" />
-          <h3 className="font-semibold">Tasks</h3>
+          <h3 className="font-semibold" data-testid="tasks-panel-title">
+            Tasks
+          </h3>
           {isFetching && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}

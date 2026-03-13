@@ -9,6 +9,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { type Task } from "@/contexts/task-context";
+import { getFailedFileEntries } from "@/lib/task-utils";
 import { formatTaskTimestamp, parseTimestamp } from "@/lib/time-utils";
 
 interface TaskErrorContentProps {
@@ -25,25 +26,15 @@ export function TaskErrorContent({
   showHeader = true,
 }: TaskErrorContentProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const failedEntries = useMemo(
-    () =>
-      Object.entries(task.files || {}).filter(
-        ([, fileInfo]) =>
-          fileInfo?.status === "failed" || fileInfo?.status === "error",
-      ),
-    [task.files],
-  );
+  const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
 
   const failedCount = task.failed_files ?? failedEntries.length;
   const successCount = task.successful_files ?? 0;
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
-  const isCompletedWithFailures =
-    task.status === "completed" && failedCount > 0;
-  const statusLabel = isCompletedWithFailures ? "Completed" : "Failed";
-  const statusPillClassName = isCompletedWithFailures
-    ? "text-green-700 border-green-300 bg-green-50"
-    : "text-destructive border-failure-pill bg-failure-soft";
+  const statusLabel = "Failed";
+  const statusPillClassName =
+    "text-destructive border-failure-pill bg-failure-soft";
 
   if (failedCount <= 0 && failedEntries.length === 0) {
     return null;
@@ -54,7 +45,7 @@ export function TaskErrorContent({
       className={
         showHeader
           ? "flex flex-col gap-1 border-t border-muted w-full hover:bg-muted/60 transition-colors px-4 py-2"
-          : "pt-2"
+          : ""
       }
     >
       {showHeader && (

@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Task, useTask } from "@/contexts/task-context";
+import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
 
 export function TaskNotificationMenu() {
   const {
@@ -317,14 +318,9 @@ export function TaskNotificationMenu() {
                 contentClassName="transition-all duration-200"
                 renderItem={(task) => {
                   const progress = formatTaskProgress(task);
-                  const hasFailedFiles =
-                    (task.failed_files ?? 0) > 0 ||
-                    Object.values(task.files ?? {}).some(
-                      (file) =>
-                        file?.status === "failed" || file?.status === "error",
-                    );
+                  const hasFailedFiles = hasFailedFileEntries(task);
 
-                  if (task.status === "failed" || task.status === "error") {
+                  if (isTerminalFailedTask(task)) {
                     return (
                       <TaskErrorContent
                         key={task.task_id}
@@ -337,7 +333,7 @@ export function TaskNotificationMenu() {
                   return (
                     <div
                       key={task.task_id}
-                      className="p-2 hover:bg-muted/50 transition-colors"
+                      className="px-4 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start gap-3">
                         {getTaskIcon(task.status)}
@@ -354,7 +350,8 @@ export function TaskNotificationMenu() {
                             )}
                           </div>
                           {task.status === "completed" &&
-                            progress?.detailed && (
+                            progress?.detailed &&
+                            !hasFailedFiles && (
                               <div className="text-xs text-muted-foreground">
                                 {progress.detailed.successful} success,{" "}
                                 {progress.detailed.failed} failed
@@ -371,7 +368,7 @@ export function TaskNotificationMenu() {
                         </div>
                       </div>
                       {hasFailedFiles && (
-                        <div className="w-full mt-2">
+                        <div className="ml-7">
                           <TaskErrorContent
                             task={task}
                             mode="recent"

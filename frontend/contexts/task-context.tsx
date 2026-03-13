@@ -19,6 +19,7 @@ import {
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
 export type { Task };
@@ -323,21 +324,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             });
           }
 
-          // Option B UX: if completion includes failures, surface the panel
-          // automatically so users can inspect failure details immediately.
-          if (failedFiles > 0) {
-            setIsMenuOpen(true);
-            setIsRecentTasksExpanded(true);
-          }
+          const completedHasFailures = hasFailedFileEntries(currentTask);
 
           setTimeout(() => {
-            // Only remove files from THIS specific task that completed
+            // Remove overlay rows for this completed task so backend becomes
+            // source of truth. For partial-success completions, keep failed
+            // rows visible in the table.
             setFiles((prevFiles) =>
               prevFiles.filter(
                 (file) =>
                   file.task_id !== currentTask.task_id ||
-                  file.status === "active" ||
-                  file.status === "failed",
+                  (completedHasFailures && file.status === "failed"),
               ),
             );
             refetchSearch();
@@ -345,9 +342,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         } else if (
           shouldShowToast &&
           previousTask &&
-          previousTask.status !== "failed" &&
-          previousTask.status !== "error" &&
-          (currentTask.status === "failed" || currentTask.status === "error")
+          !isTerminalFailedTask(previousTask) &&
+          isTerminalFailedTask(currentTask)
         ) {
           // Task just failed - show error toast
           toast.error("Task failed", {

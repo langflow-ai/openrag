@@ -1,4 +1,4 @@
-import { expect, type Route, test } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 
 type MockTaskStatus =
   | "pending"
@@ -28,23 +28,59 @@ interface MockTask {
   files: Record<string, MockTaskFileEntry>;
 }
 
+const buildTask = (
+  overrides: Partial<MockTask> & { task_id: string; status: MockTaskStatus },
+): MockTask => {
+  const now = new Date().toISOString();
+  const { task_id, status, ...rest } = overrides;
+  return {
+    task_id,
+    status,
+    total_files: 2,
+    processed_files: 0,
+    successful_files: 0,
+    failed_files: 0,
+    running_files: 0,
+    pending_files: 0,
+    created_at: now,
+    updated_at: now,
+    files: {},
+    ...rest,
+  };
+};
+
+const wireTasksSequence = async (page: Page, sequence: MockTask[][]) => {
+  let tasksRequestCount = 0;
+  await page.route("**/api/tasks", async (route: Route) => {
+    const idx = Math.min(tasksRequestCount, sequence.length - 1);
+    const tasks = sequence[idx] ?? [];
+    tasksRequestCount += 1;
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ tasks }),
+    });
+  });
+};
+
+const expandFirstFailureAccordion = async (page: Page) => {
+  await page
+    .getByRole("button", { name: /\d+\s*success,\s*\d+\s*failed/i })
+    .first()
+    .click();
+};
+
 test("completed task with failures keeps failure log in Tasks panel", async ({
   page,
 }) => {
-  const now = new Date().toISOString();
-  let tasksRequestCount = 0;
-
-  const runningTask: MockTask = {
+  const runningTask = buildTask({
     task_id: "task-12345678",
     status: "running",
     total_files: 2,
     processed_files: 1,
     successful_files: 1,
-    failed_files: 0,
     running_files: 1,
-    pending_files: 0,
-    created_at: now,
-    updated_at: now,
     files: {
       "/tmp/doc-success.pdf": {
         status: "completed",
@@ -55,9 +91,9 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
         filename: "doc-failed.pdf",
       },
     },
-  };
+  });
 
-  const completedWithFailureTask: MockTask = {
+  const completedWithFailureTask = buildTask({
     task_id: "task-12345678",
     status: "completed",
     total_files: 2,
@@ -66,8 +102,6 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
     failed_files: 1,
     running_files: 0,
     pending_files: 0,
-    created_at: now,
-    updated_at: now,
     files: {
       "/tmp/doc-success.pdf": {
         status: "completed",
@@ -79,19 +113,8 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
         error: "Synthetic ingestion failure for test",
       },
     },
-  };
-
-  await page.route("**/api/tasks", async (route: Route) => {
-    tasksRequestCount += 1;
-    const tasks: MockTask[] =
-      tasksRequestCount <= 1 ? [runningTask] : [completedWithFailureTask];
-
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ tasks }),
-    });
   });
+  await wireTasksSequence(page, [[runningTask], [completedWithFailureTask]]);
 
   await page.goto("/knowledge");
 
@@ -99,13 +122,106 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
   await expect(page.getByText("Task completed")).toBeVisible({
     timeout: 15000,
   });
-  await page.getByRole("button", { name: "View" }).click();
+  await page.getByRole("button", { name: "View", exact: true }).click();
 
   // Unified panel requirement (TDD): completed task with failed files
   // should preserve the detailed failure log content in the same Tasks panel.
-  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+  await expect(page.getByTestId("tasks-panel-title")).toBeVisible();
+  await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(
     page.getByText("Synthetic ingestion failure for test"),
   ).toBeVisible();
+});
+
+test("completed task with failures requires View click to open tasks panel", async ({
+  page,
+}) => {
+  const runningTask = buildTask({
+    task_id: "task-auto-open-completed",
+    status: "running",
+    total_files: 1,
+    processed_files: 0,
+    pending_files: 1,
+    files: {
+      "/tmp/doc-failed.pdf": {
+        status: "running",
+        filename: "doc-failed.pdf",
+      },
+    },
+  });
+  const completedWithFailureTask = buildTask({
+    task_id: "task-auto-open-completed",
+    status: "completed",
+    total_files: 1,
+    processed_files: 1,
+    successful_files: 0,
+    failed_files: 1,
+    files: {
+      "/tmp/doc-failed.pdf": {
+        status: "failed",
+        filename: "doc-failed.pdf",
+        error: "Auto-open on partial success",
+      },
+    },
+  });
+
+  await wireTasksSequence(page, [
+    [runningTask],
+    [runningTask],
+    [completedWithFailureTask],
+  ]);
+  await page.goto("/knowledge");
+
+  // No manual "View" click: completed-with-failures should NOT auto-open panel.
+  await expect(page.getByText("Task completed")).toBeVisible({
+    timeout: 15000,
+  });
+
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await expect(page.getByTestId("tasks-panel-title")).toBeVisible();
+  await expandFirstFailureAccordion(page);
+  await expect(page.getByText("Failure Log")).toBeVisible();
+  await expect(page.getByText("Auto-open on partial success")).toBeVisible();
+});
+
+test("new failed task auto-opens tasks panel", async ({ page }) => {
+  const runningTask = buildTask({
+    task_id: "task-auto-open-failed",
+    status: "running",
+    total_files: 1,
+    processed_files: 0,
+    pending_files: 1,
+    files: {
+      "/tmp/doc-failed.pdf": {
+        status: "running",
+        filename: "doc-failed.pdf",
+      },
+    },
+  });
+  const failedTask = buildTask({
+    task_id: "task-auto-open-failed",
+    status: "failed",
+    total_files: 1,
+    processed_files: 1,
+    successful_files: 0,
+    failed_files: 1,
+    files: {
+      "/tmp/doc-failed.pdf": {
+        status: "failed",
+        filename: "doc-failed.pdf",
+        error: "Auto-open on failed task",
+      },
+    },
+  });
+
+  await wireTasksSequence(page, [[runningTask], [runningTask], [failedTask]]);
+  await page.goto("/knowledge");
+
+  await expect(page.getByTestId("tasks-panel-title")).toBeVisible({
+    timeout: 15000,
+  });
+  await expandFirstFailureAccordion(page);
+  await expect(page.getByText("Failure Log")).toBeVisible();
+  await expect(page.getByText("Auto-open on failed task")).toBeVisible();
 });
