@@ -34,10 +34,10 @@ class MonitorService:
             # Convert knowledge filter query to monitor query format
             monitor_query = self._convert_kf_query_to_monitor_query(query_data)
 
-            # TODO: OpenSearch 3.0 has a bug with document-level monitors on indexes with KNN fields
+            # Note: OpenSearch 3.0 has a bug with document-level monitors on indexes with KNN fields
             # Error: "Cannot invoke KNNMethodConfigContext.getVectorDataType() because knnMethodConfigContext is null"
-            # Consider using query-level monitors instead or excluding KNN fields from doc-level monitors
-            # For now, this will fail on the 'documents' index due to chunk_embedding KNN field
+            # Workaround: Use query-level monitors for indexes with KNN fields or exclude KNN fields from doc-level monitors
+            # The 'documents' index contains chunk_embedding KNN field, so we add error handling below
 
             # Create the document-level monitor
             monitor_body = {
@@ -120,7 +120,21 @@ class MonitorService:
                 return {"success": False, "error": "Failed to create monitor"}
 
         except Exception as e:
-            return {"success": False, "error": f"Monitor creation failed: {str(e)}"}
+            error_message = str(e)
+            # Detect OpenSearch KNN field bug and provide helpful workaround suggestion
+            if "KNNMethodConfigContext" in error_message or "chunk_embedding" in error_message:
+                logger.warning(
+                    "OpenSearch KNN field compatibility issue detected. "
+                    "Consider using query-level monitors for indexes with KNN fields, "
+                    "or exclude KNN fields from the document-level monitor query.",
+                    error=error_message,
+                )
+                return {
+                    "success": False,
+                    "error": f"OpenSearch KNN compatibility issue: {error_message}. "
+                    "Workaround: Use query-level monitors or exclude KNN fields from the query.",
+                }
+            return {"success": False, "error": f"Monitor creation failed: {error_message}"}
 
     async def delete_monitor(
         self, monitor_id: str, user_id: str, jwt_token: str
