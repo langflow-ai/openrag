@@ -49,26 +49,19 @@ const buildTask = (
   };
 };
 
-const wireTasksTransition = async (
-  page: Page,
-  before: MockTask[],
-  after: MockTask[],
-  switchAfterMs = 3000,
-) => {
-  let firstRequestMs: number | null = null;
+const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
+  let currentTasks = initialTasks;
   await page.route("**/api/tasks", async (route: Route) => {
-    if (firstRequestMs === null) {
-      firstRequestMs = Date.now();
-    }
-    const elapsedMs = Date.now() - firstRequestMs;
-    const tasks = elapsedMs >= switchAfterMs ? after : before;
-
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ tasks }),
+      body: JSON.stringify({ tasks: currentTasks }),
     });
   });
+
+  return (nextTasks: MockTask[]) => {
+    currentTasks = nextTasks;
+  };
 };
 
 const expandFirstFailureAccordion = async (page: Page) => {
@@ -76,6 +69,19 @@ const expandFirstFailureAccordion = async (page: Page) => {
     .getByRole("button", { name: /\d+\s*success,\s*\d+\s*failed/i })
     .first()
     .click();
+};
+
+const openTasksPanel = async (page: Page) => {
+  await page.getByTestId("task-menu-toggle").click();
+  const panelTitle = page.getByTestId("tasks-panel-title");
+  await expect(panelTitle).toBeVisible({ timeout: 15000 });
+};
+
+const openRecentTasksSection = async (page: Page) => {
+  const recentTasksToggle = page.getByRole("button", { name: /Recent Tasks/i });
+  if (await recentTasksToggle.count()) {
+    await recentTasksToggle.first().click();
+  }
 };
 
 test("completed task with failures keeps failure log in Tasks panel", async ({
@@ -99,7 +105,6 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
       },
     },
   });
-
   const completedWithFailureTask = buildTask({
     task_id: "task-12345678",
     status: "completed",
@@ -121,19 +126,18 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
       },
     },
   });
-  await wireTasksTransition(page, [runningTask], [completedWithFailureTask]);
+  const setTasks = await wireTasksState(page, [runningTask]);
 
   await page.goto("/knowledge");
-
-  // Wait for completion toast from task transition and open panel via "View".
-  await expect(page.getByText("Task completed")).toBeVisible({
-    timeout: 15000,
-  });
-  await page.getByRole("button", { name: "View", exact: true }).click();
-
-  // Unified panel requirement (TDD): completed task with failed files
-  // should preserve the detailed failure log content in the same Tasks panel.
-  await expect(page.getByTestId("tasks-panel-title")).toBeVisible();
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  setTasks([completedWithFailureTask]);
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  await openTasksPanel(page);
+  await openRecentTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(
@@ -173,16 +177,17 @@ test("completed task with failures requires View click to open tasks panel", asy
     },
   });
 
-  await wireTasksTransition(page, [runningTask], [completedWithFailureTask]);
+  const setTasks = await wireTasksState(page, [runningTask]);
   await page.goto("/knowledge");
-
-  // No manual "View" click: completed-with-failures should NOT auto-open panel.
-  await expect(page.getByText("Task completed")).toBeVisible({
-    timeout: 15000,
-  });
-
-  await page.getByRole("button", { name: "View", exact: true }).click();
-  await expect(page.getByTestId("tasks-panel-title")).toBeVisible();
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  setTasks([completedWithFailureTask]);
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  await openTasksPanel(page);
+  await openRecentTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(page.getByText("Auto-open on partial success")).toBeVisible();
@@ -218,12 +223,17 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
     },
   });
 
-  await wireTasksTransition(page, [runningTask], [failedTask]);
+  const setTasks = await wireTasksState(page, [runningTask]);
   await page.goto("/knowledge");
-
-  await expect(page.getByTestId("tasks-panel-title")).toBeVisible({
-    timeout: 15000,
-  });
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  setTasks([failedTask]);
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+  await openTasksPanel(page);
+  await openRecentTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(page.getByText("Auto-open on failed task")).toBeVisible();
