@@ -32,6 +32,7 @@
 
     --accent-amber: 48 96% 89%; /* amber-100 #fef3c7 */
     --accent-amber-foreground: 26 90% 37%; /* amber-700 #b45309 */
+    --brand-amber: 37 100% 50%; /* amber-500 #FE9A00 */
     --accent-emerald: 149 80% 90%; /* emerald-100 #d1fae5 */
     --accent-emerald-foreground: 161 94% 30%; /* emerald-600 #059669 */
     --accent-red: 0 93% 94%; /* red-100 #fee2e2 */
@@ -95,6 +96,7 @@
 
     --accent-amber: 22 78% 26%; /* amber-900 #78350f */
     --accent-amber-foreground: 46 97% 65%; /* amber-300 #fcd34d */
+    --brand-amber: 37 100% 50%; /* amber-500 #FE9A00 */
     --accent-emerald: 164 86% 16%; /* emerald-900 #064e3b */
     --accent-emerald-foreground: 158 64% 52%; /* emerald-400 #34d399 */
     --accent-red: 0 63% 31%; /* red-900 #7f1d1d */

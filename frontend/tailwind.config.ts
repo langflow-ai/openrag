@@ -131,6 +131,11 @@ const config = {
           DEFAULT: "hsl(var(--accent-amber))",
           foreground: "hsl(var(--accent-amber-foreground))",
         },
+        "brand-amber": {
+          DEFAULT: "hsl(var(--brand-amber))",
+          30: "hsl(var(--brand-amber) / 0.3)",
+          10: "hsl(var(--brand-amber) / 0.1)",
+        },
         "accent-purple": {
           DEFAULT: "hsl(var(--accent-purple))",
           foreground: "hsl(var(--accent-purple-foreground))",
@@ -169,14 +174,14 @@ const config = {
           ring: "hsl(var(--sidebar-ring))",
         },
         failure: {
-  				soft: '#46080933',
-  				pill: '#FB2C3633',
-  				file: '#FFA2A2',
-  				log: '#FF6467',
-  				message: '#FFC9C9CC',
-  				scroll: '#FF6464',
-  				muted: '#A66262'
-  			},
+          soft: "#46080933",
+          pill: "#FB2C3633",
+          file: "#FFA2A2",
+          log: "#FF6467",
+          message: "#FFC9C9CC",
+          scroll: "#FF6464",
+          muted: "#A66262",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

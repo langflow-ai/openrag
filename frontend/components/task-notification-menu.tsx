@@ -1,6 +1,14 @@
 "use client";
 
-import { Bell, CheckCircle, Clock, Loader2, X, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  Bell,
+  CheckCircle,
+  Clock,
+  Loader2,
+  X,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
@@ -53,9 +61,12 @@ export function TaskNotificationMenu() {
     )
     .slice(0, 5); // Show last 5 completed/failed tasks
 
-  const getTaskIcon = (status: Task["status"]) => {
+  const getTaskIcon = (status: Task["status"], hasFailedFiles = false) => {
     switch (status) {
       case "completed":
+        if (hasFailedFiles) {
+          return <AlertCircle className="h-4 w-4 text-brand-amber" />;
+        }
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case "failed":
       case "error":
@@ -70,15 +81,25 @@ export function TaskNotificationMenu() {
     }
   };
 
-  const getStatusBadge = (status: Task["status"]) => {
+  const getStatusBadge = (status: Task["status"], hasFailedFiles = false) => {
     switch (status) {
       case "completed":
+        if (hasFailedFiles) {
+          return (
+            <Badge
+              variant="outline"
+              className="rounded-[8px] bg-brand-amber-10 text-brand-amber border-brand-amber-30"
+            >
+              COMPLETED
+            </Badge>
+          );
+        }
         return (
           <Badge
             variant="outline"
-            className="bg-green-500/10 text-green-500 border-green-500/20"
+            className="rounded-[8px] bg-green-500/10 text-green-500 border-green-500/20"
           >
-            Completed
+            COMPLETED
           </Badge>
         );
       case "failed":
@@ -86,7 +107,7 @@ export function TaskNotificationMenu() {
         return (
           <Badge
             variant="outline"
-            className="bg-red-500/10 text-red-500 border-red-500/20"
+            className="rounded-[8px] bg-red-500/10 text-red-500 border-red-500/20"
           >
             Failed
           </Badge>
@@ -95,7 +116,7 @@ export function TaskNotificationMenu() {
         return (
           <Badge
             variant="outline"
-            className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+            className="rounded-[8px] bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
           >
             Pending
           </Badge>
@@ -105,7 +126,7 @@ export function TaskNotificationMenu() {
         return (
           <Badge
             variant="outline"
-            className="bg-blue-500/10 text-blue-500 border-blue-500/20"
+            className="rounded-[8px] bg-blue-500/10 text-blue-500 border-blue-500/20"
           >
             Processing
           </Badge>
@@ -114,7 +135,7 @@ export function TaskNotificationMenu() {
         return (
           <Badge
             variant="outline"
-            className="bg-gray-500/10 text-gray-500 border-gray-500/20"
+            className="rounded-[8px] bg-gray-500/10 text-gray-500 border-gray-500/20"
           >
             Unknown
           </Badge>
@@ -336,7 +357,7 @@ export function TaskNotificationMenu() {
                       className="px-4 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start gap-3">
-                        {getTaskIcon(task.status)}
+                        {getTaskIcon(task.status, hasFailedFiles)}
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-medium truncate">
                             Task {task.task_id.substring(0, 8)}...
@@ -364,7 +385,7 @@ export function TaskNotificationMenu() {
                             )}
                         </div>
                         <div className="self-start pt-0.5">
-                          {getStatusBadge(task.status)}
+                          {getStatusBadge(task.status, hasFailedFiles)}
                         </div>
                       </div>
                       {hasFailedFiles && (
