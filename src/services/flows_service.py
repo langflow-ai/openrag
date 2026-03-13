@@ -21,13 +21,13 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
-    async def resolve_ollama_url(self, endpoint: str, force: bool = False) -> str:
+    async def resolve_ollama_url(self, endpoint: str, force_refresh: bool = False) -> str:
         """Find the correct Ollama URL by probing candidates via Langflow's validate-provider API."""
         from config.config_manager import config_manager
         config = config_manager.get_config()
 
         # If not forcing, check if we already have a resolved endpoint for this original endpoint
-        if not force and config.providers.ollama.resolved_endpoint:
+        if not force_refresh and config.providers.ollama.resolved_endpoint:
             # We only use the cached one if the original endpoint is still a localhost one
             # and the cached one actually looks like a transformed version of it
             localhost_patterns = ["localhost", "127.0.0.1"]

@@ -1361,7 +1361,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             if not flows_service:
                 flows_service = _get_flows_service()
 
-            endpoint = await flows_service.resolve_ollama_url(config.providers.ollama.endpoint, force=True)
+            endpoint = await flows_service.resolve_ollama_url(config.providers.ollama.endpoint, force_refresh=True)
             await clients._create_langflow_global_variable(
                 "OLLAMA_BASE_URL", endpoint, modify=True
             )
