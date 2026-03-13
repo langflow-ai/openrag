@@ -1,6 +1,11 @@
+"""OpenRAG configuration settings.
+
+This module loads and manages all application configuration from environment
+variables and configuration files.
+"""
 import asyncio
 import os
-from utils.env_utils import get_env_int, get_env_float
+from typing import Any, Optional
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -10,7 +15,9 @@ from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from utils.container_utils import get_container_host
+from utils.env_utils import get_env_bool, get_env_float, get_env_int, get_env_str, require_env
 from utils.logging_config import get_logger
+
 # Import configuration manager
 from .config_manager import config_manager
 
@@ -19,16 +26,22 @@ load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
-# Environment variables
-OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
-OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
-OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
-OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
-LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
+# =============================================================================
+# OpenSearch Configuration
+# =============================================================================
+OPENSEARCH_HOST: str = os.getenv("OPENSEARCH_HOST", "localhost")
+OPENSEARCH_PORT: int = get_env_int("OPENSEARCH_PORT", 9200)
+OPENSEARCH_USERNAME: str = os.getenv("OPENSEARCH_USERNAME", "admin")
+OPENSEARCH_PASSWORD: Optional[str] = os.getenv("OPENSEARCH_PASSWORD")
+
+# =============================================================================
+# Langflow Configuration
+# =============================================================================
+LANGFLOW_URL: str = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
-LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
+LANGFLOW_PUBLIC_URL: Optional[str] = os.getenv("LANGFLOW_PUBLIC_URL")
 # Backwards compatible flow ID handling with deprecation warnings
-_legacy_flow_id = os.getenv("FLOW_ID")
+_legacy_flow_id: Optional[str] = os.getenv("FLOW_ID")
 
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
 LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
