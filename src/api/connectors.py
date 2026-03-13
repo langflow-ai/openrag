@@ -260,9 +260,9 @@ async def connector_sync(
         )
 
     except Exception as e:
-        logger.error("Connector sync failed", error=str(e))
+        logger.exception("Connector sync failed")
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
-        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync failed"}, status_code=500)
 
 
 async def connector_status(
@@ -499,30 +499,23 @@ async def connector_webhook(
             )
 
         except Exception as e:
-            logger.error(
-                "Failed to process webhook for connection",
-                connection_id=connection.connection_id,
-                error=str(e),
-            )
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Failed to process webhook for connection")
 
             return JSONResponse(
                 {
                     "status": "error",
                     "connector_type": connector_type,
                     "channel_id": channel_id,
-                    "error": str(e),
+                    "error": "Internal server error",
                 },
                 status_code=500,
             )
 
     except Exception as e:
-        logger.error("Webhook processing failed", error=str(e))
+        logger.exception("Webhook processing failed")
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_FAILED)
         return JSONResponse(
-            {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
+            {"error": "Webhook processing failed"}, status_code=500
         )
 
 async def connector_disconnect(
@@ -591,13 +584,9 @@ async def connector_disconnect(
         )
 
     except Exception as e:
-        logger.error(
-            "Failed to disconnect connector",
-            connector_type=connector_type,
-            error=str(e),
-        )
+        logger.exception("Failed to disconnect connector")
         return JSONResponse(
-            {"error": f"Disconnect failed: {str(e)}"},
+            {"error": "Disconnect failed"},
             status_code=500,
         )
 
@@ -750,9 +739,9 @@ async def sync_all_connectors(
         )
 
     except Exception as e:
-        logger.error("Sync all connectors failed", error=str(e))
+        logger.exception("Sync all connectors failed")
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
-        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync failed"}, status_code=500)
 
 
 async def connector_token(
@@ -854,12 +843,14 @@ async def connector_token(
                 return JSONResponse({"access_token": access_token, "expires_in": None})
             except ValueError as e:
                 # Typical when acquire_token_silent fails (e.g., needs re-auth)
-                return JSONResponse({"error": f"Failed to get access token: {str(e)}"}, status_code=401)
+                logger.exception("Failed to get access token")
+                return JSONResponse({"error": "Failed to get access token"}, status_code=401)
             except Exception as e:
-                return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
+                logger.exception("Authentication error")
+                return JSONResponse({"error": "Authentication error"}, status_code=500)
 
         return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
 
     except Exception as e:
-        logger.error("Error getting connector token", exc_info=True)
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.exception("Error getting connector token")
+        return JSONResponse({"error": "Internal server error"}, status_code=500)

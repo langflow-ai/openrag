@@ -122,11 +122,9 @@ async def langflow_endpoint(
             return JSONResponse(result)
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        logger.error("Langflow request failed", error=str(e))
+        logger.exception("Langflow request failed")
         return JSONResponse(
-            {"error": f"Langflow request failed: {str(e)}"}, status_code=500
+            {"error": "Langflow request failed"}, status_code=500
         )
 
 
@@ -139,8 +137,9 @@ async def chat_history_endpoint(
         history = await chat_service.get_chat_history(user.user_id)
         return JSONResponse(history)
     except Exception as e:
+        logger.exception("Failed to get chat history")
         return JSONResponse(
-            {"error": f"Failed to get chat history: {str(e)}"}, status_code=500
+            {"error": "Failed to get chat history"}, status_code=500
         )
 
 
@@ -153,8 +152,9 @@ async def langflow_history_endpoint(
         history = await chat_service.get_langflow_history(user.user_id)
         return JSONResponse(history)
     except Exception as e:
+        logger.exception("Failed to get langflow history")
         return JSONResponse(
-            {"error": f"Failed to get langflow history: {str(e)}"}, status_code=500
+            {"error": "Failed to get langflow history"}, status_code=500
         )
 
 
@@ -175,7 +175,7 @@ async def delete_session_endpoint(
                 status_code=500
             )
     except Exception as e:
-        logger.error(f"Error deleting session: {e}")
+        logger.exception("Failed to delete session")
         return JSONResponse(
-            {"error": f"Failed to delete session: {str(e)}"}, status_code=500
+            {"error": "Failed to delete session"}, status_code=500
         )

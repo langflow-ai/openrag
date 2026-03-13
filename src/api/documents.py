@@ -58,12 +58,12 @@ async def check_filename_exists(
         return JSONResponse({"exists": exists, "filename": filename}, status_code=200)
 
     except Exception as e:
-        logger.error("Error checking filename existence", filename=filename, error=str(e))
+        logger.exception("Error checking filename existence")
         error_str = str(e)
         if "AuthenticationException" in error_str:
             return JSONResponse({"error": "Access denied: insufficient permissions"}, status_code=403)
         else:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Internal server error"}, status_code=500)
 
 
 async def delete_documents_by_filename(
@@ -104,9 +104,9 @@ async def delete_documents_by_filename(
         }, status_code=200)
 
     except Exception as e:
-        logger.error("Error deleting documents by filename", filename=body.filename, error=str(e))
+        logger.exception("Error deleting documents by filename")
         error_str = str(e)
         if "AuthenticationException" in error_str:
             return JSONResponse({"error": "Access denied: insufficient permissions"}, status_code=403)
         else:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Internal server error"}, status_code=500)
