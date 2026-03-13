@@ -49,12 +49,19 @@ const buildTask = (
   };
 };
 
-const wireTasksSequence = async (page: Page, sequence: MockTask[][]) => {
-  let tasksRequestCount = 0;
+const wireTasksTransition = async (
+  page: Page,
+  before: MockTask[],
+  after: MockTask[],
+  switchAfterMs = 3000,
+) => {
+  let firstRequestMs: number | null = null;
   await page.route("**/api/tasks", async (route: Route) => {
-    const idx = Math.min(tasksRequestCount, sequence.length - 1);
-    const tasks = sequence[idx] ?? [];
-    tasksRequestCount += 1;
+    if (firstRequestMs === null) {
+      firstRequestMs = Date.now();
+    }
+    const elapsedMs = Date.now() - firstRequestMs;
+    const tasks = elapsedMs >= switchAfterMs ? after : before;
 
     await route.fulfill({
       status: 200,
@@ -114,7 +121,7 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
       },
     },
   });
-  await wireTasksSequence(page, [[runningTask], [completedWithFailureTask]]);
+  await wireTasksTransition(page, [runningTask], [completedWithFailureTask]);
 
   await page.goto("/knowledge");
 
@@ -166,11 +173,7 @@ test("completed task with failures requires View click to open tasks panel", asy
     },
   });
 
-  await wireTasksSequence(page, [
-    [runningTask],
-    [runningTask],
-    [completedWithFailureTask],
-  ]);
+  await wireTasksTransition(page, [runningTask], [completedWithFailureTask]);
   await page.goto("/knowledge");
 
   // No manual "View" click: completed-with-failures should NOT auto-open panel.
@@ -215,7 +218,7 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
     },
   });
 
-  await wireTasksSequence(page, [[runningTask], [runningTask], [failedTask]]);
+  await wireTasksTransition(page, [runningTask], [failedTask]);
   await page.goto("/knowledge");
 
   await expect(page.getByTestId("tasks-panel-title")).toBeVisible({
