@@ -1,4 +1,9 @@
-"""OpenRAG SDK client."""
+"""OpenRAG SDK client.
+
+Provides async client for interacting with the OpenRAG API.
+"""
+
+from __future__ import annotations
 
 import os
 from typing import Any
@@ -239,5 +244,10 @@ class OpenRAGClient:
     async def __aenter__(self) -> "OpenRAGClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
+    ) -> None:
         await self.close()

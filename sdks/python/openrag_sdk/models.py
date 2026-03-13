@@ -1,4 +1,9 @@
-"""OpenRAG SDK data models."""
+"""OpenRAG SDK data models.
+
+Defines Pydantic models for API request/response serialization.
+"""
+
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
@@ -79,7 +84,17 @@ class IngestResponse(BaseModel):
 
 
 class IngestTaskStatus(BaseModel):
-    """Status of an ingestion task."""
+    """Status of an ingestion task.
+    
+    Attributes:
+        task_id: Unique identifier for the ingestion task.
+        status: Current status ("pending", "running", "completed", "failed").
+        total_files: Total number of files to process.
+        processed_files: Number of files processed so far.
+        successful_files: Number of successfully processed files.
+        failed_files: Number of files that failed to process.
+        files: Detailed per-file status mapping.
+    """
 
     task_id: str
     status: str  # "pending", "running", "completed", "failed"
@@ -87,7 +102,7 @@ class IngestTaskStatus(BaseModel):
     processed_files: int = 0
     successful_files: int = 0
     failed_files: int = 0
-    files: dict = {}  # Detailed per-file status
+    files: dict[str, Any] = Field(default_factory=dict)  # Detailed per-file status
 
 
 class DeleteDocumentResponse(BaseModel):
