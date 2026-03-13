@@ -462,6 +462,11 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Set MiniMax credentials
+                if config.providers.minimax.api_key:
+                    os.environ["MINIMAX_API_KEY"] = config.providers.minimax.api_key
+                    logger.debug("Loaded MiniMax API key from config")
+
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
 

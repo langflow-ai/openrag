@@ -31,6 +31,10 @@ def add_provider_credentials_to_headers(headers: Dict[str, str], config) -> None
         ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True)
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
+    # Add MiniMax credentials
+    if config.providers.minimax.api_key:
+        headers["X-LANGFLOW-GLOBAL-VAR-MINIMAX_API_KEY"] = str(config.providers.minimax.api_key)
+
 
 def build_mcp_global_vars_from_config(config) -> Dict[str, str]:
     """Build MCP global variables dictionary from OpenRAG configuration.
@@ -62,7 +66,11 @@ def build_mcp_global_vars_from_config(config) -> Dict[str, str]:
     if config.providers.ollama.endpoint:
         ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True)
         global_vars["OLLAMA_BASE_URL"] = ollama_endpoint
-    
+
+    # Add MiniMax credentials
+    if config.providers.minimax.api_key:
+        global_vars["MINIMAX_API_KEY"] = config.providers.minimax.api_key
+
     # Add selected embedding model
     if config.knowledge.embedding_model:
         global_vars["SELECTED_EMBEDDING_MODEL"] = config.knowledge.embedding_model

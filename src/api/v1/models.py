@@ -13,7 +13,7 @@ from session_manager import User
 
 logger = get_logger(__name__)
 
-VALID_PROVIDERS = frozenset({"openai", "anthropic", "ollama", "watsonx"})
+VALID_PROVIDERS = frozenset({"openai", "anthropic", "ollama", "watsonx", "minimax"})
 
 
 async def _fetch_models(provider, config, models_service):
@@ -30,6 +30,13 @@ async def _fetch_models(provider, config, models_service):
         if not api_key:
             return None, JSONResponse({"error": "Anthropic API key not configured. Set it in Settings."}, status_code=400)
         models = await models_service.get_anthropic_models(api_key=api_key)
+        return models, None
+
+    if provider == "minimax":
+        api_key = config.providers.minimax.api_key
+        if not api_key:
+            return None, JSONResponse({"error": "MiniMax API key not configured. Set it in Settings."}, status_code=400)
+        models = await models_service.get_minimax_models(api_key=api_key)
         return models, None
 
     if provider == "ollama":

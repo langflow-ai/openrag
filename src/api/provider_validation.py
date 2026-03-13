@@ -189,6 +189,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "minimax":
+        await _test_minimax_lightweight_health(api_key)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -210,6 +212,8 @@ async def test_completion_with_tools(
         await _test_ollama_completion_with_tools(llm_model, endpoint)
     elif provider == "anthropic":
         await _test_anthropic_completion_with_tools(api_key, llm_model)
+    elif provider == "minimax":
+        await _test_minimax_completion_with_tools(api_key, llm_model)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -805,4 +809,106 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
+        raise
+
+
+# MiniMax validation functions
+async def _test_minimax_lightweight_health(api_key: str) -> None:
+    """Test MiniMax API key validity with a minimal completion request.
+
+    MiniMax does not expose a /v1/models endpoint, so we validate the API key
+    by sending a tiny chat completion request with max_tokens=1.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": "MiniMax-M2.5",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+            "temperature": 1.0,
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.minimax.io/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=15.0,
+            )
+
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                logger.error(f"MiniMax lightweight health check failed: {response.status_code} - {error_details}")
+                raise Exception(f"MiniMax API key validation failed: {error_details}")
+
+            logger.info("MiniMax lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("MiniMax lightweight health check timed out")
+        raise Exception("MiniMax API request timed out")
+    except Exception as e:
+        logger.error(f"MiniMax lightweight health check failed: {str(e)}")
+        raise
+
+
+async def _test_minimax_completion_with_tools(api_key: str, llm_model: str) -> None:
+    """Test MiniMax completion with tool calling."""
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": llm_model,
+            "messages": [
+                {"role": "user", "content": "What tools do you have available?"}
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get the current weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "The city and state"
+                                }
+                            },
+                            "required": ["location"]
+                        }
+                    }
+                }
+            ],
+            "max_tokens": 50,
+            "temperature": 1.0,
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.minimax.io/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                logger.error(f"MiniMax completion test failed: {response.status_code} - {error_details}")
+                raise Exception(f"MiniMax API error: {error_details}")
+
+            logger.info("MiniMax completion with tool calling test passed")
+
+    except httpx.TimeoutException:
+        logger.error("MiniMax completion test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"MiniMax completion test failed: {str(e)}")
         raise

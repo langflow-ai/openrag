@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 
 class SettingsUpdateBody(BaseModel):
     llm_model: Optional[str] = Field(None, min_length=1)
-    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama|minimax)$")
     system_prompt: Optional[str] = None
     chunk_size: Optional[int] = Field(None, gt=0)
     chunk_overlap: Optional[int] = Field(None, ge=0)
@@ -55,19 +55,22 @@ class SettingsUpdateBody(BaseModel):
     watsonx_endpoint: Optional[str] = Field(None, min_length=1)
     watsonx_project_id: Optional[str] = Field(None, min_length=1)
     ollama_endpoint: Optional[str] = Field(None, min_length=1)
+    minimax_api_key: Optional[str] = Field(None, min_length=1)
     remove_ollama_config: Optional[bool] = None
     remove_openai_config: Optional[bool] = None
     remove_anthropic_config: Optional[bool] = None
     remove_watsonx_config: Optional[bool] = None
+    remove_minimax_config: Optional[bool] = None
 
 
 class OnboardingBody(BaseModel):
-    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama|minimax)$")
     llm_model: Optional[str] = Field(None, min_length=1)
     embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
     embedding_model: Optional[str] = Field(None, min_length=1)
     openai_api_key: Optional[str] = Field(None, min_length=1)
     anthropic_api_key: Optional[str] = Field(None, min_length=1)
+    minimax_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_endpoint: Optional[str] = Field(None, min_length=1)
     watsonx_project_id: Optional[str] = Field(None, min_length=1)
@@ -124,11 +127,16 @@ class OllamaProviderConfig(BaseModel):
     endpoint: Optional[str]
     configured: bool
 
+class MiniMaxProviderConfig(BaseModel):
+    has_api_key: bool
+    configured: bool
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
+    minimax: MiniMaxProviderConfig
 
 class KnowledgeConfig(BaseModel):
     embedding_model: Optional[str]
@@ -336,6 +344,10 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
+                minimax=MiniMaxProviderConfig(
+                    has_api_key=bool(openrag_config.providers.minimax.api_key),
+                    configured=openrag_config.providers.minimax.configured,
+                ),
             ),
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
@@ -367,7 +379,7 @@ async def get_settings(
 
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in ["openai", "anthropic", "watsonx", "ollama", "minimax"]:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
@@ -409,6 +421,7 @@ async def update_settings(
             "embedding_model",
             "openai_api_key",
             "anthropic_api_key",
+            "minimax_api_key",
             "watsonx_api_key",
             "watsonx_endpoint",
             "watsonx_project_id",
@@ -693,11 +706,18 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.minimax_api_key is not None and body.minimax_api_key.strip():
+            current_config.providers.minimax.api_key = body.minimax_api_key.strip()
+            current_config.providers.minimax.configured = True
+            config_updated = True
+            provider_updated = True
+
         if body.remove_ollama_config:
             other_providers_configured = (
                 current_config.providers.openai.configured
                 or current_config.providers.anthropic.configured
                 or current_config.providers.watsonx.configured
+                or current_config.providers.minimax.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -720,6 +740,7 @@ async def update_settings(
                 current_config.providers.anthropic.configured
                 or current_config.providers.watsonx.configured
                 or current_config.providers.ollama.configured
+                or current_config.providers.minimax.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -744,6 +765,7 @@ async def update_settings(
                 current_config.providers.openai.configured
                 or current_config.providers.watsonx.configured
                 or current_config.providers.ollama.configured
+                or current_config.providers.minimax.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -765,6 +787,7 @@ async def update_settings(
                 current_config.providers.openai.configured
                 or current_config.providers.anthropic.configured
                 or current_config.providers.ollama.configured
+                or current_config.providers.minimax.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -783,6 +806,28 @@ async def update_settings(
                 fb = _first_configured_embedding_provider(current_config, "watsonx")
                 current_config.knowledge.embedding_provider = fb
                 current_config.knowledge.embedding_model = ""
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_minimax_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {"error": "Cannot remove MiniMax configuration: configure another model provider first."},
+                    status_code=400,
+                )
+            current_config.providers.minimax.api_key = ""
+            current_config.providers.minimax.configured = False
+            if current_config.agent.llm_provider == "minimax":
+                fb = _first_configured_llm_provider(current_config, "minimax")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = ""
+            # MiniMax is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
 
@@ -939,6 +984,11 @@ async def onboarding(
             current_config.providers.anthropic.configured = True
             config_updated = True
 
+        if body.minimax_api_key:
+            current_config.providers.minimax.api_key = body.minimax_api_key.strip()
+            current_config.providers.minimax.configured = True
+            config_updated = True
+
         if body.watsonx_api_key:
             current_config.providers.watsonx.api_key = body.watsonx_api_key.strip()
             current_config.providers.watsonx.configured = True
@@ -975,6 +1025,9 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif llm_provider == "minimax" and current_config.providers.minimax.api_key:
+                current_config.providers.minimax.configured = True
+                logger.info("Marked MiniMax as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1063,7 +1116,7 @@ async def onboarding(
         try:
             # Check if any provider-related fields were provided
             provider_fields_provided = any([
-                body.openai_api_key, body.anthropic_api_key,
+                body.openai_api_key, body.anthropic_api_key, body.minimax_api_key,
                 body.watsonx_api_key, body.watsonx_endpoint, body.watsonx_project_id,
                 body.ollama_endpoint
             ])
@@ -1072,7 +1125,8 @@ async def onboarding(
             # or if existing config has values (for OpenAI/Anthropic that might already be set)
             if (provider_fields_provided or
                 current_config.providers.openai.api_key != "" or
-                current_config.providers.anthropic.api_key != ""):
+                current_config.providers.anthropic.api_key != "" or
+                current_config.providers.minimax.api_key != ""):
                 await _update_langflow_global_variables(current_config)
 
             if body.embedding_provider or body.embedding_model:
