@@ -336,7 +336,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
             
             # Add provider credentials to headers
-            await add_provider_credentials_to_headers(extra_headers, config, langflow_request_func=clients.langflow_request)
+            await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service)
             
             # Ensure the Langflow client exists; try lazy init if needed
             langflow_client = await clients.ensure_langflow_client()
