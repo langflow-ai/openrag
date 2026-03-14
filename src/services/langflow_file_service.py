@@ -296,7 +296,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps( []),
             "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps( []),
         }
-        add_provider_credentials_to_headers(headers, config)
+        await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service)
 
 
         logger.info(

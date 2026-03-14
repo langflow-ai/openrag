@@ -1279,6 +1279,7 @@ async def initialize_services():
     auth_service = AuthService(
         session_manager,
         connector_service,
+        flows_service,
         langflow_mcp_service=LangflowMCPService(),
     )
 
