@@ -702,7 +702,7 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(CYAN)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/ -v
 
-test-ci: ensure-rsa-keys ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
+test-ci: ensure-rsa-keys ensure-config-dir ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
@@ -809,7 +809,7 @@ test-ci: ensure-rsa-keys ## Start infra, run integration + SDK tests, tear down 
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
-test-ci-local: ensure-rsa-keys ## Same as test-ci but builds all images locally
+test-ci-local: ensure-rsa-keys ensure-config-dir ## Same as test-ci but builds all images locally
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
