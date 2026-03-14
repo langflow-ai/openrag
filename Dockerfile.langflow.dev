@@ -12,9 +12,10 @@ ENV RUSTFLAGS="--cfg reqwest_unstable"
 ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
 ARG GIT_BRANCH=main
 
-WORKDIR /app
-
 # Install system dependencies
+# (+) Install uv for faster Python package management (needs root, goes to /usr/local/bin)
+# (+) Create non-root group: "langflow"
+# (+) Create non-root user: "langflow"
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -23,10 +24,15 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     npm \
     rustc cargo pkg-config libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install uv \
+    && groupadd --gid 103000 langflow \
+    && useradd --uid 103000 --gid langflow --no-create-home langflow
 
-# Install uv for faster Python package management
-RUN pip install uv
+# Switch to non-root user: "langflow"
+USER langflow
+# Create working directory: /app (owned by "langflow")
+WORKDIR /app
 
 # Clone the repository and checkout the specified branch
 RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \

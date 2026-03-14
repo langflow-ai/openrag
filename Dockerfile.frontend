@@ -1,17 +1,19 @@
 FROM node:20.20.0-slim
 
-# Set working directory
+# Switch to built-in non-root user: "node"
+USER node
+# Create working directory: /app (owned by "node")
 WORKDIR /app
 
 # Copy frontend dependencies
-COPY frontend/package*.json ./
+COPY --chown=node:node frontend/package*.json ./
 RUN npm install
 
 # Copy frontend source
-COPY frontend/ ./
+COPY --chown=node:node frontend/ ./
 
 # Build frontend
-RUN npm run build 
+RUN npm run build
 
 # Expose frontend port
 EXPOSE 3000
