@@ -21,6 +21,59 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
+    async def resolve_ollama_url(self, endpoint: str, force_refresh: bool = False) -> str:
+        """Find the correct Ollama URL by probing candidates via Langflow's validate-provider API."""
+        from config.config_manager import config_manager
+        config = config_manager.get_config()
+
+        from utils.container_utils import is_localhost_url, replace_localhost_patterns, get_container_host, transform_localhost_url
+
+        # If not forcing, check if we already have a resolved endpoint for this original endpoint
+        if not force_refresh and config.providers.ollama.resolved_endpoint:
+            # We only use the cached one if the original endpoint is still a localhost one
+            if is_localhost_url(endpoint):
+                logger.debug(f"Using cached resolved Ollama URL: {config.providers.ollama.resolved_endpoint}")
+                return config.providers.ollama.resolved_endpoint
+
+        if not is_localhost_url(endpoint):
+            return endpoint
+
+        # Candidates to probe
+        candidates = ["host.containers.internal", "host.docker.internal"]
+        detected_host = get_container_host()
+        if detected_host and detected_host not in candidates:
+            candidates.insert(0, detected_host)
+
+        resolved_url = None
+        for cand in candidates:
+            test_url = replace_localhost_patterns(endpoint, cand)
+            
+            logger.debug(f"Probing Ollama candidate via Langflow: {test_url}")
+            try:
+                response = await clients.langflow_request(
+                    "POST", "/api/v1/models/validate-provider",
+                    json={"provider": "Ollama", "variables": {"OLLAMA_BASE_URL": test_url}}
+                )
+                if response.status_code in (200, 201) and response.json().get("valid"):
+                    logger.info(f"Resolved Ollama URL via Langflow: {test_url}")
+                    resolved_url = test_url
+                    break
+            except Exception as e:
+                logger.debug(f"Probe failed for {test_url}: {e}")
+                continue
+        
+        if not resolved_url:
+            # Fallback to simple transformation if probing fails
+            resolved_url = transform_localhost_url(endpoint)
+
+        # Cache the result if it changed
+        if resolved_url and resolved_url != config.providers.ollama.resolved_endpoint:
+            config.providers.ollama.resolved_endpoint = resolved_url
+            config_manager.save_config_file(config)
+            logger.debug(f"Saved resolved Ollama URL to config: {resolved_url}")
+
+        return resolved_url
+
     def __init__(self):
         # Cache for flow file mappings to avoid repeated filesystem scans
         self._flow_file_cache = {}

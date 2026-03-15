@@ -37,6 +37,7 @@ class WatsonXConfig:
 class OllamaConfig:
     """Ollama provider configuration."""
     endpoint: str = ""
+    resolved_endpoint: str = ""
     configured: bool = False
 
 
@@ -313,7 +314,7 @@ class ConfigManager:
             return True
         except Exception as e:
             logger.error(f"Failed to save configuration to {self.config_file}: {e}")
-            return False
+            raise e
 
     def update_onboarding_state(self, **kwargs) -> bool:
         """Update onboarding state fields.

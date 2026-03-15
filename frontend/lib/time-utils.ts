@@ -60,7 +60,7 @@ export function formatTaskTimestamp(
   if (diffMinutes < 60) {
     return `${diffMinutes} min ago · ${formatClockTime(date)}`;
   }
-  if (diffHours < 24) return `${diffHours} hours ago · ${formatClockTime(date)}`;
+  if (diffHours < 24)
+    return `${diffHours} hours ago · ${formatClockTime(date)}`;
   return `${Math.floor(diffHours / 24)} days ago · ${formatClockTime(date)}`;
 }
-

@@ -11,8 +11,9 @@ logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    def __init__(self):
+    def __init__(self, flows_service=None):
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
+        self.flows_service = flows_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
@@ -182,7 +183,7 @@ class LangflowFileService:
             )
         
         # Add provider credentials as global variables for ingestion
-        add_provider_credentials_to_headers(headers, config)
+        await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service)
         logger.info(f"[LF] Headers {headers}")
         logger.info(f"[LF] Payload {payload}")
         resp = await clients.langflow_request(
@@ -295,7 +296,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps( []),
             "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps( []),
         }
-        add_provider_credentials_to_headers(headers, config)
+        await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service)
 
 
         logger.info(

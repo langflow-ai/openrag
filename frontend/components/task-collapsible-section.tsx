@@ -56,4 +56,3 @@ export function TaskCollapsibleSection<T>({
     </div>
   );
 }
-
