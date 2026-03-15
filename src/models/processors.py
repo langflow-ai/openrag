@@ -774,22 +774,6 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
-            
-            metadata_tweaks = []
-            if self.owner_user_id:
-                metadata_tweaks.append({"key": "owner", "value": self.owner_user_id})
-            if self.owner_name:
-                metadata_tweaks.append({"key": "owner_name", "value": self.owner_name})
-            if self.owner_email:
-                metadata_tweaks.append({"key": "owner_email", "value": self.owner_email})
-            # Mark as local upload for connector_type
-            metadata_tweaks.append({"key": "connector_type", "value": "local"})
-
-            if metadata_tweaks:
-                # Initialize the OpenSearch component tweaks if not already present
-                if "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4" not in final_tweaks:
-                    final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {}
-                final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"]["docs_metadata"] = metadata_tweaks
 
             # Process file using langflow service
             result = await self.langflow_file_service.upload_and_ingest_file(

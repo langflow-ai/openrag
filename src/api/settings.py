@@ -55,6 +55,10 @@ class SettingsUpdateBody(BaseModel):
     watsonx_endpoint: Optional[str] = Field(None, min_length=1)
     watsonx_project_id: Optional[str] = Field(None, min_length=1)
     ollama_endpoint: Optional[str] = Field(None, min_length=1)
+    remove_ollama_config: Optional[bool] = None
+    remove_openai_config: Optional[bool] = None
+    remove_anthropic_config: Optional[bool] = None
+    remove_watsonx_config: Optional[bool] = None
 
 
 class OnboardingBody(BaseModel):
@@ -168,6 +172,7 @@ class OnboardingResponse(BaseModel):
     edited: bool
     sample_data_ingested: bool
     openrag_docs_filter_id: Optional[str] = None
+    task_id: Optional[str] = None
 
 class DoclingConfig(BaseModel):
     do_ocr: bool
@@ -358,6 +363,22 @@ async def get_settings(
         return JSONResponse(
             {"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500
         )
+
+
+def _first_configured_llm_provider(config, excluding: str) -> str:
+    """Return the first configured LLM provider that isn't `excluding`."""
+    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+        if p != excluding and getattr(config.providers, p).configured:
+            return p
+    return "openai"
+
+
+def _first_configured_embedding_provider(config, excluding: str) -> str:
+    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`."""
+    for p in ["openai", "watsonx", "ollama"]:
+        if p != excluding and getattr(config.providers, p).configured:
+            return p
+    return "openai"
 
 
 async def update_settings(
@@ -672,6 +693,99 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.remove_ollama_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {"error": "Cannot remove Ollama configuration: configure another model provider first."},
+                    status_code=400,
+                )
+            current_config.providers.ollama.endpoint = ""
+            current_config.providers.ollama.configured = False
+            if current_config.agent.llm_provider == "ollama":
+                current_config.agent.llm_provider = _first_configured_llm_provider(current_config, "ollama")
+                current_config.agent.llm_model = ""
+            if current_config.knowledge.embedding_provider == "ollama":
+                current_config.knowledge.embedding_provider = _first_configured_embedding_provider(current_config, "ollama")
+                current_config.knowledge.embedding_model = ""
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_openai_config:
+            other_providers_configured = (
+                current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {"error": "Cannot remove OpenAI configuration: configure another model provider first."},
+                    status_code=400,
+                )
+            current_config.providers.openai.api_key = ""
+            current_config.providers.openai.configured = False
+            if current_config.agent.llm_provider == "openai":
+                fb = _first_configured_llm_provider(current_config, "openai")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = ""
+            if current_config.knowledge.embedding_provider == "openai":
+                fb = _first_configured_embedding_provider(current_config, "openai")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = ""
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_anthropic_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {"error": "Cannot remove Anthropic configuration: configure another model provider first."},
+                    status_code=400,
+                )
+            current_config.providers.anthropic.api_key = ""
+            current_config.providers.anthropic.configured = False
+            if current_config.agent.llm_provider == "anthropic":
+                fb = _first_configured_llm_provider(current_config, "anthropic")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = ""
+            # Anthropic is not a valid embedding provider; no embedding reset needed
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_watsonx_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {"error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."},
+                    status_code=400,
+                )
+            current_config.providers.watsonx.api_key = ""
+            current_config.providers.watsonx.endpoint = ""
+            current_config.providers.watsonx.project_id = ""
+            current_config.providers.watsonx.configured = False
+            if current_config.agent.llm_provider == "watsonx":
+                fb = _first_configured_llm_provider(current_config, "watsonx")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = ""
+            if current_config.knowledge.embedding_provider == "watsonx":
+                fb = _first_configured_embedding_provider(current_config, "watsonx")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = ""
+            config_updated = True
+            provider_updated = True
+
         if provider_updated:
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -692,7 +806,7 @@ async def update_settings(
         # Update Langflow global variables and model values if provider settings changed
         await clients.refresh_patched_client()
 
-        if should_validate:
+        if should_validate or provider_updated:
             try:
                 flows_service = _get_flows_service()
 
@@ -705,8 +819,8 @@ async def update_settings(
                         current_config, session_manager
                     )
 
-                # Update model values if provider or model changed
-                if body.llm_provider is not None or body.llm_model is not None or body.embedding_provider is not None or body.embedding_model is not None:
+                # Update model values if provider or model changed (including removals that trigger fallback)
+                if body.llm_provider is not None or body.llm_model is not None or body.embedding_provider is not None or body.embedding_model is not None or provider_updated:
                     await _update_langflow_model_values(current_config, flows_service)
 
             except Exception as e:
@@ -975,6 +1089,8 @@ async def onboarding(
             )
             raise
 
+        task_id = None
+
         # Initialize the OpenSearch index if embedding model is configured
         if body.embedding_model or body.embedding_provider:
             try:
@@ -1004,7 +1120,7 @@ async def onboarding(
                     # Import the function here to avoid circular imports
                     from main import ingest_default_documents_when_ready
 
-                    await ingest_default_documents_when_ready(
+                    task_id = await ingest_default_documents_when_ready(
                         document_service,
                         task_service,
                         langflow_file_service,
@@ -1094,6 +1210,7 @@ async def onboarding(
             edited=True,  # Confirm that config is now marked as edited
             sample_data_ingested=should_ingest_sample_data,
             openrag_docs_filter_id=openrag_docs_filter_id,
+            task_id=task_id,
         )
 
     except Exception as e:
@@ -1121,7 +1238,7 @@ async def _create_openrag_docs_filter(
         return None
 
     # Get JWT token
-        jwt_token = user.jwt_token
+    jwt_token = user.jwt_token
 
     # In no-auth mode, set owner to None so filter is visible to all users
     # In auth mode, use the actual user as owner
@@ -1192,6 +1309,12 @@ async def _update_langflow_global_variables(config):
             )
             logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
+        if config.providers.watsonx.endpoint:
+            await clients._create_langflow_global_variable(
+                "WATSONX_URL", config.providers.watsonx.endpoint, modify=True
+            )
+            logger.info("Set WATSONX_URL global variable in Langflow")
+
         # OpenAI global variables
         if config.providers.openai.api_key:
             await clients._create_langflow_global_variable(
@@ -1208,11 +1331,19 @@ async def _update_langflow_global_variables(config):
 
         # Ollama global variables
         if config.providers.ollama.endpoint:
-            endpoint = transform_localhost_url(config.providers.ollama.endpoint)
-            await clients._create_langflow_global_variable(
-                "OLLAMA_BASE_URL", endpoint, modify=True
-            )
-            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+            try:
+                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=True)
+                await clients._create_langflow_global_variable(
+                    "OLLAMA_BASE_URL", endpoint, modify=True
+                )
+                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Podman)")
+            except Exception:
+                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=False)
+                await clients._create_langflow_global_variable(
+                    "OLLAMA_BASE_URL", endpoint, modify=True
+                )   
+                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Docker)")
 
         if config.knowledge.embedding_model:
             await clients._create_langflow_global_variable(
@@ -1269,13 +1400,10 @@ async def _update_langflow_model_values(config, flows_service):
     try:
         # Update LLM model values
         llm_provider = config.agent.llm_provider.lower()
-        llm_provider_config = config.get_llm_provider_config()
-        llm_endpoint = getattr(llm_provider_config, "endpoint", None)
 
         await flows_service.change_langflow_model_value(
             llm_provider,
             llm_model=config.agent.llm_model,
-            endpoint=llm_endpoint,
         )
         logger.info(
             f"Successfully updated Langflow flows for LLM provider {llm_provider}"
@@ -1283,13 +1411,10 @@ async def _update_langflow_model_values(config, flows_service):
 
         # Update embedding model values
         embedding_provider = config.knowledge.embedding_provider.lower()
-        embedding_provider_config = config.get_embedding_provider_config()
-        embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
 
         await flows_service.change_langflow_model_value(
             embedding_provider,
             embedding_model=config.knowledge.embedding_model,
-            endpoint=embedding_endpoint,
         )
         logger.info(
             f"Successfully updated Langflow flows for embedding provider {embedding_provider}"
@@ -1517,6 +1642,7 @@ async def rollback_onboarding(
 
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
+        current_config.onboarding.current_step = 0
 
         # Save the rolled back configuration manually to avoid save_config_file setting edited=True
         try:

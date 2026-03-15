@@ -87,7 +87,81 @@ class TestSaveEnvFilePermissions:
             f"expected 0o600, got {oct(_perms(backups[0]))}"
         )
 
+    def test_preserves_unmanaged_env_variables(self, env_manager, tmp_path):
+        """Saving config must keep existing .env keys that TUI does not manage."""
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "OPENRAG_BACKEND_HOST='my-host'\n"
+            "OPENSEARCH_PASSWORD='old-password'\n"
+        )
 
+        env_manager.config.opensearch_password = "NewSecurePass!123"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            result = env_manager.save_env_file()
+
+        assert result is True
+        content = env_file.read_text()
+        assert "OPENRAG_BACKEND_HOST='my-host'" in content
+        assert content.count("OPENRAG_BACKEND_HOST=") == 1
+        assert "OPENSEARCH_PASSWORD='NewSecurePass!123'" in content
+        assert "OPENSEARCH_PASSWORD='old-password'" not in content
+
+    def test_preserves_unmanaged_multiline_quoted_value(
+        self, env_manager, tmp_path
+    ):
+        """Unmanaged python-dotenv–style multiline quoted values are preserved."""
+        env_file = tmp_path / ".env"
+        multiline_block = (
+            'UNMANAGED_MULTILINE="line1\\n'
+            "line2\\n"
+            'line3"\n'
+        )
+        env_file.write_text(
+            multiline_block
+            + 'OPENSEARCH_PASSWORD="old-password"\n'
+        )
+
+        env_manager.config.opensearch_password = "NewSecurePass!456"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            result = env_manager.save_env_file()
+
+        assert result is True
+        content = env_file.read_text()
+        # Multiline unmanaged value should be preserved exactly once.
+        assert multiline_block in content
+        assert content.count("UNMANAGED_MULTILINE=") == 1
+        # Managed password should be updated, not duplicated.
+        assert 'OPENSEARCH_PASSWORD="NewSecurePass!456"' in content
+        assert 'OPENSEARCH_PASSWORD="old-password"' not in content
+
+    def test_preserves_unmanaged_continued_line(self, env_manager, tmp_path):
+        """Unmanaged values using backslash continuation are preserved."""
+        env_file = tmp_path / ".env"
+        continued_block = (
+            "UNMANAGED_LONG_VALUE=first part \\\n"
+            "  second part \\\n"
+            "  third part\n"
+        )
+        env_file.write_text(
+            continued_block
+            + 'OPENSEARCH_PASSWORD="old-password"\n'
+        )
+
+        env_manager.config.opensearch_password = "AnotherNewPass!789"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            result = env_manager.save_env_file()
+
+        assert result is True
+        content = env_file.read_text()
+        # Continued-line unmanaged value should be preserved exactly once.
+        assert continued_block in content
+        assert content.count("UNMANAGED_LONG_VALUE=") == 1
+        # Managed password should be updated, not duplicated.
+        assert "OPENSEARCH_PASSWORD='AnotherNewPass!789'" in content
+        assert 'OPENSEARCH_PASSWORD="old-password"' not in content
 # ---------------------------------------------------------------------------
 # ensure_openrag_version
 # ---------------------------------------------------------------------------

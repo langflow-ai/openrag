@@ -346,15 +346,17 @@ async def ingest_default_documents_when_ready(
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
         if DISABLE_INGEST_WITH_LANGFLOW:
-            await _ingest_default_documents_openrag(
+            task_id = await _ingest_default_documents_openrag(
                 document_service, task_service, file_paths
             )
         else:
-            await _ingest_default_documents_langflow(
+            task_id = await _ingest_default_documents_langflow(
                 langflow_file_service, session_manager, task_service, file_paths
             )
 
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE)
+
+        return task_id
 
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
@@ -391,19 +393,6 @@ async def _ingest_default_documents_langflow(
         if hasattr(session_manager, "_anonymous_jwt"):
             effective_jwt = session_manager._anonymous_jwt
 
-    # Prepare tweaks for default documents with anonymous user metadata
-    default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
-            "docs_metadata": [
-                {"key": "owner", "value": None},
-                {"key": "owner_name", "value": anonymous_user.name},
-                {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "system_default"},
-                {"key": "is_sample_data", "value": "true"},
-            ]
-        }
-    }
-
     # Create a langflow upload task for trackable progress
     task_id = await task_service.create_langflow_upload_task(
         user_id=None,  # Anonymous user
@@ -414,7 +403,7 @@ async def _ingest_default_documents_langflow(
         owner_name=anonymous_user.name,
         owner_email=anonymous_user.email,
         session_id=None,  # No session for default documents
-        tweaks=default_tweaks,
+        tweaks={},
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
         replace_duplicates=True,
@@ -425,6 +414,8 @@ async def _ingest_default_documents_langflow(
         task_id=task_id,
         file_count=len(file_paths),
     )
+
+    return task_id
 
 async def health_check(request: Request):
     """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
@@ -479,6 +470,8 @@ async def _ingest_default_documents_openrag(
         task_id=task_id,
         file_count=len(file_paths),
     )
+
+    return task_id
 
 
 async def _update_mcp_servers_with_provider_credentials(services):

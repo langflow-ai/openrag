@@ -13,6 +13,16 @@ from typing import Tuple, Optional
 from pathlib import Path
 
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
+OPENRAG_IMAGE_REPOS = {
+    "langflowai/openrag-backend",
+    "langflowai/openrag-frontend",
+    "langflowai/openrag-langflow",
+    "langflowai/openrag-opensearch",
+    "langflowai/openrag-dashboards",
+    "langflow/langflow",
+    "opensearchproject/opensearch",
+    "opensearchproject/opensearch-dashboards",
+}
 
 
 # =============================================================================
@@ -95,6 +105,63 @@ def docker_is_podman() -> bool:
     except Exception:
         pass
     return False
+
+
+def _extract_repository(image_tag: str) -> str:
+    """Extract repository name from <repository>:<tag> image reference."""
+    return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
+
+
+def _is_openrag_repository(repository: str) -> bool:
+    """Check whether repository is OpenRAG-related, with optional registry prefix."""
+    repo = repository.lower()
+    return any(repo == known or repo.endswith(f"/{known}") for known in OPENRAG_IMAGE_REPOS)
+
+
+def remove_openrag_images(runtime: str) -> tuple[int, int]:
+    """Remove only OpenRAG-related images for the given runtime."""
+    result = subprocess.run(
+        [runtime, "images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return 0, 0
+
+    image_ids: list[tuple[str, str]] = []
+    seen_ids = set()
+    for raw_line in result.stdout.splitlines():
+        if not raw_line.strip():
+            continue
+        parts = raw_line.split("\t")
+        if len(parts) < 2:
+            continue
+
+        image_tag = parts[0].strip()
+        image_id = parts[1].strip()
+        if "<none>" in image_tag:
+            continue
+
+        repository = _extract_repository(image_tag)
+        if not _is_openrag_repository(repository):
+            continue
+
+        if image_id in seen_ids:
+            continue
+        seen_ids.add(image_id)
+        image_ids.append((image_id, image_tag))
+
+    removed = 0
+    for image_id, _ in image_ids:
+        delete_result = subprocess.run(
+            [runtime, "rmi", "-f", image_id],
+            capture_output=True,
+            text=True,
+        )
+        if delete_result.returncode == 0:
+            removed += 1
+
+    return removed, len(image_ids)
 
 
 # =============================================================================
@@ -432,7 +499,11 @@ def check_storage_corruption(runtime: str) -> Tuple[bool, Optional[str]]:
 def fix_storage_corruption(runtime: str, version: str) -> bool:
     """Reset storage to fix corruption."""
     say("Storage corruption detected.")
-    if not ask_yes_no(f"Reset {runtime} storage? (WARNING: deletes all containers/images)"):
+    if runtime == "podman":
+        prompt = f"Reset {runtime} storage? (WARNING: deletes all containers/images)"
+    else:
+        prompt = "Remove OpenRAG Docker images? (OpenRAG images only)"
+    if not ask_yes_no(prompt):
         return False
 
     if runtime == "podman":
@@ -460,9 +531,20 @@ def fix_storage_corruption(runtime: str, version: str) -> bool:
         say("Done.")
         return True
     else:
-        say("Pruning Docker system...")
-        subprocess.run(["docker", "system", "prune", "-af"], capture_output=True)
-        say("Done.")
+        say("Removing OpenRAG Docker images...")
+        removed, total = remove_openrag_images("docker")
+        say(f"Removed {removed}/{total} OpenRAG image(s).")
+        # Treat outcomes based on how many images were removed vs. found.
+        if total == 0:
+            # No OpenRAG images found; nothing to clean up, but this is not an error.
+            return True
+        if removed < total:
+            # We attempted cleanup but some images could not be removed.
+            say(
+                "Warning: Some OpenRAG Docker images could not be removed. "
+                "Please try removing them manually or check your Docker installation."
+            )
+            return False
         return True
 
 

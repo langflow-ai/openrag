@@ -15,6 +15,7 @@ import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 import { AssistantMessage } from "./_components/assistant-message";
 import { ChatInput, type ChatInputHandle } from "./_components/chat-input";
+import { ErrorMessage } from "./_components/error-message";
 import Nudges from "./_components/nudges";
 import { UserMessage } from "./_components/user-message";
 import type {
@@ -283,6 +284,7 @@ function ChatPage() {
         role: "assistant",
         content: `❌ Failed to process document. Please try again.`,
         timestamp: new Date(),
+				error: true,
       };
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
     } finally {
@@ -367,6 +369,7 @@ function ChatPage() {
           content: string;
           timestamp?: string;
           response_id?: string;
+					error?: boolean;
           chunks?: Array<{
             item?: {
               type?: string;
@@ -394,6 +397,7 @@ function ChatPage() {
             role: msg.role as "user" | "assistant",
             content: msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
+						error: msg.error || false,
           };
 
           // Extract function calls from chunks or response_data
@@ -905,6 +909,7 @@ function ChatPage() {
             role: "assistant",
             content: "Sorry, I encountered an error. Please try again.",
             timestamp: new Date(),
+						error: true,
           };
           setMessages((prev) => [...prev, errorMessage]);
         }
@@ -917,6 +922,7 @@ function ChatPage() {
           content:
             "Sorry, I couldn't connect to the chat service. Please try again.",
           timestamp: new Date(),
+					error: true,
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
@@ -1149,23 +1155,30 @@ function ChatPage() {
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
                       >
-                        <AssistantMessage
-                          content={message.content}
-                          functionCalls={message.functionCalls}
-                          messageIndex={index}
-                          expandedFunctionCalls={expandedFunctionCalls}
-                          onToggle={toggleFunctionCall}
-                          showForkButton={endpoint === "chat"}
-                          onFork={(e) => handleForkConversation(index, e)}
-                          animate={false}
-                          isInactive={index < messages.length - 1}
-                          isInitialGreeting={
-                            index === 0 &&
-                            messages.length === 1 &&
-                            message.content === "How can I assist?"
-                          }
-                          usage={message.usage}
-                        />
+                        {message.error ? (
+                          <ErrorMessage
+                            content={message.content}
+                            animate={false}
+                          />
+                        ) : (
+                          <AssistantMessage
+                            content={message.content}
+                            functionCalls={message.functionCalls}
+                            messageIndex={index}
+                            expandedFunctionCalls={expandedFunctionCalls}
+                            onToggle={toggleFunctionCall}
+                            showForkButton={endpoint === "chat"}
+                            onFork={(e) => handleForkConversation(index, e)}
+                            animate={false}
+                            isInactive={index < messages.length - 1}
+                            isInitialGreeting={
+                              index === 0 &&
+                              messages.length === 1 &&
+                              message.content === "How can I assist?"
+                            }
+                            usage={message.usage}
+                          />
+                        )}
                       </div>
                     ),
               )}

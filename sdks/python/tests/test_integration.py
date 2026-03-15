@@ -127,6 +127,22 @@ class TestSettings:
         assert updated_settings.knowledge.chunk_size == current_chunk_size
 
 
+class TestModels:
+    """Test models endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_list_models(self, client):
+        """Test listing models for a provider."""
+        # This tests both the API key auth and the minted JWT
+        # since models_service often needs credentials/JWT
+        models = await client.models.list("openai")
+
+        assert models.language_models is not None
+        assert isinstance(models.language_models, list)
+        assert models.embedding_models is not None
+        assert isinstance(models.embedding_models, list)
+
+
 class TestKnowledgeFilters:
     """Test knowledge filter operations."""
 
@@ -406,3 +422,26 @@ class TestChat:
         result = await client.chat.delete(response.chat_id)
 
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_chat_with_sources(self, client, test_file: Path):
+        """Test chat uses embedded knowledge (RAG), not just pure LLM."""
+        # 1. Ingest document
+        result = await client.documents.ingest(file_path=str(test_file))
+        if result.status == "failed" or result.successful_files == 0:
+            pytest.skip("Document ingestion failed — cannot test RAG sources")
+
+        # 2. Wait for indexing
+        import asyncio
+        await asyncio.sleep(3)
+
+        # 3. Chat about document content
+        response = await client.chat.create(
+            message="What is the color of the dancing animals mentioned in my documents?"
+        )
+
+        # 4. Verify sources — proves RAG retrieval worked
+        assert response.sources is not None
+        assert len(response.sources) > 0
+        source_filenames = [s.filename for s in response.sources]
+        assert any(test_file.name in name for name in source_filenames)

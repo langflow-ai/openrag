@@ -264,26 +264,22 @@ class SessionManager:
         """Get the effective JWT token, creating anonymous JWT if needed in no-auth mode"""
         from config.settings import is_no_auth_mode
 
-        logger.debug(
-            "get_effective_jwt_token",
-            user_id=user_id,
-            jwt_token_present=(jwt_token is not None),
-            no_auth_mode=is_no_auth_mode(),
-        )
+        if jwt_token is not None:
+            return jwt_token
 
-        # In no-auth mode, create anonymous JWT if needed
-        if jwt_token is None and (is_no_auth_mode() or user_id in (None, AnonymousUser().user_id)):
+        # No token — create one
+        if is_no_auth_mode() or user_id in (None, AnonymousUser().user_id):
+            # anonymous JWT (cached)
             if not hasattr(self, "_anonymous_jwt"):
-                # Create anonymous JWT token for OpenSearch OIDC
-                logger.debug("Creating anonymous JWT")
                 self._anonymous_jwt = self._create_anonymous_jwt()
-                logger.debug(
-                    "Anonymous JWT created", jwt_prefix=self._anonymous_jwt[:50]
-                )
-            jwt_token = self._anonymous_jwt
-            logger.debug("Using anonymous JWT")
+            return self._anonymous_jwt
 
-        return jwt_token
+        # Auth mode, real user, no token — mint a JWT for them
+        user = self.get_user(user_id)
+        if user:
+            return self.create_jwt_token(user)
+
+        return None
 
     def _create_anonymous_jwt(self) -> str:
         """Create JWT token for anonymous user in no-auth mode"""
