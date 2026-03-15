@@ -43,6 +43,7 @@ class SourcesEvent(StreamEvent):
 
     type: Literal["sources"] = "sources"
     sources: list[Source]
+    query: str
 
 
 class DoneEvent(StreamEvent):
