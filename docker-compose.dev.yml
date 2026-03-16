@@ -12,5 +12,7 @@ services:
       args:
         GIT_REPO: ${GIT_REPO:-https://github.com/langflow-ai/langflow.git}
         GIT_BRANCH: ${GIT_BRANCH:-main}
+        OPENRAG_UID: ${OPENRAG_UID:-1000}
+        OPENRAG_GID: ${OPENRAG_GID:-1000}
       # Increase memory for build (npm build is memory intensive)
       shm_size: '2gb'

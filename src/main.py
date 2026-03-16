@@ -358,7 +358,17 @@ def generate_jwt_keys():
 
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
-            logger.error("Failed to generate RSA keys", error=str(e))
+            stderr = e.stderr.decode() if e.stderr else "No stderr"
+            stdout = e.stdout.decode() if e.stdout else "No stdout"
+            logger.error(
+                "Failed to generate RSA keys",
+                error=str(e),
+                stderr=stderr,
+                stdout=stdout,
+                private_key_path=private_key_path,
+                keys_dir_exists=os.path.exists(keys_dir),
+                keys_dir_writable=os.access(keys_dir, os.W_OK),
+            )
             TelemetryClient.send_event_sync(
                 Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_JWT_KEY_FAIL
             )
@@ -366,11 +376,25 @@ def generate_jwt_keys():
     else:
         # Ensure correct permissions on existing keys
         try:
-            os.chmod(private_key_path, 0o600)
-            os.chmod(public_key_path, 0o644)
-            logger.info("RSA keys already exist, ensured correct permissions")
+            if os.access(private_key_path, os.W_OK):
+                os.chmod(private_key_path, 0o600)
+                logger.info("RSA private already exists. Successfully ensured the private key permission.")
+            else:
+                logger.warning("Failed to set permissions on RSA private key: Private key is not writable.",
+                    error=str(e),
+                    private_key_path=private_key_path,
+                )
+
+            if os.access(public_key_path, os.W_OK):
+                os.chmod(public_key_path, 0o644)
+                logger.info("RSA public already exist. Successfully ensured the public key permission.")
+            else:
+                logger.warning("Failed to set permissions on RSA private key: Private key is not writable.",
+                    error=str(e),
+                    public_key_path=public_key_path,
+                )
         except OSError as e:
-            logger.warning("Failed to set permissions on existing keys", error=str(e))
+            logger.warning("Failed to set permissions on existing RSA keys.", error=str(e))
 
 
 def _get_documents_dir():

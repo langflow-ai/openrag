@@ -45,6 +45,9 @@ COPY flows/ ./flows/
 # -----------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
+ARG OPENRAG_UID=1000
+ARG OPENRAG_GID=1000
+
 # (+) Create non-root group: "openrag"
 # (+) Create non-root user: "openrag"
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -52,8 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     openssl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 103000 openrag \
-    && useradd --uid 103000 --gid openrag --no-create-home openrag
+    && groupadd --gid $OPENRAG_GID openrag \
+    && useradd --uid $OPENRAG_UID --gid openrag --no-create-home openrag
 
 WORKDIR /app
 

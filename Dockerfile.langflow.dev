@@ -11,6 +11,8 @@ ENV RUSTFLAGS="--cfg reqwest_unstable"
 # Accept build arguments for git repository and branch
 ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
 ARG GIT_BRANCH=main
+ARG OPENRAG_UID=1000
+ARG OPENRAG_GID=1000
 
 # Install system dependencies
 # (+) Install uv for faster Python package management (needs root, goes to /usr/local/bin)
@@ -26,8 +28,8 @@ RUN apt-get update && apt-get install -y \
     rustc cargo pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install uv \
-    && groupadd --gid 103000 langflow \
-    && useradd --uid 103000 --gid langflow --no-create-home langflow
+    && groupadd --gid $OPENRAG_GID langflow \
+    && useradd --uid $OPENRAG_UID --gid langflow --no-create-home langflow
 
 # Switch to non-root user: "langflow"
 USER langflow

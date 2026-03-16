@@ -48,6 +48,13 @@ GREEN=\033[0;32m
 # REUSABLE FUNCTIONS
 ######################
 
+# Check that a container is running after compose up; fail with a helpful message if not.
+# Usage: $(call check_container_running,<container-name>)
+define check_container_running
+	$(CONTAINER_RUNTIME) container inspect $(1) --format '{{.State.Status}}' 2>/dev/null | grep -q running \
+		|| (echo "$(RED)ERROR: $(1) failed to start. Run 'make logs' for details.$(NC)" && exit 1)
+endef
+
 # JWT OpenSearch test function - tests that JWT authentication works against OpenSearch
 # Usage: $(call test_jwt_opensearch)
 define test_jwt_opensearch
@@ -326,9 +333,10 @@ help_utils: ## Show utility commands
 # DEVELOPMENT ENVIRONMENTS
 ######################
 
-dev: ## Start full stack with GPU support
+dev: ensure-config-dir ensure-rsa-keys ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@$(call check_container_running,openrag-backend)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
@@ -336,9 +344,10 @@ dev: ## Start full stack with GPU support
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 
-dev-cpu: ## Start full stack with CPU only
+dev-cpu: ensure-config-dir ensure-rsa-keys ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d
+	@$(call check_container_running,openrag-backend)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
@@ -361,7 +370,10 @@ ensure-rsa-keys: ## Generate RSA keys for JWT signing if absent, or fix permissi
 	fi
 	@if [ ! -f keys/private_key.pem ]; then \
 		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
-		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
+		openssl genrsa -out keys/private_key.pem 2048; \
+		openssl rsa -in keys/private_key.pem -pubout -out keys/public_key.pem; \
+		chmod 600 keys/private_key.pem; \
+		chmod 644 keys/public_key.pem; \
 		echo "$(PURPLE)RSA keys for JWT signing generated.$(NC)"; \
 	else \
 		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
@@ -547,7 +559,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	fi; \
 	echo ""; \
 	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
-	$(COMPOSE_CMD) down -v --remove-orphans --rmi local || true; \
+	$(COMPOSE_CMD) down -v --remove-orphans || true; \
 	echo "$(YELLOW)Removing local data directories...$(NC)"; \
 	if [ -d "opensearch-data" ]; then \
 		echo "Removing opensearch-data..."; \

@@ -48,8 +48,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+      args:
+        OPENRAG_UID: ${OPENRAG_UID:-1000}
+        OPENRAG_GID: ${OPENRAG_GID:-1000}
     container_name: openrag-backend
-    user: "${OPENRAG_UID:-103000}:${OPENRAG_GID:-103000}"
+    user: "${OPENRAG_UID:-1000}:${OPENRAG_GID:-1000}"
     depends_on:
       - langflow
     environment:
