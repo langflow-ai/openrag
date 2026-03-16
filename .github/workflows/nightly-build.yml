@@ -2,7 +2,7 @@ name: Nightly Docker Build
 
 on:
   schedule:
-    # 10 PM Central = 04:00 UTC (CDT) / 04:00 UTC
+    # Runs daily at 04:00 UTC (22:00 CST / 23:00 CDT on the previous day)
     - cron: '0 4 * * *'
   workflow_dispatch:
 
