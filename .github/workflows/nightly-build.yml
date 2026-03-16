@@ -18,7 +18,7 @@ jobs:
         run: |
           DATE_PART=$(date -u +%y%m%d)
           # Use the GitHub run number to create a unique, auto-incrementing suffix
-          NIGHTLY_VERSION="nightly-${DATE_PART}.${{ github.run_number }}"
+          NIGHTLY_VERSION="nightly-${DATE_PART}.${{ github.run_number }}.${{ github.run_attempt }}"
           echo "nightly_version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
           echo "Nightly version: $NIGHTLY_VERSION"
 
