@@ -13,7 +13,7 @@ def load_env_file() -> None:
     loads it using python-dotenv. It can be used by both application code and tests.
     """
     # Navigate up from utils.py location to find .env
-    # utils.py is in src/openrag_eval/utils.py
-    # .env is in openrag_evaluation/.env
+    # utils.py is in openrag/evaluation/openrag_eval/src/openrag_eval/utils.py
+    # .env is in openrag/evaluation/openrag_eval/.env
     env_path = Path(__file__).parent.parent.parent / ".env"
     load_dotenv(dotenv_path=env_path, verbose=True)

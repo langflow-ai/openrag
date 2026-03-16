@@ -38,10 +38,12 @@ def inference_params():
     """Create test inference parameters."""
     return OpenRAGInferenceParams(
         generative_model=GenerativeModelParams(
-            provider_id="ollama",
-            model_id="gpt-oss:20b",
+            provider_id="openai",
+            model_id="gpt-5.2",
+            # provider_id="ollama",
+            # model_id="gpt-oss:20b",
         ),
-        batch_size=5,
+        batch_size=1,
     )
 
 
@@ -150,17 +152,36 @@ class TestOpenRAGInference:
         )
         inference.set_ingest_artifacts([test_ingest_artifact])
 
-        # First call - should generate and cache
+        # Access the generation cache
+        assert inference.generation_cache is not None, "Generation cache should be initialized"
+        cache = inference.generation_cache
+
+        # Verify initial cache state
+        initial_cache_hit = cache.cache_hit
+        initial_cache_miss = cache.cache_miss
+        logger.info(f"Initial cache state - hits: {initial_cache_hit}, misses: {initial_cache_miss}")
+
+        # First call - should generate and cache (cache miss)
         logger.info("First call (should generate)...")
         result1 = inference.process(test_benchmark_entry)
         assert result1.answer is not None
         logger.info(f"✓ First call completed: {result1.answer[:100]}...")
 
-        # Second call - should retrieve from cache
+        # Verify cache miss occurred
+        assert cache.cache_miss == initial_cache_miss + 1, "First call should result in cache miss"
+        assert cache.cache_hit == initial_cache_hit, "First call should not result in cache hit"
+        logger.info(f"✓ Cache miss recorded: {cache.cache_miss}")
+
+        # Second call - should retrieve from cache (cache hit)
         logger.info("Second call (should use cache)...")
         result2 = inference.process(test_benchmark_entry)
         assert result2.answer is not None
         logger.info(f"✓ Second call completed: {result2.answer[:100]}...")
+
+        # Verify cache hit occurred
+        assert cache.cache_hit == initial_cache_hit + 1, "Second call should result in cache hit"
+        assert cache.cache_miss == initial_cache_miss + 1, "Second call should not result in additional cache miss"
+        logger.info(f"✓ Cache hit recorded: {cache.cache_hit}")
 
         # Results should be identical
         assert result1.answer == result2.answer, "Cached result should match original"

@@ -19,21 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def default_url():
-    """Default URL for OpenRAG tests."""
-    return "http://localhost:3000"
-
-
-@pytest.fixture
 def test_document():
     """Create a test document from real file."""
     # Path to the real test document
     file_name = "docling.pdf"
 
     doc_path = (
-        Path(__file__).parent.parent.parent.parent
-        / "dataset_sample"
-        / "documents"
+        Path(__file__).parent.parent.parent.parent.parent
+        / "openrag-documents"
         / file_name
     )
     # Read the file content
@@ -72,12 +65,12 @@ def mock_data_loader(test_rag_corpus):
 def ingest_params():
     """Create test ingestion parameters."""
     return OpenRAGIngestParams(
-        embedding_model=EmbeddingModelParams(model_id="Azure/text-embedding-3-small-1"),
+        embedding_model=EmbeddingModelParams(model_id="text-embedding-3-small"),
         chunking=ChunkingParams(
             chunk_size=256,
             chunk_overlap=25,
         ),
-        ingestion_batch_size=5,
+        ingestion_batch_size=1,
     )
 
 
