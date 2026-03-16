@@ -1,0 +1,119 @@
+name: Nightly Docker Build
+
+on:
+  schedule:
+    # 10 PM Central = 04:00 UTC (CDT) / 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  compute-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      nightly_tag: ${{ steps.tag.outputs.nightly_tag }}
+    steps:
+      - name: Compute nightly tag with auto-incrementing suffix
+        id: tag
+        run: |
+          DATE_PART=$(date -u +%y%m%d)
+          BASE_TAG="nightly-${DATE_PART}"
+
+          # Query Docker Hub for existing tags matching today's date
+          EXISTING_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/langflowai/openrag-backend/tags/?page_size=100&name=${BASE_TAG}" \
+            | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              tags = [r['name'] for r in data.get('results', [])]
+              print('\n'.join(tags))
+          except Exception:
+              pass
+          " 2>/dev/null || true)
+
+          # Find the highest .X suffix
+          MAX_SUFFIX=-1
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            # Extract suffix after the last dot
+            SUFFIX="${tag##*.}"
+            if [[ "$SUFFIX" =~ ^[0-9]+$ ]] && [ "$SUFFIX" -gt "$MAX_SUFFIX" ]; then
+              MAX_SUFFIX=$SUFFIX
+            fi
+          done <<< "$EXISTING_TAGS"
+
+          NEXT_SUFFIX=$((MAX_SUFFIX + 1))
+          NIGHTLY_TAG="${BASE_TAG}.${NEXT_SUFFIX}"
+
+          echo "nightly_tag=$NIGHTLY_TAG" >> $GITHUB_OUTPUT
+          echo "Nightly tag: $NIGHTLY_TAG"
+
+  build-and-publish:
+    needs: compute-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            langflowai/openrag-backend:${{ needs.compute-tag.outputs.nightly_tag }}
+            langflowai/openrag-backend:nightly
+          cache-from: type=gha,scope=nightly-backend
+          cache-to: type=gha,mode=max,scope=nightly-backend
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            langflowai/openrag-frontend:${{ needs.compute-tag.outputs.nightly_tag }}
+            langflowai/openrag-frontend:nightly
+          cache-from: type=gha,scope=nightly-frontend
+          cache-to: type=gha,mode=max,scope=nightly-frontend
+
+      - name: Build and push Langflow
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.langflow
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            langflowai/openrag-langflow:${{ needs.compute-tag.outputs.nightly_tag }}
+            langflowai/openrag-langflow:nightly
+          cache-from: type=gha,scope=nightly-langflow
+          cache-to: type=gha,mode=max,scope=nightly-langflow
+
+      - name: Build and push OpenSearch
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            langflowai/openrag-opensearch:${{ needs.compute-tag.outputs.nightly_tag }}
+            langflowai/openrag-opensearch:nightly
+          cache-from: type=gha,scope=nightly-opensearch
+          cache-to: type=gha,mode=max,scope=nightly-opensearch
