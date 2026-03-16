@@ -165,8 +165,8 @@ jobs:
           import re
           with open('pyproject.toml', 'r') as f:
               content = f.read()
-          # Append .dev + run_number to the version (PEP 440 compliant)
-          new_content = re.sub(r'^version = \"([^\"]+)\"', r'version = \"\1.dev${{ github.run_number }}\"', content, flags=re.M)
+          # Append .dev + run_number + run_attempt to the version (PEP 440 compliant and unique per attempt)
+          new_content = re.sub(r'^version = \"([^\"]+)\"', r'version = \"\1.dev${{ github.run_number }}${{ github.run_attempt }}\"', content, flags=re.M)
           with open('pyproject.toml', 'w') as f:
               f.write(new_content)
           "
