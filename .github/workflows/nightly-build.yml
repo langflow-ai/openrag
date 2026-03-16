@@ -2,45 +2,13 @@ name: Nightly Docker Build
 
 on:
   schedule:
-    # Runs daily at 04:00 UTC (22:00 CST / 23:00 CDT on the previous day)
+    # Runs daily at 04:00 UTC (10 PM Central)
     - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
-  compute-tag:
-    runs-on: ubuntu-latest
-    outputs:
-      nightly_tag: ${{ steps.tag.outputs.nightly_tag }}
-    steps:
-      - name: Compute nightly tag with auto-incrementing suffix
-        id: tag
-        run: |
-          DATE_PART=$(date -u +%y%m%d)
-          BASE_TAG="nightly-${DATE_PART}"
-
-          # Query Docker Hub for existing tags matching today's date
-          EXISTING_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/langflowai/openrag-backend/tags/?page_size=100&name=${BASE_TAG}" \
-            | python3 -c "import sys,json; data=json.load(sys.stdin); print('\n'.join(r['name'] for r in data.get('results', [])))" 2>/dev/null || true)
-
-          # Find the highest .X suffix
-          MAX_SUFFIX=-1
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            # Extract suffix after the last dot
-            SUFFIX="${tag##*.}"
-            if [[ "$SUFFIX" =~ ^[0-9]+$ ]] && [ "$SUFFIX" -gt "$MAX_SUFFIX" ]; then
-              MAX_SUFFIX=$SUFFIX
-            fi
-          done <<< "$EXISTING_TAGS"
-
-          NEXT_SUFFIX=$((MAX_SUFFIX + 1))
-          NIGHTLY_TAG="${BASE_TAG}.${NEXT_SUFFIX}"
-
-          echo "nightly_tag=$NIGHTLY_TAG" >> $GITHUB_OUTPUT
-          echo "Nightly tag: $NIGHTLY_TAG"
-
   build-and-publish:
-    needs: compute-tag
+    if: github.repository == 'langflow-ai/openrag'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -58,6 +26,16 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Determine Tags
+        id: vars
+        run: |
+          DATE_PART=$(date -u +%y%m%d)
+          # Use the GitHub run number to create a unique, auto-incrementing suffix
+          # This is more robust than querying Docker Hub (Copilot suggestion)
+          NIGHTLY_VERSION="nightly-${DATE_PART}.${{ github.run_number }}"
+          echo "nightly_version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: $NIGHTLY_VERSION"
+
       - name: Build and push Backend
         uses: docker/build-push-action@v6
         with:
@@ -66,8 +44,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            langflowai/openrag-backend:${{ needs.compute-tag.outputs.nightly_tag }}
-            langflowai/openrag-backend:nightly
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-backend:${{ steps.vars.outputs.nightly_version }}
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-backend:nightly
           cache-from: type=gha,scope=nightly-backend
           cache-to: type=gha,mode=max,scope=nightly-backend
 
@@ -79,8 +57,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            langflowai/openrag-frontend:${{ needs.compute-tag.outputs.nightly_tag }}
-            langflowai/openrag-frontend:nightly
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-frontend:${{ steps.vars.outputs.nightly_version }}
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-frontend:nightly
           cache-from: type=gha,scope=nightly-frontend
           cache-to: type=gha,mode=max,scope=nightly-frontend
 
@@ -92,8 +70,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            langflowai/openrag-langflow:${{ needs.compute-tag.outputs.nightly_tag }}
-            langflowai/openrag-langflow:nightly
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-langflow:${{ steps.vars.outputs.nightly_version }}
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-langflow:nightly
           cache-from: type=gha,scope=nightly-langflow
           cache-to: type=gha,mode=max,scope=nightly-langflow
 
@@ -105,7 +83,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            langflowai/openrag-opensearch:${{ needs.compute-tag.outputs.nightly_tag }}
-            langflowai/openrag-opensearch:nightly
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-opensearch:${{ steps.vars.outputs.nightly_version }}
+            ${{ secrets.DOCKER_NAMESPACE }}/openrag-opensearch:nightly
           cache-from: type=gha,scope=nightly-opensearch
           cache-to: type=gha,mode=max,scope=nightly-opensearch
