@@ -85,8 +85,7 @@ class OpenRAGInference(InferencePipeline):
 
         self._ingest_artifact = artifact
         logger.info(
-            f"Set ingest artifact with index: {artifact.index_name}, "
-            f"URL: {artifact.url}"
+            f"Set ingest artifact with index: {artifact.index_name}"
         )
 
         # Configure generative model settings using async SDK client
@@ -113,10 +112,8 @@ class OpenRAGInference(InferencePipeline):
         """
         logger.info("Configuring generative model settings")
 
-        # Use SDK client for LLM configuration and index_name
-        async with OpenRAGClient(
-            base_url=artifact.url, timeout=self.params.timeout
-        ) as sdk_client:
+        # Use SDK client for LLM configuration and index_name (URL from environment)
+        async with OpenRAGClient(timeout=self.params.timeout) as sdk_client:
             settings_options = SettingsUpdateOptions(
                 llm_provider=self.params.generative_model.provider_id,
                 llm_model=self.params.generative_model.model_id,
@@ -233,10 +230,8 @@ class OpenRAGInference(InferencePipeline):
                     f"Inference attempt {attempt}/{max_retries} for question: {question}"
                 )
 
-                # Use SDK client for chat/inference
-                async with OpenRAGClient(
-                    base_url=self._ingest_artifact.url, timeout=self.params.timeout
-                ) as sdk_client:
+                # Use SDK client for chat/inference (URL from environment)
+                async with OpenRAGClient(timeout=self.params.timeout) as sdk_client:
                     answer, trajectory = await self._stream_chat_response(
                         sdk_client, question
                     )

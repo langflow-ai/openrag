@@ -31,10 +31,6 @@ class EmbeddingModelParams(BaseModel):
 class OpenRAGIngestParams(IngestParams):
     """Parameters for OpenRAG ingestion pipeline."""
 
-    url: str = Field(
-        default_factory=lambda: os.getenv("OPENRAG_URL", "http://localhost:3000"),
-        description="OpenRAG SDK client URL (defaults to OPENRAG_URL env var or http://localhost:3000)",
-    )
     embedding_model: EmbeddingModelParams = Field(
         description="Embedding model configuration"
     )
@@ -54,7 +50,6 @@ class OpenRAGIngestArtifact(IngestArtifact):
     """Artifact returned after OpenRAG ingestion."""
 
     index_name: str = Field(description="Name of the created index")
-    url: str = Field(description="OpenRAG SDK client URL")
 
 
 @ingest_pipeline(name="openrag", params_class=OpenRAGIngestParams)
@@ -94,16 +89,13 @@ class OpenRAGIngest(IngestPipeline):
         return [
             OpenRAGIngestArtifact(
                 index_name=index_name,
-                url=self.params.url,
             )
         ]
 
     async def _async_process(self, rag_corpus: RagCorpus, index_name: str) -> None:
         """Async processing of ingestion pipeline."""
-        # Initialize SDK client with configured timeout
-        async with OpenRAGClient(
-            base_url=self.params.url, timeout=self.params.timeout
-        ) as sdk_client:
+        # Initialize SDK client with configured timeout (URL from environment)
+        async with OpenRAGClient(timeout=self.params.timeout) as sdk_client:
             # Update settings with index name and chunking configuration (using SDK)
             await self._update_settings(sdk_client, index_name)
 
