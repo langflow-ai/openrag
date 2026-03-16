@@ -70,19 +70,6 @@ jobs:
             arch: arm64
             runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
-          # opensearch
-          - image: opensearch
-            file: ./Dockerfile
-            service: openrag-opensearch
-            platform: linux/amd64
-            arch: amd64
-            runs-on: ubuntu-latest
-          - image: opensearch
-            file: ./Dockerfile
-            service: openrag-opensearch
-            platform: linux/arm64
-            arch: arm64
-            runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -124,7 +111,7 @@ jobs:
           NS=${{ secrets.DOCKER_NAMESPACE }}
           VERSION=${{ needs.check-version.outputs.nightly_version }}
           
-          SERVICES=("openrag-backend" "openrag-frontend" "openrag-langflow" "openrag-opensearch")
+          SERVICES=("openrag-backend" "openrag-frontend" "openrag-langflow")
           
           for SVC in "${SERVICES[@]}"; do
             echo "Creating manifest for $SVC..."
@@ -139,3 +126,40 @@ jobs:
               $NS/$SVC:$VERSION-amd64 \
               $NS/$SVC:$VERSION-arm64
           done
+  publish-pypi:
+    needs: [check-version]
+    runs-on: ubuntu-latest
+    if: github.repository == 'langflow-ai/openrag'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Update version for nightly
+        run: |
+          python3 -c "
+          import re
+          with open('pyproject.toml', 'r') as f:
+              content = f.read()
+          # Append .dev + run_number to the version (PEP 440 compliant)
+          new_content = re.sub(r'^version = \"([^\"]+)\"', r'version = \"\1.dev${{ github.run_number }}\"', content, flags=re.M)
+          with open('pyproject.toml', 'w') as f:
+              f.write(new_content)
+          "
+
+      - name: Build wheel and source distribution
+        run: |
+          uv build
+
+      - name: Publish to PyPI
+        run: |
+          uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
