@@ -392,6 +392,7 @@ class SearchService:
         )
 
         from opensearchpy.exceptions import RequestError
+        from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error, DISK_SPACE_ERROR_MESSAGE
 
         search_params = {"terminate_after": 0}
 
@@ -403,6 +404,12 @@ class SearchService:
             )
         except RequestError as e:
             error_message = str(e)
+            if is_disk_space_error(e):
+                logger.error(
+                    "OpenSearch query blocked by disk space constraint",
+                    error=error_message,
+                )
+                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
             if (
                 fallback_search_body is not None
                 and "unknown field [num_candidates]" in error_message.lower()
@@ -417,6 +424,12 @@ class SearchService:
                         params=search_params,
                     )
                 except RequestError as retry_error:
+                    if is_disk_space_error(retry_error):
+                        logger.error(
+                            "OpenSearch retry blocked by disk space constraint",
+                            error=str(retry_error),
+                        )
+                        raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
                     logger.error(
                         "OpenSearch retry without num_candidates failed",
                         error=str(retry_error),
@@ -428,7 +441,15 @@ class SearchService:
                     "OpenSearch query failed", error=error_message, search_body=search_body
                 )
                 raise
+        except OpenSearchDiskSpaceError:
+            raise
         except Exception as e:
+            if is_disk_space_error(e):
+                logger.error(
+                    "OpenSearch query blocked by disk space constraint",
+                    error=str(e),
+                )
+                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
             logger.error(
                 "OpenSearch query failed", error=str(e), search_body=search_body
             )
