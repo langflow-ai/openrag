@@ -92,7 +92,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE }}/${{ matrix.service }}:${{ needs.check-version.outputs.nightly_version }}-${{ matrix.arch }}
+          tags: langflowai/${{ matrix.service }}:${{ needs.check-version.outputs.nightly_version }}-${{ matrix.arch }}
           cache-from: type=gha,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
 
@@ -124,7 +124,7 @@ jobs:
 
       - name: Create and push multi-arch manifests
         run: |
-          NS=${{ secrets.DOCKER_NAMESPACE }}
+          NS="langflowai"
           VERSION=${{ needs.check-version.outputs.nightly_version }}
 
           # Derive the list of services from the artifacts produced by the build matrix
