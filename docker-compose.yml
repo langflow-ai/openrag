@@ -49,7 +49,6 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: openrag-backend
-    user: "${OPENRAG_UID:-103000}:${OPENRAG_GID:-103000}"
     depends_on:
       - langflow
     environment:

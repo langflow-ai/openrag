@@ -19,13 +19,6 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
-
-# Host UID/GID — injected into docker-compose so openrag-backend runs as the
-# host user in all modes, keeping keys/ and config/ ownership consistent.
-# Named OPENRAG_UID/GID (not UID/GID) since UID is read-only in bash.
-export OPENRAG_UID := $(shell id -u)
-export OPENRAG_GID := $(shell id -g)
-
 OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
@@ -81,7 +74,7 @@ endef
 # PHONY TARGETS
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
-       dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu ensure-rsa-keys ensure-config-dir stop clean build logs \
+       dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
@@ -346,31 +339,7 @@ dev-cpu: ## Start full stack with CPU only
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 
-ensure-config-dir: ## Create config directory if absent (owned by host user, prevents Docker from creating it as root)
-	@if [ ! -d config ]; then \
-		echo "$(YELLOW)Creating config directory...$(NC)"; \
-		mkdir -p config; \
-		echo "$(PURPLE)config directory created.$(NC)"; \
-	fi
-
-ensure-rsa-keys: ## Generate RSA keys for JWT signing if absent, or fix permissions if present
-	@if [ ! -d keys ]; then \
-		echo "$(YELLOW)Creating keys directory...$(NC)"; \
-		mkdir -p keys; \
-		echo "$(PURPLE)keys directory created.$(NC)"; \
-	fi
-	@if [ ! -f keys/private_key.pem ]; then \
-		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
-		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
-		echo "$(PURPLE)RSA keys for JWT signing generated.$(NC)"; \
-	else \
-		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
-		chmod 600 keys/private_key.pem 2>/dev/null || true; \
-		chmod 644 keys/public_key.pem 2>/dev/null || true; \
-		echo "$(PURPLE)RSA keys permissions ensured.$(NC)"; \
-	fi
-
-dev-local: ensure-config-dir ensure-rsa-keys ## Start infrastructure for local development
+dev-local: ## Start infrastructure for local development
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -381,7 +350,7 @@ dev-local: ensure-config-dir ensure-rsa-keys ## Start infrastructure for local d
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-cpu: ensure-config-dir ensure-rsa-keys ## Start infrastructure for local development, with CPU only
+dev-local-cpu: ## Start infrastructure for local development, with CPU only
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -392,7 +361,7 @@ dev-local-cpu: ensure-config-dir ensure-rsa-keys ## Start infrastructure for loc
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-build-lf: ensure-config-dir ensure-rsa-keys ## Start infrastructure for local development, building only Langflow image
+dev-local-build-lf: ## Start infrastructure for local development, building only Langflow image
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -405,7 +374,7 @@ dev-local-build-lf: ensure-config-dir ensure-rsa-keys ## Start infrastructure fo
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-build-lf-cpu: ensure-config-dir ensure-rsa-keys ## Start infrastructure for local development, building only Langflow image with CPU only
+dev-local-build-lf-cpu: ## Start infrastructure for local development, building only Langflow image with CPU only
 	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
 	$(COMPOSE_CMD) build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -558,14 +527,12 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	fi; \
 	if [ -d "config" ]; then \
 		echo "Removing config..."; \
-		rm -rf config 2>/dev/null || \
-		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd):/data" alpine sh -c "rm -rf /data/config" 2>/dev/null || true; \
+		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
 	fi; \
 	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
-		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
-		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/data" alpine sh -c "rm -f /data/private_key.pem /data/public_key.pem" 2>/dev/null || true; \
+		rm -f keys/private_key.pem keys/public_key.pem; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
 	fi; \
 	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
@@ -702,10 +669,18 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(CYAN)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/ -v
 
-test-ci: ensure-rsa-keys ensure-config-dir ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
+test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
+	if [ ! -f keys/private_key.pem ]; then \
+		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
+		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
+	else \
+		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
+		chmod 600 keys/private_key.pem 2>/dev/null || true; \
+		chmod 644 keys/public_key.pem 2>/dev/null || true; \
+	fi; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "$(YELLOW)Pulling latest images...$(NC)"; \
@@ -809,10 +784,18 @@ test-ci: ensure-rsa-keys ensure-config-dir ## Start infra, run integration + SDK
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
-test-ci-local: ensure-rsa-keys ensure-config-dir ## Same as test-ci but builds all images locally
+test-ci-local: ## Same as test-ci but builds all images locally
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
+	if [ ! -f keys/private_key.pem ]; then \
+		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
+		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
+	else \
+		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
+		chmod 600 keys/private_key.pem 2>/dev/null || true; \
+		chmod 644 keys/public_key.pem 2>/dev/null || true; \
+	fi; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "$(YELLOW)Building all images locally...$(NC)"; \

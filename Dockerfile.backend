@@ -45,26 +45,18 @@ COPY flows/ ./flows/
 # -----------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
-# (+) Create non-root group: "openrag"
-# (+) Create non-root user: "openrag"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     openssl \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 103000 openrag \
-    && useradd --uid 103000 --gid openrag --no-create-home openrag
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# --chown sets ownership at copy time; avoids an expensive chown -R layer
-COPY --chown=openrag:openrag --from=builder /app /app
+COPY --from=builder /app /app
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Switch to non-root user: "openrag"
-USER openrag
 
 EXPOSE 8000
 
