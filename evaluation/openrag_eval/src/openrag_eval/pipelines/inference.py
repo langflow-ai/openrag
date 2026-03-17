@@ -255,6 +255,3 @@ class OpenRAGInference(InferencePipeline):
         error_msg = f"Cannot run inference on question '{question}' after {max_retries} attempts. See log for details."
         logger.error(error_msg)
         raise RuntimeError(error_msg)
-
-
-# Made with Bob

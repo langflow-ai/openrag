@@ -25,5 +25,3 @@ __all__ = [
     "ChunkingParams",
     "EmbeddingModelParams",
 ]
-
-# Made with Bob

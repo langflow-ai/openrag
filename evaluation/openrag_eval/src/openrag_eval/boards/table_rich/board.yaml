@@ -1,0 +1,87 @@
+name: OpenRAG Benchmarking Results
+
+description: An example of an OpenRAG benchamrking results with the AIT-QA dataset.
+
+datasets:
+
+  - name: ait_qa
+    sampling:
+      # question_limit: 100
+      question_limit: 1
+      document_factor: 0
+
+  #- name: clap_nq
+  #  sampling:
+  #    question_limit: 20
+
+configurations:
+  - name: openrag_baseline_emb-large
+    description: OpenRAG with claude and text-embedding-3-large
+    ingest:
+      name: openrag
+      params:
+        embedding_model:
+          model_id: text-embedding-3-large
+        chunking:
+          chunk_size: 512
+        ingestion_batch_size: 1
+    inference:
+      name: openrag
+      params:
+        generative_model:
+          provider_id: openai
+          model_id: gpt-5.2  # alias for "claude-opus-4-5-20251101"
+          # provider_id: ollama
+          # model_id: gpt-oss:20b
+        batch_size: 1
+
+  - name: openrag_baseline_emb-small
+    description: OpenRAG with claude and text-embedding-3-small
+    ingest:
+      name: openrag
+      params:
+        embedding_model:
+          model_id: text-embedding-3-small
+        chunking:
+          chunk_size: 512
+        ingestion_batch_size: 1
+    inference:
+      name: openrag
+      params:
+        generative_model:
+          provider_id: openai
+          model_id: gpt-5.2  # alias for "claude-opus-4-5-20251101"
+          # provider_id: ollama
+          # model_id: gpt-oss:20b
+        batch_size: 1
+
+metrics:
+  - unitxt.context_correctness.retrieval_at_k
+  - unitxt.context_correctness.mrr
+  - unitxt.context_correctness.map
+  - unitxt.answer_correctness.llmaaj_llama_rits
+
+report:
+  screens:
+    - title: Answer-Correctness
+      scores:
+        metrics.rag.external_rag.answer_correctness.llama_3_3_70b_instruct_rits_judge_mean: AC
+      chart:
+        type: bar
+        title: Answer-correctness
+    - title: Match@K
+      scores:
+        metrics.rag.context_correctness.match_at_1_mean: M@1
+        metrics.rag.context_correctness.match_at_3_mean: M@3
+        metrics.rag.context_correctness.match_at_5_mean: M@5
+        metrics.rag.context_correctness.match_at_10_mean: M@10
+      chart:
+        type: line
+        title: Match@K
+    - title: MAP & MRR
+      scores:
+        metrics.rag.context_correctness.mrr_mean: MRR
+        metrics.rag.context_correctness.map_mean: MAP
+      chart:
+        type: scatter
+        title: MAP & MRR
