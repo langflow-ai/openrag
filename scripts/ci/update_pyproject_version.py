@@ -1,0 +1,23 @@
+import re
+import sys
+from pathlib import Path
+
+def update_version(new_version):
+    pyproject_path = Path("pyproject.toml")
+    with open(pyproject_path, "r") as f:
+        content = f.read()
+    
+    # Update the version field
+    # Removes 'v' prefix if present from tag
+    clean_version = new_version.lstrip('v')
+    new_content = re.sub(r'^version = "[^"]+"', f'version = "{clean_version}"', content, flags=re.M)
+    
+    with open(pyproject_path, "w") as f:
+        f.write(new_content)
+    print(f"Updated pyproject.toml version to {clean_version}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python update_pyproject_version.py <new_version>")
+        sys.exit(1)
+    update_version(sys.argv[1])

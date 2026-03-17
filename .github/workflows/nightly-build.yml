@@ -7,23 +7,54 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-version:
+  create-nightly-tag:
     if: github.repository == 'langflow-ai/openrag'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      nightly_version: ${{ steps.vars.outputs.nightly_version }}
+      nightly_version: ${{ steps.generate_tag.outputs.nightly_tag }}
     steps:
-      - name: Determine Nightly Version
-        id: vars
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies for tagging script
+        run: uv pip install requests packaging
+
+      - name: Generate nightly tag
+        id: generate_tag
         run: |
-          DATE_PART=$(date -u +%y%m%d)
-          # Use the GitHub run number to create a unique, auto-incrementing suffix
-          NIGHTLY_VERSION="nightly-${DATE_PART}.${{ github.run_number }}.${{ github.run_attempt }}"
-          echo "nightly_version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Nightly version: $NIGHTLY_VERSION"
+          TAG=$(python3 scripts/ci/pypi_nightly_tag.py)
+          echo "nightly_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "nightly_tag=$TAG"
+
+      - name: Update pyproject.toml
+        run: |
+          python3 scripts/ci/update_pyproject_combined.py main ${{ steps.generate_tag.outputs.nightly_tag }}
+
+      - name: Commit and push tag
+        run: |
+          git config --global user.email "bot-nightly-builds@openrag.org"
+          git config --global user.name "OpenRAG Bot"
+          
+          git add pyproject.toml
+          git commit -m "Update version and project name for nightly ${{ steps.generate_tag.outputs.nightly_tag }}"
+          
+          git tag ${{ steps.generate_tag.outputs.nightly_tag }}
+          git push origin ${{ steps.generate_tag.outputs.nightly_tag }}
 
   build:
-    needs: check-version
+    needs: create-nightly-tag
     strategy:
       fail-fast: false
       matrix:
@@ -107,7 +138,7 @@ jobs:
           path: service-${{ matrix.service }}-${{ matrix.arch }}.txt
 
   manifest:
-    needs: [build, check-version]
+    needs: [build, create-nightly-tag]
     runs-on: ubuntu-latest
     steps:
       - name: Download built service artifacts
@@ -144,7 +175,7 @@ jobs:
               $NS/$SVC:$VERSION-arm64
           done
   publish-pypi:
-    needs: [check-version]
+    needs: [create-nightly-tag]
     runs-on: ubuntu-latest
     if: github.repository == 'langflow-ai/openrag'
     steps:
@@ -161,15 +192,14 @@ jobs:
 
       - name: Update version for nightly
         run: |
-          python3 -c "
-          import re
-          with open('pyproject.toml', 'r') as f:
-              content = f.read()
-          # Append .dev + run_number + run_attempt to the version (PEP 440 compliant and unique per attempt)
-          new_content = re.sub(r'^version = \"([^\"]+)\"', r'version = \"\1.dev${{ github.run_number }}${{ github.run_attempt }}\"', content, flags=re.M)
-          with open('pyproject.toml', 'w') as f:
-              f.write(new_content)
-          "
+          # The version has already been updated in create-nightly-tag job
+          # but we need to ensure we are on the correct tag/commit if needed.
+          # However, publish-pypi runs on the same branch by default.
+          # In the create-nightly-tag job we pushed a tag, here we should probably checkout that tag
+          # or just use the updated pyproject.toml if it's shared (it's not).
+          # So we need to checkout the tag.
+          git fetch origin ${{ needs.create-nightly-tag.outputs.nightly_version }}
+          git checkout ${{ needs.create-nightly-tag.outputs.nightly_version }}
 
       - name: Build wheel and source distribution
         run: |
