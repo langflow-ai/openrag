@@ -6,12 +6,12 @@ OpenRAG Evaluation Tool - an evaluation framework for OpenRAG.
 
 ### Prerequisites
 
-Install [uv](https://docs.astral.sh/uv/) if you haven't already:
+Install [uv](https://docs.astral.sh/uv/):
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Development Installation with uv (Recommended)
+### Installation
 
 ```bash
 cd openrag/evaluation/openrag_eval
@@ -19,63 +19,61 @@ cd openrag/evaluation/openrag_eval
 # Create virtual environment
 uv venv
 
-# Install with development dependencies
-uv sync --extra dev
-```
-
-**Note:** The `uv.lock` file is committed to the repository to ensure reproducible builds. When you run `uv sync`, it will use the exact versions specified in the lock file.
-
-### Alternative: Using pip
-
-```bash
-cd openrag/evaluation/openrag_eval
-pip install -e ".[dev]"
+# Install with dependencies
+uv sync
 ```
 
 ## Usage
 
+Run the main evaluation script:
+
 ```bash
-# Run as a module
-python -m openrag_eval
+uv run python -m openrag_eval.evaluate
 ```
+
 
 ## Development
 
-### Using uv (Recommended)
+For development, install with development dependencies:
 
 ```bash
-# Run tests
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests with uv
 uv run pytest
 
-# Run with coverage
-uv run pytest --cov=src/openrag_eval --cov-report=term-missing
-
-# Format code
+# Format code with uv
 uv run black src/ tests/
 
-# Lint
+# Lint code with uv
 uv run ruff check src/ tests/
 
-# Type check
+# Type check with uv
 uv run mypy src/
-```
-
-### Using activated venv
-
-```bash
-# Activate the virtual environment
-source .venv/bin/activate
-
-# Then run commands directly
-pytest
-black src/ tests/
-ruff check src/ tests/
-mypy src/
 ```
 
 ## Structure
 
+The project is organized as follows:
+
 ```
 openrag_eval/
 ├── src/openrag_eval/    # Main package
+│   ├── pipelines/       # Ingest and inference pipelines
+│   ├── boards/          # Evaluation board configurations
+│   └── evaluate.py      # Main evaluation script
 └── tests/               # Tests
+```
+
+The main components are:
+
+### Pipelines (`src/openrag_eval/pipelines/`)
+Contains implementations of RAG pipelines:
+- **`ingest.py`**: A RagWorkbench ingestion pipeline implemented with the OpenRAG SDK
+- **`inference.py`**: A RagWorkbench inference pipeline implemented with the OpenRAG SDK
+
+### Boards (`src/openrag_eval/boards/`)
+Contains board configurations for evaluation experiments:
+- **`table_rich/`**: A definition for RAG experiments over table-rich documents.
+
