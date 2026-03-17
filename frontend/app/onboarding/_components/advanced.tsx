@@ -36,11 +36,11 @@ export function AdvancedOnboarding({
   return (
     <Accordion type="single" collapsible>
       <AccordionItem value="item-1">
-        <AccordionTrigger>Advanced settings</AccordionTrigger>
+        <AccordionTrigger>Advanced Settings</AccordionTrigger>
         <AccordionContent className="space-y-6">
           {hasEmbeddingModels && (
             <LabelWrapper
-              label="Embedding model"
+              label="Embedding Model"
               helperText="Model used for knowledge ingest and retrieval"
               id="embedding-model"
               required={true}
@@ -55,7 +55,7 @@ export function AdvancedOnboarding({
           )}
           {hasLanguageModels && (
             <LabelWrapper
-              label="Language model"
+              label="Language Model"
               helperText="Model used for chat"
               id="embedding-model"
               required={true}

@@ -266,7 +266,7 @@ export function KnowledgeFilterPanel() {
           <div className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="filter-name" className="gap-1">
-                Filter name
+                Filter Name
                 <span className="text-destructive">*</span>
               </Label>
               <div className="flex items-center gap-2">
@@ -287,7 +287,7 @@ export function KnowledgeFilterPanel() {
                     }
                   }}
                   required
-                  placeholder="Filter name"
+                  placeholder="Filter Name"
                   ref={nameInputRef}
                   aria-invalid={!!nameError}
                 />
@@ -347,7 +347,7 @@ export function KnowledgeFilterPanel() {
                   handleFilterChange("data_sources", values)
                 }
                 placeholder="Select sources..."
-                allOptionLabel="All sources"
+                allOptionLabel="All Sources"
               />
             </div>
 
@@ -365,7 +365,7 @@ export function KnowledgeFilterPanel() {
                   handleFilterChange("document_types", values)
                 }
                 placeholder="Select types..."
-                allOptionLabel="All types"
+                allOptionLabel="All Types"
               />
             </div>
 
@@ -397,7 +397,7 @@ export function KnowledgeFilterPanel() {
                   handleFilterChange("connector_types", values)
                 }
                 placeholder="Select connectors..."
-                allOptionLabel="All connectors"
+                allOptionLabel="All Connectors"
               />
             </div>
 
@@ -406,7 +406,7 @@ export function KnowledgeFilterPanel() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium text-nowrap">
-                    Response limit
+                    Response Limit
                   </Label>
                   <Input
                     type="number"
@@ -438,7 +438,7 @@ export function KnowledgeFilterPanel() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium text-nowrap">
-                    Score threshold
+                    Score Threshold
                   </Label>
                   <Input
                     type="number"

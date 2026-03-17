@@ -132,7 +132,7 @@ export const IngestSettings = ({
               isOpen ? "rotate-90" : ""
             }`}
           />
-          <span className="text-sm font-medium">Ingest settings</span>
+          <span className="text-sm font-medium">Ingest Settings</span>
         </div>
       </CollapsibleTrigger>
 
@@ -142,7 +142,7 @@ export const IngestSettings = ({
           <LabelWrapper
             helperText="Model used for knowledge ingest and retrieval"
             id="embedding-model-select"
-            label="Embedding model"
+            label="Embedding Model"
           >
             <Select
               disabled={false}
@@ -179,7 +179,7 @@ export const IngestSettings = ({
             <div className="w-full">
               <NumberInput
                 id="chunk-size"
-                label="Chunk size"
+                label="Chunk Size"
                 value={currentSettings.chunkSize}
                 onChange={(value) => handleSettingsChange({ chunkSize: value })}
                 unit="characters"
@@ -188,7 +188,7 @@ export const IngestSettings = ({
             <div className="w-full">
               <NumberInput
                 id="chunk-overlap"
-                label="Chunk overlap"
+                label="Chunk Overlap"
                 value={currentSettings.chunkOverlap}
                 onChange={(value) =>
                   handleSettingsChange({ chunkOverlap: value })
@@ -232,7 +232,7 @@ export const IngestSettings = ({
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm pb-2 font-semibold">
-                Picture descriptions
+                Picture Descriptions
               </div>
               <div className="text-sm text-muted-foreground">
                 Adds captions for images. Ingest is more expensive when enabled.
