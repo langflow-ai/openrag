@@ -24,7 +24,6 @@ configurations:
         generative_model:
           provider_id: openai
           model_id: gpt-5.2
-        batch_size: 1
 
   - name: openrag_baseline_emb-small
     description: OpenRAG with text-embedding-3-small
@@ -41,7 +40,6 @@ configurations:
         generative_model:
           provider_id: openai
           model_id: gpt-5.2
-        batch_size: 1
 
 metrics:
   - unitxt.context_correctness.retrieval_at_k
