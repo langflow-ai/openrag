@@ -6,17 +6,11 @@ datasets:
 
   - name: ait_qa
     sampling:
-      # question_limit: 100
-      question_limit: 1
-      document_factor: 0
-
-  #- name: clap_nq
-  #  sampling:
-  #    question_limit: 20
+      question_limit: 100
 
 configurations:
   - name: openrag_baseline_emb-large
-    description: OpenRAG with claude and text-embedding-3-large
+    description: OpenRAG with text-embedding-3-large
     ingest:
       name: openrag
       params:
@@ -30,13 +24,11 @@ configurations:
       params:
         generative_model:
           provider_id: openai
-          model_id: gpt-5.2  # alias for "claude-opus-4-5-20251101"
-          # provider_id: ollama
-          # model_id: gpt-oss:20b
+          model_id: gpt-5.2
         batch_size: 1
 
   - name: openrag_baseline_emb-small
-    description: OpenRAG with claude and text-embedding-3-small
+    description: OpenRAG with text-embedding-3-small
     ingest:
       name: openrag
       params:
@@ -50,9 +42,7 @@ configurations:
       params:
         generative_model:
           provider_id: openai
-          model_id: gpt-5.2  # alias for "claude-opus-4-5-20251101"
-          # provider_id: ollama
-          # model_id: gpt-oss:20b
+          model_id: gpt-5.2
         batch_size: 1
 
 metrics:
