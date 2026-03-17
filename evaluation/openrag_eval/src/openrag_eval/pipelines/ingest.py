@@ -37,9 +37,6 @@ class OpenRAGIngestParams(IngestParams):
     chunking: ChunkingParams | None = Field(
         default=None, description="Chunking configuration"
     )
-    ingestion_batch_size: int = Field(
-        default=10, description="Batch size for ingestion"
-    )
     timeout: float = Field(
         default=300.0,
         description="HTTP request timeout in seconds (default: 5 minutes)",

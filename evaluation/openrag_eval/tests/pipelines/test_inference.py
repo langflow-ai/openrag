@@ -43,7 +43,6 @@ def inference_params():
             # provider_id="ollama",
             # model_id="gpt-oss:20b",
         ),
-        batch_size=1,
     )
 
 

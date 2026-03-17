@@ -18,7 +18,6 @@ configurations:
           model_id: text-embedding-3-large
         chunking:
           chunk_size: 512
-        ingestion_batch_size: 1
     inference:
       name: openrag
       params:
@@ -36,7 +35,6 @@ configurations:
           model_id: text-embedding-3-small
         chunking:
           chunk_size: 512
-        ingestion_batch_size: 1
     inference:
       name: openrag
       params:

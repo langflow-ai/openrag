@@ -70,7 +70,6 @@ def ingest_params():
             chunk_size=256,
             chunk_overlap=25,
         ),
-        ingestion_batch_size=1,
     )
 
 
