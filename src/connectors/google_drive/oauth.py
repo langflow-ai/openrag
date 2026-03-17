@@ -1,6 +1,7 @@
 import os
 import json
 from typing import Optional
+from datetime import datetime, timezone
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -50,13 +51,18 @@ class GoogleDriveOAuth:
                 scopes=token_data.get("scopes", self.SCOPES),
             )
 
-            # Set expiry if available (ensure timezone-naive for Google auth compatibility)
+            # Set expiry if available.
+            # Backward compatibility: older tokens were saved as naive local datetimes.
             if token_data.get("expiry"):
-                from datetime import datetime
-
                 expiry_dt = datetime.fromisoformat(token_data["expiry"])
-                # Remove timezone info to make it naive (Google auth expects naive datetimes)
-                self.creds.expiry = expiry_dt.replace(tzinfo=None)
+                if expiry_dt.tzinfo is None:
+                    local_tz = datetime.now().astimezone().tzinfo
+                    expiry_dt = expiry_dt.replace(tzinfo=local_tz)
+
+                # google-auth compares against a naive UTC timestamp internally.
+                self.creds.expiry = (
+                    expiry_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                )
 
         # If credentials are expired, refresh them
         if self.creds and self.creds.expired and self.creds.refresh_token:

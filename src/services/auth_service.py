@@ -3,7 +3,7 @@ import json
 import httpx
 import aiofiles
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import asyncio
 
@@ -100,7 +100,6 @@ class AuthService:
             return await self._init_direct_connection(connector_type, connection_id)
 
         # Get OAuth configuration from connector and OAuth classes
-        import os
 
         # Map connector types to their connector and OAuth classes
         connector_class_map = {
@@ -299,21 +298,36 @@ class AuthService:
                 else granted_scopes
             )
 
+            refresh_token = token_data.get("refresh_token")
+            token_file_path = connection_config.config["token_file"]
+
+            # Some OAuth providers omit refresh_token on re-consent. Preserve an
+            # existing one so background token refresh keeps working.
+            if not refresh_token and os.path.exists(token_file_path):
+                try:
+                    async with aiofiles.open(token_file_path, "r") as f:
+                        existing = json.loads(await f.read())
+                    refresh_token = existing.get("refresh_token")
+                except Exception:
+                    refresh_token = None
+
             token_file_data = {
                 "token": token_data["access_token"],
-                "refresh_token": token_data.get("refresh_token"),
+                "refresh_token": refresh_token,
                 "scopes": scopes,
             }
 
+            if token_data.get("id_token"):
+                token_file_data["id_token"] = token_data["id_token"]
+
             # Add expiry if provided
             if token_data.get("expires_in"):
-                expiry = datetime.now() + timedelta(
+                expiry = datetime.now(timezone.utc) + timedelta(
                     seconds=int(token_data["expires_in"])
                 )
                 token_file_data["expiry"] = expiry.isoformat()
 
             # Save tokens to file
-            token_file_path = connection_config.config["token_file"]
             async with aiofiles.open(token_file_path, "w") as f:
                 await f.write(json.dumps(token_file_data, indent=2))
 

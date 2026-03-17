@@ -77,7 +77,8 @@ export const useConnectConnectorMutation = () => {
             result.oauth_config.redirect_uri,
           )}&` +
           `access_type=offline&` +
-          `prompt=select_account&` +
+          `include_granted_scopes=true&` +
+          `prompt=consent&` +
           `state=${result.connection_id}`;
 
         window.location.href = authUrl;
