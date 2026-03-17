@@ -2206,7 +2206,7 @@ wheels = [
 [[package]]
 name = "ragworkbench"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/IBM/RagWorkbench.git#3b9571295edc86fcf4ff4f948ee9fd314be727e1" }
+source = { git = "ssh://git@github.com/IBM/RagWorkbench.git#c65e60f4df2fbc4c6d7ac8918dbf5b627207fb06" }
 dependencies = [
     { name = "bert-score" },
     { name = "datasets" },
