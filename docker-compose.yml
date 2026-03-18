@@ -163,7 +163,7 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
       - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
-      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-}
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
