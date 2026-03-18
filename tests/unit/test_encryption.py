@@ -1,19 +1,15 @@
-import os
-import sys
 import base64
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+import pytest
 
-# Set fake encryption key
-os.environ["OPENRAG_ENCRYPTION_KEY"] = base64.b64encode(b"0123456789abcdef0123456789abcdef").decode("ascii")
-
-from utils.encryption import encrypt_secret, decrypt_secret
 from config.config_manager import ConfigManager
 from connectors.connection_manager import ConnectionManager
+from utils.encryption import decrypt_secret, encrypt_secret
 
-import asyncio
+@pytest.fixture(autouse=True)
+def setup_encryption_env(monkeypatch):
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", base64.b64encode(b"0123456789abcdef0123456789abcdef").decode("ascii"))
 
 def test_encryption_utility():
     print("Testing encryption utility...")
@@ -55,50 +51,48 @@ def test_config_manager():
     assert config_new.providers.openai.api_key == "openai-api-key-plaintext"
     print("OK")
 
-def test_connection_manager():
+@pytest.mark.asyncio
+async def test_connection_manager():
     print("Testing connection manager encryption...")
     test_json = Path("/tmp/test_openrag_connections.json")
     if test_json.exists():
         test_json.unlink()
         
-    async def run():
-        cm = ConnectionManager(str(test_json))
-        await cm.create_connection(
-            connector_type="google_drive",
-            name="Test Drive",
-            config={"client_secret": "my-client-secret-plaintext", "other_setting": "not-secret"},
-            user_id="user-1"
-        )
-        # Should be saved encrypted
-        import json
-        with open(test_json, "r") as f:
+    cm = ConnectionManager(str(test_json))
+    await cm.create_connection(
+        connector_type="google_drive",
+        name="Test Drive",
+        config={"client_secret": "my-client-secret-plaintext", "other_setting": "not-secret"},
+        user_id="user-1"
+    )
+    # Should be saved encrypted
+    import json
+    with open(test_json, "r") as f:
             data = json.load(f)
             
-        found = False
-        for c in data["connections"]:
-            if c["connector_type"] == "google_drive":
-                found = True
-                assert isinstance(c["config"]["client_secret"], dict)
-                assert c["config"]["client_secret"]["algorithm"] == "AES-256-GCM"
-                assert c["config"]["other_setting"] == "not-secret"
-        assert found
-        
-        # Reloading should decrypt
-        cm2 = ConnectionManager(str(test_json))
-        await cm2.load_connections()
-        
-        found = False
-        for c in cm2.connections.values():
-            if c.connector_type == "google_drive":
-                found = True
-                assert c.config["client_secret"] == "my-client-secret-plaintext"
-                assert c.config["other_setting"] == "not-secret"
-        assert found
-        print("OK")
-        
-    asyncio.run(run())
+    found = False
+    for c in data["connections"]:
+        if c["connector_type"] == "google_drive":
+            found = True
+            assert isinstance(c["config"]["client_secret"], dict)
+            assert c["config"]["client_secret"]["algorithm"] == "AES-256-GCM"
+            assert c["config"]["other_setting"] == "not-secret"
+    assert found
+    
+    # Reloading should decrypt
+    cm2 = ConnectionManager(str(test_json))
+    await cm2.load_connections()
+    
+    found = False
+    for c in cm2.connections.values():
+        if c.connector_type == "google_drive":
+            found = True
+            assert c.config["client_secret"] == "my-client-secret-plaintext"
+            assert c.config["other_setting"] == "not-secret"
+    assert found
+    print("OK")
 
-    print("Testing auto-upgrade features...")
+def test_auto_upgrade_features():
     test_yaml = Path("/tmp/test_openrag_config_upgrade.yaml")
     import yaml
     # Write purely plaintext config
@@ -118,9 +112,3 @@ def test_connection_manager():
     assert upgraded_data["providers"]["openai"]["api_key"]["algorithm"] == "AES-256-GCM"
     assert cm.get_config().providers.openai.api_key == "raw-unencrypted-openai-key-from-past"
     print("Auto-upgrade OK")
-    
-if __name__ == "__main__":
-    test_encryption_utility()
-    test_config_manager()
-    test_connection_manager()
-    print("All tests passed!")
