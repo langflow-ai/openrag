@@ -826,7 +826,7 @@ async def _test_minimax_lightweight_health(api_key: str) -> None:
         }
 
         payload = {
-            "model": "MiniMax-M2.5",
+            "model": "MiniMax-M2.7",
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
             "temperature": 1.0,

@@ -103,15 +103,25 @@ class TestMiniMaxModelConstants:
         """MINIMAX_VALIDATION_MODELS should contain expected models."""
         from config.model_constants import MINIMAX_VALIDATION_MODELS
 
+        assert "MiniMax-M2.7" in MINIMAX_VALIDATION_MODELS
+        assert "MiniMax-M2.7-highspeed" in MINIMAX_VALIDATION_MODELS
         assert "MiniMax-M2.5" in MINIMAX_VALIDATION_MODELS
         assert "MiniMax-M2.5-highspeed" in MINIMAX_VALIDATION_MODELS
-        assert len(MINIMAX_VALIDATION_MODELS) == 2
+        assert len(MINIMAX_VALIDATION_MODELS) == 4
+
+    def test_m27_models_first(self):
+        """M2.7 models should appear before M2.5 models in the list."""
+        from config.model_constants import MINIMAX_VALIDATION_MODELS
+
+        m27_idx = MINIMAX_VALIDATION_MODELS.index("MiniMax-M2.7")
+        m25_idx = MINIMAX_VALIDATION_MODELS.index("MiniMax-M2.5")
+        assert m27_idx < m25_idx
 
     def test_default_model(self):
-        """MINIMAX_DEFAULT_LANGUAGE_MODEL should be MiniMax-M2.5."""
+        """MINIMAX_DEFAULT_LANGUAGE_MODEL should be MiniMax-M2.7."""
         from config.model_constants import MINIMAX_DEFAULT_LANGUAGE_MODEL
 
-        assert MINIMAX_DEFAULT_LANGUAGE_MODEL == "MiniMax-M2.5"
+        assert MINIMAX_DEFAULT_LANGUAGE_MODEL == "MiniMax-M2.7"
 
 
 class TestMiniMaxOpenRAGConfig:

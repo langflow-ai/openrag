@@ -39,8 +39,10 @@ ANTHROPIC_DEFAULT_LANGUAGE_MODEL = "claude-sonnet-4-5-20250929"
 OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN = "gpt-oss"
 
 MINIMAX_VALIDATION_MODELS = [
+    "MiniMax-M2.7",
+    "MiniMax-M2.7-highspeed",
     "MiniMax-M2.5",
     "MiniMax-M2.5-highspeed",
 ]
 
-MINIMAX_DEFAULT_LANGUAGE_MODEL = "MiniMax-M2.5"
+MINIMAX_DEFAULT_LANGUAGE_MODEL = "MiniMax-M2.7"
