@@ -53,7 +53,7 @@ export async function uploadFileForContext(
     let payload: unknown;
     try {
       payload = await uploadResponse.json();
-    } catch (error) {
+    } catch (_error) {
       throw new Error("Upload failed: unable to parse server response");
     }
 
@@ -181,7 +181,7 @@ export async function uploadFile(
     let payload: unknown;
     try {
       payload = await uploadResponse.json();
-    } catch (error) {
+    } catch (_error) {
       throw new Error("Upload failed: unable to parse server response");
     }
 
@@ -227,8 +227,7 @@ export async function uploadFile(
 
     const shouldCreateFilter = (uploadIngestJson as { create_filter?: boolean })
       .create_filter;
-    const filename = (uploadIngestJson as { filename?: string })
-      .filename;
+    const filename = (uploadIngestJson as { filename?: string }).filename;
 
     const result: UploadFileResult = {
       fileId,

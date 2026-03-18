@@ -5,18 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
+import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+// import { Label } from "@/components/ui/label";
+// import { Checkbox } from "@/components/ui/checkbox";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import {
   type ChunkResult,
   type File,
   useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
-// import { Label } from "@/components/ui/label";
-// import { Checkbox } from "@/components/ui/checkbox";
-import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const getFileTypeLabel = (mimetype: string) => {
   if (mimetype === "application/pdf") return "PDF";
@@ -43,7 +47,7 @@ function ChunksPageContent() {
   const averageChunkLength = useMemo(
     () =>
       chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
-      chunks.length || 0,
+        chunks.length || 0,
     [chunks],
   );
 
@@ -319,8 +323,10 @@ function ChunksPageContent() {
             </div>
             {(() => {
               const hasOwner = Boolean(fileData?.owner);
-              const hasAllowedUsers = (fileData?.allowed_users?.length ?? 0) > 0;
-              const hasAllowedGroups = (fileData?.allowed_groups?.length ?? 0) > 0;
+              const hasAllowedUsers =
+                (fileData?.allowed_users?.length ?? 0) > 0;
+              const hasAllowedGroups =
+                (fileData?.allowed_groups?.length ?? 0) > 0;
               const showAccessControl =
                 hasOwner || hasAllowedUsers || hasAllowedGroups;
               return showAccessControl;
@@ -332,9 +338,7 @@ function ChunksPageContent() {
                 <dl>
                   {fileData?.owner && (
                     <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-                      <dt className="text-sm/6 text-muted-foreground">
-                        Owner
-                      </dt>
+                      <dt className="text-sm/6 text-muted-foreground">Owner</dt>
                       <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                         <div className="flex items-center gap-2">
                           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
@@ -343,7 +347,9 @@ function ChunksPageContent() {
                             </span>
                           </span>
                           <span className="text-sm break-all">
-                            {fileData.owner_name || fileData.owner_email || fileData.owner}
+                            {fileData.owner_name ||
+                              fileData.owner_email ||
+                              fileData.owner}
                           </span>
                         </div>
                       </dd>
@@ -369,11 +375,11 @@ function ChunksPageContent() {
                                 </span>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="text-sm break-all truncate">{user}</span>
+                                    <span className="text-sm break-all truncate">
+                                      {user}
+                                    </span>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    {user}
-                                  </TooltipContent>
+                                  <TooltipContent>{user}</TooltipContent>
                                 </Tooltip>
                               </div>
                             ))}
@@ -400,7 +406,9 @@ function ChunksPageContent() {
                                     {group?.charAt(0).toUpperCase()}
                                   </span>
                                 </span>
-                                <span className="text-sm break-all">{group}</span>
+                                <span className="text-sm break-all">
+                                  {group}
+                                </span>
                               </div>
                             ))}
                           </div>

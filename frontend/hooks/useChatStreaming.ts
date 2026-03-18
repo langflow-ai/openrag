@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import type {
   FunctionCall,
   Message,
-  SelectedFilters,
+  TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
+import type { FilterInput } from "@/lib/filter-normalization";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
 interface UseChatStreamingOptions {
   endpoint?: string;
@@ -15,7 +17,7 @@ interface UseChatStreamingOptions {
 interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
-  filters?: SelectedFilters;
+  filters?: FilterInput;
   filter_id?: string;
   limit?: number;
   scoreThreshold?: number;
@@ -77,7 +79,7 @@ export function useChatStreaming({
         prompt: string;
         stream: boolean;
         previous_response_id?: string;
-        filters?: SelectedFilters;
+        filters?: FilterInput;
         filter_id?: string;
         limit?: number;
         scoreThreshold?: number;
@@ -93,14 +95,20 @@ export function useChatStreaming({
       }
 
       if (filters) {
-        requestBody.filters = filters;
+        const payloadFilters = buildSearchPayloadFilters(filters);
+        if (payloadFilters) {
+          requestBody.filters = payloadFilters;
+        }
       }
 
       if (filter_id) {
         requestBody.filter_id = filter_id;
       }
 
-      console.log("[useChatStreaming] Sending request:", { filter_id, requestBody });
+      console.log("[useChatStreaming] Sending request:", {
+        filter_id,
+        requestBody,
+      });
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -130,6 +138,8 @@ export function useChatStreaming({
       let currentContent = "";
       const currentFunctionCalls: FunctionCall[] = [];
       let newResponseId: string | null = null;
+      let isError = false;
+      let usageData: TokenUsage | undefined;
 
       // Initialize streaming message
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
@@ -162,18 +172,23 @@ export function useChatStreaming({
             if (line.trim()) {
               try {
                 const chunk = JSON.parse(line);
-                
+
                 // Investigation logging for Granite 3.3 8b tool call detection
                 const chunkKeys = Object.keys(chunk);
-                const toolRelatedKeys = chunkKeys.filter(key => 
-                  key.toLowerCase().includes('tool') || 
-                  key.toLowerCase().includes('call') || 
-                  key.toLowerCase().includes('retrieval') ||
-                  key.toLowerCase().includes('function') ||
-                  key.toLowerCase().includes('result')
+                const toolRelatedKeys = chunkKeys.filter(
+                  (key) =>
+                    key.toLowerCase().includes("tool") ||
+                    key.toLowerCase().includes("call") ||
+                    key.toLowerCase().includes("retrieval") ||
+                    key.toLowerCase().includes("function") ||
+                    key.toLowerCase().includes("result"),
                 );
                 if (toolRelatedKeys.length > 0) {
-                  console.log('[Tool Detection] Found tool-related keys:', toolRelatedKeys, chunk);
+                  console.log(
+                    "[Tool Detection] Found tool-related keys:",
+                    toolRelatedKeys,
+                    chunk,
+                  );
                 }
 
                 // Extract response ID if present
@@ -444,50 +459,86 @@ export function useChatStreaming({
                     currentFunctionCalls.push(newFunctionCall);
                   }
                 }
+
+                // Check for error status from Langflow
+                if (
+                  chunk.finish_reason === "error" ||
+                  chunk.status === "failed"
+                ) {
+                  console.error("Error detected in stream");
+
+                  // Mark this as an error message and complete the stream
+                  isError = true;
+
+                  // Exit the streaming loop by throwing so the reader stops promptly on error
+                  throw new Error("Error detected in stream");
+                }
                 // Handle text output streaming (Realtime API)
                 else if (chunk.type === "response.output_text.delta") {
                   currentContent += chunk.delta || "";
                 }
+                // Handle response.completed event - capture usage
+                else if (
+                  chunk.type === "response.completed" &&
+                  chunk.response?.usage
+                ) {
+                  usageData = chunk.response.usage;
+                }
                 // Handle OpenRAG backend format
                 else if (chunk.output_text) {
                   currentContent += chunk.output_text;
-                } else if (chunk.delta) {
+                }
+                // Note: chunk.delta.content is already handled in the OpenAI format section above (line 271)
+                // Only handle delta if it's a string or has text (not content)
+                else if (chunk.delta) {
                   if (typeof chunk.delta === "string") {
                     currentContent += chunk.delta;
-                  } else if (typeof chunk.delta === "object") {
-                    if (chunk.delta.content) {
-                      currentContent += chunk.delta.content;
-                    } else if (chunk.delta.text) {
-                      currentContent += chunk.delta.text;
-                    }
+                  } else if (
+                    typeof chunk.delta === "object" &&
+                    chunk.delta.text &&
+                    !chunk.delta.content
+                  ) {
+                    // Only add text if content wasn't already processed
+                    currentContent += chunk.delta.text;
                   }
                 }
-                
+
                 // Heuristic detection for implicit tool calls (Granite 3.3 8b workaround)
                 // Check if chunk contains retrieval results without explicit tool call markers
-                const hasImplicitToolCall = (
+                const hasImplicitToolCall =
                   // Check for various result indicators in the chunk
-                  (chunk.results && Array.isArray(chunk.results) && chunk.results.length > 0) ||
-                  (chunk.outputs && Array.isArray(chunk.outputs) && chunk.outputs.length > 0) ||
+                  (chunk.results &&
+                    Array.isArray(chunk.results) &&
+                    chunk.results.length > 0) ||
+                  (chunk.outputs &&
+                    Array.isArray(chunk.outputs) &&
+                    chunk.outputs.length > 0) ||
                   // Check for retrieval-related fields
                   chunk.retrieved_documents ||
                   chunk.retrieval_results ||
                   // Check for nested data structures that might contain results
-                  (chunk.data && typeof chunk.data === 'object' && (
-                    chunk.data.results || 
-                    chunk.data.retrieved_documents ||
-                    chunk.data.retrieval_results
-                  ))
-                );
-                
+                  (chunk.data &&
+                    typeof chunk.data === "object" &&
+                    (chunk.data.results ||
+                      chunk.data.retrieved_documents ||
+                      chunk.data.retrieval_results));
+
                 if (hasImplicitToolCall && currentFunctionCalls.length === 0) {
-                  console.log('[Heuristic Detection] Detected implicit tool call:', chunk);
-                  
+                  console.log(
+                    "[Heuristic Detection] Detected implicit tool call:",
+                    chunk,
+                  );
+
                   // Create a synthetic function call for the UI
-                  const results = chunk.results || chunk.outputs || chunk.retrieved_documents || 
-                                 chunk.retrieval_results || chunk.data?.results || 
-                                 chunk.data?.retrieved_documents || [];
-                  
+                  const results =
+                    chunk.results ||
+                    chunk.outputs ||
+                    chunk.retrieved_documents ||
+                    chunk.retrieval_results ||
+                    chunk.data?.results ||
+                    chunk.data?.retrieved_documents ||
+                    [];
+
                   const syntheticFunctionCall: FunctionCall = {
                     name: "Retrieval",
                     arguments: { implicit: true, detected_heuristically: true },
@@ -496,7 +547,9 @@ export function useChatStreaming({
                     result: results,
                   };
                   currentFunctionCalls.push(syntheticFunctionCall);
-                  console.log('[Heuristic Detection] Created synthetic function call');
+                  console.log(
+                    "[Heuristic Detection] Created synthetic function call",
+                  );
                 }
 
                 // Update streaming message in real-time
@@ -535,22 +588,30 @@ export function useChatStreaming({
           "No response received from the server. Please try again.",
         );
       }
-      
+
       // Post-processing: Heuristic detection based on final content
       // If no explicit tool calls detected but content shows RAG indicators
       if (currentFunctionCalls.length === 0 && currentContent) {
         // Check for citation patterns that indicate RAG usage
-        const hasCitations = /\(Source:|\[Source:|\bSource:|filename:|document:/i.test(currentContent);
+        const hasCitations =
+          /\(Source:|\[Source:|\bSource:|filename:|document:/i.test(
+            currentContent,
+          );
         // Check for common RAG response patterns
-        const hasRAGPattern = /based on.*(?:document|file|information|data)|according to.*(?:document|file)/i.test(currentContent);
-        
+        const hasRAGPattern =
+          /based on.*(?:document|file|information|data)|according to.*(?:document|file)/i.test(
+            currentContent,
+          );
+
         if (hasCitations || hasRAGPattern) {
-          console.log('[Post-Processing] Detected RAG usage from content patterns');
+          console.log(
+            "[Post-Processing] Detected RAG usage from content patterns",
+          );
           const syntheticFunctionCall: FunctionCall = {
             name: "Retrieval",
-            arguments: { 
-              implicit: true, 
-              detected_from: hasCitations ? "citations" : "content_patterns"
+            arguments: {
+              implicit: true,
+              detected_from: hasCitations ? "citations" : "content_patterns",
             },
             status: "completed",
             type: "retrieval_call",
@@ -567,6 +628,8 @@ export function useChatStreaming({
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
+        error: isError, // Mark as error if Langflow returned error status
+        usage: usageData,
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
@@ -594,10 +657,10 @@ export function useChatStreaming({
       setStreamingMessage(null);
 
       // Create user-friendly error message
-      let errorContent =
-        "Sorry, I couldn't connect to the chat service. Please try again.";
-
       const errorMessage = (error as Error).message;
+      let errorContent = errorMessage; // Default to the actual error message
+
+      // Only override with generic messages for specific infrastructure errors
       if (errorMessage?.includes("timed out")) {
         errorContent =
           "The request timed out. The server took too long to respond. Please try again.";
@@ -609,9 +672,8 @@ export function useChatStreaming({
       ) {
         errorContent =
           "Network error. Please check your connection and try again.";
-      } else if (errorMessage?.includes("Server error")) {
-        errorContent = errorMessage; // Use the detailed server error message
       }
+      // For all other errors (including Langflow errors), use the actual error message
 
       onError?.(error as Error);
 
@@ -620,7 +682,14 @@ export function useChatStreaming({
         content: errorContent,
         timestamp: new Date(),
         isStreaming: false,
+        error: true,
       };
+
+      // Pass error message to onComplete so it gets added to chat history
+      // This ensures errors appear immediately and persist on page refresh
+      if (!streamAbortRef.current?.signal.aborted) {
+        onComplete?.(errorMessageObj, null);
+      }
 
       return errorMessageObj;
     } finally {

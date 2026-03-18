@@ -1,9 +1,14 @@
-from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from typing import Any, List, Optional
+
+from fastapi import Depends, Request
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse, PlainTextResponse
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from dependencies import get_connector_service, get_session_manager, get_current_user
+from session_manager import User
 
 logger = get_logger(__name__)
 
@@ -79,11 +84,25 @@ async def get_synced_file_ids_for_connector(
         return [], []
 
 
-async def list_connectors(request: Request, connector_service, session_manager):
+
+class ConnectorSyncBody(BaseModel):
+    max_files: Optional[int] = None
+    selected_files: Optional[List[Any]] = None
+    # When True, ingest ALL files from the connector (bypasses the existing-files gate).
+    # Used by direct-sync providers like IBM COS on initial ingest.
+    sync_all: bool = False
+    # When set, only ingest files from these buckets (IBM COS specific).
+    bucket_filter: Optional[List[str]] = None
+
+
+async def list_connectors(
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
     """List available connector types with metadata"""
     try:
-        connector_types = (
-            connector_service.connection_manager.get_available_connector_types()
+        connector_types = connector_service.connection_manager.get_available_connector_types(
+            user_id=user.user_id
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
@@ -91,16 +110,16 @@ async def list_connectors(request: Request, connector_service, session_manager):
         return JSONResponse({"connectors": []})
 
 
-async def connector_sync(request: Request, connector_service, session_manager):
+async def connector_sync(
+    connector_type: str,
+    body: ConnectorSyncBody,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
     """Sync files from all active connections of a connector type"""
-    connector_type = request.path_params.get("connector_type", "google_drive")
-    data = await request.json()
-    max_files = data.get("max_files")
-    selected_files_raw = data.get("selected_files")
-    
-    # Normalize selected_files to handle both formats:
-    # - Legacy: array of strings ["id1", "id2"]
-    # - New: array of objects [{id, name, downloadUrl, ...}]
+    max_files = body.max_files
+    selected_files_raw = body.selected_files
     selected_files = None
     file_infos = None
     if selected_files_raw:
@@ -119,8 +138,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
             connector_type=connector_type,
             max_files=max_files,
         )
-        user = request.state.user
-        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+        jwt_token = user.jwt_token
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -187,6 +205,51 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 jwt_token=jwt_token,
                 file_infos=file_infos,
             )
+        elif body.sync_all or body.bucket_filter:
+            # Full ingest: discover and ingest all files (or files from specific buckets).
+            # Used by direct-sync providers (IBM COS) on initial ingest or per-bucket sync.
+            logger.info(
+                "Full connector ingest requested",
+                connector_type=connector_type,
+                bucket_filter=body.bucket_filter,
+            )
+            connector = await connector_service.get_connector(working_connection.connection_id)
+            if body.bucket_filter:
+                # List only files from the requested buckets, then sync_specific_files
+                original_buckets = connector.bucket_names
+                connector.bucket_names = body.bucket_filter
+                try:
+                    all_file_ids = []
+                    page_token = None
+                    while True:
+                        result = await connector.list_files(page_token=page_token)
+                        for f in result.get("files", []):
+                            all_file_ids.append(f["id"])
+                        page_token = result.get("next_page_token")
+                        if not page_token:
+                            break
+                finally:
+                    connector.bucket_names = original_buckets
+
+                if not all_file_ids:
+                    return JSONResponse(
+                        {"status": "no_files", "message": "No files found in the selected buckets."},
+                        status_code=200,
+                    )
+                task_id = await connector_service.sync_specific_files(
+                    working_connection.connection_id,
+                    user.user_id,
+                    all_file_ids,
+                    jwt_token=jwt_token,
+                )
+            else:
+                # sync_all: ingest everything the connector can see
+                task_id = await connector_service.sync_connector_files(
+                    working_connection.connection_id,
+                    user.user_id,
+                    max_files=max_files,
+                    jwt_token=jwt_token,
+                )
         else:
             # No files specified - sync only files already in OpenSearch for this connector
             # This ensures deleted files stay deleted
@@ -196,7 +259,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 session_manager=session_manager,
                 jwt_token=jwt_token,
             )
-            
+
             if not existing_file_ids and not existing_filenames:
                 return JSONResponse(
                     {
@@ -205,7 +268,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                     },
                     status_code=200,
                 )
-            
+
             # If we have document_ids (connector file IDs), use sync_specific_files
             # Otherwise, use filename filtering with sync_connector_files
             if existing_file_ids:
@@ -252,10 +315,12 @@ async def connector_sync(request: Request, connector_service, session_manager):
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
-async def connector_status(request: Request, connector_service, session_manager):
+async def connector_status(
+    connector_type: str,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
     """Get connector status for authenticated user"""
-    connector_type = request.path_params.get("connector_type", "google_drive")
-    user = request.state.user
 
     # Get connections for this connector type and user
     connections = await connector_service.connection_manager.list_connections(
@@ -334,11 +399,13 @@ async def connector_status(request: Request, connector_service, session_manager)
     )
 
 
-async def connector_webhook(request: Request, connector_service, session_manager):
+async def connector_webhook(
+    connector_type: str,
+    request: Request,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+):
     """Handle webhook notifications from any connector type"""
-    connector_type = request.path_params.get("connector_type")
-    if connector_type is None:
-        connector_type = "unknown"
 
     # Handle webhook validation (connector-specific)
     temp_config = {"token_file": "temp.json"}
@@ -508,10 +575,12 @@ async def connector_webhook(request: Request, connector_service, session_manager
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
 
-async def connector_disconnect(request: Request, connector_service, session_manager):
+async def connector_disconnect(
+    connector_type: str,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
     """Disconnect a connector by deleting its connection"""
-    connector_type = request.path_params.get("connector_type")
-    user = request.state.user
 
     try:
         # Get connections for this connector type and user
@@ -583,20 +652,22 @@ async def connector_disconnect(request: Request, connector_service, session_mana
         )
 
 
-async def sync_all_connectors(request: Request, connector_service, session_manager):
+# ---------------------------------------------------------------------------
+
+async def sync_all_connectors(
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
     """
-    Sync files from all active cloud connector connections (Google Drive, OneDrive, SharePoint).
-    
-    Only syncs files that are already indexed in OpenSearch - this ensures deleted files
-    stay deleted and only previously selected files get re-synced (to update content and ACLs).
+    Sync files from all active cloud connector connections.
     """
     try:
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
-        user = request.state.user
-        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+        jwt_token = user.jwt_token
 
         # Cloud connector types to sync
-        cloud_connector_types = ["google_drive", "onedrive", "sharepoint"]
+        cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
         
         all_task_ids = []
         synced_connectors = []
@@ -736,15 +807,15 @@ async def sync_all_connectors(request: Request, connector_service, session_manag
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
-async def connector_token(request: Request, connector_service, session_manager):
+async def connector_token(
+    connector_type: str,
+    connection_id: str,
+    request: Request,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
     """Get access token for connector API calls (e.g., Pickers)."""
-    url_connector_type = request.path_params.get("connector_type")
-    connection_id = request.query_params.get("connection_id")
-
-    if not connection_id:
-        return JSONResponse({"error": "connection_id is required"}, status_code=400)
-
-    user = request.state.user
+    url_connector_type = connector_type
 
     try:
         # 1) Load the connection and verify ownership

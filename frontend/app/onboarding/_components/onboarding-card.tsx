@@ -89,7 +89,10 @@ const OnboardingCard = ({
       ) {
         setModelProvider("anthropic");
         return;
-      } else if (provider === "openai" && currentSettings.providers.openai?.has_api_key) {
+      } else if (
+        provider === "openai" &&
+        currentSettings.providers.openai?.has_api_key
+      ) {
         setModelProvider("openai");
         return;
       } else if (
@@ -168,6 +171,8 @@ const OnboardingCard = ({
 
   const [error, setError] = useState<string | null>(null);
 
+  const [onboardingTaskId, setOnboardingTaskId] = useState<string | null>(null);
+
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
@@ -188,9 +193,47 @@ const OnboardingCard = ({
     onError: (error) => {
       console.error("Failed to rollback onboarding", error);
       // Preserve existing error message if set, otherwise show rollback error
-      setError((prevError) => prevError || `Failed to rollback: ${error.message}`);
+      setError(
+        (prevError) => prevError || `Failed to rollback: ${error.message}`,
+      );
       // Still reset to provider selection even if rollback fails
       setCurrentStep(null);
+    },
+  });
+
+  // Mutations
+  const onboardingMutation = useOnboardingMutation({
+    onSuccess: (data) => {
+      console.log("Onboarding completed successfully", data);
+
+      if (data.task_id) {
+        setOnboardingTaskId(data.task_id);
+      }
+
+      // Update provider health cache to healthy since backend just validated
+      const provider =
+        (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||
+        modelProvider;
+      const healthData: ProviderHealthResponse = {
+        status: "healthy",
+        message: "Provider is configured and working correctly",
+        provider: provider,
+      };
+      queryClient.setQueryData(["provider", "health"], healthData);
+      setError(null);
+      if (!isEmbedding) {
+        setCurrentStep(totalSteps);
+        setTimeout(() => {
+          onComplete();
+        }, 1000);
+      } else {
+        setCurrentStep(0);
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+      setCurrentStep(totalSteps);
+      rollbackMutation.mutate();
     },
   });
 
@@ -200,8 +243,16 @@ const OnboardingCard = ({
       return;
     }
 
+    if (!onboardingMutation.isSuccess) {
+      return;
+    }
+
+    const relevantTasks = onboardingTaskId
+      ? tasks.filter((task) => task.task_id === onboardingTaskId)
+      : [];
+
     // Check if there are any active tasks (pending, running, or processing)
-    const activeTasks = tasks.find(
+    const activeTasks = relevantTasks.find(
       (task) =>
         task.status === "pending" ||
         task.status === "running" ||
@@ -209,12 +260,12 @@ const OnboardingCard = ({
     );
 
     // Check if any task failed at the top level
-    const failedTask = tasks.find(
+    const failedTask = relevantTasks.find(
       (task) => task.status === "failed" || task.status === "error",
     );
 
     // Check if any completed task has at least one failed file
-    const completedTaskWithFailedFile = tasks.find((task) => {
+    const completedTaskWithFailedFile = relevantTasks.find((task) => {
       // Must have files object
       if (!task.files || typeof task.files !== "object") {
         return false;
@@ -245,10 +296,7 @@ const OnboardingCard = ({
       !isCompleted &&
       !handledFailedTasksRef.current.has(taskWithFailure.task_id)
     ) {
-      console.error(
-        "Task failed, jumping back one step",
-        taskWithFailure,
-      );
+      console.error("Task failed, jumping back one step", taskWithFailure);
 
       // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
@@ -284,14 +332,17 @@ const OnboardingCard = ({
       return;
     }
 
+    const hasSuccessfulTasks = relevantTasks.length > 0 &&
+      (!activeTasks || (activeTasks.successful_files ?? 0) > 0);
+
+    const hasIngestionDisabledOrDone = !onboardingTaskId && currentStep === totalSteps - 1;
+
     // If at least one processed file, no failures, and we've started onboarding, complete it
     if (
-      (((!activeTasks || (activeTasks.successful_files ?? 0) > 0) &&
-        tasks.length > 0) ||
-        (tasks.length === 0 && currentStep === totalSteps - 1)) && // Complete because no files were ingested
+      (hasSuccessfulTasks || hasIngestionDisabledOrDone) &&
       !isCompleted &&
-      !taskWithFailure
-
+      !taskWithFailure &&
+      currentStep === totalSteps - 1
     ) {
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
@@ -300,39 +351,17 @@ const OnboardingCard = ({
         onComplete();
       }, 1000);
     }
-  }, [tasks, currentStep, onComplete, isCompleted, isEmbedding, totalSteps, rollbackMutation]);
-
-  // Mutations
-  const onboardingMutation = useOnboardingMutation({
-    onSuccess: (data) => {
-      console.log("Onboarding completed successfully", data);
-
-      // Update provider health cache to healthy since backend just validated
-      const provider =
-        (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||
-        modelProvider;
-      const healthData: ProviderHealthResponse = {
-        status: "healthy",
-        message: "Provider is configured and working correctly",
-        provider: provider,
-      };
-      queryClient.setQueryData(["provider", "health"], healthData);
-      setError(null);
-      if (!isEmbedding) {
-        setCurrentStep(totalSteps);
-        setTimeout(() => {
-          onComplete();
-        }, 1000);
-      } else {
-        setCurrentStep(0);
-      }
-    },
-    onError: (error) => {
-      setError(error.message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate();
-    },
-  });
+  }, [
+    tasks,
+    currentStep,
+    onComplete,
+    isCompleted,
+    isEmbedding,
+    totalSteps,
+    rollbackMutation,
+    onboardingMutation.isSuccess,
+    onboardingTaskId,
+  ]);
 
   const handleComplete = () => {
     const currentProvider = isEmbedding
@@ -354,8 +383,7 @@ const OnboardingCard = ({
     setError(null);
 
     // Prepare onboarding data with provider-specific fields
-    const onboardingData: OnboardingVariables = {
-    };
+    const onboardingData: OnboardingVariables = {};
 
     // Set the provider field
     if (isEmbedding) {
@@ -444,8 +472,8 @@ const OnboardingCard = ({
                       value="anthropic"
                       className={cn(
                         error &&
-                        modelProvider === "anthropic" &&
-                        "data-[state=active]:border-destructive",
+                          modelProvider === "anthropic" &&
+                          "data-[state=active]:border-destructive",
                       )}
                     >
                       <TabTrigger
@@ -477,8 +505,8 @@ const OnboardingCard = ({
                     value="openai"
                     className={cn(
                       error &&
-                      modelProvider === "openai" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "openai" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -507,8 +535,8 @@ const OnboardingCard = ({
                     value="watsonx"
                     className={cn(
                       error &&
-                      modelProvider === "watsonx" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "watsonx" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -539,8 +567,8 @@ const OnboardingCard = ({
                     value="ollama"
                     className={cn(
                       error &&
-                      modelProvider === "ollama" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "ollama" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -587,7 +615,9 @@ const OnboardingCard = ({
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
                     }
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "openai"}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "openai"
+                    }
                   />
                 </TabsContent>
                 <TabsContent value="watsonx">
@@ -595,10 +625,18 @@ const OnboardingCard = ({
                     setSettings={setSettings}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "watsonx"}
-                    existingEndpoint={currentSettings?.providers?.watsonx?.endpoint}
-                    existingProjectId={currentSettings?.providers?.watsonx?.project_id}
-                    hasEnvApiKey={currentSettings?.providers?.watsonx?.has_api_key === true}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "watsonx"
+                    }
+                    existingEndpoint={
+                      currentSettings?.providers?.watsonx?.endpoint
+                    }
+                    existingProjectId={
+                      currentSettings?.providers?.watsonx?.project_id
+                    }
+                    hasEnvApiKey={
+                      currentSettings?.providers?.watsonx?.has_api_key === true
+                    }
                   />
                 </TabsContent>
                 <TabsContent value="ollama">
@@ -606,8 +644,12 @@ const OnboardingCard = ({
                     setSettings={setSettings}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "ollama"}
-                    existingEndpoint={currentSettings?.providers?.ollama?.endpoint}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "ollama"
+                    }
+                    existingEndpoint={
+                      currentSettings?.providers?.ollama?.endpoint
+                    }
                   />
                 </TabsContent>
               </Tabs>
@@ -630,8 +672,8 @@ const OnboardingCard = ({
                     {isLoadingModels
                       ? "Loading models..."
                       : !!settings.llm_model &&
-                        !!settings.embedding_model &&
-                        !isDoclingHealthy
+                          !!settings.embedding_model &&
+                          !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}
                   </TooltipContent>

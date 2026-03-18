@@ -4,10 +4,10 @@ import { CloudFile } from "./types";
 
 /**
  * SharePoint File Picker v8 Handler
- * 
+ *
  * Uses Microsoft's newer File Picker v8 which communicates via postMessage
  * instead of the deprecated OneDrive.js SDK (v7.2) that has bugs with SharePoint.
- * 
+ *
  * Reference: https://learn.microsoft.com/en-us/onedrive/developer/controls/file-pickers/
  */
 
@@ -80,7 +80,11 @@ interface CloseCommand {
   command: "close";
 }
 
-type PickerCommand = PickCommand | AuthenticateCommand | CloseCommand | { command: string };
+type PickerCommand =
+  | PickCommand
+  | AuthenticateCommand
+  | CloseCommand
+  | { command: string };
 
 function tryParseUrl(value?: string | null): URL | null {
   if (!value) return null;
@@ -122,7 +126,7 @@ export class SharePointV8Handler {
     baseUrl: string,
     accessToken: string,
     clientId: string,
-    onPickerStateChange?: (isOpen: boolean) => void
+    onPickerStateChange?: (isOpen: boolean) => void,
   ) {
     this.baseUrl = baseUrl;
     this.accessToken = accessToken;
@@ -154,7 +158,10 @@ export class SharePointV8Handler {
     console.log("=== SharePoint v8 Picker Diagnostics ===");
     console.log("Base URL:", this.baseUrl);
     console.log("Client ID:", this.clientId);
-    console.log("Token (first 20 chars):", this.accessToken?.substring(0, 20) + "...");
+    console.log(
+      "Token (first 20 chars):",
+      this.accessToken?.substring(0, 20) + "...",
+    );
     console.log("Token length:", this.accessToken?.length);
     console.log("Window origin:", window.location.origin);
     // === DIAGNOSTIC LOGGING END ===
@@ -213,7 +220,7 @@ export class SharePointV8Handler {
       });
 
       const pickerUrl = `${this.baseUrl}/_layouts/15/FilePicker.aspx?${queryString}`;
-      
+
       // === DIAGNOSTIC: Log picker URL and options ===
       console.log("Picker URL (full):", pickerUrl);
       console.log("Picker options:", JSON.stringify(options, null, 2));
@@ -222,11 +229,15 @@ export class SharePointV8Handler {
       // OPTION A FIX: Don't POST the token via form - let picker request it via authenticate command
       // The form-posted token might be causing "invalid_client" errors
       // Reference: https://learn.microsoft.com/en-us/onedrive/developer/controls/file-pickers/
-      
+
       // === DIAGNOSTIC: Token delivery method ===
-      console.log("Token delivery method: authenticate command only (no form POST)");
-      console.log("Token will be provided when picker sends 'authenticate' command");
-      
+      console.log(
+        "Token delivery method: authenticate command only (no form POST)",
+      );
+      console.log(
+        "Token will be provided when picker sends 'authenticate' command",
+      );
+
       // Use GET request instead of POST with token
       // Simply navigate to the picker URL - token will be provided via messaging
       this.win.location.href = pickerUrl;
@@ -251,23 +262,32 @@ export class SharePointV8Handler {
   private handleWindowMessage(event: MessageEvent): void {
     // === DIAGNOSTIC: Log all messages from picker window (before filtering) ===
     if (event.source === this.win) {
-      console.log("SharePoint v8 picker: Window message received:", event.data?.type || "unknown");
+      console.log(
+        "SharePoint v8 picker: Window message received:",
+        event.data?.type || "unknown",
+      );
     }
-    
+
     // Verify the message is from our picker window
     if (event.source !== this.win) {
       return;
     }
 
     const message = event.data;
-    
+
     // === DIAGNOSTIC: Log full message data ===
-    console.log("SharePoint v8 picker: Message data:", JSON.stringify(message, null, 2));
+    console.log(
+      "SharePoint v8 picker: Message data:",
+      JSON.stringify(message, null, 2),
+    );
 
     // Handle initialization message
     if (message.type === "initialize" && message.channelId === this.channelId) {
       console.log("SharePoint v8 picker: Received initialize message");
-      console.log("SharePoint v8 picker: Channel ID match:", message.channelId === this.channelId);
+      console.log(
+        "SharePoint v8 picker: Channel ID match:",
+        message.channelId === this.channelId,
+      );
 
       // Get the MessagePort for further communication
       this.port = event.ports[0];
@@ -275,20 +295,33 @@ export class SharePointV8Handler {
 
       if (this.port) {
         // Setup port message handler
-        this.port.addEventListener("message", this.handlePortMessage.bind(this));
+        this.port.addEventListener(
+          "message",
+          this.handlePortMessage.bind(this),
+        );
         this.port.start();
 
         // Activate the picker
         this.port.postMessage({ type: "activate" });
         console.log("SharePoint v8 picker: Activated, sent activate message");
       } else {
-        console.error("SharePoint v8 picker: No MessagePort received in initialize message!");
+        console.error(
+          "SharePoint v8 picker: No MessagePort received in initialize message!",
+        );
       }
     } else if (message.type === "error") {
       // === DIAGNOSTIC: Handle error messages from picker ===
-      console.error("SharePoint v8 picker: Error message from picker window:", message);
+      console.error(
+        "SharePoint v8 picker: Error message from picker window:",
+        message,
+      );
     } else if (message.channelId && message.channelId !== this.channelId) {
-      console.warn("SharePoint v8 picker: Channel ID mismatch! Expected:", this.channelId, "Got:", message.channelId);
+      console.warn(
+        "SharePoint v8 picker: Channel ID mismatch! Expected:",
+        this.channelId,
+        "Got:",
+        message.channelId,
+      );
     }
   }
 
@@ -296,7 +329,10 @@ export class SharePointV8Handler {
     const payload = event.data;
     console.log("SharePoint v8 picker: Port message received:", payload.type);
     // === DIAGNOSTIC: Log full payload for debugging ===
-    console.log("SharePoint v8 picker: Full payload:", JSON.stringify(payload, null, 2));
+    console.log(
+      "SharePoint v8 picker: Full payload:",
+      JSON.stringify(payload, null, 2),
+    );
 
     switch (payload.type) {
       case "notification":
@@ -306,19 +342,25 @@ export class SharePointV8Handler {
       case "command":
         this.handleCommand(payload.id, payload.data);
         break;
-        
+
       case "error":
         // === DIAGNOSTIC: Log any error type messages ===
         console.error("SharePoint v8 picker: Error message received:", payload);
         break;
-        
+
       default:
-        console.log("SharePoint v8 picker: Unknown payload type:", payload.type);
+        console.log(
+          "SharePoint v8 picker: Unknown payload type:",
+          payload.type,
+        );
     }
   }
 
   private handleNotification(notification: { notification: string }): void {
-    console.log("SharePoint v8 picker: Notification:", notification.notification);
+    console.log(
+      "SharePoint v8 picker: Notification:",
+      notification.notification,
+    );
 
     if (notification.notification === "page-loaded") {
       console.log("SharePoint v8 picker: Page loaded and ready");
@@ -370,13 +412,17 @@ export class SharePointV8Handler {
     console.log("Auth request resource:", command.resource);
     console.log("Auth request type:", command.type);
     console.log("Full auth command:", JSON.stringify(command, null, 2));
-    
+
     // Check if resource matches our base URL or is Microsoft Graph using URL parsing
     const resourceUrl = tryParseUrl(command.resource);
     const baseUrl = tryParseUrl(this.baseUrl);
 
-    const isGraphResource = resourceUrl ? isGraphHostname(resourceUrl.hostname) : false;
-    const isSharePointResource = resourceUrl ? isSharePointHostname(resourceUrl.hostname) : false;
+    const isGraphResource = resourceUrl
+      ? isGraphHostname(resourceUrl.hostname)
+      : false;
+    const isSharePointResource = resourceUrl
+      ? isSharePointHostname(resourceUrl.hostname)
+      : false;
     const resourceMatchesBase = hostnamesMatch(resourceUrl, baseUrl);
 
     console.log("Resource analysis:");
@@ -384,21 +430,30 @@ export class SharePointV8Handler {
     console.log("  - Is SharePoint resource:", isSharePointResource);
     console.log("  - Resource matches our baseUrl:", resourceMatchesBase);
     console.log("  - Our baseUrl:", this.baseUrl);
-    
+
     // IMPORTANT: Our token is for Microsoft Graph API (audience: https://graph.microsoft.com)
     // If the picker requests a SharePoint-specific resource, the token might not work
-    console.log("Token audience: https://graph.microsoft.com (Microsoft Graph)");
-    
+    console.log(
+      "Token audience: https://graph.microsoft.com (Microsoft Graph)",
+    );
+
     if (isSharePointResource && !isGraphResource) {
-      console.warn("⚠️ POTENTIAL ISSUE: Picker requested SharePoint resource, but our token is for Microsoft Graph!");
+      console.warn(
+        "⚠️ POTENTIAL ISSUE: Picker requested SharePoint resource, but our token is for Microsoft Graph!",
+      );
       console.warn("⚠️ This mismatch could cause 'invalid_client' errors.");
-      console.warn("⚠️ The token audience might need to be the SharePoint domain instead.");
+      console.warn(
+        "⚠️ The token audience might need to be the SharePoint domain instead.",
+      );
     }
-    
+
     // Log token details (safely)
-    console.log("Token to provide (first 30 chars):", this.accessToken?.substring(0, 30) + "...");
+    console.log(
+      "Token to provide (first 30 chars):",
+      this.accessToken?.substring(0, 30) + "...",
+    );
     console.log("Token to provide (length):", this.accessToken?.length);
-    
+
     // Decode JWT header to show audience (if present)
     try {
       const tokenParts = this.accessToken?.split(".");
@@ -408,7 +463,10 @@ export class SharePointV8Handler {
         console.log("  - aud (audience):", payload.aud);
         console.log("  - iss (issuer):", payload.iss);
         console.log("  - scp (scopes):", payload.scp);
-        console.log("  - exp (expiry):", new Date(payload.exp * 1000).toISOString());
+        console.log(
+          "  - exp (expiry):",
+          new Date(payload.exp * 1000).toISOString(),
+        );
       }
     } catch (e) {
       console.log("Could not decode token (may not be JWT):", e);
@@ -425,9 +483,14 @@ export class SharePointV8Handler {
           token: this.accessToken,
         },
       });
-      console.log("SharePoint v8 picker: Successfully sent auth token response");
+      console.log(
+        "SharePoint v8 picker: Successfully sent auth token response",
+      );
     } catch (error) {
-      console.error("SharePoint v8 picker: Failed to provide auth token:", error);
+      console.error(
+        "SharePoint v8 picker: Failed to provide auth token:",
+        error,
+      );
       this.port?.postMessage({
         type: "result",
         id: id,
@@ -435,7 +498,8 @@ export class SharePointV8Handler {
           result: "error",
           error: {
             code: "unableToObtainToken",
-            message: error instanceof Error ? error.message : "Failed to obtain token",
+            message:
+              error instanceof Error ? error.message : "Failed to obtain token",
           },
         },
       });
@@ -492,7 +556,10 @@ export class SharePointV8Handler {
           result: "error",
           error: {
             code: "unusableItem",
-            message: error instanceof Error ? error.message : "Failed to process picked items",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Failed to process picked items",
           },
         },
       });

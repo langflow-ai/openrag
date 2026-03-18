@@ -1,4 +1,3 @@
-import os
 import uuid
 import json
 import httpx
@@ -20,12 +19,16 @@ from connectors.google_drive import GoogleDriveConnector
 from connectors.onedrive import OneDriveConnector
 from connectors.sharepoint import SharePointConnector
 
+# Connectors that authenticate directly (no OAuth redirect required)
+_DIRECT_AUTH_CONNECTORS = {"ibm_cos"}
+
 
 class AuthService:
-    def __init__(self, session_manager: SessionManager, connector_service=None, langflow_mcp_service: LangflowMCPService | None = None):
+    def __init__(self, session_manager: SessionManager, connector_service=None, flows_service=None, langflow_mcp_service: LangflowMCPService | None = None):
         self.session_manager = session_manager
         self.connector_service = connector_service
         self.used_auth_codes = set()  # Track used authorization codes
+        self.flows_service = flows_service
         self.langflow_mcp_service = langflow_mcp_service
         self._background_tasks = set()
 
@@ -56,6 +59,7 @@ class AuthService:
             "google_drive",
             "onedrive",
             "sharepoint",
+            "ibm_cos",
         ]:
             raise ValueError(f"Unsupported connector type: {connector_type}")
         elif purpose not in ["app_auth", "data_source"]:
@@ -90,6 +94,10 @@ class AuthService:
                 user_id=user_id,
             )
         )
+
+        # Direct-auth connectors (HMAC/API-key based, no OAuth redirect)
+        if connector_type in _DIRECT_AUTH_CONNECTORS:
+            return await self._init_direct_connection(connector_type, connection_id)
 
         # Get OAuth configuration from connector and OAuth classes
         import os
@@ -146,6 +154,61 @@ class AuthService:
         }
 
         return {"connection_id": connection_id, "oauth_config": oauth_config}
+
+    async def _init_direct_connection(
+        self, connector_type: str, connection_id: str
+    ) -> dict:
+        """Authenticate a non-OAuth connector immediately using env var credentials.
+
+        Creates the connection record (already done by the caller) and verifies
+        that the credentials work by calling authenticate() on the connector.
+        Returns a response without oauth_config so the frontend knows no redirect
+        is needed.
+        """
+        try:
+            connection_config = (
+                await self.connector_service.connection_manager.get_connection(
+                    connection_id
+                )
+            )
+            if not connection_config:
+                raise ValueError("Connection not found")
+
+            connector = self.connector_service.connection_manager._create_connector(
+                connection_config
+            )
+            authenticated = await connector.authenticate()
+            if not authenticated:
+                # Remove the connection so the user can retry after fixing credentials
+                await self.connector_service.connection_manager.delete_connection(
+                    connection_id
+                )
+                raise ValueError(
+                    f"Could not authenticate with {connector_type}. "
+                    "Check that your credentials and endpoint are correct."
+                )
+
+            # Cache the authenticated connector
+            self.connector_service.connection_manager.active_connectors[
+                connection_id
+            ] = connector
+
+        except ValueError:
+            raise
+        except Exception as exc:
+            await self.connector_service.connection_manager.delete_connection(
+                connection_id
+            )
+            raise ValueError(
+                f"Failed to connect {connector_type}: {exc}"
+            ) from exc
+
+        return {
+            "connection_id": connection_id,
+            "status": "connected",
+            "connector_type": connector_type,
+            # No oauth_config — frontend must not attempt an OAuth redirect
+        }
 
     async def handle_oauth_callback(
         self,
@@ -317,7 +380,7 @@ class AuthService:
                     from utils.langflow_headers import build_mcp_global_vars_from_config
                     
                     config = get_openrag_config()
-                    provider_vars = build_mcp_global_vars_from_config(config)
+                    provider_vars = await build_mcp_global_vars_from_config(config, flows_service=self.flows_service)
                     
                     # Merge provider credentials with user info
                     global_vars.update(provider_vars)
@@ -414,7 +477,7 @@ class AuthService:
                     else:
                         logger.warning("_handle_data_source_auth: _detect_base_url returned None")
                 else:
-                    logger.warning(f"_handle_data_source_auth: Connector not available or doesn't have _detect_base_url")
+                    logger.warning("_handle_data_source_auth: Connector not available or doesn't have _detect_base_url")
                 
                 # Clear the cached connector so next get_connector() creates a fresh instance
                 # with the updated config (including base_url)
@@ -430,6 +493,8 @@ class AuthService:
 
     async def get_user_info(self, request) -> Optional[dict]:
         """Get current user information from request"""
+        from config.settings import IBM_AUTH_ENABLED
+
         # In no-auth mode, return a consistent response
         if is_no_auth_mode():
             return {"authenticated": False, "user": None, "no_auth_mode": True}
@@ -439,6 +504,7 @@ class AuthService:
         if user:
             user_data = {
                 "authenticated": True,
+                "ibm_auth_mode": IBM_AUTH_ENABLED,
                 "user": {
                     "user_id": user.user_id,
                     "email": user.email,
@@ -450,7 +516,7 @@ class AuthService:
                     else None,
                 },
             }
-            
+
             return user_data
         else:
-            return {"authenticated": False, "user": None}
+            return {"authenticated": False, "ibm_auth_mode": IBM_AUTH_ENABLED, "user": None}

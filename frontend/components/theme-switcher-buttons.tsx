@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 export const ThemeSwitcherButtons = () => {
   const { theme, setTheme } = useTheme();

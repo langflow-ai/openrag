@@ -6,6 +6,8 @@ import {
 
 interface OnboardingRollbackResponse {
   message: string;
+  cancelled_tasks: number;
+  deleted_files: number;
 }
 
 export const useOnboardingRollbackMutation = (
@@ -41,4 +43,3 @@ export const useOnboardingRollbackMutation = (
     ...options,
   });
 };
-

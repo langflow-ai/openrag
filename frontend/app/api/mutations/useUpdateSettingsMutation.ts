@@ -3,8 +3,8 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { Settings } from "../queries/useGetSettingsQuery";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
+import type { Settings } from "../queries/useGetSettingsQuery";
 
 export interface UpdateSettingsRequest {
   // Agent settings
@@ -34,6 +34,10 @@ export interface UpdateSettingsRequest {
   watsonx_endpoint?: string;
   watsonx_project_id?: string;
   ollama_endpoint?: string;
+  remove_ollama_config?: boolean;
+  remove_openai_config?: boolean;
+  remove_anthropic_config?: boolean;
+  remove_watsonx_config?: boolean;
 }
 
 export interface UpdateSettingsResponse {

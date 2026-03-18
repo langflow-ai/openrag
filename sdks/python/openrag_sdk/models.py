@@ -95,6 +95,9 @@ class DeleteDocumentResponse(BaseModel):
 
     success: bool
     deleted_chunks: int = 0
+    filename: str | None = None
+    message: str | None = None
+    error: str | None = None
 
 
 # Chat history models

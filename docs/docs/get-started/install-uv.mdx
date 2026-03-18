@@ -17,10 +17,11 @@ import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
+import PartialStartTui from '@site/docs/_partial-start-tui.mdx';
 
 Use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) to install OpenRAG as a managed or unmanaged dependency in a new or existing Python project.
 
-When you install OpenRAG with `uv`, you will use the [Terminal User Interface (TUI)](/tui) to configure and manage your OpenRAG deployment.
+When you install OpenRAG with `uv`, you will use an [OpenRAG terminal session](/tui) to configure and manage your OpenRAG deployment.
 
 For other installation methods, see [Select an installation method](/install-options).
 
@@ -40,26 +41,20 @@ For other installation methods, see [Select an installation method](/install-opt
 
 ## Install and start OpenRAG with uv
 
-There are two ways to install OpenRAG with `uv`:
-
-* [**`uv add` (Recommended)**](#uv-add): Install OpenRAG as a managed dependency in a new or existing `uv` Python project.
-This is recommended because it adds OpenRAG to your `pyproject.toml` and lockfile for better management of dependencies and the virtual environment.
-
-* [**`uv pip install`**](#uv-pip-install): Use the [`uv pip` interface](https://docs.astral.sh/uv/pip/) to install OpenRAG into an existing Python project that uses `pip`, `pip-tools`, and `virtualenv` commands.
+Use `uv add` to install OpenRAG as a managed dependency in a new or existing `uv` Python project.
+This command adds OpenRAG to your `pyproject.toml` and lockfile.
+This provides better management of dependencies and the virtual environment as compared to commands like `uv pip`.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
-
-### Use uv add {#uv-add}
 
 1. Create a new `uv`-managed Python project:
 
    ```bash
-   uv init PROJECT_NAME --python 3.12
+   uv init PROJECT_NAME --python 3.13
    ```
 
    The `--python` flag ensures that your project uses the minimum required Python version for OpenRAG.
-   You can use a later Python version, if you prefer.
-   Or, you can omit this flag if your system's default Python version is 3.12 or later.
+   You can omit this flag if your system's default Python version is 3.13.
 
 2. Change into your new project directory:
 
@@ -94,37 +89,21 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 
 4. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before starting OpenRAG.
 
-5. Start the OpenRAG TUI:
+5. Start the OpenRAG terminal session:
 
    ```bash
    uv run openrag
    ```
 
-### Use uv pip install {#uv-pip-install}
+   <PartialStartTui />
 
-1. Activate your virtual environment.
+## Configure OpenRAG in the terminal {#setup}
 
-2. Install the OpenRAG Python package:
-
-   ```bash
-   uv pip install openrag
-   ```
-
-3. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before starting OpenRAG.
-
-4. Start the OpenRAG TUI:
-
-   ```bash
-   uv run openrag
-   ```
-
-## Set up OpenRAG with the TUI {#setup}
-
-When you install OpenRAG with `uv`, you manage the OpenRAG services with the TUI.
-The TUI guides you through the initial configuration process before you start the OpenRAG services.
+When you install OpenRAG with `uv`, you manage the OpenRAG services in an OpenRAG terminal session.
+The terminal session guides you through the initial configuration process before you start the OpenRAG services.
 
 Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically at `~/.openrag/tui`.
-If OpenRAG detects an existing `.env` file in this directory, then the TUI can populate those values automatically during setup and onboarding.
+If OpenRAG detects an existing `.env` file in this directory, then OpenRAG can populate those values automatically during setup and onboarding.
 
 Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
 

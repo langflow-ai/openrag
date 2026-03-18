@@ -8,7 +8,7 @@ Depending on your use case, OpenRAG can assist with service management, or you c
 
 Select the installation method that best fits your needs:
 
-* **Use the [Terminal User Interface (TUI)](/tui) to manage services**: For guided configuration and simplified service management, install OpenRAG with TUI-managed services. Use one of the following options:
+* **Use an [OpenRAG terminal session](/tui) to manage services**: For guided configuration and simplified service management, install OpenRAG with terminal-managed services. Use one of the following options:
 
    * [**`uv`**](/install-uv): Install OpenRAG as a dependency of a new or existing Python project.
    * [**`uvx`**](/install-uvx): Install OpenRAG without creating a project or modifying your project's dependencies. This option also automatically installs Docker or Podman if neither is present in your environment.
@@ -23,11 +23,11 @@ Select the installation method that best fits your needs:
 
 The first time you start OpenRAG, you must complete the application onboarding process.
 This is required for all installation methods because it prepares the minimum required configuration for OpenRAG to run.
-For TUI-managed services, you must also complete initial setup before you start the OpenRAG services.
+For terminal-managed services, you must also complete initial setup before you start the OpenRAG services.
 For more information, see the instructions for your preferred installation method.
 
 Your OpenRAG configuration is stored in a `.env` file.
-When using TUI-managed services, this file is created automatically at `~/.openrag/tui`, or you can provide a pre-populated `.env` file in this directory before starting the TUI.
-The TUI prompts you for the required values during setup and onboarding, and any values detected in a preexisting `.env` file are populated automatically.
+When using terminal-managed services, this file is created automatically at `~/.openrag/tui`, or you can provide a pre-populated `.env` file in this directory before starting the terminal session.
+The terminal session prompts you for the required values during setup and onboarding, and any values detected in a preexisting `.env` file are populated automatically.
 When using self-managed services, you must provide a pre-populated `.env` file, as you would for any Docker or Podman deployment.
 For more information, see the instructions for your preferred installation method and the [OpenRAG environment variables reference](/reference/configuration).

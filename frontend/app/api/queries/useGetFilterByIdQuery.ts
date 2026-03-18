@@ -1,7 +1,7 @@
 import type { KnowledgeFilter } from "./useGetFiltersSearchQuery";
 
 export async function getFilterById(
-  filterId: string
+  filterId: string,
 ): Promise<KnowledgeFilter | null> {
   try {
     const response = await fetch(`/api/knowledge-filter/${filterId}`, {

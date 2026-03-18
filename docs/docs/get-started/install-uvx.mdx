@@ -16,13 +16,14 @@ import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
+import PartialStartTui from '@site/docs/_partial-start-tui.mdx';
 
 Use [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) to invoke OpenRAG outside of a Python project or without modifying your project's dependencies.
 
 This installation method is best for testing OpenRAG by running it outside of a Python project.
 For other installation methods, see [Select an installation method](/install-options).
 
-When you install OpenRAG with `uvx`, you will use the [Terminal User Interface (TUI)](/tui) to configure and manage your OpenRAG deployment.
+When you install OpenRAG with `uvx`, you will use an [OpenRAG terminal session](/tui) to configure and manage your OpenRAG deployment.
 
 :::info
 `uvx openrag` installs the latest version of OpenRAG and dependencies, like Docker or Podman, if they aren't already present in your environment.
@@ -54,30 +55,32 @@ When you install OpenRAG with `uvx`, you will use the [Terminal User Interface (
 3. Invoke OpenRAG and install any missing dependencies:
 
    ```bash
-   uvx openrag
+   uvx --python 3.13 openrag
    ```
 
    You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `uvx --from openrag==0.1.30 openrag`.
 
+   <PartialStartTui />
+
 4. If needed, respond to any prompts to install and configure dependencies like Docker or Podman.
 
 The entire setup process can take a few minutes.
-Once the environment is ready, the OpenRAG [Terminal User Interface (TUI)](/tui) starts.
+Once the environment is ready, the OpenRAG terminal session starts.
 
-Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the TUI in your local `uv` cache.
+Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the terminal session in your local `uv` cache.
 Your OpenRAG configuration files and data are stored in `~/.openrag`, which is separate from the `uv` cache.
 Clearing the `uv` cache doesn't remove your entire OpenRAG installation; it only clears `uv` dependencies.
-After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the TUI with your preserved configuration and data.
+After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the terminal session with your preserved configuration and data.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
-## Set up OpenRAG with the TUI {#setup}
+## Configure OpenRAG in the terminal {#setup}
 
-When you install OpenRAG with `uvx`, you manage the OpenRAG services with the TUI.
-The TUI guides you through the initial configuration process before you start the OpenRAG services.
+When you install OpenRAG with `uvx`, you manage the OpenRAG services in an OpenRAG terminal session.
+The terminal session guides you through the initial configuration process before you start the OpenRAG services.
 
 Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically at `~/.openrag/tui`.
-If OpenRAG detects an existing `.env` file in this directory, then the TUI can populate those values automatically during setup and onboarding.
+If OpenRAG detects an existing `.env` file in this directory, then OpenRAG can populate those values automatically during setup and onboarding.
 
 Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
 

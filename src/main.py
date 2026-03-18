@@ -1,4 +1,14 @@
-
+from utils.version_utils import OPENRAG_VERSION
+import asyncio
+import atexit
+import hashlib
+import html
+import httpx
+import os
+import re
+import subprocess
+import tempfile
+from html.parser import HTMLParser
 
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
@@ -8,29 +18,9 @@ from utils.container_utils import detect_container_environment
 from utils.embeddings import create_dynamic_index_body
 from utils.logging_config import configure_from_env, get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-configure_from_env()
-logger = get_logger(__name__)
-
-import asyncio
-import atexit
-import mimetypes
-import multiprocessing
-import os
-import shutil
-import subprocess
-from functools import partial
-
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.responses import JSONResponse
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-multiprocessing.set_start_method("spawn", force=True)
-
-# Create process pool FIRST, before any torch/CUDA imports
-from utils.process_pool import process_pool  # isort: skip
-import torch
 
 # API endpoints
 from api import (
@@ -53,25 +43,45 @@ from api import (
     upload,
 )
 
-# Existing services
 from api.connector_router import ConnectorRouter
-from auth_middleware import optional_auth, require_auth
-
-# API Key authentication
-from api_key_middleware import require_api_key
+from connectors.ibm_cos.api import (
+    ibm_cos_defaults,
+    ibm_cos_configure,
+    ibm_cos_list_buckets,
+    ibm_cos_bucket_status,
+)
+from connectors.aws_s3.api import (
+    s3_defaults,
+    s3_configure,
+    s3_list_buckets,
+    s3_bucket_status,
+)
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters
+from api.v1 import (
+    chat as v1_chat,
+    search as v1_search,
+    documents as v1_documents,
+    settings as v1_settings,
+    models as v1_models,
+    knowledge_filters as v1_knowledge_filters,
+)
 
 # Configuration and setup
 from config.settings import (
+    DEFAULT_DOCS_CRAWL_DEPTH,
+    DEFAULT_DOCS_INGEST_SOURCE,
+    DEFAULT_DOCS_URL,
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
+    FETCH_OPENRAG_DOCS_AT_STARTUP,
     INGESTION_TIMEOUT,
     INDEX_BODY,
+    LANGFLOW_URL_INGEST_FLOW_ID,
     SESSION_SECRET,
     clients,
+    config_manager,
     get_embedding_model,
     get_index_name,
     is_no_auth_mode,
@@ -94,39 +104,55 @@ from services.search_service import SearchService
 from services.task_service import TaskService
 from session_manager import SessionManager
 
-logger.info(
-    "CUDA device information",
-    cuda_available=torch.cuda.is_available(),
-    cuda_version=torch.version.cuda,
-)
+configure_from_env()
+logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion
 EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
+URL_INGEST_EXCLUDED_INGESTION_FILES = {"openrag-documentation.pdf"}
+
+
+class _VisibleTextHTMLParser(HTMLParser):
+    """Extract visible text while skipping script/style content."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._ignored_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in {"script", "style"}:
+            self._ignored_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag.lower() in {"script", "style"} and self._ignored_depth > 0:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data):
+        if self._ignored_depth == 0 and data and not data.isspace():
+            self._chunks.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(self._chunks)
 
 
 async def wait_for_opensearch():
-    """Wait for OpenSearch to be ready with retries"""
-    max_retries = 30
-    retry_delay = 2
+    """Wait for OpenSearch to be ready, delegating to the shared utility."""
+    from utils.opensearch_utils import (
+        wait_for_opensearch as _wait_for_opensearch,
+        OpenSearchNotReadyError,
+    )
 
-    for attempt in range(max_retries):
-        try:
-            await clients.opensearch.ping()
-            logger.info("OpenSearch is ready")
-            await TelemetryClient.send_event(Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED)
-            return
-        except Exception as e:
-            logger.warning(
-                "OpenSearch not ready yet",
-                attempt=attempt + 1,
-                max_retries=max_retries,
-                error=str(e),
-            )
-            if attempt < max_retries - 1:
-                await asyncio.sleep(retry_delay)
-            else:
-                await TelemetryClient.send_event(Category.OPENSEARCH_SETUP, MessageId.ORB_OS_TIMEOUT)
-                raise Exception("OpenSearch failed to become ready")
+    try:
+        await _wait_for_opensearch(clients.opensearch)
+        await TelemetryClient.send_event(
+            Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED
+        )
+    except OpenSearchNotReadyError:
+        await TelemetryClient.send_event(
+            Category.OPENSEARCH_SETUP, MessageId.ORB_OS_TIMEOUT
+        )
+        raise
 
 
 async def configure_alerting_security():
@@ -170,7 +196,9 @@ async def _ensure_opensearch_index():
                 "dimension"
             ],
         )
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
+        await TelemetryClient.send_event(
+            Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED
+        )
 
     except Exception as e:
         logger.error(
@@ -178,7 +206,9 @@ async def _ensure_opensearch_index():
             error=str(e),
             index_name=get_index_name(),
         )
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATE_FAIL)
+        await TelemetryClient.send_event(
+            Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATE_FAIL
+        )
         # Don't raise the exception to avoid breaking the initialization
         # The service can still function, document operations might fail later
 
@@ -199,7 +229,7 @@ async def init_index(delete_existing: bool = False):
         dynamic_index_body = await create_dynamic_index_body(
             embedding_model,
             provider=embedding_provider,
-            endpoint=getattr(embedding_provider_config, "endpoint", None)
+            endpoint=getattr(embedding_provider_config, "endpoint", None),
         )
 
         index_name = get_index_name()
@@ -221,14 +251,18 @@ async def init_index(delete_existing: bool = False):
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
-            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
+            await TelemetryClient.send_event(
+                Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED
+            )
         else:
             logger.info(
                 "Index already exists, skipping creation",
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
-            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
+            await TelemetryClient.send_event(
+                Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
+            )
 
         # Create knowledge filters index
         knowledge_filter_index_name = "knowledge_filters"
@@ -249,14 +283,19 @@ async def init_index(delete_existing: bool = False):
             }
         }
 
-        if not await clients.opensearch.indices.exists(index=knowledge_filter_index_name):
+        if not await clients.opensearch.indices.exists(
+            index=knowledge_filter_index_name
+        ):
             await clients.opensearch.indices.create(
                 index=knowledge_filter_index_name, body=knowledge_filter_index_body
             )
             logger.info(
-                "Created knowledge filters index", index_name=knowledge_filter_index_name
+                "Created knowledge filters index",
+                index_name=knowledge_filter_index_name,
             )
-            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_KF_INDEX_CREATED)
+            await TelemetryClient.send_event(
+                Category.OPENSEARCH_INDEX, MessageId.ORB_OS_KF_INDEX_CREATED
+            )
         else:
             logger.info(
                 "Knowledge filters index already exists, skipping creation",
@@ -268,9 +307,7 @@ async def init_index(delete_existing: bool = False):
             await clients.opensearch.indices.create(
                 index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY
             )
-            logger.info(
-                "Created API keys index", index_name=API_KEYS_INDEX_NAME
-            )
+            logger.info("Created API keys index", index_name=API_KEYS_INDEX_NAME)
         else:
             logger.info(
                 "API keys index already exists, skipping creation",
@@ -283,11 +320,13 @@ async def init_index(delete_existing: bool = False):
     except Exception as e:
         error_msg = str(e).lower()
         if "disk usage exceeded" in error_msg or "flood-stage watermark" in error_msg:
-             logger.error("OpenSearch disk usage exceeded flood-stage watermark. Index creation failed.")
-             raise Exception(
-                 "OpenSearch disk space is full (flood-stage watermark exceeded). "
-                 "Please free up disk space on your Docker volume or host machine to continue."
-             ) from e
+            logger.error(
+                "OpenSearch disk usage exceeded flood-stage watermark. Index creation failed."
+            )
+            raise Exception(
+                "OpenSearch disk space is full (flood-stage watermark exceeded). "
+                "Please free up disk space on your Docker volume or host machine to continue."
+            ) from e
         raise e
 
 
@@ -340,7 +379,9 @@ def generate_jwt_keys():
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
             logger.error("Failed to generate RSA keys", error=str(e))
-            TelemetryClient.send_event_sync(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_JWT_KEY_FAIL)
+            TelemetryClient.send_event_sync(
+                Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_JWT_KEY_FAIL
+            )
             raise
     else:
         # Ensure correct permissions on existing keys
@@ -367,47 +408,112 @@ def _get_documents_dir():
         return path
 
 
-async def ingest_default_documents_when_ready(services):
-    """Scan the local documents folder and ingest files like a non-auth upload."""
+def _should_use_url_default_docs_ingest() -> bool:
+    """Return whether default docs ingestion should use URL crawling."""
+    return DEFAULT_DOCS_INGEST_SOURCE == "url" and bool(DEFAULT_DOCS_URL)
+
+
+async def ingest_openrag_docs_when_ready(
+    document_service, task_service, langflow_file_service, session_manager
+):
+    """Ingest OpenRAG docs during onboarding."""
+    use_url_ingest = _should_use_url_default_docs_ingest()
+    if use_url_ingest:
+        try:
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
+            )
+            if DISABLE_INGEST_WITH_LANGFLOW:
+                await _ingest_default_documents_url(
+                    document_service=document_service,
+                    docs_url=DEFAULT_DOCS_URL,
+                    crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
+                )
+            else:
+                logger.info(
+                    "Ingesting default documents using Langflow",
+                    docs_url=DEFAULT_DOCS_URL,
+                )
+                await _ingest_default_documents_url_langflow(
+                    langflow_file_service=langflow_file_service,
+                    session_manager=session_manager,
+                    task_service=task_service,
+                    docs_url=DEFAULT_DOCS_URL,
+                    crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
+                )
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_COMPLETE
+            )
+        except Exception as e:
+            logger.error("Default URL documents ingestion failed", error=str(e))
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_FAILED
+            )
+
+
+async def ingest_default_documents_when_ready(
+    document_service, task_service, langflow_file_service, session_manager
+):
+    """Ingest default OpenRAG docs during onboarding."""
     try:
         logger.info(
             "Ingesting default documents when ready",
             disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+            ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
         )
-        await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START)
+        await TelemetryClient.send_event(
+            Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
+        )
+        await ingest_openrag_docs_when_ready(
+            document_service, task_service, langflow_file_service, session_manager
+        )
+
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
-            raise FileNotFoundError(f"Default documents directory not found: {base_dir}")
+            raise FileNotFoundError(
+                f"Default documents directory not found: {base_dir}"
+            )
 
-        # Collect files recursively, excluding warmup files
+        excluded_files = set(EXCLUDED_INGESTION_FILES)
+        if _should_use_url_default_docs_ingest():
+            excluded_files.update(URL_INGEST_EXCLUDED_INGESTION_FILES)
+
+        # Collect files recursively, excluding warmup files and URL-ingested docs
         file_paths = [
             os.path.join(root, fn)
             for root, _, files in os.walk(base_dir)
             for fn in files
-            if fn not in EXCLUDED_INGESTION_FILES
+            if fn not in excluded_files
         ]
 
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
         if DISABLE_INGEST_WITH_LANGFLOW:
-            await _ingest_default_documents_openrag(services, file_paths)
+            await _ingest_default_documents_openrag(
+                document_service, task_service, file_paths
+            )
         else:
-            await _ingest_default_documents_langflow(services, file_paths)
+            await _ingest_default_documents_langflow(
+                langflow_file_service, session_manager, task_service, file_paths
+            )
 
-        await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE)
+        await TelemetryClient.send_event(
+            Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE
+        )
 
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
-        await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_FAILED)
+        await TelemetryClient.send_event(
+            Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_FAILED
+        )
         raise
 
 
-async def _ingest_default_documents_langflow(services, file_paths):
+async def _ingest_default_documents_langflow(
+    langflow_file_service, session_manager, task_service, file_paths
+):
     """Ingest default documents using Langflow upload-ingest-delete pipeline."""
-    langflow_file_service = services["langflow_file_service"]
-    session_manager = services["session_manager"]
-    task_service = services["task_service"]
 
     logger.info(
         "Using Langflow ingestion pipeline for default documents",
@@ -468,7 +574,450 @@ async def _ingest_default_documents_langflow(services, file_paths):
         file_count=len(file_paths),
     )
 
-async def health_check(request):
+
+async def _ingest_default_documents_url_langflow(
+    langflow_file_service,
+    session_manager,
+    task_service,
+    docs_url: str,
+    crawl_depth: int,
+):
+    """Ingest default URL docs using the Langflow URL ingestion pipeline."""
+    if not docs_url:
+        raise ValueError("DEFAULT_DOCS_URL is not configured")
+
+    logger.info(
+        "Using Langflow URL ingestion pipeline for default documents",
+        docs_url=docs_url,
+        crawl_depth=crawl_depth,
+    )
+
+    from session_manager import AnonymousUser
+
+    anonymous_user = AnonymousUser()
+    effective_jwt = None
+
+    if session_manager:
+        session_manager.get_user_opensearch_client(
+            anonymous_user.user_id, effective_jwt
+        )
+        if hasattr(session_manager, "_anonymous_jwt"):
+            effective_jwt = session_manager._anonymous_jwt
+
+    default_tweaks = {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+            "docs_metadata": [
+                {"key": "owner", "value": None},
+                {"key": "owner_name", "value": anonymous_user.name},
+                {"key": "owner_email", "value": anonymous_user.email},
+                {"key": "connector_type", "value": "openrag_docs"},
+                {"key": "is_sample_data", "value": "true"},
+            ]
+        }
+    }
+
+    task_id = await task_service.create_langflow_url_upload_task(
+        owner_user_id=None,
+        docs_url=docs_url,
+        crawl_depth=crawl_depth,
+        langflow_file_service=langflow_file_service,
+        session_manager=session_manager,
+        jwt_token=effective_jwt,
+        owner_name=anonymous_user.name,
+        owner_email=anonymous_user.email,
+        connector_type="openrag_docs",
+        tweaks=default_tweaks,
+    )
+
+    logger.info(
+        "Started Langflow URL ingestion task for default documents",
+        task_id=task_id,
+        docs_url=docs_url,
+    )
+
+
+async def _ingest_default_documents_url(
+    document_service,
+    docs_url: str,
+    crawl_depth: int,
+):
+    """Ingest default docs from URL using OpenRAG ingestion logic (no Langflow)."""
+    if not docs_url:
+        raise ValueError("DEFAULT_DOCS_URL is not configured")
+
+    logger.info(
+        "Running default URL docs ingestion with OpenRAG processor",
+        docs_url=docs_url,
+        crawl_depth=crawl_depth,
+    )
+    temp_file_path = await _materialize_default_docs_url_as_text_file(
+        docs_url=docs_url,
+        crawl_depth=crawl_depth,
+    )
+    try:
+        from models.processors import DocumentFileProcessor
+        from utils.hash_utils import hash_id
+
+        processor = DocumentFileProcessor(
+            document_service,
+            owner_user_id=None,
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
+            is_sample_data=True,
+            connector_type="system_default",
+        )
+        await processor.process_document_standard(
+            file_path=temp_file_path,
+            file_hash=hash_id(temp_file_path),
+            owner_user_id=None,
+            original_filename="openrag-url-default.txt",
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
+            file_size=os.path.getsize(temp_file_path),
+            connector_type="system_default",
+            is_sample_data=True,
+        )
+    finally:
+        try:
+            os.unlink(temp_file_path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to clean temporary default URL docs file",
+                path=temp_file_path,
+                error=str(e),
+            )
+
+
+async def _materialize_default_docs_url_as_text_file(
+    docs_url: str,
+    crawl_depth: int,
+) -> str:
+    """Fetch URL content and write a temporary text file for OpenRAG ingestion."""
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        response = await client.get(docs_url)
+        response.raise_for_status()
+        raw_html = response.text
+
+    title_match = re.search(
+        r"<title[^>]*>(.*?)</title\s*>",
+        raw_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
+
+    text_parser = _VisibleTextHTMLParser()
+    text_parser.feed(raw_html)
+    text_parser.close()
+    normalized_text = re.sub(r"\s+", " ", text_parser.get_text()).strip()
+
+    content = (
+        f"{title}\n\n"
+        f"Source URL: {docs_url}\n"
+        f"Crawl depth: {crawl_depth}\n\n"
+        f"{normalized_text}\n"
+    )
+
+    temp_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".txt",
+        prefix="openrag-url-default-",
+        delete=False,
+        encoding="utf-8",
+    )
+    with temp_file:
+        temp_file.write(content)
+    return temp_file.name
+
+
+async def _delete_existing_default_docs(session_manager, connector_type: str):
+    """Delete previously ingested default OpenRAG docs before reingestion."""
+    from session_manager import AnonymousUser
+
+    if session_manager is None:
+        logger.warning(
+            "Session manager unavailable; skipping default docs cleanup before reingestion"
+        )
+        return
+
+    anonymous_user = AnonymousUser()
+    effective_jwt = None
+    if session_manager:
+        session_manager.get_user_opensearch_client(
+            anonymous_user.user_id, effective_jwt
+        )
+        if hasattr(session_manager, "_anonymous_jwt"):
+            effective_jwt = session_manager._anonymous_jwt
+
+    opensearch_client = session_manager.get_user_opensearch_client(
+        anonymous_user.user_id, effective_jwt
+    )
+    delete_query = {
+        "query": {
+            "bool": {
+                "should": [
+                    # URL-based default docs are ingested as system_default and
+                    # owned by the anonymous onboarding user.
+                    {
+                        "bool": {
+                            "must": [
+                                {"term": {"connector_type": connector_type}},
+                                {"term": {"owner_email": anonymous_user.email}},
+                            ]
+                        }
+                    },
+                    # Legacy file-based default docs were ingested as local and
+                    # marked with is_sample_data=true.
+                    {
+                        "bool": {
+                            "must": [
+                                {"term": {"connector_type": "local"}},
+                                {"term": {"is_sample_data": "true"}},
+                            ]
+                        }
+                    },
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+    }
+    result = await opensearch_client.delete_by_query(
+        index=get_index_name(),
+        body=delete_query,
+        conflicts="proceed",
+    )
+    logger.info(
+        "Deleted existing default OpenRAG docs before reingestion",
+        deleted_chunks=result.get("deleted", 0),
+    )
+
+
+async def _reingest_default_docs_on_upgrade_if_needed(
+    document_service,
+    task_service,
+    langflow_file_service,
+    session_manager,
+):
+    """Reingest default OpenRAG docs once when app version changes."""
+    config = get_openrag_config()
+
+    previous_version = config.onboarding.openrag_docs_ingested_version
+    current_version = OPENRAG_VERSION
+    should_reingest = bool(previous_version) and previous_version != current_version
+
+    # Legacy installs may not have a stored docs ingestion version.
+    # Use the presence of the OpenRAG docs filter as the signal that docs were
+    # already onboarded, independent of whether config.edited is set.
+    if not previous_version and config.onboarding.openrag_docs_filter_id:
+        should_reingest = True
+
+    if not should_reingest:
+        return False
+
+    logger.info(
+        "Detected OpenRAG upgrade; reingesting default docs",
+        previous_version=previous_version,
+        current_version=current_version,
+    )
+    await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+    await ingest_openrag_docs_when_ready(
+        document_service,
+        task_service,
+        langflow_file_service,
+        session_manager,
+    )
+    config.onboarding.openrag_docs_ingested_version = current_version
+    if _should_use_url_default_docs_ingest():
+        # Refresh signature metadata after upgrade reingestion so startup
+        # signature checks don't trigger an immediate duplicate ingest.
+        config.onboarding.openrag_docs_remote_signature = (
+            await _get_remote_docs_signature(DEFAULT_DOCS_URL)
+        )
+    else:
+        config.onboarding.openrag_docs_remote_signature = None
+    if not config_manager.save_config_file(config):
+        logger.warning(
+            "Default docs were reingested but failed to persist metadata",
+            current_version=current_version,
+            signature=config.onboarding.openrag_docs_remote_signature,
+        )
+    return True
+
+
+async def _get_remote_docs_signature(docs_url: str):
+    """Get a signature for remote docs to detect content updates."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            head_response = await client.head(docs_url)
+            if head_response.status_code >= 400:
+                get_response = await client.get(docs_url)
+                if get_response.status_code >= 400:
+                    logger.warning(
+                        "Failed to fetch remote docs signature",
+                        docs_url=docs_url,
+                        status_code=get_response.status_code,
+                    )
+                    return None
+                return hashlib.sha256(get_response.text.encode("utf-8")).hexdigest()
+
+            etag = (head_response.headers.get("etag") or "").strip()
+            last_modified = (head_response.headers.get("last-modified") or "").strip()
+            if etag:
+                # Prefer ETag when available: it is typically the strongest
+                # cache validator and stays stable if extra cache headers
+                # appear/disappear without content changes.
+                return f"etag={etag}"
+            if last_modified:
+                return f"last_modified={last_modified}"
+
+            # HEAD has no body. If cache headers are missing, fetch the page body.
+            get_response = await client.get(docs_url)
+            if get_response.status_code >= 400:
+                logger.warning(
+                    "Failed to fetch remote docs signature body fallback",
+                    docs_url=docs_url,
+                    status_code=get_response.status_code,
+                )
+                return None
+            return hashlib.sha256(get_response.text.encode("utf-8")).hexdigest()
+    except Exception as e:
+        logger.warning(
+            "Unable to retrieve remote docs signature",
+            docs_url=docs_url,
+            error=str(e),
+        )
+        return None
+
+
+async def refresh_default_openrag_docs(
+    document_service,
+    task_service,
+    langflow_file_service,
+    session_manager,
+    force: bool = False,
+    reason: str = "startup",
+):
+    """Refresh OpenRAG docs if remote content changed or when forced."""
+    await TelemetryClient.send_event(
+        Category.DOCUMENT_INGESTION,
+        MessageId.ORB_DOC_REFRESH_START,
+        metadata={"reason": reason, "force": force},
+    )
+    try:
+        if not _should_use_url_default_docs_ingest():
+            logger.info(
+                "Skipping OpenRAG docs refresh: URL ingestion is not active",
+                ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
+                disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+                has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
+                has_docs_url=bool(DEFAULT_DOCS_URL),
+            )
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION,
+                MessageId.ORB_DOC_REFRESH_SKIPPED,
+                metadata={
+                    "reason": reason,
+                    "force": force,
+                    "skip_reason": "url_ingestion_inactive",
+                },
+            )
+            return False
+
+        config = get_openrag_config()
+        if not config.edited:
+            logger.info("Skipping OpenRAG docs refresh: onboarding not completed")
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION,
+                MessageId.ORB_DOC_REFRESH_SKIPPED,
+                metadata={
+                    "reason": reason,
+                    "force": force,
+                    "skip_reason": "onboarding_not_completed",
+                },
+            )
+            return False
+
+        signature = await _get_remote_docs_signature(DEFAULT_DOCS_URL)
+        if not signature and not force:
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION,
+                MessageId.ORB_DOC_REFRESH_SKIPPED,
+                metadata={
+                    "reason": reason,
+                    "force": force,
+                    "skip_reason": "signature_unavailable",
+                },
+            )
+            return False
+
+        previous_signature = config.onboarding.openrag_docs_remote_signature
+        should_refresh = force or (
+            signature is not None and signature != previous_signature
+        )
+        if not should_refresh:
+            logger.info(
+                "OpenRAG docs refresh skipped: remote signature unchanged",
+                signature=signature,
+            )
+            await TelemetryClient.send_event(
+                Category.DOCUMENT_INGESTION,
+                MessageId.ORB_DOC_REFRESH_SKIPPED,
+                metadata={
+                    "reason": reason,
+                    "force": force,
+                    "skip_reason": "signature_unchanged",
+                },
+            )
+            return False
+
+        logger.info(
+            "Refreshing default OpenRAG docs",
+            reason=reason,
+            force=force,
+            previous_signature=previous_signature,
+            new_signature=signature,
+        )
+        await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+        await ingest_openrag_docs_when_ready(
+            document_service,
+            task_service,
+            langflow_file_service,
+            session_manager,
+        )
+        config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
+        # Keep docs version/signature metadata consistent after a refresh.
+        # If signature retrieval failed, persist None explicitly instead of
+        # leaving a stale previous signature value.
+        config.onboarding.openrag_docs_remote_signature = signature
+        if not config_manager.save_config_file(config):
+            logger.warning(
+                "OpenRAG docs refreshed but failed to persist metadata",
+                version=config.onboarding.openrag_docs_ingested_version,
+                signature=config.onboarding.openrag_docs_remote_signature,
+            )
+        await TelemetryClient.send_event(
+            Category.DOCUMENT_INGESTION,
+            MessageId.ORB_DOC_REFRESH_COMPLETE,
+            metadata={"reason": reason, "force": force},
+        )
+        return True
+    except Exception as e:
+        await TelemetryClient.send_event(
+            Category.DOCUMENT_INGESTION,
+            MessageId.ORB_DOC_REFRESH_FAILED,
+            metadata={
+                "reason": reason,
+                "force": force,
+                "error_type": type(e).__name__,
+            },
+        )
+        raise
+
+
+async def health_check(request: Request):
     """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
     return JSONResponse({"status": "ok"}, status_code=200)
 
@@ -492,7 +1041,10 @@ async def opensearch_health_ready(request):
             status_code=503,
         )
 
-async def _ingest_default_documents_openrag(services, file_paths):
+
+async def _ingest_default_documents_openrag(
+    document_service, task_service, file_paths, connector_type: str = "local"
+):
     """Ingest default documents using traditional OpenRAG processor."""
     logger.info(
         "Using traditional OpenRAG ingestion for default documents",
@@ -503,17 +1055,16 @@ async def _ingest_default_documents_openrag(services, file_paths):
     from models.processors import DocumentFileProcessor
 
     processor = DocumentFileProcessor(
-        services["document_service"],
+        document_service,
         owner_user_id=None,
         jwt_token=None,
         owner_name=None,
         owner_email=None,
         is_sample_data=True,  # Mark as sample data
+        connector_type=connector_type,
     )
 
-    task_id = await services["task_service"].create_custom_task(
-        "anonymous", file_paths, processor
-    )
+    task_id = await task_service.create_custom_task("anonymous", file_paths, processor)
     logger.info(
         "Started traditional OpenRAG ingestion task",
         task_id=task_id,
@@ -540,7 +1091,8 @@ async def _update_mcp_servers_with_provider_credentials(services):
         # Build global vars with provider credentials using utility function
         from utils.langflow_headers import build_mcp_global_vars_from_config
 
-        global_vars = build_mcp_global_vars_from_config(config)
+        flows_service = services.get("flows_service")
+        global_vars = await build_mcp_global_vars_from_config(config, flows_service=flows_service)
 
         # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
@@ -554,26 +1106,41 @@ async def _update_mcp_servers_with_provider_credentials(services):
             # Add anonymous user details
             anonymous_user = AnonymousUser()
             global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
+            global_vars["OWNER_NAME"] = (
+                f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
+            )
             global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
 
-            logger.info("Added anonymous JWT and user details to MCP servers for no-auth mode")
+            logger.info(
+                "Added anonymous JWT and user details to MCP servers for no-auth mode"
+            )
 
         if global_vars:
-            result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
-            logger.info("Updated MCP servers with provider credentials at startup", **result)
+            result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(
+                global_vars
+            )
+            logger.info(
+                "Updated MCP servers with provider credentials at startup", **result
+            )
         else:
-            logger.debug("No provider credentials configured, skipping MCP server update")
+            logger.debug(
+                "No provider credentials configured, skipping MCP server update"
+            )
 
     except Exception as e:
-        logger.warning("Failed to update MCP servers with provider credentials at startup", error=str(e))
+        logger.warning(
+            "Failed to update MCP servers with provider credentials at startup",
+            error=str(e),
+        )
         # Don't fail startup if MCP update fails
 
 
 async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
-    await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT)
+    await TelemetryClient.send_event(
+        Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT
+    )
     # Only initialize basic OpenSearch connection, not the index
     # Index will be created after onboarding when we know the embedding model
     await wait_for_opensearch()
@@ -611,6 +1178,31 @@ async def startup_tasks(services):
     # Configure alerting security
     await configure_alerting_security()
 
+    # Reingest bundled OpenRAG docs once after application upgrade.
+    upgrade_reingested = False
+    try:
+        upgrade_reingested = await _reingest_default_docs_on_upgrade_if_needed(
+            services["document_service"],
+            services["task_service"],
+            services["langflow_file_service"],
+            services["session_manager"],
+        )
+    except Exception as e:
+        logger.warning("Default docs reingestion on upgrade failed", error=str(e))
+
+    if FETCH_OPENRAG_DOCS_AT_STARTUP and not upgrade_reingested:
+        try:
+            await refresh_default_openrag_docs(
+                services["document_service"],
+                services["task_service"],
+                services["langflow_file_service"],
+                services["session_manager"],
+                force=False,
+                reason="startup",
+            )
+        except Exception as e:
+            logger.warning("OpenRAG docs startup refresh failed", error=str(e))
+
     # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)
 
@@ -626,24 +1218,37 @@ async def startup_tasks(services):
                 logger.info(
                     f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
                 )
-                await TelemetryClient.send_event(Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_DETECTED)
+                await TelemetryClient.send_event(
+                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_DETECTED
+                )
                 from api.settings import reapply_all_settings
+
                 await reapply_all_settings(session_manager=services["session_manager"])
-                logger.info("Successfully reapplied settings after detecting flow resets")
-                await TelemetryClient.send_event(Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_SETTINGS_REAPPLIED)
+                logger.info(
+                    "Successfully reapplied settings after detecting flow resets"
+                )
+                await TelemetryClient.send_event(
+                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_SETTINGS_REAPPLIED
+                )
             else:
-                logger.info("No flows detected as reset, skipping settings reapplication")
+                logger.info(
+                    "No flows detected as reset, skipping settings reapplication"
+                )
         else:
             logger.debug("Configuration not yet edited, skipping flow reset check")
     except Exception as e:
         logger.error(f"Failed to check flows reset or reapply settings: {str(e)}")
-        await TelemetryClient.send_event(Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL)
+        await TelemetryClient.send_event(
+            Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
+        )
         # Don't fail startup if this check fails
 
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
-    await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
+    await TelemetryClient.send_event(
+        Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
+    )
     # Generate JWT keys if they don't exist
     generate_jwt_keys()
 
@@ -652,7 +1257,9 @@ async def initialize_services():
         await clients.initialize()
     except Exception as e:
         logger.error("Failed to initialize clients", error=str(e))
-        await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_OS_CLIENT_FAIL)
+        await TelemetryClient.send_event(
+            Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_OS_CLIENT_FAIL
+        )
         raise
 
     # Initialize session manager
@@ -661,17 +1268,13 @@ async def initialize_services():
     # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
-    task_service = TaskService(document_service, process_pool, ingestion_timeout=INGESTION_TIMEOUT)
-    chat_service = ChatService()
+    task_service = TaskService(document_service, ingestion_timeout=INGESTION_TIMEOUT)
     flows_service = FlowsService()
+    chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
-
-    # Set process pool for document service
-    document_service.process_pool = process_pool
-
-    # Initialize connector service
+    langflow_file_service = LangflowFileService(flows_service=flows_service)
 
     # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
@@ -679,8 +1282,7 @@ async def initialize_services():
         session_manager=session_manager,
     )
     openrag_connector_service = ConnectorService(
-        patched_async_client=clients,  # Pass the clients object itself
-        process_pool=process_pool,
+        patched_async_client=clients,
         embed_model=get_embedding_model(),
         index_name=get_index_name(),
         task_service=task_service,
@@ -697,6 +1299,7 @@ async def initialize_services():
     auth_service = AuthService(
         session_manager,
         connector_service,
+        flows_service,
         langflow_mcp_service=LangflowMCPService(),
     )
 
@@ -716,13 +1319,17 @@ async def initialize_services():
             logger.warning(
                 "Failed to load persisted connections on startup", error=str(e)
             )
-            await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED)
+            await TelemetryClient.send_event(
+                Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED
+            )
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
-    await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS)
+    await TelemetryClient.send_event(
+        Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS
+    )
 
-    langflow_file_service = LangflowFileService()
+
 
     # API Key service for public API authentication
     api_key_service = APIKeyService(session_manager)
@@ -745,861 +1352,437 @@ async def initialize_services():
 
 
 async def create_app():
-    """Create and configure the Starlette application"""
+    """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    # Create route handlers with service dependencies injected
-    routes = [
-        # Langflow Files endpoints
-        Route(
-            "/langflow/files/upload",
-            optional_auth(services["session_manager"])(
-                partial(
-                    langflow_files.upload_user_file,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/langflow/ingest",
-            require_auth(services["session_manager"])(
-                partial(
-                    langflow_files.run_ingestion,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/langflow/files",
-            require_auth(services["session_manager"])(
-                partial(
-                    langflow_files.delete_user_files,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        Route(
-            "/langflow/upload_ingest",
-            require_auth(services["session_manager"])(
-                partial(
-                    langflow_files.upload_and_ingest_user_file,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                    task_service=services["task_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/upload_context",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload_context,
-                    document_service=services["document_service"],
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/upload_path",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload_path,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/upload_options",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload_options, session_manager=services["session_manager"]
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/upload_bucket",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload_bucket,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/tasks/{task_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    tasks.task_status,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/tasks",
-            require_auth(services["session_manager"])(
-                partial(
-                    tasks.all_tasks,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/tasks/{task_id}/cancel",
-            require_auth(services["session_manager"])(
-                partial(
-                    tasks.cancel_task,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Search endpoint
-        Route(
-            "/search",
-            require_auth(services["session_manager"])(
-                partial(
-                    search.search,
-                    search_service=services["search_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Knowledge Filter endpoints
-        Route(
-            "/knowledge-filter",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.create_knowledge_filter,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/knowledge-filter/search",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.search_knowledge_filters,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/knowledge-filter/{filter_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.get_knowledge_filter,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/knowledge-filter/{filter_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.update_knowledge_filter,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["PUT"],
-        ),
-        Route(
-            "/knowledge-filter/{filter_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.delete_knowledge_filter,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # Knowledge Filter Subscription endpoints
-        Route(
-            "/knowledge-filter/{filter_id}/subscribe",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.subscribe_to_knowledge_filter,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    monitor_service=services["monitor_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/knowledge-filter/{filter_id}/subscriptions",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.list_knowledge_filter_subscriptions,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/knowledge-filter/{filter_id}/subscribe/{subscription_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    knowledge_filter.cancel_knowledge_filter_subscription,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    monitor_service=services["monitor_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # Knowledge Filter Webhook endpoint (no auth required - called by OpenSearch)
-        Route(
-            "/knowledge-filter/{filter_id}/webhook/{subscription_id}",
-            partial(
-                knowledge_filter.knowledge_filter_webhook,
-                knowledge_filter_service=services["knowledge_filter_service"],
-                session_manager=services["session_manager"],
-            ),
-            methods=["POST"],
-        ),
-        # Chat endpoints
-        Route(
-            "/chat",
-            require_auth(services["session_manager"])(
-                partial(
-                    chat.chat_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/langflow",
-            require_auth(services["session_manager"])(
-                partial(
-                    chat.langflow_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Chat history endpoints
-        Route(
-            "/chat/history",
-            require_auth(services["session_manager"])(
-                partial(
-                    chat.chat_history_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/langflow/history",
-            require_auth(services["session_manager"])(
-                partial(
-                    chat.langflow_history_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        # Session deletion endpoint
-        Route(
-            "/sessions/{session_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    chat.delete_session_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # Authentication endpoints
-        Route(
-            "/auth/init",
-            optional_auth(services["session_manager"])(
-                partial(
-                    auth.auth_init,
-                    auth_service=services["auth_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/auth/callback",
-            partial(
-                auth.auth_callback,
-                auth_service=services["auth_service"],
-                session_manager=services["session_manager"],
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/auth/me",
-            optional_auth(services["session_manager"])(
-                partial(
-                    auth.auth_me,
-                    auth_service=services["auth_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/auth/logout",
-            require_auth(services["session_manager"])(
-                partial(
-                    auth.auth_logout,
-                    auth_service=services["auth_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Connector endpoints
-        Route(
-            "/connectors",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.list_connectors,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/connectors/{connector_type}/sync",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.connector_sync,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/connectors/sync-all",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.sync_all_connectors,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/connectors/{connector_type}/status",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.connector_status,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/connectors/{connector_type}/token",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.connector_token,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/connectors/{connector_type}/disconnect",
-            require_auth(services["session_manager"])(
-                partial(
-                    connectors.connector_disconnect,
-                    connector_service=services["connector_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        Route(
-            "/connectors/{connector_type}/webhook",
-            partial(
-                connectors.connector_webhook,
-                connector_service=services["connector_service"],
-                session_manager=services["session_manager"],
-            ),
-            methods=["POST", "GET"],
-        ),
-        # Document endpoints
-        Route(
-            "/documents/check-filename",
-            require_auth(services["session_manager"])(
-                partial(
-                    documents.check_filename_exists,
-                    document_service=services["document_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/documents/delete-by-filename",
-            require_auth(services["session_manager"])(
-                partial(
-                    documents.delete_documents_by_filename,
-                    document_service=services["document_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # OIDC endpoints
-        Route(
-            "/.well-known/openid-configuration",
-            partial(oidc.oidc_discovery, session_manager=services["session_manager"]),
-            methods=["GET"],
-        ),
-        Route(
-            "/auth/jwks",
-            partial(oidc.jwks_endpoint, session_manager=services["session_manager"]),
-            methods=["GET"],
-        ),
-        Route(
-            "/auth/introspect",
-            partial(
-                oidc.token_introspection, session_manager=services["session_manager"]
-            ),
-            methods=["POST"],
-        ),
-        # Settings endpoints
-        Route(
-            "/settings",
-            require_auth(services["session_manager"])(
-                partial(
-                    settings.get_settings, session_manager=services["session_manager"]
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/settings",
-            require_auth(services["session_manager"])(
-                partial(
-                    settings.update_settings,
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/onboarding/state",
-            require_auth(services["session_manager"])(
-                settings.update_onboarding_state
-            ),
-            methods=["POST"],
-        ),
-        # Provider health check endpoint
-        Route(
-            "/provider/health",
-            require_auth(services["session_manager"])(
-                provider_health.check_provider_health
-            ),
-            methods=["GET"],
-        ),
-        # Health check endpoints
-        Route(
-            "/health",
-            health_check,
-            methods=["GET"],
-        ),
-        Route(
-            "/search/health",
-            opensearch_health_ready,
-            methods=["GET"],
-        ),
-        # Models endpoints
-        Route(
-            "/models/openai",
-            require_auth(services["session_manager"])(
-                partial(
-                    models.get_openai_models,
-                    models_service=services["models_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/models/anthropic",
-            require_auth(services["session_manager"])(
-                partial(
-                    models.get_anthropic_models,
-                    models_service=services["models_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/models/ollama",
-            require_auth(services["session_manager"])(
-                partial(
-                    models.get_ollama_models,
-                    models_service=services["models_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/models/ibm",
-            require_auth(services["session_manager"])(
-                partial(
-                    models.get_ibm_models,
-                    models_service=services["models_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Onboarding endpoint
-        Route(
-            "/onboarding",
-            require_auth(services["session_manager"])(
-                partial(
-                    settings.onboarding,
-                    flows_service=services["flows_service"],
-                    session_manager=services["session_manager"]
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Onboarding rollback endpoint
-        Route(
-            "/onboarding/rollback",
-            require_auth(services["session_manager"])(
-                partial(
-                    settings.rollback_onboarding,
-                    session_manager=services["session_manager"],
-                    task_service=services["task_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Docling preset update endpoint
-        Route(
-            "/settings/docling-preset",
-            require_auth(services["session_manager"])(
-                partial(
-                    settings.update_docling_preset,
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["PATCH"],
-        ),
-        Route(
-            "/nudges",
-            require_auth(services["session_manager"])(
-                partial(
-                    nudges.nudges_from_kb_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/nudges/{chat_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    nudges.nudges_from_chat_id_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/reset-flow/{flow_type}",
-            require_auth(services["session_manager"])(
-                partial(
-                    flows.reset_flow_endpoint,
-                    chat_service=services["flows_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/router/upload_ingest",
-            require_auth(services["session_manager"])(
-                partial(
-                    router.upload_ingest_router,
-                    document_service=services["document_service"],
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                    task_service=services["task_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Docling service proxy
-        Route(
-            "/docling/health",
-            partial(docling.health),
-            methods=["GET"],
-        ),
-        # ===== API Key Management Endpoints (JWT auth for UI) =====
-        Route(
-            "/keys",
-            require_auth(services["session_manager"])(
-                partial(
-                    api_keys.list_keys_endpoint,
-                    api_key_service=services["api_key_service"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/keys",
-            require_auth(services["session_manager"])(
-                partial(
-                    api_keys.create_key_endpoint,
-                    api_key_service=services["api_key_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/keys/{key_id}",
-            require_auth(services["session_manager"])(
-                partial(
-                    api_keys.revoke_key_endpoint,
-                    api_key_service=services["api_key_service"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # ===== Public API v1 Endpoints (API Key auth) =====
-        # Chat endpoints
-        Route(
-            "/v1/chat",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_chat.chat_create_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/v1/chat",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_chat.chat_list_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/v1/chat/{chat_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_chat.chat_get_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/v1/chat/{chat_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_chat.chat_delete_endpoint,
-                    chat_service=services["chat_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # Search endpoint
-        Route(
-            "/v1/search",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_search.search_endpoint,
-                    search_service=services["search_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Documents endpoints
-        Route(
-            "/v1/documents/ingest",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_documents.ingest_endpoint,
-                    document_service=services["document_service"],
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                    langflow_file_service=services["langflow_file_service"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/v1/tasks/{task_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_documents.task_status_endpoint,
-                    task_service=services["task_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/v1/documents",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_documents.delete_document_endpoint,
-                    document_service=services["document_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-        # Settings endpoints
-        Route(
-            "/v1/settings",
-            require_api_key(services["api_key_service"])(
-                partial(v1_settings.get_settings_endpoint)
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/v1/settings",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_settings.update_settings_endpoint,
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/v1/models/{provider}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_models.list_models_endpoint,
-                    models_service=services["models_service"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        # Knowledge filters endpoints
-        Route(
-            "/v1/knowledge-filters",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_knowledge_filters.create_endpoint,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/v1/knowledge-filters/search",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_knowledge_filters.search_endpoint,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/v1/knowledge-filters/{filter_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_knowledge_filters.get_endpoint,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/v1/knowledge-filters/{filter_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_knowledge_filters.update_endpoint,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["PUT"],
-        ),
-        Route(
-            "/v1/knowledge-filters/{filter_id}",
-            require_api_key(services["api_key_service"])(
-                partial(
-                    v1_knowledge_filters.delete_endpoint,
-                    knowledge_filter_service=services["knowledge_filter_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["DELETE"],
-        ),
-    ]
-
-    app = Starlette(debug=True, routes=routes)
+    app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
+
+    # Register route handlers — auth and service injection done via FastAPI Depends() in each handler
+
+    # Langflow Files endpoints
+    app.add_api_route(
+        "/langflow/files/upload",
+        langflow_files.upload_user_file,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/langflow/ingest",
+        langflow_files.run_ingestion,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/langflow/files",
+        langflow_files.delete_user_files,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/langflow/upload_ingest",
+        langflow_files.upload_and_ingest_user_file,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Upload endpoints
+    app.add_api_route(
+        "/upload_context", upload.upload_context, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/upload_path", upload.upload_path, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/upload_options", upload.upload_options, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/upload_bucket", upload.upload_bucket, methods=["POST"], tags=["internal"]
+    )
+
+    # Task endpoints
+    app.add_api_route(
+        "/tasks/{task_id}", tasks.task_status, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route("/tasks", tasks.all_tasks, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/{task_id}/cancel",
+        tasks.cancel_task,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Search endpoint
+    app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
+
+    # Knowledge Filter endpoints
+    app.add_api_route(
+        "/knowledge-filter",
+        knowledge_filter.create_knowledge_filter,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/search",
+        knowledge_filter.search_knowledge_filters,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}",
+        knowledge_filter.get_knowledge_filter,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}",
+        knowledge_filter.update_knowledge_filter,
+        methods=["PUT"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}",
+        knowledge_filter.delete_knowledge_filter,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+
+    # Knowledge Filter Subscription endpoints
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}/subscribe",
+        knowledge_filter.subscribe_to_knowledge_filter,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}/subscriptions",
+        knowledge_filter.list_knowledge_filter_subscriptions,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}/subscribe/{subscription_id}",
+        knowledge_filter.cancel_knowledge_filter_subscription,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+
+    # Knowledge Filter Webhook endpoint (no auth required - called by OpenSearch)
+    app.add_api_route(
+        "/knowledge-filter/{filter_id}/webhook/{subscription_id}",
+        knowledge_filter.knowledge_filter_webhook,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Chat endpoints
+    app.add_api_route("/chat", chat.chat_endpoint, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/langflow", chat.langflow_endpoint, methods=["POST"], tags=["internal"]
+    )
+
+    # Chat history endpoints
+    app.add_api_route(
+        "/chat/history", chat.chat_history_endpoint, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/langflow/history",
+        chat.langflow_history_endpoint,
+        methods=["GET"],
+        tags=["internal"],
+    )
+
+    # Session deletion endpoint
+    app.add_api_route(
+        "/sessions/{session_id}",
+        chat.delete_session_endpoint,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+
+    # Authentication endpoints
+    app.add_api_route("/auth/init", auth.auth_init, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/auth/callback", auth.auth_callback, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route("/auth/me", auth.auth_me, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/auth/logout", auth.auth_logout, methods=["POST"], tags=["internal"]
+    )
+
+    # Connector endpoints
+    app.add_api_route("/connectors", connectors.list_connectors, methods=["GET"], tags=["internal"])
+    # IBM COS-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
+    app.add_api_route("/connectors/ibm_cos/defaults", ibm_cos_defaults, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/ibm_cos/configure", ibm_cos_configure, methods=["POST"], tags=["internal"])
+    app.add_api_route("/connectors/ibm_cos/{connection_id}/buckets", ibm_cos_list_buckets, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/ibm_cos/{connection_id}/bucket-status", ibm_cos_bucket_status, methods=["GET"], tags=["internal"])
+    # AWS S3-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
+    app.add_api_route("/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/aws_s3/configure", s3_configure, methods=["POST"], tags=["internal"])
+    app.add_api_route("/connectors/aws_s3/{connection_id}/buckets", s3_list_buckets, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/aws_s3/{connection_id}/bucket-status", s3_bucket_status, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/{connector_type}/sync", connectors.connector_sync, methods=["POST"], tags=["internal"])
+    app.add_api_route("/connectors/sync-all", connectors.sync_all_connectors, methods=["POST"], tags=["internal"])
+    app.add_api_route("/connectors/{connector_type}/status", connectors.connector_status, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/{connector_type}/token", connectors.connector_token, methods=["GET"], tags=["internal"])
+    app.add_api_route("/connectors/{connector_type}/disconnect", connectors.connector_disconnect, methods=["DELETE"], tags=["internal"])
+    app.add_api_route("/connectors/{connector_type}/webhook", connectors.connector_webhook, methods=["POST", "GET"], tags=["internal"])
+
+    # Document endpoints
+    app.add_api_route(
+        "/documents/check-filename",
+        documents.check_filename_exists,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/documents/delete-by-filename",
+        documents.delete_documents_by_filename,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # OIDC endpoints
+    app.add_api_route(
+        "/.well-known/openid-configuration",
+        oidc.oidc_discovery,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/auth/jwks", oidc.jwks_endpoint, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/auth/introspect",
+        oidc.token_introspection,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Settings endpoints
+    app.add_api_route(
+        "/settings", settings.get_settings, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/settings", settings.update_settings, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/onboarding/state",
+        settings.update_onboarding_state,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/openrag-docs/refresh",
+        settings.refresh_openrag_docs,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Provider health check endpoint
+    app.add_api_route(
+        "/provider/health",
+        provider_health.check_provider_health,
+        methods=["GET"],
+        tags=["internal"],
+    )
+
+    # Health check endpoints
+    app.add_api_route("/health", health_check, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/search/health", opensearch_health_ready, methods=["GET"], tags=["internal"]
+    )
+
+    # Models endpoints
+    app.add_api_route(
+        "/models/openai", models.get_openai_models, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/models/anthropic",
+        models.get_anthropic_models,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/models/ollama", models.get_ollama_models, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/models/ibm", models.get_ibm_models, methods=["POST"], tags=["internal"]
+    )
+
+    # Onboarding endpoints
+    app.add_api_route(
+        "/onboarding", settings.onboarding, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/onboarding/rollback",
+        settings.rollback_onboarding,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Docling preset update endpoint
+    app.add_api_route(
+        "/settings/docling-preset",
+        settings.update_docling_preset,
+        methods=["PATCH"],
+        tags=["internal"],
+    )
+
+    # Nudges endpoints
+    app.add_api_route(
+        "/nudges", nudges.nudges_from_kb_endpoint, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/nudges/{chat_id}",
+        nudges.nudges_from_chat_id_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Flow reset endpoint
+    app.add_api_route(
+        "/reset-flow/{flow_type}",
+        flows.reset_flow_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Router upload ingest endpoint
+    app.add_api_route(
+        "/router/upload_ingest",
+        router.upload_ingest_router,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Docling service proxy
+    app.add_api_route(
+        "/docling/health", docling.health, methods=["GET"], tags=["internal"]
+    )
+
+    # ===== API Key Management Endpoints (JWT auth for UI) =====
+    app.add_api_route(
+        "/keys", api_keys.list_keys_endpoint, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/keys", api_keys.create_key_endpoint, methods=["POST"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/keys/{key_id}",
+        api_keys.revoke_key_endpoint,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+
+    # ===== Public API v1 Endpoints (API Key auth) =====
+    # Chat endpoints
+    app.add_api_route(
+        "/v1/chat", v1_chat.chat_create_endpoint, methods=["POST"], tags=["public"]
+    )
+    app.add_api_route(
+        "/v1/chat", v1_chat.chat_list_endpoint, methods=["GET"], tags=["public"]
+    )
+    app.add_api_route(
+        "/v1/chat/{chat_id}",
+        v1_chat.chat_get_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/chat/{chat_id}",
+        v1_chat.chat_delete_endpoint,
+        methods=["DELETE"],
+        tags=["public"],
+    )
+
+    # Search endpoint
+    app.add_api_route(
+        "/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"]
+    )
+
+    # Documents endpoints
+    app.add_api_route(
+        "/v1/documents/ingest",
+        v1_documents.ingest_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/tasks/{task_id}",
+        v1_documents.task_status_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/documents",
+        v1_documents.delete_document_endpoint,
+        methods=["DELETE"],
+        tags=["public"],
+    )
+
+    # Settings endpoints
+    app.add_api_route(
+        "/v1/settings",
+        v1_settings.get_settings_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/settings",
+        v1_settings.update_settings_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+
+    # Models endpoint
+    app.add_api_route(
+        "/v1/models/{provider}",
+        v1_models.list_models_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+
+    # Knowledge filters endpoints
+    app.add_api_route(
+        "/v1/knowledge-filters",
+        v1_knowledge_filters.create_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/knowledge-filters/search",
+        v1_knowledge_filters.search_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/knowledge-filters/{filter_id}",
+        v1_knowledge_filters.get_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/knowledge-filters/{filter_id}",
+        v1_knowledge_filters.update_endpoint,
+        methods=["PUT"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/knowledge-filters/{filter_id}",
+        v1_knowledge_filters.delete_endpoint,
+        methods=["DELETE"],
+        tags=["public"],
+    )
 
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
-        await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED)
+        await TelemetryClient.send_event(
+            Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
+        )
         # Start index initialization in background to avoid blocking OIDC endpoints
         t1 = asyncio.create_task(startup_tasks(services))
         app.state.background_tasks.add(t1)
@@ -1618,13 +1801,17 @@ async def create_app():
                     # Check if onboarding has been completed
                     config = get_openrag_config()
                     if not config.edited:
-                        logger.debug("Onboarding not completed yet, skipping periodic backup")
+                        logger.debug(
+                            "Onboarding not completed yet, skipping periodic backup"
+                        )
                         continue
 
                     flows_service = services.get("flows_service")
                     if flows_service:
                         logger.info("Running periodic flow backup")
-                        backup_results = await flows_service.backup_all_flows(only_if_changed=True)
+                        backup_results = await flows_service.backup_all_flows(
+                            only_if_changed=True
+                        )
                         if backup_results["backed_up"]:
                             logger.info(
                                 "Periodic backup completed",
@@ -1650,7 +1837,9 @@ async def create_app():
     # Add shutdown event handler
     @app.on_event("shutdown")
     async def shutdown_event():
-        await TelemetryClient.send_event(Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN)
+        await TelemetryClient.send_event(
+            Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
+        )
         await cleanup_subscriptions_proper(services)
         # Cleanup task service (cancels background tasks and process pool)
         await services["task_service"].shutdown()
@@ -1658,6 +1847,7 @@ async def create_app():
         await clients.cleanup()
         # Cleanup telemetry client
         from utils.telemetry.client import cleanup_telemetry_client
+
         await cleanup_telemetry_client()
 
     return app
@@ -1665,7 +1855,7 @@ async def create_app():
 
 def cleanup():
     """Cleanup on application shutdown"""
-    # Cleanup process pools only (webhooks handled by Starlette shutdown)
+    # Cleanup process pools only (webhooks handled by FastAPI shutdown)
     logger.info("Application shutting down")
     pass
 
@@ -1730,7 +1920,7 @@ if __name__ == "__main__":
     # Enable or disable HTTP access logging events
     access_log = os.getenv("ACCESS_LOG", "true").lower() == "true"
 
-    # Run the server (startup tasks now handled by Starlette startup event)
+    # Run the server (startup tasks now handled by FastAPI startup event)
     uvicorn.run(
         app,
         workers=1,

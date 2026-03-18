@@ -1,12 +1,12 @@
 "use client";
 
+import { SharePointV8Handler } from "./sharepoint-v8-handler";
 import {
   CloudFile,
   CloudProvider,
   GooglePickerData,
   GooglePickerDocument,
 } from "./types";
-import { SharePointV8Handler } from "./sharepoint-v8-handler";
 
 export class GoogleDriveHandler {
   private accessToken: string;
@@ -189,9 +189,10 @@ export class OneDriveHandler {
 
     // For SharePoint, use the SharePoint site URL as endpoint hint
     // For OneDrive, use the default OneDrive API endpoint
-    const endpointHint = this.provider === "sharepoint" && this.baseUrl
-      ? this.baseUrl
-      : "api.onedrive.com";
+    const endpointHint =
+      this.provider === "sharepoint" && this.baseUrl
+        ? this.baseUrl
+        : "api.onedrive.com";
 
     window.OneDrive.open({
       clientId: this.clientId,
@@ -207,7 +208,7 @@ export class OneDriveHandler {
           console.warn("OneDrive picker returned no value");
           return;
         }
-        
+
         const newFiles: CloudFile[] =
           response.value?.map((item: any) => {
             // Extract mimeType from file object or infer from name
@@ -277,9 +278,12 @@ export const createProviderHandler = (
   console.log("Provider:", provider);
   console.log("Client ID:", clientId);
   console.log("Base URL:", baseUrl);
-  console.log("Access Token (first 20 chars):", accessToken?.substring(0, 20) + "...");
+  console.log(
+    "Access Token (first 20 chars):",
+    accessToken?.substring(0, 20) + "...",
+  );
   console.log("Access Token length:", accessToken?.length);
-  
+
   switch (provider) {
     case "google_drive":
       return new GoogleDriveHandler(accessToken, onPickerStateChange);
@@ -293,7 +297,12 @@ export const createProviderHandler = (
         throw new Error("Base URL required for SharePoint v8 picker");
       }
       console.log("Creating SharePointV8Handler with baseUrl:", baseUrl);
-      return new SharePointV8Handler(baseUrl, accessToken, clientId, onPickerStateChange);
+      return new SharePointV8Handler(
+        baseUrl,
+        accessToken,
+        clientId,
+        onPickerStateChange,
+      );
 
     case "onedrive":
       // Use v7.2 (OneDrive.js) for personal OneDrive - v8 doesn't work for consumer accounts

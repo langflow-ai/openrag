@@ -38,6 +38,7 @@ export function AnthropicSettingsForm({
             className={apiKeyError ? "!border-destructive" : ""}
             id="api-key"
             type="password"
+            autoComplete="new-password"
             placeholder="sk-ant-..."
           />
         </LabelWrapper>

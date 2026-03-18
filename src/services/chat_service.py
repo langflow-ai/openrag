@@ -8,6 +8,9 @@ logger = get_logger(__name__)
 
 
 class ChatService:
+    def __init__(self, flows_service=None):
+        self.flows_service = flows_service
+
     async def chat(
         self,
         prompt: str,
@@ -78,7 +81,7 @@ class ChatService:
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
         
         # Add provider credentials to headers
-        add_provider_credentials_to_headers(extra_headers, config)
+        await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service)
         logger.debug(f"[LF] Extra headers {extra_headers}")
         # Get context variables for filters, limit, and threshold
         from auth_context import (
@@ -100,6 +103,7 @@ class ChatService:
                 "data_sources": "filename",
                 "document_types": "mimetype",
                 "owners": "owner",
+                "connector_types": "connector_type",
             }
 
             for filter_key, values in filters.items():
@@ -156,7 +160,7 @@ class ChatService:
         else:
             from agent import async_langflow_chat
 
-            response_text, response_id = await async_langflow_chat(
+            response_text, response_id, sources = await async_langflow_chat(
                 langflow_client,
                 LANGFLOW_CHAT_FLOW_ID,
                 prompt,
@@ -168,6 +172,8 @@ class ChatService:
             response_data = {"response": response_text}
             if response_id:
                 response_data["response_id"] = response_id
+            if sources:
+                response_data["sources"] = sources
             return response_data
 
     async def langflow_nudges_chat(
@@ -200,7 +206,7 @@ class ChatService:
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
         
         # Add provider credentials to headers
-        add_provider_credentials_to_headers(extra_headers, config)
+        await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service)
 
         # Build the complete filter expression like the chat service does
         filter_expression = {}
@@ -213,6 +219,7 @@ class ChatService:
                 "data_sources": "filename",
                 "document_types": "mimetype",
                 "owners": "owner",
+                "connector_types": "connector_type",
             }
 
             for filter_key, values in filters.items():
@@ -289,7 +296,7 @@ class ChatService:
         from agent import async_langflow_chat
 
 
-        response_text, response_id = await async_langflow_chat(
+        response_text, response_id, _sources = await async_langflow_chat(
             langflow_client,
             NUDGES_FLOW_ID,
             prompt,
@@ -329,7 +336,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
             
             # Add provider credentials to headers
-            add_provider_credentials_to_headers(extra_headers, config)
+            await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service)
             
             # Ensure the Langflow client exists; try lazy init if needed
             langflow_client = await clients.ensure_langflow_client()
@@ -515,6 +522,9 @@ class ChatService:
                             "langflow_message_id": msg.get("langflow_message_id"),
                             "source": "langflow",
                         }
+
+                        if msg.get("error"):
+                            message_data["error"] = True
 
                         # Include function call data if present
                         if msg.get("chunks"):

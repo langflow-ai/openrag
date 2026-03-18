@@ -11,20 +11,11 @@ from models.tasks import TaskStatus, UploadTask, FileTask
 
 
 @pytest.fixture
-def mock_process_pool():
-    """Mock process pool"""
-    pool = Mock()
-    pool.shutdown = Mock()
-    return pool
-
-
-@pytest.fixture
-def task_service(mock_process_pool):
+def task_service():
     """Create TaskService instance with mocked dependencies"""
     mock_doc_service = Mock()
     return TaskService(
         document_service=mock_doc_service,
-        process_pool=mock_process_pool,
         ingestion_timeout=2  # Short timeout for testing
     )
 
@@ -126,8 +117,6 @@ async def test_shutdown_cancels_background_tasks(task_service):
     # Verify task was actually cancelled (not just done)
     assert bg_task.done()
     assert bg_task.cancelled()
-    # Verify process pool was shut down
-    task_service.process_pool.shutdown.assert_called_once_with(wait=True)
 
 
 def test_counter_consistency_logic(task_service):

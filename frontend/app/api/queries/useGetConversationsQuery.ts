@@ -53,7 +53,9 @@ export const useGetConversationsQuery = (
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();
 
-  async function getConversations(context: { signal?: AbortSignal }): Promise<ChatConversation[]> {
+  async function getConversations(context: {
+    signal?: AbortSignal;
+  }): Promise<ChatConversation[]> {
     try {
       // Fetch from the selected endpoint only
       const apiEndpoint =
@@ -89,7 +91,7 @@ export const useGetConversationsQuery = (
       return conversations;
     } catch (error) {
       // Ignore abort errors - these are expected when requests are cancelled
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         return [];
       }
       console.error(`Failed to fetch ${endpoint} conversations:`, error);
@@ -109,7 +111,7 @@ export const useGetConversationsQuery = (
       queryFn: getConversations,
       staleTime: 5000, // Consider data fresh for 5 seconds to prevent excessive refetching
       gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-      networkMode: 'always', // Ensure requests can be cancelled
+      networkMode: "always", // Ensure requests can be cancelled
       refetchOnMount: false, // Don't refetch on every mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
       ...options,

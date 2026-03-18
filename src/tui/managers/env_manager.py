@@ -1,6 +1,7 @@
 """Environment configuration manager for OpenRAG TUI."""
 
 import os
+import re
 import secrets
 import string
 from dataclasses import dataclass, field
@@ -57,7 +58,17 @@ class EnvConfig:
     webhook_base_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    aws_s3_endpoint: str = ""
+    aws_region: str = ""
     langflow_public_url: str = ""
+
+    # IBM Cloud Object Storage settings
+    ibm_cos_api_key: str = ""
+    ibm_cos_service_instance_id: str = ""
+    ibm_cos_endpoint: str = ""
+    ibm_cos_hmac_access_key_id: str = ""
+    ibm_cos_hmac_secret_access_key: str = ""
+    ibm_cos_auth_endpoint: str = ""  # Optional: override IAM token endpoint
 
     # Langfuse settings (optional)
     langfuse_secret_key: str = ""
@@ -96,6 +107,8 @@ class EnvConfig:
 class EnvManager:
     """Manages environment configuration for OpenRAG."""
 
+    assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    
     def __init__(self, env_file: Optional[Path] = None):
         if env_file:
             self.env_file = env_file
@@ -119,7 +132,7 @@ class EnvManager:
                     logger.warning(f"Failed to migrate .env file: {e}")
 
         self.config = EnvConfig()
-
+        
     def generate_secure_password(self) -> str:
         """Generate a secure password for OpenSearch."""
         # Ensure at least one character from each category
@@ -155,19 +168,9 @@ class EnvManager:
         escaped_value = value.replace("'", "'\\''")
         return f"'{escaped_value}'"
 
-    def load_existing_env(self) -> bool:
-        """Load existing .env file if it exists, or fall back to environment variables.
-
-        Uses python-dotenv's load_dotenv() for standard .env file parsing, which handles:
-        - Quoted values (single and double quotes)
-        - Variable expansion (${VAR})
-        - Multiline values
-        - Escaped characters
-        - Comments
-        """
-        # Map env vars to config attributes
-        # These are environment variable names, not actual secrets
-        attr_map = {  # pragma: allowlist secret
+    def _env_attr_map(self) -> Dict[str, str]:
+        """Map env vars to EnvConfig attribute names."""
+        return {  # pragma: allowlist secret
             "OPENAI_API_KEY": "openai_api_key",  # pragma: allowlist secret
             "ANTHROPIC_API_KEY": "anthropic_api_key",  # pragma: allowlist secret
             "OLLAMA_ENDPOINT": "ollama_endpoint",
@@ -193,7 +196,15 @@ class EnvManager:
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
+            "AWS_S3_ENDPOINT": "aws_s3_endpoint",
+            "AWS_REGION": "aws_region",
             "LANGFLOW_PUBLIC_URL": "langflow_public_url",
+            "IBM_COS_API_KEY": "ibm_cos_api_key",  # pragma: allowlist secret
+            "IBM_COS_SERVICE_INSTANCE_ID": "ibm_cos_service_instance_id",
+            "IBM_COS_ENDPOINT": "ibm_cos_endpoint",
+            "IBM_COS_HMAC_ACCESS_KEY_ID": "ibm_cos_hmac_access_key_id",
+            "IBM_COS_HMAC_SECRET_ACCESS_KEY": "ibm_cos_hmac_secret_access_key",  # pragma: allowlist secret
+            "IBM_COS_AUTH_ENDPOINT": "ibm_cos_auth_endpoint",
             "OPENRAG_DOCUMENTS_PATHS": "openrag_documents_paths",
             "OPENRAG_DOCUMENTS_PATH": "openrag_documents_path",
             "OPENRAG_KEYS_PATH": "openrag_keys_path",
@@ -211,6 +222,50 @@ class EnvManager:
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
             "LANGFUSE_HOST": "langfuse_host",
         }
+
+    def _collect_preserved_env_lines(self) -> list[str]:
+        """Collect existing .env assignments not managed by this TUI."""
+        if not self.env_file.exists():
+            return []
+
+        managed_vars = set(self._env_attr_map().keys())
+        preserved_lines: list[str] = []
+
+        try:
+            for raw_line in self.env_file.read_text().splitlines():
+                stripped = raw_line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+
+                match = EnvManager.assignment_pattern.match(raw_line)
+                if not match:
+                    continue
+
+                env_var = match.group(1)
+                if env_var in managed_vars:
+                    continue
+                preserved_lines.append(raw_line)
+        except Exception:
+            logger.warning(
+                f"Failed to preserve custom .env lines from {self.env_file}",
+                exc_info=True,
+            )
+
+        return preserved_lines
+
+    def load_existing_env(self) -> bool:
+        """Load existing .env file if it exists, or fall back to environment variables.
+
+        Uses python-dotenv's load_dotenv() for standard .env file parsing, which handles:
+        - Quoted values (single and double quotes)
+        - Variable expansion (${VAR})
+        - Multiline values
+        - Escaped characters
+        - Comments
+        """
+        # Map env vars to config attributes
+        # These are environment variable names, not actual secrets
+        attr_map = self._env_attr_map()
 
         loaded_from_file = False
 
@@ -371,6 +426,7 @@ class EnvManager:
         try:
             # Ensure secure defaults (including Langflow secret key) are set before saving
             self.setup_secure_defaults()
+            preserved_custom_lines = self._collect_preserved_env_lines()
             # Create timestamped backup if file exists
             if self.env_file.exists():
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -520,7 +576,15 @@ class EnvManager:
                     ("WEBHOOK_BASE_URL", self.config.webhook_base_url),
                     ("AWS_ACCESS_KEY_ID", self.config.aws_access_key_id),
                     ("AWS_SECRET_ACCESS_KEY", self.config.aws_secret_access_key),
+                    ("AWS_S3_ENDPOINT", self.config.aws_s3_endpoint),
+                    ("AWS_REGION", self.config.aws_region),
                     ("LANGFLOW_PUBLIC_URL", self.config.langflow_public_url),
+                    ("IBM_COS_API_KEY", self.config.ibm_cos_api_key),
+                    ("IBM_COS_SERVICE_INSTANCE_ID", self.config.ibm_cos_service_instance_id),
+                    ("IBM_COS_ENDPOINT", self.config.ibm_cos_endpoint),
+                    ("IBM_COS_HMAC_ACCESS_KEY_ID", self.config.ibm_cos_hmac_access_key_id),
+                    ("IBM_COS_HMAC_SECRET_ACCESS_KEY", self.config.ibm_cos_hmac_secret_access_key),
+                    ("IBM_COS_AUTH_ENDPOINT", self.config.ibm_cos_auth_endpoint),
                 ]
 
                 optional_written = False
@@ -550,6 +614,12 @@ class EnvManager:
                         f.write(f"{var_name}={self._quote_env_value(var_value)}\n")
 
                 if langfuse_written:
+                    f.write("\n")
+
+                if preserved_custom_lines:
+                    f.write("# Preserved custom settings\n")
+                    for line in preserved_custom_lines:
+                        f.write(f"{line}\n")
                     f.write("\n")
 
                 f.flush()

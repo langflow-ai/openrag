@@ -163,6 +163,9 @@ make docling
 - Direct access to logs and debugging
 - Easier testing and iteration
 
+> [!TIP]
+> When running the backend with `make backend`, you can access the interactive API documentation at http://localhost:8000/docs.
+
 ### C) Branch Development (Custom Langflow)
 
 Build and run OpenRAG with a custom Langflow branch:

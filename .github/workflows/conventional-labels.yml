@@ -1,0 +1,65 @@
+# NOTE: pull_request_target is required to have write permissions to add labels on PRs from forks.
+# This workflow must not be modified to check out or execute untrusted PR code, as it runs with base repo permissions.
+# the pull_request_target event.
+name: Label PRs with Conventional Commits
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+jobs:
+  validate-pr-description:
+    name: Validate PR Description
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target'
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check PR Description
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const title = context.payload.pull_request.title || '';
+            const prNumber = context.payload.pull_request.number;
+
+            console.log(`Checking PR #${prNumber}: ${title}`);
+
+            // Skip validation for bot PRs
+            if (context.payload.pull_request.user.type === 'Bot') {
+              console.log('Skipping validation for bot PR');
+              return;
+            }
+
+            // Check minimum description length (at least 10 characters)
+            const minLength = 10;
+            if (body.trim().length < minLength) {
+              core.setFailed(`PR description is too short. Please provide a meaningful description (at least ${minLength} characters).`);
+              return;
+            }
+
+            // Check for empty or placeholder descriptions
+            const placeholderPatterns = [
+              /^[\s\n]*$/,
+              /^(n\/a|na|none|no description|todo|tbd|wip)$/i,
+              /^[\-\*\s]*$/
+            ];
+
+            for (const pattern of placeholderPatterns) {
+              if (pattern.test(body.trim())) {
+                core.setFailed('PR description appears to be empty or a placeholder. Please provide a meaningful description.');
+                return;
+              }
+            }
+
+            console.log('PR description validation passed!');
+
+  label:
+    needs: [validate-pr-description]
+    name: Label PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.user.type != 'Bot'
+    steps:
+      - uses: bcoe/conventional-release-labels@b503ca473654e07521c051628c5f1f969e7436da # v1
+        with:
+          type_labels: '{"feat": "enhancement","fix": "bug","docs": "documentation","style": "style","refactor": "refactor","perf": "performance","test": "test","chore": "chore","build": "build"}'
+

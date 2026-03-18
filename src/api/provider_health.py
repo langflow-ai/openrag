@@ -1,39 +1,42 @@
 """Provider health check endpoint."""
 
 import asyncio
+from typing import Optional
 import httpx
-from starlette.responses import JSONResponse
+from fastapi import Depends
+from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
 from config.settings import get_openrag_config
 from api.provider_validation import validate_provider_setup
+from dependencies import get_current_user
+from session_manager import User
 
 logger = get_logger(__name__)
 
 
-async def check_provider_health(request):
+async def check_provider_health(
+    provider: Optional[str] = None,
+    test_completion: bool = False,
+    user: User = Depends(get_current_user),
+):
     """
     Check if the configured provider is healthy and properly validated.
-    
+
     Query parameters:
         provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
                            If not provided, checks the currently configured provider.
-        test_completion (optional): If 'true', performs full validation with completion/embedding tests (consumes credits).
-                                    If 'false' or not provided, performs lightweight validation (no/minimal credits consumed).
-    
+        test_completion (optional): If true, performs full validation with completion/embedding tests.
+
     Returns:
         200: Provider is healthy and validated
         400: Invalid provider specified
         503: Provider validation failed
     """
+    check_provider = provider
     try:
-        # Get optional provider from query params
-        query_params = dict(request.query_params)
-        check_provider = query_params.get("provider")
-        test_completion = query_params.get("test_completion", "false").lower() == "true"
-        
         # Get current config
         current_config = get_openrag_config()
-        
+
         # Determine which provider to check
         if check_provider:
             provider = check_provider.lower()

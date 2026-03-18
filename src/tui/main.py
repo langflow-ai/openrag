@@ -482,11 +482,24 @@ def copy_sample_documents(*, force: bool = False) -> None:
     documents_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        assets_files = files("tui._assets.openrag-documents")
+        assets_files = files("tui._assets") / "openrag-documents"
         _copy_assets(assets_files, documents_dir, allowed_suffixes=(".pdf",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")
         # This is not a critical error - the app can work without sample documents
+
+    # Ensure OPENRAG_DOCUMENTS_PATH in .env points to the resolved documents directory.
+    # Docker Compose uses this for the volume mount; if unset it defaults to ./openrag-documents
+    # (CWD-relative), which may not contain the PDFs copied above.
+    try:
+        from dotenv import set_key
+        resolved_path = str(documents_dir.resolve())
+        current = env_manager.config.openrag_documents_path
+        if not current or current in ("$HOME/.openrag/documents", "./openrag-documents", "./documents"):
+            set_key(str(env_manager.env_file), "OPENRAG_DOCUMENTS_PATH", resolved_path)
+            logger.debug(f"Set OPENRAG_DOCUMENTS_PATH={resolved_path} in {env_manager.env_file}")
+    except Exception as e:
+        logger.debug(f"Could not update OPENRAG_DOCUMENTS_PATH in .env: {e}")
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
@@ -501,7 +514,7 @@ def copy_sample_flows(*, force: bool = False) -> None:
     flows_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        assets_files = files("tui._assets.flows")
+        assets_files = files("tui._assets") / "flows"
         _copy_assets(assets_files, flows_dir, allowed_suffixes=(".json",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample flows: {e}")

@@ -171,13 +171,25 @@ class TaskProcessor:
             acl: DocumentACL instance with access control information
         """
         import datetime
-        from config.settings import clients, get_embedding_model, get_index_name
+        from config.settings import (
+            clients,
+            get_embedding_model,
+            get_index_name,
+            get_openrag_config,
+        )
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
         from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
 
-        # Use provided embedding model or fall back to default
-        embedding_model = embedding_model or get_embedding_model()
+        # Use provided embedding model or configured model.
+        # get_embedding_model() returns empty string when Langflow ingest is enabled,
+        # but OpenRAG processors still need a concrete embedding model.
+        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        embedding_model = (
+            embedding_model
+            or configured_embedding_model
+            or get_embedding_model()
+        )
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -200,11 +212,11 @@ class TaskProcessor:
             file_hash=file_hash,
         )
 
-        # Check if this is a .txt file - use simple processing instead of docling
+        # Check if this is a .txt or .md file - use simple processing instead of docling
         import os
         file_ext = os.path.splitext(file_path)[1].lower()
         
-        if file_ext == '.txt':
+        if file_ext in ('.txt', '.md'):
             # Simple text file processing without docling
             from utils.document_processing import process_text_file
             logger.info(
@@ -217,9 +229,9 @@ class TaskProcessor:
             if original_filename:
                 slim_doc["filename"] = original_filename
         else:
-            # Convert and extract using docling for other file types
-            result = clients.converter.convert(file_path)
-            full_doc = result.document.export_to_dict()
+            from utils.docling_client import convert_file
+
+            full_doc = await convert_file(file_path, httpx_client=clients.docling_http_client)
             slim_doc = extract_relevant(full_doc)
 
         texts = [c["text"] for c in slim_doc["chunks"]]
@@ -323,6 +335,7 @@ class DocumentFileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         is_sample_data: bool = False,
+        connector_type: str = "local",
     ):
         super().__init__(document_service)
         self.owner_user_id = owner_user_id
@@ -330,6 +343,7 @@ class DocumentFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.is_sample_data = is_sample_data
+        self.connector_type = connector_type
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -363,7 +377,7 @@ class DocumentFileProcessor(TaskProcessor):
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 file_size=file_size,
-                connector_type="local",
+                connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
             )
 
@@ -624,8 +638,6 @@ class S3FileProcessor(TaskProcessor):
         import datetime
         from config.settings import clients, get_embedding_model, get_index_name
         from services.document_service import chunk_texts_for_embeddings
-        from utils.document_processing import process_document_sync
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -776,22 +788,6 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
-            
-            metadata_tweaks = []
-            if self.owner_user_id:
-                metadata_tweaks.append({"key": "owner", "value": self.owner_user_id})
-            if self.owner_name:
-                metadata_tweaks.append({"key": "owner_name", "value": self.owner_name})
-            if self.owner_email:
-                metadata_tweaks.append({"key": "owner_email", "value": self.owner_email})
-            # Mark as local upload for connector_type
-            metadata_tweaks.append({"key": "connector_type", "value": "local"})
-
-            if metadata_tweaks:
-                # Initialize the OpenSearch component tweaks if not already present
-                if "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4" not in final_tweaks:
-                    final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {}
-                final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"]["docs_metadata"] = metadata_tweaks
 
             # Process file using langflow service
             result = await self.langflow_file_service.upload_and_ingest_file(
@@ -821,3 +817,6 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+
+
+from .url import LangflowUrlProcessor

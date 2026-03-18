@@ -102,40 +102,35 @@ def get_container_host() -> str | None:
     return None
 
 
-def transform_localhost_url(url: str) -> str:
-    """Transform localhost URLs to container-accessible hosts when running in a container.
+def is_localhost_url(url: str) -> bool:
+    """Check if the URL contains a localhost pattern."""
+    localhost_patterns = ["localhost", "127.0.0.1"]
+    return any(pattern in url for pattern in localhost_patterns)
 
-    Automatically detects if running inside a container and finds the appropriate host
-    address to replace localhost/127.0.0.1. Tries in order:
-    - host.docker.internal (if resolvable)
-    - host.containers.internal (if resolvable)
-    - Gateway IP from routing table (fallback)
+def replace_localhost_patterns(url: str, replacement: str) -> str:
+    """Replace localhost patterns in a URL with a given string."""
+    localhost_patterns = ["localhost", "127.0.0.1"]
+    for pattern in localhost_patterns:
+        url = url.replace(pattern, replacement)
+    return url
+
+def transform_localhost_url(url: str) -> str:
+    """Transform localhost URLs to container-accessible hostnames.
 
     Args:
         url: The original URL
 
     Returns:
-        Transformed URL with container-accessible host if applicable, otherwise the original URL.
-
-    Example:
-        >>> transform_localhost_url("http://localhost:5001")
-        # Returns "http://host.docker.internal:5001" if running in Docker and hostname resolves
-        # Returns "http://172.17.0.1:5001" if running in Docker on Linux (gateway IP fallback)
-        # Returns "http://localhost:5001" if not in a container
+        Transformed URL with container-host if applicable, otherwise original URL.
     """
-    container_host = get_container_host()
+    if not is_localhost_url(url):
+        return url
 
+    container_host = get_container_host()
     if not container_host:
         return url
 
-    # Replace localhost and 127.0.0.1 with the container host
-    localhost_patterns = ["localhost", "127.0.0.1"]
-
-    for pattern in localhost_patterns:
-        if pattern in url:
-            return url.replace(pattern, container_host)
-
-    return url
+    return replace_localhost_patterns(url, container_host)
 
 
 def guess_host_ip_for_containers(logger=None) -> str:
