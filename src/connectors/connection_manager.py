@@ -67,7 +67,8 @@ class ConnectionManager:
                     for k, v in conn_data["config"].items():
                         if isinstance(v, dict) and v.get("algorithm") == "AES-256-GCM":
                             try:
-                                conn_data["config"][k] = decrypt_secret(v)
+                                tenant = conn_data.get("user_id") or "openrag"
+                                conn_data["config"][k] = decrypt_secret(v, expected_tenant_id=tenant)
                             except ValueError as e:
                                 logger.error(f"Failed to decrypt connection secret {k}: {e}")
                                 conn_data["config"][k] = ""

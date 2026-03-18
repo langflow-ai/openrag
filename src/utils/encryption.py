@@ -125,10 +125,12 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
         return plaintext
 
 
-def decrypt_secret(payload: Union[Dict[str, Any], str]) -> str:
+def decrypt_secret(payload: Union[Dict[str, Any], str], expected_tenant_id: Optional[str] = None) -> str:
     """
     Decrypt a secret payload using AES-256-GCM.
     Supports backward compatibility with non-KDF base64 raw keys.
+    If expected_tenant_id is provided, it is used as the authoritative tenant identifier 
+    for constructing the AES-GCM AAD, and the payload's tenant_id (if present) must match it.
     """
     if not isinstance(payload, dict):
         return payload
@@ -164,7 +166,18 @@ def decrypt_secret(payload: Union[Dict[str, Any], str]) -> str:
         nonce = base64.b64decode(payload["nonce"])
         ciphertext = base64.b64decode(payload["ciphertext"])
         
-        tenant_id = payload.get("tenant_id", "openrag")
+        # Determine tenant_id for AAD using a trusted expected value when available.
+        payload_tenant_id = payload.get("tenant_id")
+        if expected_tenant_id is not None:
+            if payload_tenant_id is not None and payload_tenant_id != expected_tenant_id:
+                raise ValueError(
+                    f"Tenant ID in payload ('{payload_tenant_id}') does not match expected tenant ID."
+                )
+            tenant_id = expected_tenant_id
+        else:
+            # Backwards-compatible behaviour when no external tenant binding is configured.
+            tenant_id = payload_tenant_id or "openrag"
+            
         aad = f"tenant_id:{tenant_id}".encode("utf-8")
 
         plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, aad)
@@ -190,7 +203,8 @@ async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
 
         file_json = json.loads(raw_data)
         if isinstance(file_json, dict) and file_json.get("algorithm") == ENCRYPTION_ALGORITHM:
-            decrypted_str = decrypt_secret(file_json)
+            expected_tenant_id = os.getenv("OPENRAG_TENANT_ID")
+            decrypted_str = decrypt_secret(file_json, expected_tenant_id=expected_tenant_id)
             return decrypted_str, False
         else:
             # It's plaintext

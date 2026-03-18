@@ -19,8 +19,20 @@ def test_encryption_utility():
     assert payload["algorithm"] == "AES-256-GCM"
     assert payload["tenant_id"] == "tenant-1"
     
-    decrypted = decrypt_secret(payload)
+    # Passing explicitly matches original AAD
+    decrypted = decrypt_secret(payload, expected_tenant_id="tenant-1")
     assert decrypted == plaintext
+    
+    # Missing explicit bound works generically using payload lookup
+    decrypted_fallback = decrypt_secret(payload)
+    assert decrypted_fallback == plaintext
+    
+    # Spoofing the identity dynamically rejects the AES-GCM tags!
+    try:
+        decrypt_secret(payload, expected_tenant_id="wrong-tenant-id")
+        assert False, "Should have thrown ValueError from AESGCM AAD mismatch"
+    except ValueError:
+        pass
     print("OK")
 
 def test_config_manager():
