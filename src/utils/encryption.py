@@ -11,6 +11,11 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# KDF Constants
+ENCRYPTION_ALGORITHM = "AES-256-GCM"
+KDF_ALGORITHM = hashes.SHA256()
+KDF_ITERATIONS = 100000
+
 _cached_master_secret: Optional[str] = None
 
 def get_master_secret() -> str | None:
@@ -22,12 +27,14 @@ def get_master_secret() -> str | None:
     secret_str = None
 
     ibm_api_key = os.environ.get("IBM_CLOUD_API_KEY")
-    ibm_url = os.environ.get("IBM_SECRETS_MANAGER_URL")
     ibm_secret_id = os.environ.get("IBM_SECRETS_MANAGER_SECRET_ID")
-    ibm_profile_crn = os.environ.get("IBM_IAM_PROFILE_CRN")
-    ibm_profile_name = os.environ.get("IBM_IAM_PROFILE_NAME")
+    
+    trusted_profile_id = os.environ.get("IBM_CLOUD_TRUSTED_PROFILE_ID")
+    instance_id = os.environ.get("SECRET_MANAGER_INSTANCE_ID")
+    region = os.environ.get("SECRET_MANAGER_REGION", "us-south")
+    cr_token_file = os.environ.get("IBM_CLOUD_CR_TOKEN_FILE", "/var/run/secrets/tokens/sa-token")
 
-    if ibm_url and ibm_secret_id:
+    if instance_id and ibm_secret_id:
         try:
             from ibm_secrets_manager_sdk.secrets_manager_v2 import SecretsManagerV2
             
@@ -35,20 +42,17 @@ def get_master_secret() -> str | None:
             if ibm_api_key:
                 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
                 authenticator = IAMAuthenticator(ibm_api_key)
-            else:
+            elif trusted_profile_id:
                 from ibm_cloud_sdk_core.authenticators import ContainerAuthenticator
-                kwargs = {}
-                if ibm_profile_crn:
-                    kwargs["iam_profile_crn"] = ibm_profile_crn
-                if ibm_profile_name:
-                    kwargs["iam_profile_name"] = ibm_profile_name
-                if os.environ.get("IBM_IAM_PROFILE_ID"):
-                    kwargs["iam_profile_id"] = os.environ.get("IBM_IAM_PROFILE_ID")
-                
-                authenticator = ContainerAuthenticator(**kwargs)
+                authenticator = ContainerAuthenticator(
+                    cr_token_filename=cr_token_file,
+                    iam_profile_id=trusted_profile_id
+                )
+            else:
+                raise ValueError("Neither IBM_CLOUD_API_KEY nor IBM_CLOUD_TRUSTED_PROFILE_ID provided")
 
             secrets_manager = SecretsManagerV2(authenticator=authenticator)
-            secrets_manager.set_service_url(ibm_url)
+            secrets_manager.set_service_url(f"https://{instance_id}.{region}.secrets-manager.appdomain.cloud")
 
             # Retrieve the secret
             response = secrets_manager.get_secret(id=ibm_secret_id).get_result()
@@ -92,10 +96,10 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
     try:
         salt = secrets.token_bytes(16)
         kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
+            algorithm=KDF_ALGORITHM,
             length=32,
             salt=salt,
-            iterations=100000,
+            iterations=KDF_ITERATIONS,
         )
         derived_key = kdf.derive(master_secret.encode("utf-8"))
 
@@ -108,7 +112,7 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
 
         return {
             "version": "1.0",
-            "algorithm": "AES-256-GCM",
+            "algorithm": ENCRYPTION_ALGORITHM,
             "kdf": "PBKDF2HMAC-SHA256",
             "tenant_id": tenant_id,
             "salt": base64.b64encode(salt).decode("ascii"),
@@ -129,7 +133,7 @@ def decrypt_secret(payload: Union[Dict[str, Any], str]) -> str:
     if not isinstance(payload, dict):
         return payload
 
-    if payload.get("algorithm") != "AES-256-GCM" or "ciphertext" not in payload:
+    if payload.get("algorithm") != ENCRYPTION_ALGORITHM or "ciphertext" not in payload:
         return payload
 
     master_secret = get_master_secret()
@@ -143,10 +147,10 @@ def decrypt_secret(payload: Union[Dict[str, Any], str]) -> str:
         if "salt" in payload:
             salt = base64.b64decode(payload["salt"])
             kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
+                algorithm=KDF_ALGORITHM,
                 length=32,
                 salt=salt,
-                iterations=100000,
+                iterations=KDF_ITERATIONS,
             )
             key = kdf.derive(master_secret.encode("utf-8"))
         else:
@@ -182,7 +186,7 @@ async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
             return raw_data, False
 
         file_json = json.loads(raw_data)
-        if isinstance(file_json, dict) and file_json.get("algorithm") == "AES-256-GCM":
+        if isinstance(file_json, dict) and file_json.get("algorithm") == ENCRYPTION_ALGORITHM:
             decrypted_str = decrypt_secret(file_json)
             return decrypted_str, False
         else:

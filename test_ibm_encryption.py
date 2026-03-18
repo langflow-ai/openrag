@@ -31,7 +31,7 @@ def test_cache_mechanism():
 def test_ibm_exception_handling():
     encryption._cached_master_secret = None
     os.environ["IBM_CLOUD_API_KEY"] = "fake"
-    os.environ["IBM_SECRETS_MANAGER_URL"] = "fake"
+    os.environ["SECRET_MANAGER_INSTANCE_ID"] = "fake"
     os.environ["IBM_SECRETS_MANAGER_SECRET_ID"] = "fake"
     os.environ["OPENRAG_ENCRYPTION_KEY"] = base64.b64encode(b"C" * 32).decode("ascii")
     
@@ -49,10 +49,10 @@ def test_trusted_profiles_fallback():
     if "IBM_CLOUD_API_KEY" in os.environ:
         del os.environ["IBM_CLOUD_API_KEY"]
         
-    os.environ["IBM_SECRETS_MANAGER_URL"] = "fake"
+    os.environ["SECRET_MANAGER_INSTANCE_ID"] = "fake"
     os.environ["IBM_SECRETS_MANAGER_SECRET_ID"] = "fake"
-    os.environ["IBM_IAM_PROFILE_NAME"] = "my-profile"
-    os.environ["IBM_IAM_ACCOUNT_ID"] = "my-account"
+    os.environ["IBM_CLOUD_TRUSTED_PROFILE_ID"] = "my-profile"
+    os.environ["SECRET_MANAGER_REGION"] = "us-east"
     os.environ["OPENRAG_ENCRYPTION_KEY"] = base64.b64encode(b"D" * 32).decode("ascii")
     
     try:
