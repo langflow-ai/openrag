@@ -51,6 +51,7 @@ class ConnectionManager:
         from utils.encryption import decrypt_secret, get_master_secret
         
         needs_encryption_upgrade = False
+        decryption_failed = False
         secret_keys = {
             "api_key", "hmac_secret_key", "secret_key", "client_secret",
             "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token",
@@ -71,7 +72,7 @@ class ConnectionManager:
                                 conn_data["config"][k] = decrypt_secret(v, expected_tenant_id=tenant)
                             except ValueError as e:
                                 logger.error(f"Failed to decrypt connection secret {k}: {e}")
-                                conn_data["config"][k] = ""
+                                decryption_failed = True
                         elif k in secret_keys and isinstance(v, str) and v:
                             if get_master_secret() is not None:
                                 needs_encryption_upgrade = True
@@ -90,8 +91,18 @@ class ConnectionManager:
                 self.connections[config.connection_id] = config
                 
             if needs_encryption_upgrade:
-                logger.info(f"Upgrading unencrypted connection secrets in {self.connections_file} to AES-256-GCM")
-                await self.save_connections()
+                if decryption_failed:
+                    logger.warning(
+                        "Detected unencrypted connection secrets in %s but skipped "
+                        "encryption upgrade because some secrets failed to decrypt.",
+                        self.connections_file,
+                    )
+                else:
+                    logger.info(
+                        "Upgrading unencrypted connection secrets in %s to AES-256-GCM",
+                        self.connections_file,
+                    )
+                    await self.save_connections()
 
             # Now that connections are loaded, clean up duplicates
             await self.cleanup_duplicate_connections(remove_duplicates=True)
