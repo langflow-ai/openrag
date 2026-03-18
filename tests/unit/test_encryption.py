@@ -92,7 +92,7 @@ async def test_connection_manager():
     # Should be saved encrypted
     import json
     with open(test_json, "r") as f:
-            data = json.load(f)
+        data = json.load(f)
             
     found_gd = False
     found_s3 = False
