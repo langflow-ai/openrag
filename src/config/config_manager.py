@@ -116,12 +116,22 @@ class OpenRAGConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "OpenRAGConfig":
         """Create config from dictionary."""
         providers_data = data.get("providers", {})
+        
+        # Import inside to avoid circular dependencies if any
+        from utils.encryption import decrypt_secret
+        
+        def _decrypt_provider(p_data: dict) -> dict:
+            new_data = dict(p_data)
+            if "api_key" in new_data:
+                new_data["api_key"] = decrypt_secret(new_data["api_key"])
+            return new_data
+            
         return cls(
             providers=ProvidersConfig(
-                openai=OpenAIConfig(**providers_data.get("openai", {})),
-                anthropic=AnthropicConfig(**providers_data.get("anthropic", {})),
-                watsonx=WatsonXConfig(**providers_data.get("watsonx", {})),
-                ollama=OllamaConfig(**providers_data.get("ollama", {})),
+                openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
+                anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
+                watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
+                ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
@@ -177,6 +187,9 @@ class ConfigManager:
             "agent": {},
             "onboarding": {},
         }
+        
+        needs_encryption_upgrade = False
+        from utils.encryption import get_encryption_key
 
         # Load from config file if it exists
         if self.config_file.exists():
@@ -188,10 +201,12 @@ class ConfigManager:
                 if "providers" in file_config:
                     for provider in ["openai", "anthropic", "watsonx", "ollama"]:
                         if provider in file_config["providers"]:
-                            config_data["providers"][provider].update(
-                                file_config["providers"][provider]
-                            )
-
+                            provider_data = file_config["providers"][provider]
+                            # Check if api_key is unencrypted and we have a key
+                            if "api_key" in provider_data and isinstance(provider_data["api_key"], str) and provider_data["api_key"]:
+                                if get_encryption_key() is not None:
+                                    needs_encryption_upgrade = True
+                            config_data["providers"][provider].update(provider_data)
                 for section in ["knowledge", "agent", "onboarding"]:
                     if section in file_config:
                         config_data[section].update(file_config[section])
@@ -210,6 +225,10 @@ class ConfigManager:
 
         # Create config object
         self._config = OpenRAGConfig.from_dict(config_data)
+
+        if needs_encryption_upgrade:
+            logger.info("Upgrading unencrypted secrets in config.yaml to AES-256-GCM")
+            self.save_config_file(self._config)
 
         logger.debug("Configuration loaded", config=self._config.to_dict())
         return self._config
@@ -304,8 +323,17 @@ class ConfigManager:
             # Ensure directory exists
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
+            config_dict = config.to_dict()
+            
+            # Encrypt provider API keys before saving
+            from utils.encryption import encrypt_secret
+            providers = config_dict.get("providers", {})
+            for provider_name, provider_config in providers.items():
+                if "api_key" in provider_config:
+                    provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+
             with open(self.config_file, "w") as f:
-                yaml.dump(config.to_dict(), f, default_flow_style=False, indent=2)
+                yaml.dump(config_dict, f, default_flow_style=False, indent=2)
 
             # Update cached config to reflect the edited flags
             self._config = config

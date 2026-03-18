@@ -5,7 +5,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-import aiofiles
+
 
 
 class GoogleDriveOAuth:
@@ -35,28 +35,41 @@ class GoogleDriveOAuth:
 
     async def load_credentials(self) -> Optional[Credentials]:
         """Load existing credentials from token file"""
-        if os.path.exists(self.token_file):
-            async with aiofiles.open(self.token_file, "r") as f:
-                token_data = json.loads(await f.read())
+        from utils.encryption import read_encrypted_file
+        
+        raw_data, needs_upgrade = await read_encrypted_file(self.token_file)
+        if raw_data is None:
+            return None
+                
+        try:
+            token_data = json.loads(raw_data)
+        except Exception:
+            # Corrupted file, fallback to missing
+            if os.path.exists(self.token_file):
+                os.remove(self.token_file)
+            return None
 
-            # Create credentials from token data
-            self.creds = Credentials(
-                token=token_data.get("token"),
-                refresh_token=token_data.get("refresh_token"),
-                id_token=token_data.get("id_token"),
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=self.client_id,
-                client_secret=self.client_secret,  # Need for refresh
-                scopes=token_data.get("scopes", self.SCOPES),
-            )
+        # Create credentials from token data
+        self.creds = Credentials(
+            token=token_data.get("token"),
+            refresh_token=token_data.get("refresh_token"),
+            id_token=token_data.get("id_token"),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=self.client_id,
+            client_secret=self.client_secret,  # Need for refresh
+            scopes=token_data.get("scopes", self.SCOPES),
+        )
 
-            # Set expiry if available (ensure timezone-naive for Google auth compatibility)
-            if token_data.get("expiry"):
-                from datetime import datetime
+        # Set expiry if available (ensure timezone-naive for Google auth compatibility)
+        if token_data.get("expiry"):
+            from datetime import datetime
 
-                expiry_dt = datetime.fromisoformat(token_data["expiry"])
-                # Remove timezone info to make it naive (Google auth expects naive datetimes)
-                self.creds.expiry = expiry_dt.replace(tzinfo=None)
+            expiry_dt = datetime.fromisoformat(token_data["expiry"])
+            # Remove timezone info to make it naive (Google auth expects naive datetimes)
+            self.creds.expiry = expiry_dt.replace(tzinfo=None)
+            
+        if needs_upgrade and self.creds:
+            await self.save_credentials()
 
         # If credentials are expired, refresh them
         if self.creds and self.creds.expired and self.creds.refresh_token:
@@ -95,9 +108,9 @@ class GoogleDriveOAuth:
             # Add expiry if available
             if self.creds.expiry:
                 token_data["expiry"] = self.creds.expiry.isoformat()
-
-            async with aiofiles.open(self.token_file, "w") as f:
-                await f.write(json.dumps(token_data, indent=2))
+                
+            from utils.encryption import write_encrypted_file
+            await write_encrypted_file(self.token_file, json.dumps(token_data))
 
     def create_authorization_url(self, redirect_uri: str) -> str:
         """Create authorization URL for OAuth flow"""

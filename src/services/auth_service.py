@@ -314,8 +314,8 @@ class AuthService:
 
             # Save tokens to file
             token_file_path = connection_config.config["token_file"]
-            async with aiofiles.open(token_file_path, "w") as f:
-                await f.write(json.dumps(token_file_data, indent=2))
+            from utils.encryption import write_encrypted_file
+            await write_encrypted_file(token_file_path, json.dumps(token_file_data))
 
             # Route based on purpose
             purpose = connection_config.config.get("purpose", "data_source")

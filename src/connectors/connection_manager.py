@@ -48,11 +48,32 @@ class ConnectionManager:
 
     async def load_connections(self):
         """Load connections from persistent storage"""
+        from utils.encryption import decrypt_secret, get_encryption_key
+        
+        needs_encryption_upgrade = False
+        secret_keys = {
+            "api_key", "hmac_secret_key", "secret_key", "client_secret",
+            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token"
+        }
+        
         if self.connections_file.exists():
             async with aiofiles.open(self.connections_file, "r") as f:
                 data = json.loads(await f.read())
 
             for conn_data in data.get("connections", []):
+                # Decrypt sensitive fields
+                if "config" in conn_data and isinstance(conn_data["config"], dict):
+                    for k, v in conn_data["config"].items():
+                        if isinstance(v, dict) and v.get("algorithm") == "AES-256-GCM":
+                            try:
+                                conn_data["config"][k] = decrypt_secret(v)
+                            except ValueError as e:
+                                logger.error(f"Failed to decrypt connection secret {k}: {e}")
+                                conn_data["config"][k] = ""
+                        elif k in secret_keys and isinstance(v, str) and v:
+                            if get_encryption_key() is not None:
+                                needs_encryption_upgrade = True
+                                
                 # Convert datetime strings back to datetime objects
                 if conn_data.get("created_at"):
                     conn_data["created_at"] = datetime.fromisoformat(
@@ -65,16 +86,34 @@ class ConnectionManager:
 
                 config = ConnectionConfig(**conn_data)
                 self.connections[config.connection_id] = config
+                
+            if needs_encryption_upgrade:
+                logger.info(f"Upgrading unencrypted connection secrets in {self.connections_file} to AES-256-GCM")
+                await self.save_connections()
 
             # Now that connections are loaded, clean up duplicates
             await self.cleanup_duplicate_connections(remove_duplicates=True)
 
     async def save_connections(self):
         """Save connections to persistent storage"""
+        from utils.encryption import encrypt_secret
+        secret_keys = {
+            "api_key", "hmac_secret_key", "secret_key", "client_secret",
+            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token"
+        }
+        
         data = {"connections": []}
 
         for config in self.connections.values():
             conn_data = asdict(config)
+            
+            # Encrypt sensitive fields in config
+            if "config" in conn_data and isinstance(conn_data["config"], dict):
+                for k, v in conn_data["config"].items():
+                    if k in secret_keys and isinstance(v, str):
+                        tenant_id = conn_data.get("user_id") or "openrag"
+                        conn_data["config"][k] = encrypt_secret(v, tenant_id=tenant_id)
+                        
             # Convert datetime objects to strings
             if conn_data.get("created_at"):
                 conn_data["created_at"] = conn_data["created_at"].isoformat()

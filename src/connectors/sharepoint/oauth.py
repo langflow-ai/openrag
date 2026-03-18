@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Optional, Dict, Any
 
-import aiofiles
+
 import msal
 
 logger = logging.getLogger(__name__)
@@ -80,59 +80,55 @@ class SharePointOAuth:
     async def load_credentials(self) -> bool:
         """Load existing credentials from token file (async)."""
         try:
+            from utils.encryption import read_encrypted_file
+            
             logger.debug(f"SharePoint OAuth loading credentials from: {self.token_file}")
-            if os.path.exists(self.token_file):
-                logger.debug(f"Token file exists, reading: {self.token_file}")
+            cache_data, needs_upgrade = await read_encrypted_file(self.token_file)
 
-                # Read the token file
-                async with aiofiles.open(self.token_file, "r") as f:
-                    cache_data = await f.read()
-                    logger.debug(f"Read {len(cache_data)} chars from token file")
-
-                if cache_data.strip():
-                    # 1) Try legacy flat JSON first
-                    try:
-                        json_data = json.loads(cache_data)
-                        if isinstance(json_data, dict) and "refresh_token" in json_data:
-                            if self.allow_json_refresh:
-                                logger.debug(
-                                    "Found legacy JSON refresh_token and allow_json_refresh=True; attempting migration refresh"
-                                )
-                                return await self._refresh_from_json_token(json_data)
-                            else:
-                                logger.warning(
-                                    "Token file contains a legacy JSON refresh_token, but allow_json_refresh=False. "
-                                    "Delete the file and re-auth."
-                                )
-                                return False
-                    except json.JSONDecodeError:
-                        logger.debug("Token file is not flat JSON; attempting MSAL cache format")
-
-                    # 2) Try MSAL cache format
-                    logger.debug("Attempting MSAL cache deserialization")
-                    self.token_cache.deserialize(cache_data)
-
-                    # Get accounts from loaded cache
-                    accounts = self.app.get_accounts()
-                    logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
-                    if accounts:
-                        self._current_account = accounts[0]
-                        logger.debug(f"Set current account: {self._current_account.get('username', 'no username')}")
-
-                        # IMPORTANT: Use RESOURCE_SCOPES (no reserved scopes) for silent acquisition
-                        result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
-                        logger.debug(f"Silent token acquisition result keys: {list(result.keys()) if result else 'None'}")
-                        if result and "access_token" in result:
-                            logger.debug("Silent token acquisition successful")
-                            await self.save_cache()
-                            return True
+            if cache_data and cache_data.strip():
+                # 1) Try legacy flat JSON first
+                try:
+                    json_data = json.loads(cache_data)
+                    if isinstance(json_data, dict) and "refresh_token" in json_data:
+                        if self.allow_json_refresh:
+                            logger.debug(
+                                "Found legacy JSON refresh_token and allow_json_refresh=True; attempting migration refresh"
+                            )
+                            return await self._refresh_from_json_token(json_data)
                         else:
-                            error_msg = (result or {}).get("error") or "No result"
-                            logger.warning(f"Silent token acquisition failed: {error_msg}")
-                else:
-                    logger.debug(f"Token file {self.token_file} is empty")
+                            logger.warning(
+                                "Token file contains a legacy JSON refresh_token, but allow_json_refresh=False. "
+                                "Delete the file and re-auth."
+                            )
+                            return False
+                except json.JSONDecodeError:
+                    logger.debug("Token file is not flat JSON; attempting MSAL cache format")
+
+                # 2) Try MSAL cache format
+                logger.debug("Attempting MSAL cache deserialization")
+                self.token_cache.deserialize(cache_data)
+
+                # Get accounts from loaded cache
+                accounts = self.app.get_accounts()
+                logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
+                if accounts:
+                    self._current_account = accounts[0]
+                    logger.debug(f"Set current account: {self._current_account.get('username', 'no username')}")
+                    
+                    if needs_upgrade:
+                        await self.save_cache()
+
+                    # IMPORTANT: Use RESOURCE_SCOPES (no reserved scopes) for silent acquisition
+                    result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
+                    logger.debug(f"Silent token acquisition result keys: {list(result.keys()) if result else 'None'}")
+                    if result and "access_token" in result:
+                        logger.debug("Silent token acquisition successful")
+                        return True
+                    else:
+                        error_msg = (result or {}).get("error") or "No result"
+                        logger.warning(f"Silent token acquisition failed: {error_msg}")
             else:
-                logger.debug(f"Token file does not exist: {self.token_file}")
+                logger.debug(f"Token file {self.token_file} is empty or does not exist")
 
             return False
 
@@ -205,8 +201,9 @@ class SharePointOAuth:
 
             cache_data = self.token_cache.serialize()
             if cache_data:
-                async with aiofiles.open(self.token_file, "w") as f:
-                    await f.write(cache_data)
+                from utils.encryption import write_encrypted_file
+                await write_encrypted_file(self.token_file, cache_data)
+                
                 logger.debug(f"Token cache saved to {self.token_file}")
         except Exception as e:
             logger.error(f"Failed to save token cache: {e}")
