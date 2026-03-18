@@ -137,6 +137,7 @@ Configure cryptographic parameters and connection data isolation protocols.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENRAG_ENCRYPTION_KEY` | Not set | 32-byte Base64 AES-256-GCM master key locking all database index payloads. Automatically generated when you run the TUI or CLI configuration wizard. If left completely unset, the master encryption wrapper remains inactive and credentials remain in plaintext matrices. Warning: Cannot be lost or rotated without risking data-loss. |
+| `OPENRAG_TENANT_ID` | `openrag` | Identifier for AAD (Additional Authenticated Data) tenant binding. Ensures that encrypted files are correctly associated with the expected tenant environment. |
 | `IBM_AUTH_ENABLED` | `false` | Enabling this feature queries the IBM Secrets Manager API for your decryption keys natively. If the IBM API request is unauthorized, misconfigured, or fails, the system automatically falls back to evaluating your local `OPENRAG_ENCRYPTION_KEY`. |
 
 ## OpenSearch settings

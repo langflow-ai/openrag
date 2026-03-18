@@ -30,6 +30,7 @@ class EnvConfig:
     # Core settings
     openai_api_key: str = ""
     openrag_encryption_key: str = ""
+    openrag_tenant_id: str = "openrag"
     opensearch_password: str = ""
     opensearch_username: str = "admin"
     opensearch_host: str = "opensearch"
@@ -184,6 +185,7 @@ class EnvManager:
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
             "OPENRAG_ENCRYPTION_KEY": "openrag_encryption_key",  # pragma: allowlist secret
+            "OPENRAG_TENANT_ID": "openrag_tenant_id",
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
             "OPENSEARCH_USERNAME": "opensearch_username",
             "OPENSEARCH_HOST": "opensearch_host",
@@ -464,6 +466,7 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n")
+                f.write(f"OPENRAG_TENANT_ID={self._quote_env_value(self.config.openrag_tenant_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
                 if self.config.opensearch_username and self.config.opensearch_username != "admin":
                     f.write(f"OPENSEARCH_USERNAME={self._quote_env_value(self.config.opensearch_username)}\n")

@@ -51,6 +51,11 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             secret=True, required=True,
             helper_text="32-byte Base64 key for securing your database credentials (auto-generates if empty)",
         ),
+        ConfigField(
+            "openrag_tenant_id", "OPENRAG_TENANT_ID", "Tenant ID",
+            placeholder="openrag", default="openrag",
+            helper_text="Identifier for AAD tenant binding (default: openrag)",
+        ),
     ]),
 
     # ── OpenSearch ──────────────────────────────────────────────

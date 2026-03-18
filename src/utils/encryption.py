@@ -224,7 +224,8 @@ async def write_encrypted_file(file_path: str, data: str):
     """
     Encrypts string data (if key is present) and writes to file.
     """
-    encrypted = encrypt_secret(data)
+    tenant_id = os.getenv("OPENRAG_TENANT_ID") or "openrag"
+    encrypted = encrypt_secret(data, tenant_id=tenant_id)
     payload_to_write = json.dumps(encrypted, indent=2) if isinstance(encrypted, dict) else data
 
     # Ensure parent dir exists
