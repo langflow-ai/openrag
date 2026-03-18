@@ -1,7 +1,7 @@
 import uuid
 import json
 import httpx
-import aiofiles
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional

@@ -189,7 +189,7 @@ class ConfigManager:
         }
         
         needs_encryption_upgrade = False
-        from utils.encryption import get_encryption_key
+        from utils.encryption import get_master_secret
 
         # Load from config file if it exists
         if self.config_file.exists():
@@ -204,7 +204,7 @@ class ConfigManager:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
                             if "api_key" in provider_data and isinstance(provider_data["api_key"], str) and provider_data["api_key"]:
-                                if get_encryption_key() is not None:
+                                if get_master_secret() is not None:
                                     needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
                 for section in ["knowledge", "agent", "onboarding"]:

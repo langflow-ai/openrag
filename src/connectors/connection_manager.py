@@ -48,7 +48,7 @@ class ConnectionManager:
 
     async def load_connections(self):
         """Load connections from persistent storage"""
-        from utils.encryption import decrypt_secret, get_encryption_key
+        from utils.encryption import decrypt_secret, get_master_secret
         
         needs_encryption_upgrade = False
         secret_keys = {
@@ -71,7 +71,7 @@ class ConnectionManager:
                                 logger.error(f"Failed to decrypt connection secret {k}: {e}")
                                 conn_data["config"][k] = ""
                         elif k in secret_keys and isinstance(v, str) and v:
-                            if get_encryption_key() is not None:
+                            if get_master_secret() is not None:
                                 needs_encryption_upgrade = True
                                 
                 # Convert datetime strings back to datetime objects

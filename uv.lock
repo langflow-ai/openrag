@@ -820,6 +820,21 @@ wheels = [
 ]
 
 [[package]]
+name = "ibm-cloud-sdk-core"
+version = "3.24.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyjwt" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4a/0c/965f4f4b34f1a9a2210bec224ac489c631153f18ef75c6e694750efda654/ibm_cloud_sdk_core-3.24.4.tar.gz", hash = "sha256:20498959ce0177a58938e1855ee09f08b9712e43cc3209e95010c046e8c6d2a6", size = 81778, upload-time = "2026-02-03T08:44:42.217Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/8d/90cf967468fd81f9fd22bd42dbf3b1fbb1234485d1f81b6f17c8de138fff/ibm_cloud_sdk_core-3.24.4-py3-none-any.whl", hash = "sha256:4c3487ed5eb5180770ea2d07d95cfed1e69002ed249bbbc7d155226985c0b785", size = 75786, upload-time = "2026-02-03T08:44:41.094Z" },
+]
+
+[[package]]
 name = "ibm-cos-sdk"
 version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -850,6 +865,21 @@ dependencies = [
     { name = "ibm-cos-sdk-core" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b3/6f/660a6e0b7015a512304487c17c4ac87c280180b0a6142ee196570efc221e/ibm_cos_sdk_s3transfer-2.16.0.tar.gz", hash = "sha256:5cca69c48dcb7a1442b39cadb3a635162fbc2cf002820c8cd6cb170056d27c5c", size = 141138, upload-time = "2026-01-06T10:30:06.375Z" }
+
+[[package]]
+name = "ibm-secrets-manager-sdk"
+version = "2.1.19"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ibm-cloud-sdk-core" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/21/67/7427f602cf32fb5eeff72ab5d05b8805235ef16b0c49ea92e65c3470534a/ibm_secrets_manager_sdk-2.1.19.tar.gz", hash = "sha256:8f945c3ec2245aced6956510c891355b6f28ef4f1c84c1aea2ec138d08b8694d", size = 251807, upload-time = "2026-03-17T19:33:56.075Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/73/2ba3e270f1d095b5dfba7d2e32b125e70f842a4438f5bacf04d2c8d04a60/ibm_secrets_manager_sdk-2.1.19-py3-none-any.whl", hash = "sha256:82293fa1c7357b5fe203afc676db654a807696064c7ff5807f56044dd19f8e5a", size = 150219, upload-time = "2026-03-17T19:33:55.118Z" },
+]
 
 [[package]]
 name = "idna"
@@ -1298,6 +1328,7 @@ dependencies = [
     { name = "google-auth-oauthlib" },
     { name = "httpx" },
     { name = "ibm-cos-sdk" },
+    { name = "ibm-secrets-manager-sdk" },
     { name = "msal" },
     { name = "opensearch-py", extra = ["async"] },
     { name = "psutil" },
@@ -1332,6 +1363,7 @@ requires-dist = [
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "ibm-cos-sdk", specifier = ">=2.13.0" },
+    { name = "ibm-secrets-manager-sdk", specifier = ">=2.1.19" },
     { name = "msal", specifier = ">=1.29.0" },
     { name = "opensearch-py", extras = ["async"], specifier = ">=3.0.0" },
     { name = "psutil", specifier = ">=7.0.0" },

@@ -42,7 +42,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
-    "zxcvbn>=4.5.0"
+    "zxcvbn>=4.5.0",
+    "ibm-secrets-manager-sdk>=2.1.19",
 ]
 
 [dependency-groups]
