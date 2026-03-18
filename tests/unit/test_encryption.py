@@ -65,31 +65,66 @@ async def test_connection_manager():
         config={"client_secret": "my-client-secret-plaintext", "other_setting": "not-secret"},
         user_id="user-1"
     )
+    await cm.create_connection(
+        connector_type="aws_s3",
+        name="Test S3",
+        config={"secret_key": "aws-secret", "access_key": "aws-access", "bucket_names": ["foo"]},
+        user_id="user-1"
+    )
+    await cm.create_connection(
+        connector_type="ibm_cos",
+        name="Test IBM",
+        config={"api_key": "ibm-api-key", "service_instance_id": "ibm-service", "bucket_names": ["bar"]},
+        user_id="user-1"
+    )
     # Should be saved encrypted
     import json
     with open(test_json, "r") as f:
             data = json.load(f)
             
-    found = False
+    found_gd = False
+    found_s3 = False
+    found_ibm = False
     for c in data["connections"]:
         if c["connector_type"] == "google_drive":
-            found = True
+            found_gd = True
             assert isinstance(c["config"]["client_secret"], dict)
             assert c["config"]["client_secret"]["algorithm"] == "AES-256-GCM"
             assert c["config"]["other_setting"] == "not-secret"
-    assert found
+        if c["connector_type"] == "aws_s3":
+            found_s3 = True
+            assert isinstance(c["config"]["secret_key"], dict)
+            assert c["config"]["secret_key"]["algorithm"] == "AES-256-GCM"
+            assert isinstance(c["config"]["access_key"], dict)
+            assert c["config"]["bucket_names"] == ["foo"]
+        if c["connector_type"] == "ibm_cos":
+            found_ibm = True
+            assert isinstance(c["config"]["api_key"], dict)
+            assert c["config"]["api_key"]["algorithm"] == "AES-256-GCM"
+            assert isinstance(c["config"]["service_instance_id"], dict)
+    assert found_gd and found_s3 and found_ibm
     
     # Reloading should decrypt
     cm2 = ConnectionManager(str(test_json))
     await cm2.load_connections()
     
-    found = False
+    found_gd = False
+    found_s3 = False
+    found_ibm = False
     for c in cm2.connections.values():
         if c.connector_type == "google_drive":
-            found = True
+            found_gd = True
             assert c.config["client_secret"] == "my-client-secret-plaintext"
             assert c.config["other_setting"] == "not-secret"
-    assert found
+        elif c.connector_type == "aws_s3":
+            found_s3 = True
+            assert c.config["secret_key"] == "aws-secret"
+            assert c.config["access_key"] == "aws-access"
+        elif c.connector_type == "ibm_cos":
+            found_ibm = True
+            assert c.config["api_key"] == "ibm-api-key"
+            assert c.config["service_instance_id"] == "ibm-service"
+    assert found_gd and found_s3 and found_ibm
     print("OK")
 
 def test_auto_upgrade_features():

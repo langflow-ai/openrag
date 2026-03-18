@@ -53,7 +53,8 @@ class ConnectionManager:
         needs_encryption_upgrade = False
         secret_keys = {
             "api_key", "hmac_secret_key", "secret_key", "client_secret",
-            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token"
+            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token",
+            "access_key", "hmac_access_key", "service_instance_id"
         }
         
         if self.connections_file.exists():
@@ -99,7 +100,8 @@ class ConnectionManager:
         from utils.encryption import encrypt_secret
         secret_keys = {
             "api_key", "hmac_secret_key", "secret_key", "client_secret",
-            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token"
+            "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token",
+            "access_key", "hmac_access_key", "service_instance_id"
         }
         
         data = {"connections": []}
