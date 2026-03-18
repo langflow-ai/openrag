@@ -72,19 +72,23 @@ class TaskProcessor:
         max_retries = 3
         retry_delay = 1.0
 
+        # .txt files are renamed to .md for Langflow during ingestion
+        names_to_check = [filename]
+        if filename.lower().endswith('.txt'):
+            names_to_check.append(filename[:-4] + '.md')
+
         for attempt in range(max_retries):
             try:
-                # Search for any document with this exact filename
-                search_body = build_filename_search_body(filename, size=1, source=False)
-
-                response = await opensearch_client.search(
-                    index=get_index_name(),
-                    body=search_body
-                )
-
-                # Check if any hits were found
-                hits = response.get("hits", {}).get("hits", [])
-                return len(hits) > 0
+                for name in names_to_check:
+                    search_body = build_filename_search_body(name, size=1, source=False)
+                    response = await opensearch_client.search(
+                        index=get_index_name(),
+                        body=search_body
+                    )
+                    hits = response.get("hits", {}).get("hits", [])
+                    if len(hits) > 0:
+                        return True
+                return False
 
             except (asyncio.TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
