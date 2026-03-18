@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useGetAllFiltersQuery } from "@/app/api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilter } from "@/app/api/queries/useGetFiltersSearchQuery";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 import {
   type FilterColor,
@@ -35,6 +36,7 @@ export function KnowledgeFilterList({
   onFilterSelect,
 }: KnowledgeFilterListProps) {
   const { startCreateMode } = useKnowledgeFilter();
+  const { closeMenu } = useTask();
 
   const { data, isFetching: loading } = useGetAllFiltersQuery();
 
@@ -45,10 +47,12 @@ export function KnowledgeFilterList({
       onFilterSelect(null);
       return;
     }
+    closeMenu();
     onFilterSelect(filter);
   };
 
   const handleCreateNew = () => {
+    closeMenu();
     startCreateMode();
   };
 

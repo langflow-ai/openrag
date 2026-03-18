@@ -181,7 +181,48 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             "aws_secret_access_key", "AWS_SECRET_ACCESS_KEY", "Secret Access Key",
             placeholder="", secret=True,
         ),
+        ConfigField(
+            "aws_s3_endpoint", "AWS_S3_ENDPOINT", "S3 Endpoint URL (optional)",
+            placeholder="",
+            helper_text="Leave empty for AWS S3. For MinIO, R2, or other S3-compatible services, enter the endpoint URL.",
+        ),
+        ConfigField(
+            "aws_region", "AWS_REGION", "AWS Region (optional)",
+            placeholder="us-east-1",
+            default="us-east-1",
+            helper_text="AWS region (e.g. us-east-1, eu-west-1). Default: us-east-1.",
+        ),
     ], advanced=True, gate_prompt="Configure AWS credentials?"),
+
+    # ── IBM Cloud Object Storage ─────────────────────────────────
+    ConfigSection("IBM Cloud Object Storage", [
+        ConfigField(
+            "ibm_cos_api_key", "IBM_COS_API_KEY", "API Key",
+            placeholder="",
+            helper_text="Create API key at https://cloud.ibm.com/iam/apikeys",
+            secret=True,
+        ),
+        ConfigField(
+            "ibm_cos_service_instance_id", "IBM_COS_SERVICE_INSTANCE_ID",
+            "Service Instance ID (CRN)",
+            placeholder="crn:v1:bluemix:...",
+        ),
+        ConfigField(
+            "ibm_cos_endpoint", "IBM_COS_ENDPOINT", "Service Endpoint",
+            placeholder="https://s3.us-south.cloud-object-storage.appdomain.cloud",
+            helper_text="Endpoints: https://cloud.ibm.com/docs/cloud-object-storage?topic=cloud-object-storage-endpoints",
+        ),
+        ConfigField(
+            "ibm_cos_hmac_access_key_id", "IBM_COS_HMAC_ACCESS_KEY_ID",
+            "HMAC Access Key ID (optional)",
+            placeholder="",
+        ),
+        ConfigField(
+            "ibm_cos_hmac_secret_access_key", "IBM_COS_HMAC_SECRET_ACCESS_KEY",
+            "HMAC Secret Access Key (optional)",
+            placeholder="", secret=True,
+        ),
+    ], advanced=True, gate_prompt="Configure IBM Cloud Object Storage?"),
 
     # ── Langfuse ────────────────────────────────────────────────
     ConfigSection("Langfuse", [

@@ -16,7 +16,7 @@ export default function CardIcon({
       className={cn(
         "w-8 h-8 rounded flex items-center justify-center border",
         isActive
-          ? activeBgColor
+          ? `${activeBgColor} text-black`
           : "bg-muted grayscale group-hover:bg-background",
       )}
     >

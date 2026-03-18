@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
@@ -8,7 +9,6 @@ import {
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,27 +23,25 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { type Status, StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { parseTimestampMs } from "@/lib/time-utils";
 import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
+import AwsLogo from "../../components/icons/aws-logo";
 import GoogleDriveIcon from "../../components/icons/google-drive-logo";
+import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
+import IBMLogo from "../../components/icons/ibm-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
 import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
 // Function to get the appropriate icon for a connector type
@@ -59,10 +57,15 @@ function getSourceIcon(connectorType?: string) {
       return (
         <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
       );
+    case "openrag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
+    case "ibm_cos":
+      return <IBMCOSIcon className="h-4 w-4 flex-shrink-0" />;
+    case "aws_s3":
+      return <AwsLogo className="h-4 w-4 flex-shrink-0" />;
     default:
       return (
         <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -70,29 +73,125 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
-interface IngestionStatus {
-  status: Status;
-  error?: string;
-  data?: File;
-}
-
 function SearchPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { files: taskFiles, refreshTasks } = useTask();
+  const {
+    files: taskFiles,
+    tasks,
+    refreshTasks,
+    openMenu,
+    setRecentTasksExpanded,
+    selectTask,
+  } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
-  const [ingestionStatus, setIngestionStatus] =
-    useState<IngestionStatus | null>(null);
+  const hasInitializedFailedFilesRef = useRef(false);
+  const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
 
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
+
+  const getFailedFileKey = useCallback(
+    (file: (typeof taskFiles)[number]) =>
+      `${file.task_id}:${file.source_url || file.filename}`,
+    [],
+  );
+
+  const getTaskIdForRow = useCallback(
+    (file?: File): string | null => {
+      if (!file) return null;
+      const sourceUrl = file.source_url || "";
+      const filename = file.filename || "";
+      const matches = taskFiles.filter(
+        (taskFile) =>
+          (sourceUrl && taskFile.source_url === sourceUrl) ||
+          taskFile.filename === filename,
+      );
+      if (matches.length === 0) return null;
+
+      const failedMatches =
+        file.status === "failed"
+          ? matches.filter((taskFile) => taskFile.status === "failed")
+          : matches;
+      const candidates = failedMatches.length > 0 ? failedMatches : matches;
+
+      const taskTimestampMsById = new Map(
+        tasks.map((task) => [
+          task.task_id,
+          parseTimestampMs(task.updated_at) ??
+            parseTimestampMs(task.created_at) ??
+            0,
+        ]),
+      );
+
+      const mostRecent = [...candidates].sort((a, b) => {
+        const aMs =
+          taskTimestampMsById.get(a.task_id) ??
+          parseTimestampMs(a.updated_at) ??
+          parseTimestampMs(a.created_at) ??
+          0;
+        const bMs =
+          taskTimestampMsById.get(b.task_id) ??
+          parseTimestampMs(b.updated_at) ??
+          parseTimestampMs(b.created_at) ??
+          0;
+        return bMs - aMs;
+      })[0];
+
+      return mostRecent?.task_id || null;
+    },
+    [taskFiles, tasks],
+  );
+
+  // Auto-open unified task panel only when a NEW task file transitions to failed
+  // (skip initial failed files that already existed on page load).
+  useEffect(() => {
+    const failedFiles = taskFiles.filter((file) => file.status === "failed");
+    const seenKeys = seenFailedFileKeysRef.current;
+
+    if (!hasInitializedFailedFilesRef.current) {
+      failedFiles.forEach((file) => {
+        seenKeys.add(getFailedFileKey(file));
+      });
+      hasInitializedFailedFilesRef.current = true;
+      return;
+    }
+
+    let firstNewFailureTaskId: string | null = null;
+    const hasNewFailure = failedFiles.some((file) => {
+      const key = getFailedFileKey(file);
+      if (seenKeys.has(key)) {
+        return false;
+      }
+      seenKeys.add(key);
+      if (!firstNewFailureTaskId) {
+        firstNewFailureTaskId = file.task_id;
+      }
+      return true;
+    });
+
+    if (hasNewFailure) {
+      if (firstNewFailureTaskId) {
+        selectTask(firstNewFailureTaskId);
+      }
+      openMenu();
+      setRecentTasksExpanded(true);
+    }
+  }, [
+    taskFiles,
+    openMenu,
+    setRecentTasksExpanded,
+    selectTask,
+    getFailedFileKey,
+  ]);
 
   const {
     data: searchData = [],
@@ -100,6 +199,50 @@ function SearchPage() {
     error,
     isError,
   } = useGetSearchQuery(queryOverride, parsedFilterData);
+
+  const isOpenragDocsRow = useCallback((file?: File) => {
+    return (
+      file?.connector_type === "openrag_docs" ||
+      file?.connector_type === "system_default"
+    );
+  }, []);
+
+  const getFileIdentity = useCallback((file?: File) => {
+    if (!file) {
+      return "";
+    }
+
+    const normalizedFilename = file.filename?.trim();
+    if (normalizedFilename) {
+      return normalizedFilename;
+    }
+
+    const normalizedSourceUrl = file.source_url?.trim();
+    if (normalizedSourceUrl) {
+      return normalizedSourceUrl;
+    }
+
+    return "";
+  }, []);
+
+  const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
+    const isTaskActive =
+      task.status === "pending" ||
+      task.status === "running" ||
+      task.status === "processing";
+    if (!isTaskActive || !task.files) {
+      return false;
+    }
+
+    return Object.entries(task.files).some(([fileKey, fileInfo]) => {
+      const filename = (fileInfo as { filename?: string })?.filename ?? "";
+      return (
+        filename === "OpenRAG docs refresh" || fileKey.includes("openr.ag")
+      );
+    });
+  });
+  const hasOpenragRefreshCue =
+    refreshOpenragDocsMutation.isPending || hasOpenragRefreshCueFromTasks;
 
   // Show toast notification for search errors
   useEffect(() => {
@@ -121,10 +264,15 @@ function SearchPage() {
   }, [isError, error]);
   // Convert TaskFiles to File format and merge with backend results
   const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+    const normalizedFilename =
+      taskFile.filename?.trim() ||
+      taskFile.source_url?.trim() ||
+      "Untitled source";
+
     return {
-      filename: taskFile.filename,
+      filename: normalizedFilename,
       mimetype: taskFile.mimetype,
-      source_url: taskFile.source_url,
+      source_url: taskFile.source_url || "",
       size: taskFile.size,
       connector_type: taskFile.connector_type,
       status: taskFile.status,
@@ -135,11 +283,16 @@ function SearchPage() {
   });
   // Create a map of task files by filename for quick lookup
   const taskFileMap = new Map(
-    taskFilesAsFiles.map((file) => [file.filename, file]),
+    taskFilesAsFiles.map((file) => [getFileIdentity(file), file]),
   );
-  // Override backend files with task file status if they exist
+  // Override backend files with task file status if they exist.
+  // Keep openrag_docs rows sourced from indexed search results so
+  // OpenRAG docs do not appear as pending in the table.
   const backendFiles = (searchData as File[]).map((file) => {
-    const taskFile = taskFileMap.get(file.filename);
+    if (file.connector_type === "openrag_docs") {
+      return file;
+    }
+    const taskFile = taskFileMap.get(getFileIdentity(file));
     if (taskFile) {
       // Override backend file with task file data (includes status)
       return { ...file, ...taskFile };
@@ -148,15 +301,31 @@ function SearchPage() {
   });
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+    // Ignore the synthetic refresh task row from docs URL ingestion.
+    // The table should only show indexed docs, not orchestration task labels.
+    if (
+      taskFile.filename === "OpenRAG docs refresh" ||
+      taskFile.source_url.includes("openr.ag")
+    ) {
+      return false;
+    }
+    // Do not render task-only openrag_docs placeholder rows in the table.
+    // OpenRAG default docs should be represented only by indexed search results.
+    if (taskFile.connector_type === "openrag_docs") {
+      return false;
+    }
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename,
+        (backendFile) =>
+          getFileIdentity(backendFile) === getFileIdentity(taskFile),
       )
     );
   });
   // Combine task files first, then backend files
   const fileResults = [...backendFiles, ...filteredTaskFiles];
+
+  const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
 
   const columnDefs: ColDef<File>[] = [
@@ -172,6 +341,8 @@ function SearchPage() {
         // Read status directly from data on each render
         const status = data?.status || "active";
         const isActive = status === "active";
+        const showOpenragSourceAnimation =
+          isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full">
             <div
@@ -196,7 +367,13 @@ function SearchPage() {
               {getSourceIcon(data?.connector_type)}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="font-medium text-foreground truncate">
+                  <span
+                    className={`font-medium truncate ${
+                      showOpenragSourceAnimation
+                        ? "text-primary animate-pulse"
+                        : "text-foreground"
+                    }`}
+                  >
                     {value}
                   </span>
                 </TooltipTrigger>
@@ -269,18 +446,29 @@ function SearchPage() {
       headerName: "Status",
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
-        const error =
-          typeof data?.error === "string" && data.error.trim().length > 0
-            ? data.error.trim()
-            : undefined;
-        if (status === "failed" && error) {
+        const showOpenragRefreshCue =
+          isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        if (showOpenragRefreshCue) {
+          return (
+            <div className="inline-flex items-center justify-center h-5 w-5">
+              <RefreshCw
+                className="h-4 w-4 text-primary animate-spin"
+                aria-label="OpenRAG doc is refreshing"
+              />
+            </div>
+          );
+        }
+        if (status === "failed") {
           return (
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+              className="inline-flex h-full w-full items-center text-red-500 transition hover:text-red-400"
               aria-label="View ingestion error"
+              data-testid="failed-status-cell-trigger"
               onClick={() => {
-                setIngestionStatus({ status, error, data });
+                selectTask(getTaskIdForRow(data));
+                openMenu();
+                setRecentTasksExpanded(true);
               }}
             >
               <StatusBadge status={status} className="pointer-events-none" />
@@ -342,16 +530,38 @@ function SearchPage() {
         deleteDocumentMutation.mutateAsync({ filename: row.filename }),
       );
 
-      await Promise.all(deletePromises);
+      const deleteResults = await Promise.all(deletePromises);
       await refreshTasks();
       await queryClient.invalidateQueries({ queryKey: ["search"] });
       await queryClient.refetchQueries({ queryKey: ["search"] });
 
-      toast.success(
-        `Successfully deleted ${selectedRows.length} document${
-          selectedRows.length > 1 ? "s" : ""
-        }`,
+      const totalDeletedChunks = deleteResults.reduce(
+        (sum, result) => sum + (result.deleted_chunks || 0),
+        0,
       );
+      const filesWithNoDeletion = deleteResults.filter(
+        (result) => (result.deleted_chunks || 0) === 0,
+      );
+
+      if (totalDeletedChunks > 0) {
+        toast.success(
+          `Successfully deleted ${selectedRows.length} document${
+            selectedRows.length > 1 ? "s" : ""
+          }`,
+        );
+      } else {
+        toast.warning(
+          "No document chunks were deleted. Files may be owned by another context or already removed.",
+        );
+      }
+
+      if (filesWithNoDeletion.length > 0 && totalDeletedChunks > 0) {
+        toast.warning(
+          `${filesWithNoDeletion.length} selected file${
+            filesWithNoDeletion.length > 1 ? "s were" : " was"
+          } not deleted (0 chunks matched).`,
+        );
+      }
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
 
@@ -387,6 +597,7 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
           <KnowledgeSearchInput />
+
           <Button
             type="button"
             variant="outline"
@@ -432,6 +643,31 @@ function SearchPage() {
               </>
             )}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg flex-shrink-0"
+            disabled={refreshOpenragDocsMutation.isPending}
+            onClick={async () => {
+              try {
+                toast.info("Refreshing OpenRAG docs...");
+                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.success(result.message);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to refresh OpenRAG docs",
+                );
+              }
+            }}
+          >
+            {refreshOpenragDocsMutation.isPending ? (
+              <>Refreshing docs...</>
+            ) : (
+              <>Fetch latest docs</>
+            )}
+          </Button>
           {selectedRows.length > 0 && (
             <Button
               type="button"
@@ -453,11 +689,13 @@ function SearchPage() {
           loading={isFetching}
           ref={gridRef}
           theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-          rowData={fileResults}
+          rowData={gridRows}
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={(params: GetRowIdParams<File>) => params.data?.filename}
+          getRowId={(params: GetRowIdParams<File>) =>
+            getFileIdentity(params.data)
+          }
           domLayout="normal"
           onSelectionChanged={onSelectionChanged}
           pagination={pagination}
@@ -475,26 +713,6 @@ function SearchPage() {
           )}
         />
       </div>
-
-      {/* Status dialog */}
-      {ingestionStatus && (
-        <Dialog
-          open={!!ingestionStatus}
-          onOpenChange={(open) => !open && setIngestionStatus(null)}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Ingestion failed</DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                {ingestionStatus.data?.filename || "Unknown file"}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
-              {ingestionStatus.error}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
 
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

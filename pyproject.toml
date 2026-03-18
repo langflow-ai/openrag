@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag"
-version = "0.2.5"
+version = "0.3.2"
 description = "OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -35,6 +35,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.35.0",
     "boto3>=1.35.0",
+    "ibm-cos-sdk>=2.13.0",
     "psutil>=7.0.0",
     "rich>=13.0.0",
     "textual>=0.45.0",

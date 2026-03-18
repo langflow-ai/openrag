@@ -17,11 +17,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
+import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   OllamaSettingsForm,
   type OllamaSettingsFormData,
 } from "./ollama-settings-form";
-import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 
 const OllamaSettingsDialog = ({
   open,
@@ -131,7 +131,13 @@ const OllamaSettingsDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setShowRemoveConfirm(false); setOpen(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setShowRemoveConfirm(false);
+        setOpen(o);
+      }}
+    >
       <DialogContent className="max-w-2xl">
         <FormProvider {...methods}>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">

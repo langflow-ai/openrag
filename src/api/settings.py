@@ -3,10 +3,11 @@ import platform
 from fastapi import Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.version_utils import OPENRAG_VERSION
 from config.settings import (
+    DEFAULT_DOCS_URL,
     DISABLE_INGEST_WITH_LANGFLOW,
     INGEST_SAMPLE_DATA,
     LANGFLOW_URL,
@@ -88,6 +89,8 @@ class OnboardingStateBody(BaseModel):
     upload_steps: Optional[Dict[str, Any]] = None
     openrag_docs_filter_id: Optional[str] = None
     user_doc_filter_id: Optional[str] = None
+    openrag_docs_ingested_version: Optional[str] = None
+    openrag_docs_remote_signature: Optional[str] = None
 
 
 class DoclingPresetBody(BaseModel):
@@ -105,6 +108,8 @@ class OnboardingStateConfig(BaseModel):
     upload_steps: Optional[Dict[str, Any]]
     openrag_docs_filter_id: Optional[str]
     user_doc_filter_id: Optional[str]
+    openrag_docs_ingested_version: Optional[str]
+    openrag_docs_remote_signature: Optional[str]
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
@@ -173,6 +178,11 @@ class OnboardingResponse(BaseModel):
     sample_data_ingested: bool
     openrag_docs_filter_id: Optional[str] = None
     task_id: Optional[str] = None
+
+
+class RefreshOpenRAGDocsResponse(BaseModel):
+    message: str
+    refreshed: bool
 
 class DoclingConfig(BaseModel):
     do_ocr: bool
@@ -316,6 +326,8 @@ async def get_settings(
                 upload_steps=openrag_config.onboarding.upload_steps,
                 openrag_docs_filter_id=openrag_config.onboarding.openrag_docs_filter_id,
                 user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
+                openrag_docs_ingested_version=openrag_config.onboarding.openrag_docs_ingested_version,
+                openrag_docs_remote_signature=openrag_config.onboarding.openrag_docs_remote_signature,
             ),
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
@@ -811,12 +823,12 @@ async def update_settings(
                 flows_service = _get_flows_service()
 
                 # Update global variables
-                await _update_langflow_global_variables(current_config)
+                await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
                 # Update LLM client credentials when embedding selection changes
                 if body.embedding_provider is not None or body.embedding_model is not None:
                     await _update_mcp_servers_with_provider_credentials(
-                        current_config, session_manager
+                        current_config, session_manager, flows_service=flows_service
                     )
 
                 # Update model values if provider or model changed (including removals that trigger fallback)
@@ -1072,11 +1084,12 @@ async def onboarding(
             # or if existing config has values (for OpenAI/Anthropic that might already be set)
             if (provider_fields_provided or
                 current_config.providers.openai.api_key != "" or
-                current_config.providers.anthropic.api_key != ""):
-                await _update_langflow_global_variables(current_config)
+                current_config.providers.anthropic.api_key != "" or
+                current_config.providers.any_configured()):
+                await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
             if body.embedding_provider or body.embedding_model:
-                await _update_mcp_servers_with_provider_credentials(current_config, session_manager)
+                await _update_mcp_servers_with_provider_credentials(current_config, session_manager=session_manager, flows_service=flows_service)
 
             # Update model values if provider or model fields were provided
             if body.llm_provider or body.llm_model or body.embedding_provider or body.embedding_model:
@@ -1126,6 +1139,18 @@ async def onboarding(
                         langflow_file_service,
                         session_manager,
                     )
+                    current_config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
+                    from main import (
+                        _get_remote_docs_signature,
+                        _should_use_url_default_docs_ingest,
+                    )
+
+                    if _should_use_url_default_docs_ingest():
+                        current_config.onboarding.openrag_docs_remote_signature = (
+                            await _get_remote_docs_signature(DEFAULT_DOCS_URL)
+                        )
+                    else:
+                        current_config.onboarding.openrag_docs_remote_signature = None
                     logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
@@ -1252,10 +1277,12 @@ async def _create_openrag_docs_filter(
     query_data = json.dumps({
         "query": "",
         "filters": {
-            "data_sources": ["openrag-documentation.pdf"],
+            # URL-based docs ingestion produces many source URLs.
+            # Filter by connector type to target OpenRAG docs only.
+            "data_sources": ["*"],
             "document_types": ["*"],
             "owners": ["*"],
-            "connector_types": ["*"],
+            "connector_types": ["openrag_docs"],
         },
         "limit": 10,
         "scoreThreshold": 0,
@@ -1293,15 +1320,15 @@ def _get_flows_service():
     return FlowsService()
 
 
-async def _update_langflow_global_variables(config):
+async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
     try:
         # WatsonX global variables
         if config.providers.watsonx.api_key:
             await clients._create_langflow_global_variable(
-                "WATSONX_API_KEY", config.providers.watsonx.api_key, modify=True
+                "WATSONX_APIKEY", config.providers.watsonx.api_key, modify=True
             )
-            logger.info("Set WATSONX_API_KEY global variable in Langflow")
+            logger.info("Set WATSONX_APIKEY global variable in Langflow")
 
         if config.providers.watsonx.project_id:
             await clients._create_langflow_global_variable(
@@ -1331,19 +1358,14 @@ async def _update_langflow_global_variables(config):
 
         # Ollama global variables
         if config.providers.ollama.endpoint:
+            if not flows_service:
+                flows_service = _get_flows_service()
 
-            try:
-                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=True)
-                await clients._create_langflow_global_variable(
-                    "OLLAMA_BASE_URL", endpoint, modify=True
-                )
-                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Podman)")
-            except Exception:
-                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=False)
-                await clients._create_langflow_global_variable(
-                    "OLLAMA_BASE_URL", endpoint, modify=True
-                )   
-                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Docker)")
+            endpoint = await flows_service.resolve_ollama_url(config.providers.ollama.endpoint, force_refresh=True)
+            await clients._create_langflow_global_variable(
+                "OLLAMA_BASE_URL", endpoint, modify=True
+            )
+            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
         if config.knowledge.embedding_model:
             await clients._create_langflow_global_variable(
@@ -1358,7 +1380,7 @@ async def _update_langflow_global_variables(config):
         raise
 
 
-async def _update_mcp_servers_with_provider_credentials(config, session_manager = None):
+async def _update_mcp_servers_with_provider_credentials(config, session_manager = None, flows_service=None):
     # Update MCP servers with provider credentials
     try:
         from services.langflow_mcp_service import LangflowMCPService
@@ -1367,7 +1389,7 @@ async def _update_mcp_servers_with_provider_credentials(config, session_manager 
         mcp_service = LangflowMCPService()
 
         # Build global vars using utility function
-        mcp_global_vars = build_mcp_global_vars_from_config(config)
+        mcp_global_vars = await build_mcp_global_vars_from_config(config, flows_service=flows_service)
 
         # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
@@ -1396,29 +1418,45 @@ async def _update_mcp_servers_with_provider_credentials(config, session_manager 
 
 
 async def _update_langflow_model_values(config, flows_service):
-    """Update model values across Langflow flows"""
+    """Update model values across Langflow flows for all configured providers"""
     try:
-        # Update LLM model values
+        # 1. Update ONLY the current LLM provider
         llm_provider = config.agent.llm_provider.lower()
-
         await flows_service.change_langflow_model_value(
             llm_provider,
             llm_model=config.agent.llm_model,
+            force_llm_update=True
         )
         logger.info(
             f"Successfully updated Langflow flows for LLM provider {llm_provider}"
         )
 
-        # Update embedding model values
-        embedding_provider = config.knowledge.embedding_provider.lower()
+        # 2. Update ALL configured embedding providers
+        embedding_providers = []
+        if config.providers.openai.configured:
+            embedding_providers.append("openai")
+        if config.providers.watsonx.configured:
+            embedding_providers.append("watsonx")
+        if config.providers.ollama.configured:
+            embedding_providers.append("ollama")
 
-        await flows_service.change_langflow_model_value(
-            embedding_provider,
-            embedding_model=config.knowledge.embedding_model,
-        )
-        logger.info(
-            f"Successfully updated Langflow flows for embedding provider {embedding_provider}"
-        )
+        current_embedding_provider = config.knowledge.embedding_provider.lower()
+        for provider in embedding_providers:
+            # Use configured model for current provider, or None (first available) for others
+            embedding_model = (
+                config.knowledge.embedding_model
+                if provider == current_embedding_provider
+                else None
+            )
+
+            await flows_service.change_langflow_model_value(
+                provider,
+                embedding_model=embedding_model,
+                force_embedding_update=True
+            )
+            logger.info(
+                f"Successfully updated Langflow flows for embedding provider {provider}"
+            )
 
     except Exception as e:
         logger.error(f"Failed to update Langflow model values: {str(e)}")
@@ -1514,13 +1552,13 @@ async def reapply_all_settings(session_manager = None):
         logger.info("Reapplying all settings to Langflow flows and global variables")
 
         if config.knowledge.embedding_model or config.knowledge.embedding_provider:
-            await _update_mcp_servers_with_provider_credentials(config, session_manager)
+            await _update_mcp_servers_with_provider_credentials(config, session_manager, flows_service=flows_service)
         else:
             logger.info("No embedding model or provider configured, skipping MCP server update")
 
         # Update all Langflow settings using helper functions
         try:
-            await _update_langflow_global_variables(config)
+            await _update_langflow_global_variables(config, flows_service=flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow global variables: {str(e)}")
             # Continue with other updates even if global variables fail
@@ -1639,6 +1677,8 @@ async def rollback_onboarding(
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
+        current_config.onboarding.openrag_docs_ingested_version = None
+        current_config.onboarding.openrag_docs_remote_signature = None
 
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
@@ -1756,3 +1796,38 @@ async def update_docling_preset(
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to update docling settings: {str(e)}")
+
+
+async def refresh_openrag_docs(
+    document_service=Depends(get_document_service),
+    task_service=Depends(get_task_service),
+    langflow_file_service=Depends(get_langflow_file_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> RefreshOpenRAGDocsResponse:
+    """Manually refresh OpenRAG docs ingestion on demand."""
+    try:
+        from main import refresh_default_openrag_docs
+
+        refreshed = await refresh_default_openrag_docs(
+            document_service=document_service,
+            task_service=task_service,
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            force=True,
+            reason="manual",
+        )
+        return RefreshOpenRAGDocsResponse(
+            message=(
+                "OpenRAG docs were refreshed."
+                if refreshed
+                else "OpenRAG docs refresh was skipped by current configuration."
+            ),
+            refreshed=refreshed,
+        )
+    except Exception as e:
+        logger.error("Failed to refresh OpenRAG docs on demand", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh OpenRAG docs: {str(e)}",
+        )

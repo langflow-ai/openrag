@@ -31,31 +31,7 @@ Ready to get started? Try the [quickstart](/quickstart) to install OpenRAG and s
 
 OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
 
-```mermaid
----
-config:
-  theme: 'base'
-  themeVariables:
-    lineColor: '#2e8555'
----
-flowchart TD
-    subgraph Containers
-    backend[OpenRAG backend] --> langflow[Langflow]
-    langflow <--> opensearch[OpenSearch]
-    backend <--> frontend[OpenRAG frontend]
-    end
-    subgraph local [Local services]
-    docling[Docling Serve]
-    end
-    subgraph ext [External connectors]
-    drive1[Google Drive]
-    drive2[OneDrive]
-    drive3[SharePoint]
-    drive4[Others]
-    end
-    local --> backend
-    ext --> backend
-```
+![OpenRAG container relationships](@site/static/img/openrag-containers.png)
 
 * **OpenRAG backend**: The central orchestration service that coordinates all other components.
 

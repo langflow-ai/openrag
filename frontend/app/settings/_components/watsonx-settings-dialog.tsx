@@ -17,11 +17,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
+import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   WatsonxSettingsForm,
   type WatsonxSettingsFormData,
 } from "./watsonx-settings-form";
-import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -147,7 +147,13 @@ const WatsonxSettingsDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setShowRemoveConfirm(false); setOpen(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setShowRemoveConfirm(false);
+        setOpen(o);
+      }}
+    >
       <DialogContent autoFocus={false} className="max-w-2xl">
         <FormProvider {...methods}>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">

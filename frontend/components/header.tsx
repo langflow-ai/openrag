@@ -48,6 +48,7 @@ export function Header() {
           {/* Task Notification Bell */}
           <button
             onClick={toggleMenu}
+            data-testid="task-menu-toggle"
             className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
           >
             <Bell size={16} className="text-muted-foreground" />

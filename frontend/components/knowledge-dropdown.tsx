@@ -3,7 +3,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
-  Cloud,
   File as FileIcon,
   Folder,
   FolderOpen,
@@ -18,6 +17,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import AwsIcon from "@/components/icons/aws-logo";
 import GoogleDriveIcon from "@/components/icons/google-drive-logo";
+import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
 import OneDriveIcon from "@/components/icons/one-drive-logo";
 import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import {
   duplicateCheck,
@@ -81,6 +82,7 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
+  const { isIbmAuthMode } = useAuth();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
@@ -88,16 +90,14 @@ export function KnowledgeDropdown() {
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
-  const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
-  const [awsEnabled, setAwsEnabled] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
   const [folderPath, setFolderPath] = useState("");
-  const [bucketUrl, setBucketUrl] = useState("s3://");
   const [folderLoading, setFolderLoading] = useState(false);
-  const [s3Loading, setS3Loading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
+  const [ibmCosConfigured, setIbmCosConfigured] = useState(false);
+  const [s3Configured, setS3Configured] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [cloudConnectors, setCloudConnectors] = useState<{
@@ -115,17 +115,39 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     const checkAvailability = async () => {
       try {
-        // Check AWS and upload batch size
-        const awsRes = await fetch("/api/upload_options");
-        if (awsRes.ok) {
-          const awsData = await awsRes.json();
-          setAwsEnabled(Boolean(awsData.aws));
+        // Check upload batch size and bucket connector availability in parallel
+        const [uploadOptionsRes, ibmCosRes, s3Res] = await Promise.all([
+          fetch("/api/upload_options"),
+          fetch("/api/connectors/ibm_cos/defaults"),
+          fetch("/api/connectors/aws_s3/defaults"),
+        ]);
+
+        if (uploadOptionsRes.ok) {
+          const uploadOptionsData = await uploadOptionsRes.json();
           if (
-            typeof awsData.upload_batch_size === "number" &&
-            awsData.upload_batch_size > 0
+            typeof uploadOptionsData.upload_batch_size === "number" &&
+            uploadOptionsData.upload_batch_size > 0
           ) {
-            setUploadBatchSize(awsData.upload_batch_size);
+            setUploadBatchSize(uploadOptionsData.upload_batch_size);
           }
+        }
+
+        if (ibmCosRes.ok) {
+          const ibmCosData = await ibmCosRes.json();
+          setIbmCosConfigured(
+            Boolean(
+              ibmCosData.connection_id ||
+                ibmCosData.api_key_set ||
+                ibmCosData.hmac_access_key_set,
+            ),
+          );
+        }
+
+        if (s3Res.ok) {
+          const s3Data = await s3Res.json();
+          setS3Configured(
+            Boolean(s3Data.connection_id || s3Data.access_key_set),
+          );
         }
 
         // Check cloud connectors
@@ -461,49 +483,6 @@ export function KnowledgeDropdown() {
     }
   };
 
-  const handleS3Upload = async () => {
-    if (!bucketUrl.trim()) return;
-
-    setS3Loading(true);
-    setShowS3Dialog(false);
-
-    try {
-      const response = await fetch("/api/upload_bucket", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ s3_url: bucketUrl }),
-      });
-
-      const result = await response.json();
-
-      if (response.status === 201) {
-        const taskId = result.task_id || result.id;
-
-        if (!taskId) {
-          throw new Error("No task ID received from server");
-        }
-
-        addTask(taskId);
-        setBucketUrl("s3://");
-        // Refetch tasks to show the new task
-        refetchTasks();
-      } else {
-        console.error("S3 upload failed:", result.error);
-        if (response.status === 400) {
-          toast.error("Upload failed", {
-            description: result.error || "Bad request",
-          });
-        }
-      }
-    } catch (error) {
-      console.error("S3 upload error:", error);
-    } finally {
-      setS3Loading(false);
-    }
-  };
-
   // Icon mapping for cloud connectors
   const connectorIconMap = {
     google_drive: GoogleDriveIcon,
@@ -544,12 +523,21 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
-    ...(awsEnabled
+    ...(isIbmAuthMode && s3Configured
       ? [
           {
             label: "Amazon S3",
             icon: AwsIcon,
-            onClick: () => setShowS3Dialog(true),
+            onClick: () => router.push("/upload/aws_s3"),
+          },
+        ]
+      : []),
+    ...(isIbmAuthMode && ibmCosConfigured
+      ? [
+          {
+            label: "IBM Cloud Object Storage",
+            icon: IBMCOSIcon,
+            onClick: () => router.push("/upload/ibm_cos"),
           },
         ]
       : []),
@@ -557,8 +545,7 @@ export function KnowledgeDropdown() {
   ];
 
   // Comprehensive loading state
-  const isLoading =
-    fileUploading || folderLoading || s3Loading || isNavigatingToCloud;
+  const isLoading = fileUploading || folderLoading || isNavigatingToCloud;
 
   if (!mounted) {
     return (
@@ -581,11 +568,9 @@ export function KnowledgeDropdown() {
                   ? "Uploading..."
                   : folderLoading
                     ? "Processing Folder..."
-                    : s3Loading
-                      ? "Processing S3..."
-                      : isNavigatingToCloud
-                        ? "Loading..."
-                        : "Processing..."
+                    : isNavigatingToCloud
+                      ? "Loading..."
+                      : "Processing..."
                 : "Add Knowledge"}
             </span>
             {!isLoading && (
@@ -667,45 +652,6 @@ export function KnowledgeDropdown() {
                 disabled={!folderPath.trim() || folderLoading}
               >
                 {folderLoading ? "Processing..." : "Process Folder"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Process S3 Bucket Dialog */}
-      <Dialog open={showS3Dialog} onOpenChange={setShowS3Dialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Cloud className="h-5 w-5" />
-              Process S3 Bucket
-            </DialogTitle>
-            <DialogDescription>
-              Process all documents from an S3 bucket. AWS credentials must be
-              configured.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="bucket-url">S3 URL</Label>
-              <Input
-                id="bucket-url"
-                type="text"
-                placeholder="s3://bucket/path"
-                value={bucketUrl}
-                onChange={(e) => setBucketUrl(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowS3Dialog(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleS3Upload}
-                disabled={!bucketUrl.trim() || s3Loading}
-              >
-                {s3Loading ? "Processing..." : "Process Bucket"}
               </Button>
             </div>
           </div>

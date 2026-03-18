@@ -169,7 +169,6 @@ class ModelsService:
     ) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from Ollama API with tool calling capabilities for language models"""
         try:
-            # Use provided endpoint or default
             ollama_url = transform_localhost_url(endpoint)
 
             # API endpoints
