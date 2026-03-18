@@ -1,7 +1,6 @@
 """Configuration screen for OpenRAG TUI."""
 
 import os
-import re
 from zxcvbn import zxcvbn
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
