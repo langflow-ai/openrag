@@ -29,6 +29,7 @@ def test_cache_mechanism(run_env):
     print("Caching optimization successful")
 
 def test_ibm_exception_handling(run_env):
+    run_env.setenv("IBM_AUTH_ENABLED", "true")
     run_env.setenv("IBM_CLOUD_API_KEY", "fake")
     run_env.setenv("SECRET_MANAGER_INSTANCE_ID", "fake")
     run_env.setenv("IBM_SECRETS_MANAGER_SECRET_ID", "fake")
@@ -46,6 +47,7 @@ def test_ibm_exception_handling(run_env):
 def test_trusted_profiles_fallback(run_env):
     run_env.delenv("IBM_CLOUD_API_KEY", raising=False)
         
+    run_env.setenv("IBM_AUTH_ENABLED", "true")
     run_env.setenv("SECRET_MANAGER_INSTANCE_ID", "fake")
     run_env.setenv("IBM_SECRETS_MANAGER_SECRET_ID", "fake")
     run_env.setenv("IBM_CLOUD_TRUSTED_PROFILE_ID", "my-profile")
