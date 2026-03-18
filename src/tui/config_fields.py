@@ -43,6 +43,16 @@ class ConfigSection:
 
 
 CONFIG_SECTIONS: list[ConfigSection] = [
+    # ── Security ────────────────────────────────────────────────
+    ConfigSection("Security", [
+        ConfigField(
+            "openrag_encryption_key", "OPENRAG_ENCRYPTION_KEY", "OpenRAG Master Key",
+            placeholder="Auto-generated secure Base64 key",
+            secret=True, required=True,
+            helper_text="32-byte Base64 key for securing your database credentials (auto-generates if empty)",
+        ),
+    ]),
+
     # ── OpenSearch ──────────────────────────────────────────────
     ConfigSection("OpenSearch", [
         ConfigField(

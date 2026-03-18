@@ -29,6 +29,7 @@ class EnvConfig:
 
     # Core settings
     openai_api_key: str = ""
+    openrag_encryption_key: str = ""
     opensearch_password: str = ""
     opensearch_username: str = "admin"
     opensearch_host: str = "opensearch"
@@ -159,6 +160,11 @@ class EnvManager:
         """Generate a secure secret key for Langflow."""
         return secrets.token_urlsafe(32)
 
+    def generate_openrag_encryption_key(self) -> str:
+        """Generate a secure AES-256 base64 master key for OpenRAG."""
+        import base64
+        return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
     def _quote_env_value(self, value: str) -> str:
         """Single quote all environment variable values for consistency."""
         if not value:
@@ -177,6 +183,7 @@ class EnvManager:
             "WATSONX_API_KEY": "watsonx_api_key",  # pragma: allowlist secret
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
+            "OPENRAG_ENCRYPTION_KEY": "openrag_encryption_key",  # pragma: allowlist secret
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
             "OPENSEARCH_USERNAME": "opensearch_username",
             "OPENSEARCH_HOST": "opensearch_host",
@@ -232,19 +239,17 @@ class EnvManager:
         preserved_lines: list[str] = []
 
         try:
+            is_managed_block = True
             for raw_line in self.env_file.read_text().splitlines():
-                stripped = raw_line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-
                 match = EnvManager.assignment_pattern.match(raw_line)
-                if not match:
-                    continue
-
-                env_var = match.group(1)
-                if env_var in managed_vars:
-                    continue
-                preserved_lines.append(raw_line)
+                if match:
+                    env_var = match.group(1)
+                    is_managed_block = env_var in managed_vars
+                    if not is_managed_block:
+                        preserved_lines.append(raw_line)
+                elif not is_managed_block:
+                    # Preserves multi-line backslash strings, empty splits and unmanaged comments natively inline
+                    preserved_lines.append(raw_line)
         except Exception:
             logger.warning(
                 f"Failed to preserve custom .env lines from {self.env_file}",
@@ -296,6 +301,9 @@ class EnvManager:
 
         if not self.config.langflow_secret_key:
             self.config.langflow_secret_key = self.generate_langflow_secret_key()
+
+        if not self.config.openrag_encryption_key:
+            self.config.openrag_encryption_key = self.generate_openrag_encryption_key()
 
         # Set OPENRAG_VERSION to TUI version if not already set
         if not self.config.openrag_version:
@@ -455,6 +463,7 @@ class EnvManager:
                 )
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
+                f.write(f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
                 if self.config.opensearch_username and self.config.opensearch_username != "admin":
                     f.write(f"OPENSEARCH_USERNAME={self._quote_env_value(self.config.opensearch_username)}\n")
@@ -635,6 +644,12 @@ class EnvManager:
         """Get fields required for no-auth setup mode. Returns (field_name, display_name, placeholder, can_generate)."""
         return [
             ("openai_api_key", "OpenAI API Key", "sk-... or leave empty", False),
+            (
+                "openrag_encryption_key",
+                "OpenRAG Encryption Key",
+                "Will be auto-generated if empty",
+                True,
+            ),
             (
                 "opensearch_password",
                 "OpenSearch Password",

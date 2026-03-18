@@ -476,6 +476,10 @@ class ConfigScreen(Screen):
         if opensearch_input:
             self.env_manager.config.opensearch_password = opensearch_input.value
 
+        encryption_key_input = self.inputs.get("openrag_encryption_key")
+        if encryption_key_input:
+            self.env_manager.config.openrag_encryption_key = encryption_key_input.value
+
         # Only generate OpenSearch password if empty
         if not self.env_manager.config.opensearch_password:
             self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
@@ -484,11 +488,17 @@ class ConfigScreen(Screen):
         if not self.env_manager.config.langflow_secret_key:
             self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
 
+        if not self.env_manager.config.openrag_encryption_key:
+            self.env_manager.config.openrag_encryption_key = self.env_manager.generate_openrag_encryption_key()
+
         # Update input fields with generated values
         if opensearch_input:
             opensearch_input.value = self.env_manager.config.opensearch_password
 
-        self.notify("Generated secure password for OpenSearch", severity="information")
+        if encryption_key_input:
+            encryption_key_input.value = self.env_manager.config.openrag_encryption_key
+
+        self.notify("Generated secure passwords and encryption keys", severity="information")
 
     def action_save(self) -> None:
         """Save the configuration."""

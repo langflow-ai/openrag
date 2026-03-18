@@ -133,8 +133,8 @@ class TestSaveEnvFilePermissions:
         assert multiline_block in content
         assert content.count("UNMANAGED_MULTILINE=") == 1
         # Managed password should be updated, not duplicated.
-        assert 'OPENSEARCH_PASSWORD="NewSecurePass!456"' in content
-        assert 'OPENSEARCH_PASSWORD="old-password"' not in content
+        assert "OPENSEARCH_PASSWORD='NewSecurePass!456'" in content
+        assert "OPENSEARCH_PASSWORD='old-password'" not in content
 
     def test_preserves_unmanaged_continued_line(self, env_manager, tmp_path):
         """Unmanaged values using backslash continuation are preserved."""
