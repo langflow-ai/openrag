@@ -164,6 +164,8 @@ class ConfigManager:
         self.config_file = Path(config_file) if config_file else Path("config/config.yaml")
         self._config: Optional[OpenRAGConfig] = None
 
+
+
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.
 
@@ -228,7 +230,7 @@ class ConfigManager:
 
         if needs_encryption_upgrade:
             logger.info("Upgrading unencrypted secrets in config.yaml to AES-256-GCM")
-            self.save_config_file(self._config)
+            self.save_config_file(self._config, preserve_edited=True)
 
         logger.debug("Configuration loaded", config=self._config.to_dict())
         return self._config
@@ -304,11 +306,12 @@ class ConfigManager:
         self._config = None
         return self.load_config()
 
-    def save_config_file(self, config: Optional[OpenRAGConfig] = None) -> bool:
+    def save_config_file(self, config: Optional[OpenRAGConfig] = None, preserve_edited: bool = False) -> bool:
         """Save configuration to file.
 
         Args:
             config: Configuration to save. If None, uses current config.
+            preserve_edited: If True, do not forcefully set the 'edited' flag upon saving.
 
         Returns:
             True if saved successfully, False otherwise.
@@ -316,8 +319,9 @@ class ConfigManager:
         if config is None:
             config = self.get_config()
 
-        # Mark config as edited when saving
-        config.edited = True
+        # Mark config as edited when saving manually
+        if not preserve_edited:
+            config.edited = True
 
         try:
             # Ensure directory exists
