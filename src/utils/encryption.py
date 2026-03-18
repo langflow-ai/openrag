@@ -134,7 +134,10 @@ def decrypt_secret(payload: Union[Dict[str, Any], str]) -> str:
         return payload
 
     if payload.get("algorithm") != ENCRYPTION_ALGORITHM or "ciphertext" not in payload:
-        return payload
+        raise ValueError(
+            "Invalid encrypted secret payload: expected AES-256-GCM envelope with 'algorithm' "
+            "set to 'AES-256-GCM' and a 'ciphertext' field."
+        )
 
     master_secret = get_master_secret()
     if not master_secret:
