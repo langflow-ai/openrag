@@ -123,6 +123,8 @@ class OneDriveOAuth:
                     logger.debug(f"Silent token acquisition result keys: {list(result.keys()) if result else 'None'}")
                     if result and "access_token" in result:
                         logger.debug("Silent token acquisition successful")
+                        if getattr(self.token_cache, "has_state_changed", False):
+                            await self.save_cache()
                         return True
                     else:
                         error_msg = (result or {}).get("error") or "No result"
@@ -273,6 +275,8 @@ class OneDriveOAuth:
                 result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
                 if result and "access_token" in result:
                     logger.info("OneDrive is_authenticated: Successfully acquired token with account")
+                    if getattr(self.token_cache, "has_state_changed", False):
+                        await self.save_cache()
                     return True
                 else:
                     error_msg = (result or {}).get("error") or (result or {}).get("error_description") or "No result returned"
@@ -287,6 +291,8 @@ class OneDriveOAuth:
                 logger.info(f"OneDrive is_authenticated: Fallback succeeded, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
+                if getattr(self.token_cache, "has_state_changed", False):
+                    await self.save_cache()
                 return True
 
             logger.warning(f"OneDrive is_authenticated: Fallback also failed, result: {result}")
