@@ -132,8 +132,11 @@ jobs:
 
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - name: Checkout
+      - name: Checkout nightly tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-nightly-tag.outputs.nightly_version }}
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
