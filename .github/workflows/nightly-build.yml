@@ -123,7 +123,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: langflowai/${{ matrix.service }}:${{ needs.check-version.outputs.nightly_version }}-${{ matrix.arch }}
+          tags: langflowai/${{ matrix.service }}:${{ needs.create-nightly-tag.outputs.nightly_version }}-${{ matrix.arch }}
           cache-from: type=gha,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
 

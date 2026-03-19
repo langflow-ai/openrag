@@ -8,7 +8,12 @@ def _get_openrag_version() -> str:
         from importlib.metadata import version, PackageNotFoundError
         
         try:
-            return version("openrag")
+            for dist_name in ["openrag", "openrag-nightly"]:
+                try:
+                    return version(dist_name)
+                except PackageNotFoundError:
+                    continue
+            raise PackageNotFoundError("openrag")
         except PackageNotFoundError:
             # Fallback: try to read from pyproject.toml if package not installed (dev mode)
             try:

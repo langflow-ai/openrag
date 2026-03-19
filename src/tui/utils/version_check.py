@@ -88,15 +88,18 @@ def get_current_version() -> str:
     Returns:
         Version string or "unknown" if not available
     """
-    try:
-        from importlib.metadata import version
-        return version("openrag")
-    except Exception:
+    for dist_name in ["openrag", "openrag-nightly"]:
         try:
-            from tui import __version__
-            return __version__
+            from importlib.metadata import version
+            return version(dist_name)
         except Exception:
-            return "unknown"
+            continue
+            
+    try:
+        from tui import __version__
+        return __version__
+    except Exception:
+        return "unknown"
 
 
 def compare_versions(version1: str, version2: str) -> int:
