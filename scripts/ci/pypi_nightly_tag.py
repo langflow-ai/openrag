@@ -3,11 +3,12 @@ import requests
 from packaging.version import Version
 from pathlib import Path
 import tomllib
+from typing import Optional
 
 PYPI_OPENRAG_NIGHTLY_URL = "https://pypi.org/pypi/openrag-nightly/json"
 PYPI_OPENRAG_URL = "https://pypi.org/pypi/openrag/json"
 
-def get_latest_published_version(is_nightly: bool) -> Version:
+def get_latest_published_version(is_nightly: bool) -> Optional[Version]:
     url = PYPI_OPENRAG_NIGHTLY_URL if is_nightly else PYPI_OPENRAG_URL
     res = requests.get(url, timeout=10)
     if res.status_code == 404:
