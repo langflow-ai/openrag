@@ -75,10 +75,29 @@ def get_master_secret() -> str | None:
         secret_str = os.environ.get("OPENRAG_ENCRYPTION_KEY")
 
     if not secret_str:
+        if os.environ.get("OPENRAG_ENFORCE_PREREQUISITES", "false").lower() in ("true", "1", "yes"):
+            raise RuntimeError(
+                "CRITICAL: OPENRAG_ENFORCE_PREREQUISITES is enabled but no master encryption key "
+                "could be retrieved from IBM Secrets Manager or OPENRAG_ENCRYPTION_KEY. "
+                "Application will not start in unencrypted mode."
+            )
         return None
 
     _cached_master_secret = secret_str
     return secret_str
+
+
+def enforce_startup_prerequisites():
+    """
+    Validates that the encryption master secret is available if ENFORCE_PREREQUISITES is set.
+    This should be called early during application startup.
+    """
+    try:
+        get_master_secret()
+    except RuntimeError as e:
+        logger.critical(str(e))
+        import sys
+        sys.exit(1)
 
 
 

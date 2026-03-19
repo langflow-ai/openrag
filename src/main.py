@@ -17,6 +17,7 @@ from services.flows_service import FlowsService
 from utils.container_utils import detect_container_environment
 from utils.embeddings import create_dynamic_index_body
 from utils.logging_config import configure_from_env, get_logger
+from utils.encryption import enforce_startup_prerequisites
 from utils.telemetry import TelemetryClient, Category, MessageId
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -105,6 +106,7 @@ from services.task_service import TaskService
 from session_manager import SessionManager
 
 configure_from_env()
+enforce_startup_prerequisites()
 logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion

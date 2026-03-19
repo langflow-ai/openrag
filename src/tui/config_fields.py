@@ -56,6 +56,12 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             placeholder="openrag", default="openrag",
             helper_text="Identifier for AAD tenant binding (default: openrag)",
         ),
+        ConfigField(
+            "openrag_enforce_prerequisites", "OPENRAG_ENFORCE_PREREQUISITES", "Enforce Prerequisites",
+            placeholder="false", default="false",
+            advanced=True,
+            helper_text="If true, application will fail to start if the encryption key is missing",
+        ),
     ]),
 
     # ── OpenSearch ──────────────────────────────────────────────
