@@ -198,7 +198,7 @@ jobs:
           # In the create-nightly-tag job we pushed a tag, here we should probably checkout that tag
           # or just use the updated pyproject.toml if it's shared (it's not).
           # So we need to checkout the tag.
-          git fetch origin ${{ needs.create-nightly-tag.outputs.nightly_version }}
+          git fetch origin "refs/tags/${{ needs.create-nightly-tag.outputs.nightly_version }}:refs/tags/${{ needs.create-nightly-tag.outputs.nightly_version }}"
           git checkout ${{ needs.create-nightly-tag.outputs.nightly_version }}
 
       - name: Build wheel and source distribution
