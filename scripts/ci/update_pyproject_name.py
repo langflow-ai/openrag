@@ -6,7 +6,7 @@ def update_pyproject_name(file_path: str, new_name: str):
     path = Path(file_path)
     if not path.exists():
         print(f"File {file_path} not found")
-        return
+        raise SystemExit(1)
     
     content = path.read_text()
     new_content = re.sub(r'^name = "[^"]+"', f'name = "{new_name}"', content, flags=re.M)
