@@ -1617,7 +1617,20 @@ wheels = [
 ]
 
 [[package]]
-name = "openrag-eval"
+name = "openrag-sdk"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/81/a4d6cd61b3e54f156313b3c2039fb32af0e1423831973477259e300f8f2b/openrag_sdk-0.2.1.tar.gz", hash = "sha256:a6a024d765431e4fa6047e12988e68c410e3934f2093eacc0f59bc745befe188", size = 18701, upload-time = "2026-03-15T22:57:03.526Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/4b/40767e96952c2a41e9d25036e1604ba87961d64eb36748153734811d4132/openrag_sdk-0.2.1-py3-none-any.whl", hash = "sha256:76db73913a1fc3e721c9d5eec227f2b8262dd0fd7b42eec7e54093bc3d47ea92", size = 16375, upload-time = "2026-03-15T22:57:02.36Z" },
+]
+
+[[package]]
+name = "openrag-workbench"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -1651,19 +1664,6 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.14" },
 ]
 provides-extras = ["dev"]
-
-[[package]]
-name = "openrag-sdk"
-version = "0.2.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/86/81/a4d6cd61b3e54f156313b3c2039fb32af0e1423831973477259e300f8f2b/openrag_sdk-0.2.1.tar.gz", hash = "sha256:a6a024d765431e4fa6047e12988e68c410e3934f2093eacc0f59bc745befe188", size = 18701, upload-time = "2026-03-15T22:57:03.526Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/4b/40767e96952c2a41e9d25036e1604ba87961d64eb36748153734811d4132/openrag_sdk-0.2.1-py3-none-any.whl", hash = "sha256:76db73913a1fc3e721c9d5eec227f2b8262dd0fd7b42eec7e54093bc3d47ea92", size = 16375, upload-time = "2026-03-15T22:57:02.36Z" },
-]
 
 [[package]]
 name = "orjson"
