@@ -1,3 +1,5 @@
+import os
+import re
 import sys
 import requests
 from packaging.version import Version, InvalidVersion
@@ -38,7 +40,18 @@ def create_tag():
     latest_known_version = max(versions_to_check)
 
     build_number = 1  # dev builds start at .dev1
-    base_version = local_version.base_version
+
+    # Check for NIGHTLY_BRANCH override
+    nightly_branch = os.getenv("NIGHTLY_BRANCH")
+    if nightly_branch and "release-" in nightly_branch:
+        # Extract version from branch name (e.g. release-0.4.0 -> 0.4.0)
+        version_match = re.search(r"release-v?(\d+\.\d+\.\d+)", nightly_branch)
+        if version_match:
+            base_version = version_match.group(1)
+        else:
+            base_version = local_version.base_version
+    else:
+        base_version = local_version.base_version
 
     # If the latest known version shares the same base, increment from its dev suffix
     if latest_known_version.base_version == base_version:

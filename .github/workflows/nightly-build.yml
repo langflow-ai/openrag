@@ -35,6 +35,8 @@ jobs:
 
       - name: Generate nightly tag
         id: generate_tag
+        env:
+          NIGHTLY_BRANCH: ${{ secrets.NIGHTLY_BRANCH }}
         run: |
           TAG=$(python3 scripts/ci/pypi_nightly_tag.py)
           echo "nightly_tag=$TAG" >> $GITHUB_OUTPUT
