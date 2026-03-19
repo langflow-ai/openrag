@@ -1,4 +1,4 @@
-"""Utility functions for openrag_eval."""
+"""Utility functions for openrag_workbench."""
 
 import logging
 from pathlib import Path
@@ -10,15 +10,15 @@ logger = logging.getLogger(__name__)
 
 def load_env_file() -> None:
     """
-    Load environment variables from .env file in openrag_evaluation directory.
+    Load environment variables from .env file in openrag_workbench directory.
 
     This function locates the .env file relative to the package structure and
     loads it using python-dotenv. It can be used by both application code and tests.
     """
     
     # Navigate up from utils.py location to find .env
-    # utils.py is in openrag/evaluation/openrag_eval/src/openrag_eval/utils.py
-    # .env is in openrag/evaluation/openrag_eval/.env
+    # utils.py is in openrag/evaluation/openrag_workbench/src/openrag_workbench/utils.py
+    # .env is in openrag/evaluation/openrag_workbench/.env
     env_path = Path(__file__).parent.parent.parent / ".env"
     
     if env_path.exists():

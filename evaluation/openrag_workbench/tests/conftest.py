@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for openrag_eval tests.
+"""Shared pytest fixtures for openrag_workbench tests.
 
 This file contains fixtures that can be used across all test modules.
 Fixtures defined here are automatically discovered by pytest.
@@ -8,8 +8,8 @@ import logging
 
 import pytest
 
-from openrag_eval.logging_config import ShortNameFormatter
-from openrag_eval.utils import load_env_file
+from openrag_workbench.logging_config import ShortNameFormatter
+from openrag_workbench.utils import load_env_file
 
 
 @pytest.fixture(scope="session", autouse=True)

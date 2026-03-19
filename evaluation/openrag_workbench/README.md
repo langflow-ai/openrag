@@ -1,6 +1,6 @@
-# openrag-eval
+# openrag-workbench
 
-OpenRAG Evaluation Tool - an evaluation framework for OpenRAG.
+OpenRAG Workbench Tool - an evaluation framework for OpenRAG.
 
 ## Installation
 
@@ -14,7 +14,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Installation
 
 ```bash
-cd openrag/evaluation/openrag_eval
+cd openrag/evaluation/openrag_workbench
 
 # Create virtual environment
 uv venv
@@ -28,7 +28,7 @@ uv sync
 Run the main evaluation script:
 
 ```bash
-uv run python -m openrag_eval.evaluate
+uv run python -m openrag_workbench.evaluate
 ```
 
 
@@ -58,8 +58,8 @@ uv run mypy src/
 The project is organized as follows:
 
 ```
-openrag_eval/
-├── src/openrag_eval/    # Main package
+openrag_workbench/
+├── src/openrag_workbench/    # Main package
 │   ├── pipelines/       # Ingest and inference pipelines
 │   ├── boards/          # Evaluation board configurations
 │   └── evaluate.py      # Main evaluation script
@@ -68,12 +68,12 @@ openrag_eval/
 
 The main components are:
 
-### Pipelines (`src/openrag_eval/pipelines/`)
+### Pipelines (`src/openrag_workbench/pipelines/`)
 Contains implementations of RAG pipelines:
 - **`ingest.py`**: A RagWorkbench ingestion pipeline implemented with the OpenRAG SDK
 - **`inference.py`**: A RagWorkbench inference pipeline implemented with the OpenRAG SDK
 
-### Boards (`src/openrag_eval/boards/`)
+### Boards (`src/openrag_workbench/boards/`)
 Contains board configurations for evaluation experiments:
 - **`table_rich/`**: A definition for RAG experiments over table-rich documents.
 

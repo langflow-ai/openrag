@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openrag-eval"
+name = "openrag-workbench"
 version = "0.1.0"
-description = "OpenRAG Evaluation Tool"
+description = "OpenRAG Workbench Tool"
 readme = "README.md"
 requires-python = ">=3.13"
 license = {text = "Apache-2.0"}
@@ -42,7 +42,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["openrag_eval*"]
+include = ["openrag_workbench*"]
 
 [tool.black]
 line-length = 88

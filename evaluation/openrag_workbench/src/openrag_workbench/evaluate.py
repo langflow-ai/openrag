@@ -5,11 +5,11 @@ from pathlib import Path
 from ragworkbench.boards.board_generator import BoardGenerator
 from ragworkbench.datasets_loader import ait_qa_data_loader
 
-from openrag_eval import boards as boards_package
-from openrag_eval.logging_config import init_logger
-from openrag_eval.pipelines import inference as openrag_inference_module
-from openrag_eval.pipelines import ingest as openrag_ingest_module
-from openrag_eval.utils import load_env_file
+from openrag_workbench import boards as boards_package
+from openrag_workbench.logging_config import init_logger
+from openrag_workbench.pipelines import inference as openrag_inference_module
+from openrag_workbench.pipelines import ingest as openrag_ingest_module
+from openrag_workbench.utils import load_env_file
 
 logger = logging.getLogger(__name__)
 

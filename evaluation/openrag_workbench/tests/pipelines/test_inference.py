@@ -12,7 +12,7 @@ from ragworkbench.datasets_loader.data_models import (
     RagBenchmarkEntry,
 )
 
-from openrag_eval.pipelines import (
+from openrag_workbench.pipelines import (
     GenerativeModelParams,
     OpenRAGInference,
     OpenRAGInferenceParams,

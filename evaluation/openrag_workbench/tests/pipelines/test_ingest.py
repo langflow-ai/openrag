@@ -7,7 +7,7 @@ import pytest
 from openrag_sdk import OpenRAGClient
 from ragworkbench.datasets_loader.data_models import DocumentObject, RagCorpus
 
-from openrag_eval.pipelines.ingest import (
+from openrag_workbench.pipelines.ingest import (
     ChunkingParams,
     EmbeddingModelParams,
     OpenRAGIngest,

@@ -14,7 +14,7 @@ from ragworkbench.api.ingest_artifact import IngestArtifact
 from ragworkbench.boards.board_registry import inference_pipeline
 from ragworkbench.datasets_loader.data_models import RagBenchmarkEntry
 
-from openrag_eval.pipelines.ingest import OpenRAGIngestArtifact
+from openrag_workbench.pipelines.ingest import OpenRAGIngestArtifact
 
 logger = logging.getLogger(__name__)
 

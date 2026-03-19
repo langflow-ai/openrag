@@ -1,11 +1,11 @@
-"""OpenRAG evaluation pipelines."""
+"""OpenRAG workbench evaluation pipelines."""
 
-from openrag_eval.pipelines.inference import (
+from openrag_workbench.pipelines.inference import (
     GenerativeModelParams,
     OpenRAGInference,
     OpenRAGInferenceParams,
 )
-from openrag_eval.pipelines.ingest import (
+from openrag_workbench.pipelines.ingest import (
     ChunkingParams,
     EmbeddingModelParams,
     OpenRAGIngest,

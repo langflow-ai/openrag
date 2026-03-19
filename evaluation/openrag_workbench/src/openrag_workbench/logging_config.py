@@ -1,4 +1,4 @@
-"""Shared logging configuration for openrag_eval."""
+"""Shared logging configuration for openrag_workbench."""
 
 import logging
 

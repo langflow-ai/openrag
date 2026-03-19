@@ -197,7 +197,7 @@ cache/
 # Task logs
 logs/
 
-src/openrag_eval/data_loaders/ait_qa_pdf/documents/
+src/openrag_workbench/data_loaders/ait_qa_pdf/documents/
 
 # RagWorkbench data directory
 ragworkbench_data/
