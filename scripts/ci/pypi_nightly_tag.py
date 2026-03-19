@@ -43,10 +43,14 @@ def create_tag():
         dev_number = (current_nightly_version.dev if current_nightly_version.dev is not None else -1) if current_nightly_version else -1
         build_number = str(dev_number + 1)
 
-    new_nightly_version = f"v{latest_base_version}.dev{build_number}"
-    
+    # Build PEP 440-compliant nightly version (without leading "v")
+    nightly_version_str = f"{latest_base_version}.dev{build_number}"
+
     # Verify PEP440
-    Version(new_nightly_version)
+    Version(nightly_version_str)
+
+    # Git tag uses a leading "v" prefix
+    new_nightly_version = f"v{nightly_version_str}"
     return new_nightly_version
 
 if __name__ == "__main__":
