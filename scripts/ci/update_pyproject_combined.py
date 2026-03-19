@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 from update_pyproject_name import update_pyproject_name
-from update_pyproject_version import update_pyproject_version
+from update_pyproject_version import update_version
 
 # Add current dir to sys.path
 current_dir = Path(__file__).resolve().parent
@@ -21,7 +21,7 @@ def main():
     
     # Update name and version for openrag
     update_pyproject_name("pyproject.toml", "openrag-nightly")
-    update_pyproject_version("pyproject.toml", main_tag)
+    update_version("pyproject.toml", main_tag)
 
 if __name__ == "__main__":
     main()
