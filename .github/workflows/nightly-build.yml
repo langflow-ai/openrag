@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write
     outputs:
-      nightly_version: ${{ steps.generate_tag.outputs.nightly_tag }}
+      nightly_version: ${{ steps.ensure_unique_tag.outputs.nightly_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,9 +38,22 @@ jobs:
           echo "nightly_tag=$TAG" >> $GITHUB_OUTPUT
           echo "nightly_tag=$TAG"
 
+      - name: Ensure unique nightly tag
+        id: ensure_unique_tag
+        run: |
+          BASE_TAG="${{ steps.generate_tag.outputs.nightly_tag }}"
+          TAG="$BASE_TAG"
+          # If the tag already exists on the remote, append a run-specific suffix
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            SUFFIX="${GITHUB_RUN_ID:-0}"
+            TAG="${TAG}.run${SUFFIX}"
+          fi
+          echo "Resolved nightly tag: $TAG"
+          echo "nightly_tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Update pyproject.toml
         run: |
-          python3 scripts/ci/update_pyproject_combined.py main ${{ steps.generate_tag.outputs.nightly_tag }}
+          python3 scripts/ci/update_pyproject_combined.py main ${{ steps.ensure_unique_tag.outputs.nightly_tag }}
 
       - name: Commit and push tag
         run: |
@@ -48,10 +61,10 @@ jobs:
           git config --global user.name "OpenRAG Bot"
           
           git add pyproject.toml
-          git commit -m "Update version and project name for nightly ${{ steps.generate_tag.outputs.nightly_tag }}"
+          git commit -m "Update version and project name for nightly ${{ steps.ensure_unique_tag.outputs.nightly_tag }}"
           
-          git tag ${{ steps.generate_tag.outputs.nightly_tag }}
-          git push origin ${{ steps.generate_tag.outputs.nightly_tag }}
+          git tag ${{ steps.ensure_unique_tag.outputs.nightly_tag }}
+          git push origin ${{ steps.ensure_unique_tag.outputs.nightly_tag }}
 
   build:
     needs: create-nightly-tag
