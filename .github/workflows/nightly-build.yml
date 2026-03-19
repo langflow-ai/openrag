@@ -43,10 +43,25 @@ jobs:
         run: |
           BASE_TAG="${{ steps.generate_tag.outputs.nightly_tag }}"
           TAG="$BASE_TAG"
-          # If the tag already exists on the remote, append a run-specific suffix
+          # If the tag already exists on the remote, resolve collision using .devN suffixes (PEP 440 compliant)
           if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
-            SUFFIX="${GITHUB_RUN_ID:-0}"
-            TAG="${TAG}.run${SUFFIX}"
+            echo "Base tag '$TAG' already exists on remote. Searching for available .devN suffix..."
+            MAX_DEV=20
+            FOUND=0
+            i=1
+            while [ "$i" -le "$MAX_DEV" ]; do
+              CANDIDATE="${BASE_TAG}.dev${i}"
+              if ! git ls-remote --exit-code --tags origin "$CANDIDATE" >/dev/null 2>&1; then
+                TAG="$CANDIDATE"
+                FOUND=1
+                break
+              fi
+              i=$((i + 1))
+            done
+            if [ "$FOUND" -ne 1 ]; then
+              echo "Error: Unable to find an available .devN tag for base tag '$BASE_TAG' after checking ${MAX_DEV} candidates." >&2
+              exit 1
+            fi
           fi
           echo "Resolved nightly tag: $TAG"
           echo "nightly_tag=$TAG" >> "$GITHUB_OUTPUT"
