@@ -156,7 +156,7 @@ jobs:
       - name: Create and push multi-arch manifests
         run: |
           NS="langflowai"
-          VERSION=${{ needs.check-version.outputs.nightly_version }}
+          VERSION=${{ needs.create-nightly-tag.outputs.nightly_version }}
 
           # Derive the list of services from the artifacts produced by the build matrix
           mapfile -t SERVICES < <(find . -name 'service-*.txt' -print0 | xargs -0 cat | sort -u)
