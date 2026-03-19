@@ -12,6 +12,14 @@ def update_version(new_version):
     clean_version = new_version.lstrip('v')
     new_content = re.sub(r'^version = "[^"]+"', f'version = "{clean_version}"', content, flags=re.M)
     
+    # Fail if the version pattern was not found / no substitution was made
+    if new_content == content:
+        print(
+            'Error: Could not find a line matching `version = "..."` in pyproject.toml to update.',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    
     with open(pyproject_path, "w") as f:
         f.write(new_content)
     print(f"Updated pyproject.toml version to {clean_version}")

@@ -10,6 +10,15 @@ def update_pyproject_name(new_name: str):
     
     content = path.read_text()
     new_content = re.sub(r'^name = "[^"]+"', f'name = "{new_name}"', content, flags=re.M)
+    
+    # Fail if the name pattern was not found / no substitution was made
+    if new_content == content:
+        print(
+            'Error: Could not find a line matching `name = "..."` in pyproject.toml to update.',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+        
     path.write_text(new_content)
     print(f"Updated name in pyproject.toml to {new_name}")
 
