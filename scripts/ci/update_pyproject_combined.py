@@ -20,7 +20,7 @@ def main():
         sys.exit(1)
     
     # Update name and version for openrag
-    update_pyproject_name("pyproject.toml", "openrag-nightly")
+    update_pyproject_name("openrag-nightly")
     update_version(main_tag)
 
 if __name__ == "__main__":
