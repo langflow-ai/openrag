@@ -40,7 +40,7 @@ def create_tag():
     nightly_base_version = current_nightly_version.base_version if current_nightly_version else None
 
     if latest_base_version == nightly_base_version:
-        dev_number = (current_nightly_version.dev or -1) if current_nightly_version else -1
+        dev_number = (current_nightly_version.dev if current_nightly_version.dev is not None else -1) if current_nightly_version else -1
         build_number = str(dev_number + 1)
 
     new_nightly_version = f"v{latest_base_version}.dev{build_number}"
