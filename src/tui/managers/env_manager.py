@@ -58,7 +58,17 @@ class EnvConfig:
     webhook_base_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    aws_s3_endpoint: str = ""
+    aws_region: str = ""
     langflow_public_url: str = ""
+
+    # IBM Cloud Object Storage settings
+    ibm_cos_api_key: str = ""
+    ibm_cos_service_instance_id: str = ""
+    ibm_cos_endpoint: str = ""
+    ibm_cos_hmac_access_key_id: str = ""
+    ibm_cos_hmac_secret_access_key: str = ""
+    ibm_cos_auth_endpoint: str = ""  # Optional: override IAM token endpoint
 
     # Langfuse settings (optional)
     langfuse_secret_key: str = ""
@@ -186,7 +196,15 @@ class EnvManager:
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
+            "AWS_S3_ENDPOINT": "aws_s3_endpoint",
+            "AWS_REGION": "aws_region",
             "LANGFLOW_PUBLIC_URL": "langflow_public_url",
+            "IBM_COS_API_KEY": "ibm_cos_api_key",  # pragma: allowlist secret
+            "IBM_COS_SERVICE_INSTANCE_ID": "ibm_cos_service_instance_id",
+            "IBM_COS_ENDPOINT": "ibm_cos_endpoint",
+            "IBM_COS_HMAC_ACCESS_KEY_ID": "ibm_cos_hmac_access_key_id",
+            "IBM_COS_HMAC_SECRET_ACCESS_KEY": "ibm_cos_hmac_secret_access_key",  # pragma: allowlist secret
+            "IBM_COS_AUTH_ENDPOINT": "ibm_cos_auth_endpoint",
             "OPENRAG_DOCUMENTS_PATHS": "openrag_documents_paths",
             "OPENRAG_DOCUMENTS_PATH": "openrag_documents_path",
             "OPENRAG_KEYS_PATH": "openrag_keys_path",
@@ -558,7 +576,15 @@ class EnvManager:
                     ("WEBHOOK_BASE_URL", self.config.webhook_base_url),
                     ("AWS_ACCESS_KEY_ID", self.config.aws_access_key_id),
                     ("AWS_SECRET_ACCESS_KEY", self.config.aws_secret_access_key),
+                    ("AWS_S3_ENDPOINT", self.config.aws_s3_endpoint),
+                    ("AWS_REGION", self.config.aws_region),
                     ("LANGFLOW_PUBLIC_URL", self.config.langflow_public_url),
+                    ("IBM_COS_API_KEY", self.config.ibm_cos_api_key),
+                    ("IBM_COS_SERVICE_INSTANCE_ID", self.config.ibm_cos_service_instance_id),
+                    ("IBM_COS_ENDPOINT", self.config.ibm_cos_endpoint),
+                    ("IBM_COS_HMAC_ACCESS_KEY_ID", self.config.ibm_cos_hmac_access_key_id),
+                    ("IBM_COS_HMAC_SECRET_ACCESS_KEY", self.config.ibm_cos_hmac_secret_access_key),
+                    ("IBM_COS_AUTH_ENDPOINT", self.config.ibm_cos_auth_endpoint),
                 ]
 
                 optional_written = False

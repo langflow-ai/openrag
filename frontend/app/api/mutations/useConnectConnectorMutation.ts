@@ -81,6 +81,11 @@ export const useConnectConnectorMutation = () => {
           `state=${result.connection_id}`;
 
         window.location.href = authUrl;
+      } else {
+        // Direct-auth connector (e.g. IBM COS) — credentials already verified,
+        // no OAuth redirect needed. Refresh connector status.
+        queryClient.invalidateQueries({ queryKey: ["connectors"] });
+        toast.success(`${connector.name} connected successfully`);
       }
     },
   });

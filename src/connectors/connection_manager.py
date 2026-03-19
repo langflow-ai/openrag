@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 import aiofiles
 from typing import Dict, List, Any, Optional
@@ -13,6 +14,8 @@ from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
 from .sharepoint import SharePointConnector
 from .onedrive import OneDriveConnector
+from .ibm_cos import IBMCOSConnector
+from .aws_s3 import S3Connector
 
 
 @dataclass
@@ -330,31 +333,71 @@ class ConnectionManager:
             logger.warning(f"Authentication failed for {connection_id}")
             return None
 
-    def get_available_connector_types(self) -> Dict[str, Dict[str, Any]]:
-        """Get available connector types with their metadata"""
+    def get_available_connector_types(
+        self, user_id: Optional[str] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """Get available connector types with their metadata.
+
+        Availability is user-scoped when ``user_id`` is provided:
+        a connector is considered available if either:
+        1) its required env credentials are present, or
+        2) the user has an active saved connection with usable credentials.
+        """
         return {
             "google_drive": {
                 "name": GoogleDriveConnector.CONNECTOR_NAME,
                 "description": GoogleDriveConnector.CONNECTOR_DESCRIPTION,
                 "icon": GoogleDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("google_drive"),
+                "available": self._is_connector_available("google_drive", user_id),
             },
             "sharepoint": {
                 "name": SharePointConnector.CONNECTOR_NAME,
                 "description": SharePointConnector.CONNECTOR_DESCRIPTION,
                 "icon": SharePointConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("sharepoint"),
+                "available": self._is_connector_available("sharepoint", user_id),
             },
             "onedrive": {
                 "name": OneDriveConnector.CONNECTOR_NAME,
                 "description": OneDriveConnector.CONNECTOR_DESCRIPTION,
                 "icon": OneDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("onedrive"),
+                "available": self._is_connector_available("onedrive", user_id),
+            },
+            "ibm_cos": {
+                "name": IBMCOSConnector.CONNECTOR_NAME,
+                "description": IBMCOSConnector.CONNECTOR_DESCRIPTION,
+                "icon": IBMCOSConnector.CONNECTOR_ICON,
+                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
+            },
+            "aws_s3": {
+                "name": S3Connector.CONNECTOR_NAME,
+                "description": S3Connector.CONNECTOR_DESCRIPTION,
+                "icon": S3Connector.CONNECTOR_ICON,
+                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
             },
         }
 
-    def _is_connector_available(self, connector_type: str) -> bool:
-        """Check if a connector type is available (has required env vars)"""
+    def _has_saved_credentials_for_user(
+        self, connector_type: str, user_id: Optional[str]
+    ) -> bool:
+        """Check if user has an active saved connection with usable credentials."""
+        for connection in self.connections.values():
+            if connection.connector_type != connector_type or not connection.is_active:
+                continue
+            if user_id is not None and connection.user_id != user_id:
+                continue
+            try:
+                connector = self._create_connector(connection)
+                connector.get_client_id()
+                connector.get_client_secret()
+                return True
+            except (ValueError, NotImplementedError, RuntimeError):
+                continue
+        return False
+
+    def _is_connector_available(
+        self, connector_type: str, user_id: Optional[str] = None
+    ) -> bool:
+        """Check whether connector is available for use by the given user."""
         try:
             temp_config = ConnectionConfig(
                 connection_id="temp",
@@ -367,8 +410,9 @@ class ConnectionManager:
             connector.get_client_id()
             connector.get_client_secret()
             return True
-        except (ValueError, NotImplementedError):
-            return False
+        except (ValueError, NotImplementedError, RuntimeError):
+            # Fallback: saved per-user connection config (e.g. aws_s3 / ibm_cos)
+            return self._has_saved_credentials_for_user(connector_type, user_id)
 
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
         """Factory method to create connector instances"""
@@ -379,6 +423,10 @@ class ConnectionManager:
                 return SharePointConnector(config.config)
             elif config.connector_type == "onedrive":
                 return OneDriveConnector(config.config)
+            elif config.connector_type == "ibm_cos":
+                return IBMCOSConnector(config.config)
+            elif config.connector_type == "aws_s3":
+                return S3Connector(config.config)
             elif config.connector_type == "box":
                 raise NotImplementedError("Box connector not implemented yet")
             elif config.connector_type == "dropbox":

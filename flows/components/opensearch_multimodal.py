@@ -1614,22 +1614,152 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             knn_queries_with_candidates.append(query_with_candidates)
             knn_queries_without_candidates.append(base_query)
 
+        # Get limit and score threshold
+        limit = (filter_obj or {}).get("limit", self.number_of_results)
+        score_threshold = (filter_obj or {}).get("score_threshold", 0)
+
+        # Build keyword-only body once so we can gracefully fallback from KNN errors.
+        keyword_only_body = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "multi_match": {
+                                "query": q,
+                                "fields": ["text^2", "filename^1.5"],
+                                "type": "best_fields",
+                                "fuzziness": "AUTO",
+                            }
+                        }
+                    ],
+                    "filter": filter_clauses,
+                }
+            },
+            "aggs": {
+                "data_sources": {"terms": {"field": "filename.keyword", "size": 20}},
+                "document_types": {"terms": {"field": "mimetype.keyword", "size": 10}},
+                "owners": {"terms": {"field": "owner.keyword", "size": 10}},
+                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
+            },
+            "_source": [
+                "filename",
+                "mimetype",
+                "page",
+                "text",
+                "source_url",
+                "owner",
+                "embedding_model",
+                "allowed_users",
+                "allowed_groups",
+            ],
+            "size": limit,
+        }
+        if isinstance(score_threshold, (int, float)) and score_threshold > 0:
+            keyword_only_body["min_score"] = score_threshold
+
+        def run_keyword_fallback(reason: str):
+            if not q:
+                # Keep empty-query behavior deterministic: do not run multi_match("")
+                # during fallback paths, which can otherwise return broad/unexpected hits.
+                self.log("[FALLBACK] Empty query detected; returning no results.")
+                return {"hits": {"hits": []}}
+            logger.warning(
+                "Falling back to keyword-only OpenSearch retrieval",
+                reason=reason,
+            )
+            self.log(f"[FALLBACK] Keyword-only retrieval: {reason}")
+            try:
+                return client.search(
+                    index=self.index_name,
+                    body=keyword_only_body,
+                    params={"terminate_after": 0},
+                )
+            except RequestError as fallback_error:
+                fallback_message = str(fallback_error).lower()
+                if "text fields are not optimised" in fallback_message or "fielddata" in fallback_message:
+                    # Some clusters still reject terms aggs on text fields if mappings are inconsistent.
+                    # Keep retrieval working by retrying without aggregations.
+                    fallback_without_aggs = copy.deepcopy(keyword_only_body)
+                    fallback_without_aggs.pop("aggs", None)
+                    return client.search(
+                        index=self.index_name,
+                        body=fallback_without_aggs,
+                        params={"terminate_after": 0},
+                    )
+                raise
+
+        def run_legacy_vector_fallback(reason: str):
+            fallback_vector = next(iter(query_embeddings.values()), None)
+            if fallback_vector is None:
+                return run_keyword_fallback(f"{reason}; no query embeddings available")
+
+            fallback_field = legacy_vector_field or "chunk_embedding"
+            logger.warning(
+                "KNN search failed for dynamic fields; falling back to legacy field '%s'.",
+                fallback_field,
+            )
+            self.log(f"[FALLBACK] Legacy vector fallback: field={fallback_field}; reason={reason}")
+
+            fallback_body = copy.deepcopy(body)
+            # Keep user filters and explicitly require the legacy embedding field to exist.
+            # This avoids returning documents without embeddings during semantic fallback.
+            try:
+                bool_query = fallback_body["query"]["bool"]
+            except (KeyError, TypeError):
+                return run_keyword_fallback(
+                    f"{reason}; legacy fallback query missing query.bool structure"
+                )
+            bool_query["filter"] = [
+                *filter_clauses,
+                {"exists": {"field": fallback_field}},
+            ]
+            knn_fallback = {
+                "knn": {
+                    fallback_field: {
+                        "vector": fallback_vector,
+                        "k": 50,
+                    }
+                }
+            }
+            if use_num_candidates:
+                knn_fallback["knn"][fallback_field]["num_candidates"] = num_candidates
+            try:
+                bool_query["should"][0]["dis_max"]["queries"] = [knn_fallback]
+            except (KeyError, IndexError, TypeError):
+                return run_keyword_fallback(
+                    f"{reason}; legacy fallback query missing bool.should/dis_max structure"
+                )
+
+            return client.search(
+                index=self.index_name,
+                body=fallback_body,
+                params={"terminate_after": 0},
+            )
+
         if not knn_queries_with_candidates:
             # No valid fields found - this can happen when:
             # 1. Index is empty (no documents yet)
-            # 2. Embedding model has changed and field doesn't exist yet
-            # Return empty results instead of failing
+            # 2. KNN mappings are missing/broken for current embedding model
             logger.warning(
                 "No valid knn_vector fields found for embedding models. "
-                "This may indicate an empty index or missing field mappings. "
-                "Returning empty search results."
+                "Falling back to keyword-only retrieval."
             )
             self.log(
                 f"[WARN] No valid KNN queries could be built. "
                 f"Query embeddings generated: {list(query_embeddings.keys())}, "
                 f"but no matching knn_vector fields found in index."
             )
-            return []
+            resp = run_keyword_fallback("no valid knn_vector fields available")
+            hits = resp.get("hits", {}).get("hits", [])
+            logger.info(f"Found {len(hits)} results (keyword fallback)")
+            return [
+                {
+                    "page_content": hit["_source"].get("text", ""),
+                    "metadata": {k: v for k, v in hit["_source"].items() if k != "text"},
+                    "score": hit.get("_score"),
+                }
+                for hit in hits
+            ]
 
         # Build exists filter - document must have at least one embedding field
         exists_any_embedding = {
@@ -1638,10 +1768,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         # Combine user filters with exists filter
         all_filters = [*filter_clauses, exists_any_embedding]
-
-        # Get limit and score threshold
-        limit = (filter_obj or {}).get("limit", self.number_of_results)
-        score_threshold = (filter_obj or {}).get("score_threshold", 0)
 
         # Build multi-model hybrid query
         body = {
@@ -1671,8 +1797,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             },
             "aggs": {
                 "data_sources": {"terms": {"field": "filename.keyword", "size": 20}},
-                "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner", "size": 10}},
+                "document_types": {"terms": {"field": "mimetype.keyword", "size": 10}},
+                "owners": {"terms": {"field": "owner.keyword", "size": 10}},
                 "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },
             "_source": [
@@ -1715,38 +1841,25 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = knn_queries_without_candidates
                 except (KeyError, IndexError, TypeError) as inner_err:
                     raise e from inner_err
-                resp = client.search(
-                    index=self.index_name,
-                    body=fallback_body,
-                    params={"terminate_after": 0},
-                )
+                try:
+                    resp = client.search(
+                        index=self.index_name,
+                        body=fallback_body,
+                        params={"terminate_after": 0},
+                    )
+                except RequestError as retry_error:
+                    retry_error_message = str(retry_error)
+                    retry_lowered = retry_error_message.lower()
+                    if "knn_vector" in retry_lowered or ("field" in retry_lowered and "knn" in retry_lowered):
+                        resp = run_legacy_vector_fallback(
+                            f"search failed after num_candidates retry: {retry_error_message}"
+                        )
+                    else:
+                        resp = run_keyword_fallback(
+                            f"search failed after num_candidates retry: {retry_error_message}"
+                        )
             elif "knn_vector" in lowered or ("field" in lowered and "knn" in lowered):
-                fallback_vector = next(iter(query_embeddings.values()), None)
-                if fallback_vector is None:
-                    raise
-                fallback_field = legacy_vector_field or "chunk_embedding"
-                logger.warning(
-                    "KNN search failed for dynamic fields; falling back to legacy field '%s'.",
-                    fallback_field,
-                )
-                fallback_body = copy.deepcopy(body)
-                fallback_body["query"]["bool"]["filter"] = filter_clauses
-                knn_fallback = {
-                    "knn": {
-                        fallback_field: {
-                            "vector": fallback_vector,
-                            "k": 50,
-                        }
-                    }
-                }
-                if use_num_candidates:
-                    knn_fallback["knn"][fallback_field]["num_candidates"] = num_candidates
-                fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = [knn_fallback]
-                resp = client.search(
-                    index=self.index_name,
-                    body=fallback_body,
-                    params={"terminate_after": 0},
-                )
+                resp = run_legacy_vector_fallback(f"knn query error: {error_message}")
             else:
                 raise
         hits = resp.get("hits", {}).get("hits", [])

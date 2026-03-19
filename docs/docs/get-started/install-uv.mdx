@@ -41,16 +41,11 @@ For other installation methods, see [Select an installation method](/install-opt
 
 ## Install and start OpenRAG with uv
 
-There are two ways to install OpenRAG with `uv`:
-
-* [**`uv add` (Recommended)**](#uv-add): Install OpenRAG as a managed dependency in a new or existing `uv` Python project.
-This is recommended because it adds OpenRAG to your `pyproject.toml` and lockfile for better management of dependencies and the virtual environment.
-
-* [**`uv pip install`**](#uv-pip-install): Use the [`uv pip` interface](https://docs.astral.sh/uv/pip/) to install OpenRAG into an existing Python project that uses `pip`, `pip-tools`, and `virtualenv` commands.
+Use `uv add` to install OpenRAG as a managed dependency in a new or existing `uv` Python project.
+This command adds OpenRAG to your `pyproject.toml` and lockfile.
+This provides better management of dependencies and the virtual environment as compared to commands like `uv pip`.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
-
-### Use uv add {#uv-add}
 
 1. Create a new `uv`-managed Python project:
 
@@ -95,26 +90,6 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 4. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before starting OpenRAG.
 
 5. Start the OpenRAG terminal session:
-
-   ```bash
-   uv run openrag
-   ```
-
-   <PartialStartTui />
-
-### Use uv pip install {#uv-pip-install}
-
-1. Activate your virtual environment.
-
-2. Install the OpenRAG Python package:
-
-   ```bash
-   uv pip install openrag
-   ```
-
-3. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before starting OpenRAG.
-
-4. Start the OpenRAG terminal session:
 
    ```bash
    uv run openrag

@@ -138,7 +138,13 @@ const AnthropicSettingsDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setShowRemoveConfirm(false); setOpen(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setShowRemoveConfirm(false);
+        setOpen(o);
+      }}
+    >
       <DialogContent className="max-w-2xl">
         <FormProvider {...methods}>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">

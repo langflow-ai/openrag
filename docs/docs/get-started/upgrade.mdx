@@ -81,29 +81,11 @@ The commands to upgrade the package depend on how you installed OpenRAG.
       uv add --upgrade openrag==0.1.33
       ```
 
-   3. Start the OpenRAG terminal session:
+      To update `uv.lock`, and then sync the virtual environment separately:
 
       ```bash
-      uv run openrag
-      ```
-
-   </TabItem>
-   <TabItem value="uv-pip" label="uv pip install">
-
-   Use these steps to upgrade the Python package if you installed OpenRAG with [`uv pip install`](/install-uv):
-
-   1. Activate your virtual environment.
-
-   2. Upgrade OpenRAG:
-
-      ```bash
-      uv pip install --upgrade openrag
-      ```
-
-      To upgrade to a specific version:
-
-      ```bash
-      uv pip install --upgrade openrag==0.1.33
+      uv lock --upgrade-package openrag
+      uv sync
       ```
 
    3. Start the OpenRAG terminal session:

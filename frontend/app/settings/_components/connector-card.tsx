@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCcw, Settings2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,8 @@ interface ConnectorCardProps {
   onConnect: (connector: Connector) => void;
   onDisconnect: (connector: Connector) => void;
   onNavigateToKnowledge: (connector: Connector) => void;
+  /** Optional: open a connector-specific settings/edit dialog */
+  onConfigure?: (connector: Connector) => void;
 }
 
 export default function ConnectorCard({
@@ -38,11 +40,11 @@ export default function ConnectorCard({
   onConnect,
   onDisconnect,
   onNavigateToKnowledge,
+  onConfigure,
 }: ConnectorCardProps) {
   console.log(connector);
   const isConnected =
-    connector?.name === "Google Drive" ||
-    (connector?.status === "connected" && connector?.connectionId);
+    connector.status === "connected" && connector.connectionId;
 
   return (
     <Card className="group relative flex flex-col hover:bg-secondary-hover hover:border-muted-foreground transition-colors">
@@ -50,10 +52,7 @@ export default function ConnectorCard({
         <div className="flex flex-col items-start justify-between">
           <div className="flex flex-col gap-4 mb-2 w-full">
             <div className="flex items-center justify-between mb-1">
-              <CardIcon
-                isActive={!!(connector?.available && isConnected)}
-                activeBgColor="bg-white"
-              >
+              <CardIcon isActive={!!isConnected} activeBgColor="bg-white">
                 {connector.icon}
               </CardIcon>
               {isConnected ? (
@@ -68,7 +67,7 @@ export default function ConnectorCard({
                 {connector.name}
               </CardTitle>
               <CardDescription className="text-sm">
-                {connector?.available
+                {isConnected || connector?.available
                   ? `${connector.name} is configured.`
                   : "Not configured."}
               </CardDescription>
@@ -85,7 +84,7 @@ export default function ConnectorCard({
                   variant="default"
                   onClick={() => onNavigateToKnowledge(connector)}
                   disabled={isDisconnecting || isConnecting}
-                  className="cursor-pointer !text-sm truncate rounded-md"
+                  className="cursor-pointer !text-sm truncate rounded-md flex-1"
                   size="md"
                 >
                   <Plus className="h-4 w-4" />
@@ -93,7 +92,9 @@ export default function ConnectorCard({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => onConnect(connector)}
+                  onClick={() =>
+                    onConfigure ? onConfigure(connector) : onConnect(connector)
+                  }
                   disabled={isConnecting || isDisconnecting}
                   className="cursor-pointer"
                   size="iconMd"
@@ -101,7 +102,7 @@ export default function ConnectorCard({
                   {isConnecting ? (
                     <RefreshCcw className="h-4 w-4 animate-spin" />
                   ) : (
-                    <RefreshCcw className="h-4 w-4" />
+                    <Settings2 className="h-4 w-4" />
                   )}
                 </Button>
                 <Button
@@ -120,7 +121,9 @@ export default function ConnectorCard({
               </div>
             ) : (
               <Button
-                onClick={() => onConnect(connector)}
+                onClick={() =>
+                  onConfigure ? onConfigure(connector) : onConnect(connector)
+                }
                 disabled={isConnecting}
                 className="w-full cursor-pointer group-hover:bg-background group-hover:border-zinc-700 group-hover:text-primary"
                 size="sm"
@@ -138,18 +141,15 @@ export default function ConnectorCard({
           </div>
         ) : (
           <div className="text-sm text-muted-foreground">
-            <p>
-              See our{" "}
-              <Link
-                className="text-accent-pink-foreground"
-                href="https://docs.openr.ag/knowledge#oauth-ingestion"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Cloud Connectors installation guide
-              </Link>{" "}
-              for more detail.
-            </p>
+            <p>For more details see our</p>
+            <Link
+              className="text-accent-pink-foreground"
+              href="https://docs.openr.ag/knowledge#oauth-ingestion"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Cloud Connectors guide
+            </Link>
           </div>
         )}
       </CardContent>

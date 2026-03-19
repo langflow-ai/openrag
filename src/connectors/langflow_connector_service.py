@@ -331,39 +331,40 @@ class LangflowConnectorService:
             original_folder_ids = getattr(cfg, "folder_ids", None)
 
         expanded_file_ids = file_ids  # Default to original IDs
-        
-        try:
-            # Set the file_ids we want to sync in the connector's config
-            if cfg is not None:
+
+        # Only attempt folder expansion for connectors that use cfg-based filtering
+        # (Google Drive, OneDrive, SharePoint). Connectors without a cfg attribute
+        # (e.g. IBM COS) receive pre-filtered file IDs and must NOT call list_files()
+        # here — doing so would re-list all files from all buckets, overwriting the
+        # carefully selected IDs passed in.
+        if cfg is not None:
+            try:
                 cfg.file_ids = file_ids  # type: ignore
                 cfg.folder_ids = None  # type: ignore
 
-            # Get the expanded list of file IDs (folders will be expanded to their contents)
-            # This uses the connector's list_files() which calls _iter_selected_items()
-            result = await connector.list_files()
-            expanded_file_ids = [f["id"] for f in result.get("files", [])]
+                # Expand file IDs — folders become their individual file contents
+                result = await connector.list_files()
+                expanded_file_ids = [f["id"] for f in result.get("files", [])]
 
-            if not expanded_file_ids:
-                logger.warning(
-                    f"No files found after expanding file_ids. "
-                    f"Original IDs: {file_ids}. This may indicate all IDs were folders "
-                    f"with no contents, or files that were filtered out."
-                )
-                # If we have file_infos with download URLs, use original file_ids
-                # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
-                if file_infos:
-                    logger.info("Using original file IDs with cached download URLs")
-                    expanded_file_ids = file_ids
-                else:
-                    raise ValueError("No files to sync after expanding folders")
+                if not expanded_file_ids:
+                    logger.warning(
+                        f"No files found after expanding file_ids. "
+                        f"Original IDs: {file_ids}. This may indicate all IDs were folders "
+                        f"with no contents, or files that were filtered out."
+                    )
+                    # If we have file_infos with download URLs, use original file_ids
+                    # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                    if file_infos:
+                        logger.info("Using original file IDs with cached download URLs")
+                        expanded_file_ids = file_ids
+                    else:
+                        raise ValueError("No files to sync after expanding folders")
 
-        except Exception as e:
-            logger.error(f"Failed to expand file_ids via list_files(): {e}")
-            # Fallback to original file_ids if expansion fails
-            expanded_file_ids = file_ids
-        finally:
-            # Restore original config values
-            if cfg is not None:
+            except Exception as e:
+                logger.error(f"Failed to expand file_ids via list_files(): {e}")
+                # Fallback to original file_ids if expansion fails
+                expanded_file_ids = file_ids
+            finally:
                 cfg.file_ids = original_file_ids  # type: ignore
                 cfg.folder_ids = original_folder_ids  # type: ignore
 

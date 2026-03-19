@@ -23,7 +23,7 @@ body:
         - TUI (Terminal User Interface)
         - Connectors (Google Drive, OneDrive, SharePoint)
         - Frontend (Next.js UI, components)
-        - Backend/API (Python/Starlette)
+        - Backend/API (Python/FastAPI)
         - Infrastructure (Docker, OpenSearch, Langflow)
         - SDK (Python or TypeScript SDK)
         - Onboarding (setup wizard, initial configuration)

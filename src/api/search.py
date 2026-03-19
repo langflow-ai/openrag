@@ -4,6 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
+from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
 
 from dependencies import get_search_service, get_session_manager, get_current_user
 from session_manager import User
@@ -50,6 +51,8 @@ async def search(
             score_threshold=body.scoreThreshold,
         )
         return JSONResponse(result, status_code=200)
+    except OpenSearchDiskSpaceError:
+        return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
         error_msg = str(e)
         if (
