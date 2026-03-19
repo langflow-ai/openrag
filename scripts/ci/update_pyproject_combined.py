@@ -1,11 +1,14 @@
 import sys
 from pathlib import Path
-from update_pyproject_name import update_pyproject_name
-from update_pyproject_version import update_version
 
 # Add current dir to sys.path
 current_dir = Path(__file__).resolve().parent
-sys.path.append(str(current_dir))
+current_dir_str = str(current_dir)
+if current_dir_str not in sys.path:
+    sys.path.append(current_dir_str)
+
+from update_pyproject_name import update_pyproject_name
+from update_pyproject_version import update_version
 
 def main():
     if len(sys.argv) != 3:
