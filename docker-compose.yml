@@ -1,4 +1,16 @@
 services:
+  # Official pre-built image (CPU). ~1.7 GiB compressed on registry; ~4.4 GiB on disk (docling-serve README).
+  # Override: DOCLING_IMAGE=quay.io/docling-project/docling-serve-cpu:latest
+  docling:
+    image: ${DOCLING_IMAGE:-ghcr.io/docling-project/docling-serve-cpu:latest}
+    container_name: docling
+    environment:
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=5001
+      - UVICORN_WORKERS=${DOCLING_WORKERS:-1}
+    expose:
+      - "5001"
+
   opensearch:
     image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
     #build:
@@ -25,9 +37,6 @@ services:
         # Wait for background processes
         wait
       "
-    ports:
-      - "9200:9200"
-      - "9600:9600"
     volumes:
       - ${OPENSEARCH_DATA_PATH:-./opensearch-data}:/usr/share/opensearch/data:U,z
 
@@ -40,8 +49,6 @@ services:
       OPENSEARCH_HOSTS: '["https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}"]'
       OPENSEARCH_USERNAME: "${OPENSEARCH_USERNAME:-admin}"
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
-    ports:
-      - "5601:5601"
 
   openrag-backend:
     image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
@@ -51,6 +58,7 @@ services:
     container_name: openrag-backend
     depends_on:
       - langflow
+      - docling
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
@@ -104,6 +112,7 @@ services:
       - INGESTION_TIMEOUT=${INGESTION_TIMEOUT:-3600}
       - UPLOAD_BATCH_SIZE=${UPLOAD_BATCH_SIZE:-25}
       - MAX_WORKERS=${MAX_WORKERS:-4}
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
@@ -132,8 +141,8 @@ services:
       context: .
       dockerfile: Dockerfile.langflow
     container_name: langflow
-    ports:
-      - "${LANGFLOW_PORT:-7860}:7860"
+    depends_on:
+      - docling
     environment:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -163,7 +172,7 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
       - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
-      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
