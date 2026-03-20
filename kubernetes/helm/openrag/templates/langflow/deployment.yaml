@@ -123,10 +123,10 @@ spec:
 
           env:
             # Langflow core settings
-            - name: LANGFLOW_LOAD_FLOWS_PATH
-              value: {{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}
             - name: LANGFLOW_DATABASE_URL
               value: "sqlite:///{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.dbSubPath }}"
+            - name: LANGFLOW_CONFIG_DIR
+              value: {{ .Values.langflow.persistence.mountPath }}
             - name: LANGFLOW_DEACTIVATE_TRACING
               value: {{ .Values.langflow.deactivateTracing | quote }}
             - name: LANGFLOW_LOG_LEVEL
