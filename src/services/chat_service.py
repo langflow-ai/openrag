@@ -373,7 +373,7 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
 
         # Get metadata from persistent storage
-        conversations_dict = get_user_conversations(user_id)
+        conversations_dict = await get_user_conversations(user_id)
 
         # Get in-memory conversations (with function calls)
         in_memory_conversations = active_conversations.get(user_id, {})
@@ -489,7 +489,7 @@ class ChatService:
 
         try:
             # 1. Get local conversation metadata (no actual messages stored here)
-            conversations_dict = get_user_conversations(user_id)
+            conversations_dict = await get_user_conversations(user_id)
             local_metadata = {}
 
             for response_id, conversation_metadata in conversations_dict.items():

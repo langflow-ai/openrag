@@ -11,9 +11,9 @@ from services.conversation_persistence_service import conversation_persistence
 active_conversations = {}
 
 
-def get_user_conversations(user_id: str):
+async def get_user_conversations(user_id: str):
     """Get conversation metadata for a user from persistent storage"""
-    return conversation_persistence.get_user_conversations(user_id)
+    return await conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
@@ -82,7 +82,7 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
 
 
 # Legacy function for backward compatibility
-def get_user_conversation(user_id: str):
+async def get_user_conversation(user_id: str):
     """Get the most recent conversation for a user (for backward compatibility)"""
     # Check in-memory conversations first (with function calls)
     if user_id in active_conversations and active_conversations[user_id]:
@@ -93,7 +93,7 @@ def get_user_conversation(user_id: str):
         return active_conversations[user_id][latest_response_id]
 
     # Fallback to metadata-only conversations
-    conversations = get_user_conversations(user_id)
+    conversations = await get_user_conversations(user_id)
     if not conversations:
         return get_conversation_thread(user_id)
 
@@ -461,7 +461,7 @@ async def async_chat(
         )
 
         # Debug: Check what's in user_conversations now
-        conversations = get_user_conversations(user_id)
+        conversations = await get_user_conversations(user_id)
         logger.debug(
             "User conversations updated",
             user_id=user_id,
@@ -668,7 +668,7 @@ async def async_langflow_chat(
         )
 
         # Debug: Check what's in user_conversations now
-        conversations = get_user_conversations(user_id)
+        conversations = await get_user_conversations(user_id)
         logger.debug(
             "User conversations updated",
             user_id=user_id,

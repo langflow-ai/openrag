@@ -91,6 +91,10 @@ from config.settings import (
 from services.auth_service import AuthService
 from services.langflow_mcp_service import LangflowMCPService
 from services.chat_service import ChatService
+from services.conversation_persistence_service import (
+    CONVERSATION_METADATA_INDEX_BODY,
+    CONVERSATION_METADATA_INDEX_NAME,
+)
 
 # Services
 from services.document_service import DocumentService
@@ -306,6 +310,22 @@ async def init_index():
             logger.info(
                 "API keys index already exists, skipping creation",
                 index_name=API_KEYS_INDEX_NAME,
+            )
+
+        # Create chat conversation metadata index for horizontally scaled backends
+        if not await clients.opensearch.indices.exists(index=CONVERSATION_METADATA_INDEX_NAME):
+            await clients.opensearch.indices.create(
+                index=CONVERSATION_METADATA_INDEX_NAME,
+                body=CONVERSATION_METADATA_INDEX_BODY,
+            )
+            logger.info(
+                "Created chat conversation metadata index",
+                index_name=CONVERSATION_METADATA_INDEX_NAME,
+            )
+        else:
+            logger.info(
+                "Chat conversation metadata index already exists, skipping creation",
+                index_name=CONVERSATION_METADATA_INDEX_NAME,
             )
 
         # Configure alerting plugin security settings
