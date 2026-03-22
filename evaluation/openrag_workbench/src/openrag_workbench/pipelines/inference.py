@@ -98,6 +98,33 @@ class OpenRAGInference(InferencePipeline):
         if self._ingest_artifact is not None:
             return {"index_name": self._ingest_artifact.index_name}
         return None
+    @staticmethod
+    def _is_invalid_answer(answer: str) -> bool:
+        """
+        Check if an answer contains error patterns that indicate an invalid response.
+
+        Args:
+            answer: The answer text to validate
+
+        Returns:
+            True if the answer is invalid, False otherwise
+        """
+        if not answer or not answer.strip():
+            return True
+
+        # Specific error patterns that indicate invalid answers
+        invalid_patterns = [
+            "Timeout updating tool list",
+            "litellm.InternalServerError",
+        ]
+
+        # Check if answer contains these error patterns
+        for pattern in invalid_patterns:
+            if pattern in answer:
+                return True
+
+        return False
+
 
     async def _configure_generative_model_async(
         self, artifact: OpenRAGIngestArtifact
@@ -238,6 +265,13 @@ class OpenRAGInference(InferencePipeline):
                         for query_result in trajectory
                         for result in query_result["results"]
                     ]
+
+                    # Check for common invalid answer patterns
+                    if self._is_invalid_answer(answer):
+                        raise ValueError(
+                            f"Invalid answer detected: '{answer[:100]}...'. "
+                            "Answer appears to be an error message or non-response."
+                        )
 
                     return answer, context_ids, trajectory
 
