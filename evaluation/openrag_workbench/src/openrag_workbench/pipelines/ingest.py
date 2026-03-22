@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 class ChunkingParams(BaseModel):
     """Parameters for document chunking."""
 
-    chunk_size: int = Field(default=512, description="Size of each chunk")
-    chunk_overlap: int = Field(default=50, description="Overlap between chunks")
+    chunk_size: int = Field(default=1000, description="Size of each chunk")
+    chunk_overlap: int = Field(default=200, description="Overlap between chunks")
 
 
 class EmbeddingModelParams(BaseModel):
