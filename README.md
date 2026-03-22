@@ -19,6 +19,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/network/members)
 
 [![Documentation](https://img.shields.io/badge/Documentation-773eff)](https://docs.openr.ag) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
+[![gitcgr](https://gitcgr.com/badge/langflow-ai/openrag.svg)](https://gitcgr.com/langflow-ai/openrag)
 
 </div>
 
