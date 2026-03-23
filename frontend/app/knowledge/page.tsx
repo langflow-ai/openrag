@@ -332,6 +332,8 @@ function SearchPage() {
     {
       field: "filename",
       headerName: "Source",
+      comparator: (a: string, b: string) =>
+        (a ?? "").localeCompare(b ?? "", undefined, { sensitivity: "base" }),
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         (params?.data?.status || "active") === "active",
       headerCheckboxSelection: true,
@@ -389,6 +391,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
+      comparator: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
