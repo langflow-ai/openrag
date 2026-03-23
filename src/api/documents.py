@@ -122,24 +122,32 @@ async def check_filename_exists(
 
         from utils.opensearch_queries import build_filename_search_body
 
-        search_body = build_filename_search_body(filename, size=1, source=["filename"])
+        # .txt files are renamed to .md for Langflow compatibility during
+        # ingestion, so the overwrite check must also look for the .md variant.
+        names_to_check = [filename]
+        if filename.lower().endswith('.txt'):
+            names_to_check.append(filename[:-4] + '.md')
 
         logger.debug("Checking filename existence", filename=filename, index_name=get_index_name())
 
         try:
-            response = await opensearch_client.search(
-                index=get_index_name(),
-                body=search_body
-            )
+            exists = False
+            for name in names_to_check:
+                search_body = build_filename_search_body(name, size=1, source=["filename"])
+                response = await opensearch_client.search(
+                    index=get_index_name(),
+                    body=search_body
+                )
+                hits = response.get("hits", {}).get("hits", [])
+                if len(hits) > 0:
+                    exists = True
+                    break
         except Exception as search_err:
             if "index_not_found_exception" in str(search_err):
                 logger.info("Index does not exist, creating it now before upload")
                 await _ensure_index_exists()
                 return JSONResponse({"exists": False, "filename": filename}, status_code=200)
             raise
-
-        hits = response.get("hits", {}).get("hits", [])
-        exists = len(hits) > 0
 
         return JSONResponse({"exists": exists, "filename": filename}, status_code=200)
 
