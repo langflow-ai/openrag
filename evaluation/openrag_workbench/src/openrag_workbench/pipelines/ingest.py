@@ -134,10 +134,9 @@ class OpenRAGIngest(IngestPipeline):
         Args:
             sdk_client: The OpenRAG SDK client
         """
-        logger.info("Onboarding with embedding model")
+        logger.info("Onboarding with embedding model, to create the index (if does not exist)")
 
         await sdk_client.onboarding.onboarding(
-            embedding_provider=self.params.embedding_model.provider_id,
             embedding_model=self.params.embedding_model.model_id,
         )
 

@@ -66,8 +66,8 @@ def ingest_params():
     """Create test ingestion parameters."""
     return OpenRAGIngestParams(
         embedding_model=EmbeddingModelParams(
-            provider_id="openai",
-            model_id="text-embedding-3-small"
+            provider_id="ollama",
+            model_id="bge-large:latest"
         ),
         chunking=ChunkingParams(
             chunk_size=256,
@@ -92,12 +92,10 @@ class TestOpenRAGIngestPipeline:
         Test ingesting a single document through the complete pipeline.
 
         This test:
-        1. Creates an OpenRAGIngest with real SDK client
+        1. Creates an OpenRAGIngest pipeline
         2. Processes a single test document
-        3. Waits for task completion using SDK's built-in wait functionality
-        4. Verifies the returned artifact contains correct information
+        3. Verifies the returned artifact contains correct information
 
-        Requires: Running OpenRAG backend at localhost:8000
         """
         logger.info("Starting test_ingest_single_document")
 

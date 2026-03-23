@@ -38,10 +38,8 @@ def inference_params():
     """Create test inference parameters."""
     return OpenRAGInferenceParams(
         generative_model=GenerativeModelParams(
-            provider_id="openai",
-            model_id="gpt-5.2",
-            # provider_id="ollama",
-            # model_id="gpt-oss:20b",
+            provider_id="ollama",
+            model_id="gpt-oss:20b",
         ),
     )
 
