@@ -25,6 +25,9 @@ class ChunkingParams(BaseModel):
 class EmbeddingModelParams(BaseModel):
     """Parameters for embedding model."""
 
+    provider_id: str = Field(
+        description="Embedding provider identifier (e.g., 'openai', 'ollama')"
+    )
     model_id: str = Field(description="Embedding model identifier")
 
 
@@ -110,6 +113,7 @@ class OpenRAGIngest(IngestPipeline):
 
         # Build settings update options
         settings_dict: dict[str, Any] = {
+            "embedding_provider": self.params.embedding_model.provider_id,
             "embedding_model": self.params.embedding_model.model_id,
             "index_name": index_name,
         }
@@ -133,6 +137,7 @@ class OpenRAGIngest(IngestPipeline):
         logger.info("Onboarding with embedding model")
 
         await sdk_client.onboarding.onboarding(
+            embedding_provider=self.params.embedding_model.provider_id,
             embedding_model=self.params.embedding_model.model_id,
         )
 

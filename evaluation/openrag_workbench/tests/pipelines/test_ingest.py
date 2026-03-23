@@ -65,7 +65,10 @@ def mock_data_loader(test_rag_corpus):
 def ingest_params():
     """Create test ingestion parameters."""
     return OpenRAGIngestParams(
-        embedding_model=EmbeddingModelParams(model_id="text-embedding-3-small"),
+        embedding_model=EmbeddingModelParams(
+            provider_id="openai",
+            model_id="text-embedding-3-small"
+        ),
         chunking=ChunkingParams(
             chunk_size=256,
             chunk_overlap=25,
