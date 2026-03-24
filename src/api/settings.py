@@ -1644,6 +1644,7 @@ async def rollback_onboarding(
     body: Optional[RollbackBody] = None,
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
     user: User = Depends(get_current_user),
 ) -> RollbackResponse:
     """Rollback onboarding configuration when sample data files fail.
@@ -1675,18 +1676,19 @@ async def rollback_onboarding(
 
         # Delete knowledge filters created during onboarding
         try:
-            from main import services
-            knowledge_filter_service = services.get("knowledge_filter_service")
-            
             async def remove_filter(filter_id: Optional[str]):
                 if filter_id and knowledge_filter_service:
                     try:
-                        await knowledge_filter_service.delete_knowledge_filter(
+                        result = await knowledge_filter_service.delete_knowledge_filter(
                             filter_id, user.user_id, user.jwt_token
                         )
-                        logger.info(f"Deleted knowledge filter {filter_id}")
+                        if result and result.get("success"):
+                            logger.info(f"Deleted knowledge filter {filter_id}")
+                        else:
+                            error_msg = result.get("error") if result else "Unknown error"
+                            logger.warning(f"Could not delete knowledge filter {filter_id}: {error_msg}")
                     except Exception as e:
-                        logger.warning(f"Could not delete knowledge filter {filter_id}: {str(e)}")
+                        logger.warning(f"Exception deleting knowledge filter {filter_id}: {str(e)}")
 
             if getattr(current_config.onboarding, 'openrag_docs_filter_id', None):
                 await remove_filter(current_config.onboarding.openrag_docs_filter_id)
