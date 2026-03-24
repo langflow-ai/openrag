@@ -1673,7 +1673,35 @@ async def rollback_onboarding(
         cancelled_tasks = []
         deleted_files = []
 
+        # Delete knowledge filters created during onboarding
+        try:
+            from main import services
+            knowledge_filter_service = services.get("knowledge_filter_service")
+            
+            async def remove_filter(filter_id: Optional[str]):
+                if filter_id and knowledge_filter_service:
+                    try:
+                        await knowledge_filter_service.delete_knowledge_filter(
+                            filter_id, user.user_id, user.jwt_token
+                        )
+                        logger.info(f"Deleted knowledge filter {filter_id}")
+                    except Exception as e:
+                        logger.warning(f"Could not delete knowledge filter {filter_id}: {str(e)}")
+
+            if getattr(current_config.onboarding, 'openrag_docs_filter_id', None):
+                await remove_filter(current_config.onboarding.openrag_docs_filter_id)
+                current_config.onboarding.openrag_docs_filter_id = None
+                
+            if getattr(current_config.onboarding, 'user_doc_filter_id', None):
+                await remove_filter(current_config.onboarding.user_doc_filter_id)
+                current_config.onboarding.user_doc_filter_id = None
+        except Exception as e:
+            logger.error(f"Error while cleaning up knowledge filters: {e}")
+
         # Cancel all active tasks and collect successfully ingested files
+        from session_manager import AnonymousUser
+        anonymous_user_id = AnonymousUser().user_id
+
         for task_data in all_tasks:
             task_id = task_data.get("task_id")
             task_status = task_data.get("status")
@@ -1688,41 +1716,40 @@ async def rollback_onboarding(
                 except Exception as e:
                     logger.error(f"Failed to cancel task {task_id}: {str(e)}")
 
-            # For completed tasks, find successfully ingested files and delete them
-            elif task_status == "completed":
-                files = task_data.get("files", {})
-                if isinstance(files, dict):
-                    for file_path, file_info in files.items():
-                        # Check if file was successfully ingested
-                        if isinstance(file_info, dict):
-                            file_status = file_info.get("status")
-                            filename = file_info.get("filename") or file_path.split("/")[-1]
+            # Delete all files associated with any task, regardless of whether 
+            # the task failed or completed, to ensure no partial chunks remain in OpenSearch.
+            files = task_data.get("files", {})
+            if isinstance(files, dict):
+                for file_path, file_info in files.items():
+                    if isinstance(file_info, dict):
+                        filename = file_info.get("filename") or file_path.split("/")[-1]
+                        if filename:
+                            try:
+                                opensearch_client = session_manager.get_user_opensearch_client(
+                                    user.user_id, jwt_token
+                                )
+                                from utils.opensearch_queries import build_filename_delete_body
+                                from config.settings import get_index_name
 
-                            if file_status == "completed" and filename:
-                                try:
-                                    # Get user's OpenSearch client
-                                    opensearch_client = session_manager.get_user_opensearch_client(
-                                        user.user_id, jwt_token
-                                    )
+                                delete_query = build_filename_delete_body(filename)
+                                result = await opensearch_client.delete_by_query(
+                                    index=get_index_name(),
+                                    body=delete_query,
+                                    conflicts="proceed"
+                                )
+                                deleted_count = result.get("deleted", 0)
+                                if deleted_count > 0:
+                                    deleted_files.append(filename)
+                                    logger.info(f"Deleted {deleted_count} chunks for filename {filename}")
+                            except Exception as e:
+                                logger.error(f"Failed to delete documents for {filename}: {str(e)}")
 
-                                    # Delete documents by filename
-                                    from utils.opensearch_queries import build_filename_delete_body
-                                    from config.settings import get_index_name
-
-                                    delete_query = build_filename_delete_body(filename)
-
-                                    result = await opensearch_client.delete_by_query(
-                                        index=get_index_name(),
-                                        body=delete_query,
-                                        conflicts="proceed"
-                                    )
-
-                                    deleted_count = result.get("deleted", 0)
-                                    if deleted_count > 0:
-                                        deleted_files.append(filename)
-                                        logger.info(f"Deleted {deleted_count} chunks for filename {filename}")
-                                except Exception as e:
-                                    logger.error(f"Failed to delete documents for {filename}: {str(e)}")
+            # Wipe the task completely from memory so the frontend doesn't see it anymore
+            for check_user_id in [user.user_id, anonymous_user_id]:
+                if check_user_id in task_service.task_store and task_id in task_service.task_store[check_user_id]:
+                    task_service._task_locks.pop(task_id, None)
+                    task_service.task_store[check_user_id].pop(task_id, None)
+                    logger.info(f"Purged task {task_id} completely from task_store for user {check_user_id}")
 
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
