@@ -22,7 +22,7 @@ classifiers = [
 
 dependencies = [
     "openrag-sdk",
-    "ragworkbench @ git+ssh://git@github.com/IBM/RagWorkbench.git",
+    "ragworkbench==0.1.1",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "openai>=2.0.0",

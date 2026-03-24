@@ -1725,7 +1725,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "ragworkbench", git = "ssh://git@github.com/IBM/RagWorkbench.git" },
+    { name = "ragworkbench", specifier = "==0.1.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.14" },
 ]
 provides-extras = ["dev"]
@@ -2270,8 +2270,8 @@ wheels = [
 
 [[package]]
 name = "ragworkbench"
-version = "0.1.0"
-source = { git = "ssh://git@github.com/IBM/RagWorkbench.git#dba5d75f1a4e2bfdd35ce71eaa13560773b20cad" }
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bert-score" },
     { name = "datasets" },
@@ -2291,6 +2291,10 @@ dependencies = [
     { name = "types-requests" },
     { name = "typing-extensions" },
     { name = "unitxt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/79/d941a7025b6ec9c5484ed127025c426e070ce19df53236178202a7f81408/ragworkbench-0.1.1.tar.gz", hash = "sha256:897df1f00b0f40c87cba711eebf08d3aa94136a09c4b91553da55cb1e52804de", size = 152410, upload-time = "2026-03-24T09:52:08.993Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/db/6ef90c14342367a3a1bbe7b0c2e5c54e62971992c5ca174269951f4f2816/ragworkbench-0.1.1-py3-none-any.whl", hash = "sha256:64164263517dcd351ab9f6b8284c4a366383ceb83ee3a3c18c7e3ce595923b0c", size = 116403, upload-time = "2026-03-24T09:52:07.44Z" },
 ]
 
 [[package]]
