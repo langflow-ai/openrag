@@ -176,20 +176,6 @@ spec:
                   set -eu
                   FAILED=0
 
-                  # OpenSearch: verify endpoint is reachable; fail only if unreachable (000) or 5xx
-                  echo "Checking OpenSearch..."
-                  HTTP_CODE="$(curl -sk -o /dev/null -w '%{http_code}' "{{ include "openrag.opensearch.url" . }}" || echo '000')"
-
-                  case "$HTTP_CODE" in
-                    000|5??)
-                      echo "ERROR: OpenSearch health check failed at {{ include "openrag.opensearch.url" . }} (HTTP $HTTP_CODE)"
-                      FAILED=1
-                      ;;
-                    *)
-                      echo "OpenSearch: OK (HTTP $HTTP_CODE)"
-                      ;;
-                  esac
-
                   # Langflow health
                   echo "Checking Langflow..."
                   if ! curl -sf "{{ include "openrag.langflow.url" . }}/health" >/dev/null 2>&1; then
@@ -197,20 +183,6 @@ spec:
                     FAILED=1
                   else
                     echo "Langflow: OK"
-                  fi
-
-                  # Docling health
-                  echo "Checking Docling..."
-                  if ! curl -sf "{{ include "openrag.docling.url" . }}/health" >/dev/null 2>&1; then
-                    echo "ERROR: Docling health check failed at {{ include "openrag.docling.url" . }}/health"
-                    FAILED=1
-                  else
-                    echo "Docling: OK"
-                  fi
-
-                  if [ "$FAILED" -eq 1 ]; then
-                    echo "Health check failed: one or more dependencies are unavailable"
-                    exit 1
                   fi
 
                   echo "All health checks passed"

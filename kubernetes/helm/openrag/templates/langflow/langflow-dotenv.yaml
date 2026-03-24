@@ -114,6 +114,8 @@ stringData:
 
     # Langflow auth
     LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
+    LANGFLOW_SKIP_AUTH_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.skipAuthAutoLogin }}
+
     {{- if .Values.langflow.auth.superuser }}
     LANGFLOW_SUPERUSER={{ .Values.langflow.auth.superuser | quote }}
     {{- end }}

@@ -29,6 +29,8 @@ stringData:
     # Generated from Helm values.yaml (OpenRAG)
     # Mounted as a file into the pod
 
+    IBM_AUTH_ENABLED={{ .Values.backend.auth.ibmCloud.enabled}}
+
     # Ingestion Configuration
     DISABLE_INGEST_WITH_LANGFLOW={{ ternary "true" "false" .Values.backend.features.disableIngestWithLangflow }}
     INGEST_SAMPLE_DATA={{ ternary "true" "false" .Values.backend.features.ingestSampleData }}
@@ -98,14 +100,6 @@ stringData:
     MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
     {{- end }}
 
-    # AWS S3 credentials
-    {{- if .Values.backend.aws.accessKeyId }}
-    AWS_ACCESS_KEY_ID={{ .Values.backend.aws.accessKeyId | quote }}
-    {{- end }}
-    {{- if .Values.backend.aws.secretAccessKey }}
-    AWS_SECRET_ACCESS_KEY={{ .Values.backend.aws.secretAccessKey | quote }}
-    {{- end }}
-
     # Webhook (continuous ingest)
     {{- if .Values.backend.webhook.baseUrl }}
     WEBHOOK_BASE_URL={{ .Values.backend.webhook.baseUrl | quote }}
@@ -156,7 +150,6 @@ stringData:
     {{- end }}
 
     # Langflow auth
-    LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
     {{- if .Values.langflow.auth.superuser }}
     LANGFLOW_SUPERUSER={{ .Values.langflow.auth.superuser | quote }}
     {{- end }}

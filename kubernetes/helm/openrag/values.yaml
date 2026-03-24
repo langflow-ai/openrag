@@ -42,7 +42,17 @@ global:
       enabled: false
       clientId: ""                        # Microsoft Graph OAuth client ID
       clientSecret: ""                    # Microsoft Graph OAuth client secret
-
+  ibmcos:
+    enabled: false
+    accessKeyId: ""                     # IBM Cloud Object Storage access key ID
+    secretAccessKey: ""                 # IBM Cloud Object Storage secret access key
+    endpoint: ""                       # IBM Cloud Object Storage endpoint
+  aws:
+    enabled: false
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""
+      
 # ============================================================================
 # Langflow Configuration
 # ============================================================================
@@ -100,6 +110,7 @@ langflow:
   # Authentication settings
   auth:
     autoLogin: false
+    skipAuthAutoLogin: false
     superuser: "admin"                    # Langflow superuser username
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
     apiKey: ""                            # Optional: pre-generated API key
@@ -184,6 +195,10 @@ langflow:
 # ============================================================================
 backend:
   enabled: true
+
+  auth:
+    ibmCloud:
+      enabled: false
 
   image:
     repository: langflowai/openrag-backend
@@ -271,12 +286,6 @@ backend:
   webhook:
     enabled: false
     baseUrl: ""                           # DNS routable URL for webhooks (e.g., ngrok URL)
-
-  # AWS credentials for S3 integration
-  aws:
-    enabled: false
-    accessKeyId: ""
-    secretAccessKey: ""
 
   # Probes
   livenessProbe:
