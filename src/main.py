@@ -471,6 +471,8 @@ async def ingest_default_documents_when_ready(
             )
 
         excluded_files = set(EXCLUDED_INGESTION_FILES)
+        if _should_use_url_default_docs_ingest():
+            excluded_files.update(URL_INGEST_EXCLUDED_INGESTION_FILES)
         
         file_paths = [
             os.path.join(root, fn)
