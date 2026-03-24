@@ -730,6 +730,7 @@ class LangflowFileProcessor(TaskProcessor):
         settings: dict = None,
         delete_after_ingest: bool = True,
         replace_duplicates: bool = False,
+        connector_type: str = "local",
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -743,6 +744,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.delete_after_ingest = delete_after_ingest
         self.replace_duplicates = replace_duplicates
+        self.connector_type = connector_type
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -828,8 +830,7 @@ class LangflowFileProcessor(TaskProcessor):
                 owner=self.owner_user_id,
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
-                connector_type="local",
-
+                connector_type=self.connector_type,
             )
 
             # Update task with success

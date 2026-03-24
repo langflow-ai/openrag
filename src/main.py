@@ -459,6 +459,11 @@ async def ingest_default_documents_when_ready(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
         task_id = None
+        if _should_use_url_default_docs_ingest():
+            task_id = await ingest_openrag_docs_when_ready(
+                document_service, task_service, langflow_file_service, session_manager
+            )
+
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
             raise FileNotFoundError(
@@ -466,39 +471,27 @@ async def ingest_default_documents_when_ready(
             )
 
         excluded_files = set(EXCLUDED_INGESTION_FILES)
-        file_paths = []
-
-        if _should_use_url_default_docs_ingest():
-            excluded_files.update(URL_INGEST_EXCLUDED_INGESTION_FILES)
-            try:
-                url_doc_path = await _materialize_default_docs_url_as_text_file(
-                    docs_url=DEFAULT_DOCS_URL,
-                    crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
-                )
-                file_paths.append(url_doc_path)
-            except Exception as e:
-                logger.error("Failed to materialize default docs URL", error=str(e))
-                excluded_files.difference_update(URL_INGEST_EXCLUDED_INGESTION_FILES)
-
-        # Collect files recursively, excluding warmup files and URL-ingested docs
-        file_paths.extend([
+        
+        file_paths = [
             os.path.join(root, fn)
             for root, _, files in os.walk(base_dir)
             for fn in files
             if fn not in excluded_files
-        ])
+        ]
 
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
         if DISABLE_INGEST_WITH_LANGFLOW:
-            task_id = await _ingest_default_documents_openrag(
-                document_service, task_service, file_paths
+            new_task_id = await _ingest_default_documents_openrag(
+                document_service, task_service, file_paths, existing_task_id=task_id, connector_type="local"
             )
+            task_id = new_task_id or task_id
         else:
-            task_id = await _ingest_default_documents_langflow(
-                langflow_file_service, session_manager, task_service, file_paths
+            new_task_id = await _ingest_default_documents_langflow(
+                langflow_file_service, session_manager, task_service, file_paths, existing_task_id=task_id, connector_type="local"
             )
+            task_id = new_task_id or task_id
 
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE
@@ -515,7 +508,7 @@ async def ingest_default_documents_when_ready(
 
 
 async def _ingest_default_documents_langflow(
-    langflow_file_service, session_manager, task_service, file_paths
+    langflow_file_service, session_manager, task_service, file_paths, existing_task_id: str = None, connector_type: str = "openrag_docs"
 ):
     """Ingest default documents using Langflow upload-ingest-delete pipeline."""
 
@@ -570,6 +563,8 @@ async def _ingest_default_documents_langflow(
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
         replace_duplicates=True,
+        connector_type=connector_type,
+        existing_task_id=existing_task_id,
     )
 
     logger.info(
@@ -1049,7 +1044,7 @@ async def opensearch_health_ready(request):
 
 
 async def _ingest_default_documents_openrag(
-    document_service, task_service, file_paths, connector_type: str = "openrag_docs"
+    document_service, task_service, file_paths, existing_task_id: str = None, connector_type: str = "openrag_docs"
 ):
     """Ingest default documents using traditional OpenRAG processor."""
     logger.info(
@@ -1070,7 +1065,7 @@ async def _ingest_default_documents_openrag(
         connector_type=connector_type,
     )
 
-    task_id = await task_service.create_custom_task("anonymous", file_paths, processor)
+    task_id = await task_service.create_custom_task("anonymous", file_paths, processor, existing_task_id=existing_task_id)
     logger.info(
         "Started traditional OpenRAG ingestion task",
         task_id=task_id,
