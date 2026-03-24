@@ -359,9 +359,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
-          selectTask(currentTask.task_id);
-          setIsMenuOpen(true);
-          setIsRecentTasksExpanded(true);
+          if (!isOnboardingActive()) {
+            selectTask(currentTask.task_id);
+            setIsMenuOpen(true);
+            setIsRecentTasksExpanded(true);
+          }
           // Task just failed - show error toast
           toast.error("Task failed", {
             description: `Task ${currentTask.task_id} failed: ${

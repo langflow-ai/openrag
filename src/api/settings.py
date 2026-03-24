@@ -209,6 +209,9 @@ class RollbackResponse(BaseModel):
     cancelled_tasks: int
     deleted_files: int
 
+class RollbackBody(BaseModel):
+    embedding_only: bool = False
+
 
 # Docling preset configurations
 def get_docling_preset_configs(
@@ -1604,8 +1607,10 @@ async def reapply_all_settings(session_manager = None):
 
 async def rollback_onboarding(
     request: Request,
+    body: Optional[RollbackBody] = None,
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
     user: User = Depends(get_current_user),
 ) -> RollbackResponse:
     """Rollback onboarding configuration when sample data files fail.
@@ -1635,7 +1640,36 @@ async def rollback_onboarding(
         cancelled_tasks = []
         deleted_files = []
 
+        # Delete knowledge filters created during onboarding
+        try:
+            async def remove_filter(filter_id: Optional[str]):
+                if filter_id and knowledge_filter_service:
+                    try:
+                        result = await knowledge_filter_service.delete_knowledge_filter(
+                            filter_id, user.user_id, user.jwt_token
+                        )
+                        if result and result.get("success"):
+                            logger.info(f"Deleted knowledge filter {filter_id}")
+                        else:
+                            error_msg = result.get("error") if result else "Unknown error"
+                            logger.warning(f"Could not delete knowledge filter {filter_id}: {error_msg}")
+                    except Exception as e:
+                        logger.warning(f"Exception deleting knowledge filter {filter_id}: {str(e)}")
+
+            if getattr(current_config.onboarding, 'openrag_docs_filter_id', None):
+                await remove_filter(current_config.onboarding.openrag_docs_filter_id)
+                current_config.onboarding.openrag_docs_filter_id = None
+                
+            if getattr(current_config.onboarding, 'user_doc_filter_id', None):
+                await remove_filter(current_config.onboarding.user_doc_filter_id)
+                current_config.onboarding.user_doc_filter_id = None
+        except Exception as e:
+            logger.error(f"Error while cleaning up knowledge filters: {e}")
+
         # Cancel all active tasks and collect successfully ingested files
+        from session_manager import AnonymousUser
+        anonymous_user_id = AnonymousUser().user_id
+
         for task_data in all_tasks:
             task_id = task_data.get("task_id")
             task_status = task_data.get("status")
@@ -1650,41 +1684,40 @@ async def rollback_onboarding(
                 except Exception as e:
                     logger.error(f"Failed to cancel task {task_id}: {str(e)}")
 
-            # For completed tasks, find successfully ingested files and delete them
-            elif task_status == "completed":
-                files = task_data.get("files", {})
-                if isinstance(files, dict):
-                    for file_path, file_info in files.items():
-                        # Check if file was successfully ingested
-                        if isinstance(file_info, dict):
-                            file_status = file_info.get("status")
-                            filename = file_info.get("filename") or file_path.split("/")[-1]
+            # Delete all files associated with any task, regardless of whether 
+            # the task failed or completed, to ensure no partial chunks remain in OpenSearch.
+            files = task_data.get("files", {})
+            if isinstance(files, dict):
+                for file_path, file_info in files.items():
+                    if isinstance(file_info, dict):
+                        filename = file_info.get("filename") or file_path.split("/")[-1]
+                        if filename:
+                            try:
+                                opensearch_client = session_manager.get_user_opensearch_client(
+                                    user.user_id, jwt_token
+                                )
+                                from utils.opensearch_queries import build_filename_delete_body
+                                from config.settings import get_index_name
 
-                            if file_status == "completed" and filename:
-                                try:
-                                    # Get user's OpenSearch client
-                                    opensearch_client = session_manager.get_user_opensearch_client(
-                                        user.user_id, jwt_token
-                                    )
+                                delete_query = build_filename_delete_body(filename)
+                                result = await opensearch_client.delete_by_query(
+                                    index=get_index_name(),
+                                    body=delete_query,
+                                    conflicts="proceed"
+                                )
+                                deleted_count = result.get("deleted", 0)
+                                if deleted_count > 0:
+                                    deleted_files.append(filename)
+                                    logger.info(f"Deleted {deleted_count} chunks for filename {filename}")
+                            except Exception as e:
+                                logger.error(f"Failed to delete documents for {filename}: {str(e)}")
 
-                                    # Delete documents by filename
-                                    from utils.opensearch_queries import build_filename_delete_body
-                                    from config.settings import get_index_name
-
-                                    delete_query = build_filename_delete_body(filename)
-
-                                    result = await opensearch_client.delete_by_query(
-                                        index=get_index_name(),
-                                        body=delete_query,
-                                        conflicts="proceed"
-                                    )
-
-                                    deleted_count = result.get("deleted", 0)
-                                    if deleted_count > 0:
-                                        deleted_files.append(filename)
-                                        logger.info(f"Deleted {deleted_count} chunks for filename {filename}")
-                                except Exception as e:
-                                    logger.error(f"Failed to delete documents for {filename}: {str(e)}")
+            # Wipe the task completely from memory so the frontend doesn't see it anymore
+            for check_user_id in [user.user_id, anonymous_user_id]:
+                if check_user_id in task_service.task_store and task_id in task_service.task_store[check_user_id]:
+                    task_service._task_locks.pop(task_id, None)
+                    task_service.task_store[check_user_id].pop(task_id, None)
+                    logger.info(f"Purged task {task_id} completely from task_store for user {check_user_id}")
 
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
@@ -1692,11 +1725,21 @@ async def rollback_onboarding(
         current_config.onboarding.openrag_docs_ingested_version = None
         current_config.onboarding.openrag_docs_remote_signature = None
 
-        # Mark config as not edited so user can go through onboarding again
-        current_config.edited = False
-        current_config.onboarding.current_step = 0
+        embedding_only = body.embedding_only if body else False
 
-        # Save the rolled back configuration manually to avoid save_config_file setting edited=True
+        # Mark config as not edited so user can go through onboarding again
+        if not embedding_only:
+            current_config.edited = False
+            current_config.onboarding.current_step = 0
+            # Also clear LLM provider and model settings when doing a full rollback
+            current_config.agent.llm_provider = "openai"  # Reset to default
+            current_config.agent.llm_model = ""
+        else:
+            # When rolling back embedding only, we keep edited=True
+            # and set current_step to 1 (which is the embedding step)
+            current_config.onboarding.current_step = 1
+
+        # Save the rolled back configuration manually
         try:
             import yaml
             config_file = config_manager.config_file
@@ -1704,14 +1747,14 @@ async def rollback_onboarding(
             # Ensure directory exists
             config_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Save config with edited=False
+            # Save config with current edited state
             with open(config_file, "w") as f:
                 yaml.dump(current_config.to_dict(), f, default_flow_style=False, indent=2)
 
             # Update cached config
             config_manager._config = current_config
 
-            logger.info("Successfully saved rolled back configuration with edited=False")
+            logger.info(f"Successfully saved rolled back configuration with edited={current_config.edited}")
         except Exception as e:
             logger.error(f"Failed to save rolled back configuration: {e}")
             return JSONResponse(
