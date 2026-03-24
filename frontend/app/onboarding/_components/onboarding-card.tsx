@@ -233,7 +233,7 @@ const OnboardingCard = ({
     onError: (error) => {
       setError(error.message);
       setCurrentStep(totalSteps);
-      rollbackMutation.mutate();
+      rollbackMutation.mutate({ embedding_only: isEmbedding });
     },
   });
 
@@ -328,14 +328,16 @@ const OnboardingCard = ({
       // Set error message and jump back one step (exactly like onboardingMutation.onError)
       setError(errorMessage);
       setCurrentStep(totalSteps);
-      rollbackMutation.mutate();
+      rollbackMutation.mutate({ embedding_only: isEmbedding });
       return;
     }
 
-    const hasSuccessfulTasks = relevantTasks.length > 0 &&
+    const hasSuccessfulTasks =
+      relevantTasks.length > 0 &&
       (!activeTasks || (activeTasks.successful_files ?? 0) > 0);
 
-    const hasIngestionDisabledOrDone = !onboardingTaskId && currentStep === totalSteps - 1;
+    const hasIngestionDisabledOrDone =
+      !onboardingTaskId && currentStep === totalSteps - 1;
 
     // If at least one processed file, no failures, and we've started onboarding, complete it
     if (

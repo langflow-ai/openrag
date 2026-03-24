@@ -211,6 +211,9 @@ class RollbackResponse(BaseModel):
     cancelled_tasks: int
     deleted_files: int
 
+class RollbackBody(BaseModel):
+    embedding_only: bool = False
+
 
 # Docling preset configurations
 def get_docling_preset_configs(
@@ -1638,6 +1641,7 @@ async def reapply_all_settings(session_manager = None):
 
 async def rollback_onboarding(
     request: Request,
+    body: Optional[RollbackBody] = None,
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(get_current_user),
@@ -1726,11 +1730,21 @@ async def rollback_onboarding(
         current_config.onboarding.openrag_docs_ingested_version = None
         current_config.onboarding.openrag_docs_remote_signature = None
 
-        # Mark config as not edited so user can go through onboarding again
-        current_config.edited = False
-        current_config.onboarding.current_step = 0
+        embedding_only = body.embedding_only if body else False
 
-        # Save the rolled back configuration manually to avoid save_config_file setting edited=True
+        # Mark config as not edited so user can go through onboarding again
+        if not embedding_only:
+            current_config.edited = False
+            current_config.onboarding.current_step = 0
+            # Also clear LLM provider and model settings when doing a full rollback
+            current_config.agent.llm_provider = "openai"  # Reset to default
+            current_config.agent.llm_model = ""
+        else:
+            # When rolling back embedding only, we keep edited=True
+            # and set current_step to 1 (which is the embedding step)
+            current_config.onboarding.current_step = 1
+
+        # Save the rolled back configuration manually
         try:
             import yaml
             config_file = config_manager.config_file
@@ -1738,14 +1752,14 @@ async def rollback_onboarding(
             # Ensure directory exists
             config_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Save config with edited=False
+            # Save config with current edited state
             with open(config_file, "w") as f:
                 yaml.dump(current_config.to_dict(), f, default_flow_style=False, indent=2)
 
             # Update cached config
             config_manager._config = current_config
 
-            logger.info("Successfully saved rolled back configuration with edited=False")
+            logger.info(f"Successfully saved rolled back configuration with edited={current_config.edited}")
         except Exception as e:
             logger.error(f"Failed to save rolled back configuration: {e}")
             return JSONResponse(

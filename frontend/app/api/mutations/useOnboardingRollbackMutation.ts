@@ -10,20 +10,33 @@ interface OnboardingRollbackResponse {
   deleted_files: number;
 }
 
+interface RollbackParams {
+  embedding_only?: boolean;
+}
+
 export const useOnboardingRollbackMutation = (
   options?: Omit<
-    UseMutationOptions<OnboardingRollbackResponse, Error, void>,
+    UseMutationOptions<
+      OnboardingRollbackResponse,
+      Error,
+      RollbackParams | void
+    >,
     "mutationFn"
   >,
 ) => {
   const queryClient = useQueryClient();
 
-  async function rollbackOnboarding(): Promise<OnboardingRollbackResponse> {
+  async function rollbackOnboarding(
+    params: RollbackParams | void,
+  ): Promise<OnboardingRollbackResponse> {
+    const requestBody = params || { embedding_only: false };
+
     const response = await fetch("/api/onboarding/rollback", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
