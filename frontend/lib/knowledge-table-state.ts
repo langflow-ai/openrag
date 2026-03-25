@@ -62,7 +62,13 @@ export function buildKnowledgeTableRows(
     }
     const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
     if (taskFile) {
-      return { ...file, ...taskFile };
+      // Merge task metadata (embedding model, dimensions, error, etc.) but
+      // always keep the backend's status — it is the authoritative source of
+      // truth. A task file may still say "processing" for other files in the
+      // same batch (e.g. folder upload) while this particular file is already
+      // fully ingested and the backend confirms it as "active".
+      const backendStatus = file.status ?? "active";
+      return { ...file, ...taskFile, status: backendStatus };
     }
     return file;
   });
