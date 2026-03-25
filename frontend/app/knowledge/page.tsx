@@ -252,7 +252,11 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
-  const fileResults = buildKnowledgeTableRows(searchData as File[], taskFiles);
+  const fileResults = buildKnowledgeTableRows(
+    searchData as File[],
+    taskFiles,
+    !!parsedFilterData,
+  );
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
