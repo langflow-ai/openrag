@@ -67,6 +67,7 @@ class OnboardingBody(BaseModel):
     llm_model: Optional[str] = Field(None, min_length=1)
     embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
     embedding_model: Optional[str] = Field(None, min_length=1)
+    delete_existing_index: Optional[bool] = None
     openai_api_key: Optional[str] = Field(None, min_length=1)
     anthropic_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_api_key: Optional[str] = Field(None, min_length=1)
@@ -1125,10 +1126,21 @@ async def onboarding(
                 # Import here to avoid circular imports
                 from main import init_index_when_ready
 
+                # Handle delete_existing_index
+                delete_existing_index = False
+                if body.delete_existing_index:
+                    delete_existing_index = True
+                    await TelemetryClient.send_event(
+                        Category.ONBOARDING,
+                        MessageId.ORB_ONBOARD_DELETE_EXISTING_INDEX
+                    )
+                    logger.info("Delete existing index requested during onboarding")
+
                 logger.info(
                     "Initializing OpenSearch index after onboarding configuration"
                 )
-                await init_index_when_ready()
+                await init_index_when_ready(delete_existing=delete_existing_index)
+
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
                 logger.error(
