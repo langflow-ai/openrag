@@ -75,6 +75,7 @@ export const KnowledgeActionsDropdown = ({
       toast.error(
         error instanceof Error ? error.message : "Failed to delete document",
       );
+      setShowDeleteDialog(false);
     }
   };
 
