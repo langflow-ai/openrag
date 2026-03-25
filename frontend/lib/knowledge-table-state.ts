@@ -31,6 +31,7 @@ export function getKnowledgeFileIdentity(file?: {
 export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
+  hasActiveFilter = false,
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
@@ -85,6 +86,13 @@ export function buildKnowledgeTableRows(
       )
     );
   });
+
+  // When a filter is active, only show backend results (which already respect
+  // the filter). Task-only processing rows have no backend match yet and would
+  // appear regardless of what the filter targets.
+  if (hasActiveFilter) {
+    return backendFiles;
+  }
 
   return [...backendFiles, ...filteredTaskFiles];
 }
