@@ -196,6 +196,8 @@ langflow:
 backend:
   enabled: true
 
+  encryption:
+    key: ""                               # Optional encryption key for at-rest encryption of confg data
   auth:
     ibmCloud:
       enabled: false
