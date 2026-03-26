@@ -200,10 +200,12 @@ function SearchPage() {
 
   const {
     data: searchData = [],
-    isFetching,
+    isLoading: isSearchLoading,
     error,
     isError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData);
+  } = useGetSearchQuery(queryOverride, parsedFilterData, {
+    refetchInterval: 5000,
+  });
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -296,7 +298,11 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
-  const fileResults = buildKnowledgeTableRows(searchData as File[], taskFiles);
+  const fileResults = buildKnowledgeTableRows(
+    searchData as File[],
+    taskFiles,
+    !!parsedFilterData,
+  );
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
@@ -586,6 +592,7 @@ function SearchPage() {
           ? error.message
           : "Failed to delete some documents",
       );
+      setShowBulkDeleteDialog(false);
     }
   };
 
@@ -697,7 +704,7 @@ function SearchPage() {
           className="w-full overflow-auto"
           columnDefs={columnDefs as ColDef<File>[]}
           defaultColDef={defaultColDef}
-          loading={isFetching}
+          loading={isSearchLoading || deleteDocumentMutation.isPending}
           ref={gridRef}
           theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
           rowData={gridRows}

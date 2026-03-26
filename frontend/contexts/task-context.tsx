@@ -302,6 +302,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             }
           });
         }
+
+        if (isTaskInProgress && previousTask?.files) {
+          const currentFileKeys = new Set(Object.keys(currentTask.files ?? {}));
+          const disappearedFilePaths = Object.keys(previousTask.files).filter(
+            (fp) => !currentFileKeys.has(fp),
+          );
+
+          if (disappearedFilePaths.length > 0) {
+            setFiles((prevFiles) => {
+              let changed = false;
+              const updated = prevFiles.map((f) => {
+                if (
+                  f.task_id === currentTask.task_id &&
+                  f.status === "processing" &&
+                  disappearedFilePaths.includes(f.source_url)
+                ) {
+                  changed = true;
+                  return { ...f, status: "active" as TaskFile["status"] };
+                }
+                return f;
+              });
+              return changed ? updated : prevFiles;
+            });
+            setTimeout(() => refetchSearch(), 500);
+          }
+        }
         if (
           shouldShowToast &&
           previousTask &&

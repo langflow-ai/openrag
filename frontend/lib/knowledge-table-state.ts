@@ -31,6 +31,7 @@ export function getKnowledgeFileIdentity(file?: {
 export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
+  hasActiveFilter = false,
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
@@ -61,7 +62,8 @@ export function buildKnowledgeTableRows(
     }
     const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
     if (taskFile) {
-      return { ...file, ...taskFile };
+      const backendStatus = file.status ?? "active";
+      return { ...file, ...taskFile, status: backendStatus };
     }
     return file;
   });
@@ -85,6 +87,10 @@ export function buildKnowledgeTableRows(
       )
     );
   });
+
+  if (hasActiveFilter) {
+    return backendFiles;
+  }
 
   return [...backendFiles, ...filteredTaskFiles];
 }
