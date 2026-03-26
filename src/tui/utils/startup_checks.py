@@ -272,7 +272,7 @@ def install_podman() -> bool:
             elif has_cmd("yum"):
                 subprocess.run(["sudo", "yum", "install", "-y", "podman"], check=True)
             elif has_cmd("pacman"):
-                subprocess.run(["sudo", "pacman", "-Sy", "--noconfirm", "podman"], check=True)
+                subprocess.run(["sudo", "pacman", "-Syu", "--noconfirm", "podman"], check=True)
             else:
                 say("Unknown package manager. Please install podman manually.")
                 return False
@@ -334,7 +334,7 @@ def install_podman_compose() -> bool:
             elif has_cmd("yum"):
                 subprocess.run(["sudo", "yum", "install", "-y", "podman-compose"], check=True)
             elif has_cmd("pacman"):
-                subprocess.run(["sudo", "pacman", "-Sy", "--noconfirm", "podman-compose"], check=True)
+                subprocess.run(["sudo", "pacman", "-Syu", "--noconfirm", "podman-compose"], check=True)
             else:
                 say("Unknown package manager. Please install podman-compose manually.")
                 return False
