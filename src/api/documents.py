@@ -13,6 +13,11 @@ class DeleteDocumentBody(BaseModel):
     filename: str
 
 
+class RenameDocumentBody(BaseModel):
+    old_filename: str
+    new_filename: str
+
+
 async def delete_documents_by_filename_core(
     filename: str,
     session_manager,
@@ -158,10 +163,80 @@ async def delete_documents_by_filename(
     user: User = Depends(get_current_user),
     ):
     """Delete all documents with a specific filename"""
-    payload, status_code =await delete_documents_by_filename_core(
+    payload, status_code = await delete_documents_by_filename_core(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
         jwt_token=user.jwt_token,
     )
     return JSONResponse(payload, status_code=status_code)
+
+
+async def rename_document(
+    body: RenameDocumentBody,
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
+    """Rename all document chunks with a specific filename"""
+    from config.settings import get_index_name
+
+    jwt_token = user.jwt_token
+    old_filename = (body.old_filename or "").strip()
+    new_filename = (body.new_filename or "").strip()
+
+    if not old_filename or not new_filename:
+        return JSONResponse(
+            {"error": "old_filename and new_filename are required"}, status_code=400
+        )
+
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(
+            user.user_id, jwt_token
+        )
+
+        update_query = {
+            "script": {
+                "source": "ctx._source.filename = params.new_filename",
+                "lang": "painless",
+                "params": {"new_filename": new_filename},
+            },
+            "query": {"term": {"filename": old_filename}},
+        }
+
+        result = await opensearch_client.update_by_query(
+            index=get_index_name(),
+            body=update_query,
+            conflicts="proceed",
+        )
+
+        updated_count = result.get("updated", 0)
+
+        if updated_count == 0:
+            return JSONResponse(
+                {"success": False, "error": "No matching document chunks found."},
+                status_code=404,
+            )
+
+        logger.info(
+            f"Renamed {updated_count} chunks from '{old_filename}' to '{new_filename}'",
+            user_id=user.user_id,
+        )
+
+        return JSONResponse(
+            {
+                "success": True,
+                "updated_chunks": updated_count,
+                "old_filename": old_filename,
+                "new_filename": new_filename,
+            },
+            status_code=200,
+        )
+
+    except Exception as e:
+        logger.error("Error renaming document", old_filename=old_filename, error=str(e))
+        error_str = str(e)
+        status_code = 403 if "AuthenticationException" in error_str else 500
+        return JSONResponse(
+            {"success": False, "error": "Access denied" if status_code == 403 else "Rename failed"},
+            status_code=status_code,
+        )
