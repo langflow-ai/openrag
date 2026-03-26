@@ -319,6 +319,9 @@ def install_podman_compose() -> bool:
         if has_cmd("pip3"):
             try:
                 subprocess.run(["pip3", "install", "--user", "podman-compose"], check=True)
+                local_bin = str(Path.home() / ".local" / "bin")
+                if local_bin not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = f"{local_bin}:{os.environ['PATH']}"
                 return True
             except Exception as e:
                 say(f"pip3 install failed ({e}), trying package manager...")
