@@ -204,17 +204,6 @@ def compose_available() -> bool:
     # Try docker-compose (v1)
     if has_cmd("docker-compose"):
         return True
-    # Try podman compose (built-in subcommand, podman v4.7+)
-    try:
-        result = subprocess.run(
-            ["podman", "compose", "version"], capture_output=True, timeout=5
-        )
-        if result.returncode == 0:
-            return True
-    except:
-        pass
-    # Try podman-compose (standalone binary)
-    return has_cmd("podman-compose")
 
 
 # =============================================================================
