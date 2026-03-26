@@ -740,8 +740,8 @@ def run_startup_checks() -> bool:
     if runtime == "podman":
         # Always ensure the standalone podman-compose binary is present —
         # it installs required dependencies even when the built-in subcommand exists.
-        if not install_podman_compose():
-            say("Warning: podman-compose is not available. OpenRAG may fail to start.")
+        if not install_podman_compose() and not compose_available():
+            say("Warning: No compose tool found. OpenRAG will fail to start.")
     elif not compose_available():
         say("Docker Compose not found.")
         say("OpenRAG requires docker-compose or 'docker compose'.")
