@@ -22,6 +22,8 @@ global:
   opensearch:
     host: "opensearch-coordinating.opensearch.svc.cluster.local"                              # Required: OpenSearch SaaS endpoint (e.g., "my-cluster.us-east-1.es.amazonaws.com")
     port: 9200                             # Default HTTPS port for managed OpenSearch
+    langflowHost: ""                      # Optional: Langflow-specific OpenSearch host
+    langflowPort: ""                      # Optional: Langflow-specific OpenSearch port
     scheme: "https"                       # https for production SaaS
     username: "admin"                     # OpenSearch username
     password: ""                          # OpenSearch password (stored in secret)
