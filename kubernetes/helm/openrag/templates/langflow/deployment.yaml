@@ -209,11 +209,11 @@ spec:
 
             # OpenSearch connection (for flows)
             - name: OPENSEARCH_HOST
-              value: {{ include "openrag.langflow.opensearch.host" . | quote }}
+              value: {{ .Values.global.opensearch.host | quote }}
             - name: OPENSEARCH_PORT
-              value: {{ include "openrag.langflow.opensearch.port" . | quote }}
+              value: {{ .Values.global.opensearch.port | quote }}
             - name: OPENSEARCH_URL
-              value: {{ include "openrag.langflow.opensearch.url" . | quote }}
+              value: {{ include "openrag.opensearch.url" . | quote }}
             - name: OPENSEARCH_INDEX_NAME
               value: {{ .Values.global.opensearch.indexName | quote }}
             # Docling service URL (for document processing in flows)

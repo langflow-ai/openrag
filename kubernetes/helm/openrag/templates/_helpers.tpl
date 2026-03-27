@@ -163,27 +163,6 @@ Generate the OpenSearch URL
 {{- end }}
 
 {{/*
-Generate the Langflow-specific OpenSearch Host
-*/}}
-{{- define "openrag.langflow.opensearch.host" -}}
-{{- default .Values.global.opensearch.host .Values.global.opensearch.langflowHost }}
-{{- end }}
-
-{{/*
-Generate the Langflow-specific OpenSearch Port
-*/}}
-{{- define "openrag.langflow.opensearch.port" -}}
-{{- default .Values.global.opensearch.port .Values.global.opensearch.langflowPort }}
-{{- end }}
-
-{{/*
-Generate the Langflow-specific OpenSearch URL
-*/}}
-{{- define "openrag.langflow.opensearch.url" -}}
-{{ .Values.global.opensearch.scheme }}://{{ include "openrag.langflow.opensearch.host" . }}:{{ include "openrag.langflow.opensearch.port" . }}
-{{- end }}
-
-{{/*
 Generate the Docling URL
 */}}
 {{- define "openrag.docling.url" -}}
