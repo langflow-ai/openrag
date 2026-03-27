@@ -113,7 +113,7 @@ class ConnectionManager:
         secret_keys = {
             "api_key", "hmac_secret_key", "secret_key", "client_secret",
             "aws_secret_access_key", "ibm_api_key", "access_token", "refresh_token",
-            "access_key", "hmac_access_key", "service_instance_id"
+            "access_key", "hmac_access_key", "service_instance_id", "basic_credentials"
         }
         
         data = {"connections": []}
