@@ -191,7 +191,7 @@ def podman_ready() -> bool:
 
 
 def compose_available() -> bool:
-    """Check if docker compose, docker-compose, podman compose, or podman-compose is available."""
+    """Check if docker compose (v2) or docker-compose (v1) is available."""
     # Try docker compose (v2)
     try:
         result = subprocess.run(
