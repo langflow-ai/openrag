@@ -204,6 +204,7 @@ def compose_available() -> bool:
     # Try docker-compose (v1)
     if has_cmd("docker-compose"):
         return True
+    return False
 
 
 # =============================================================================
