@@ -197,7 +197,7 @@ async def connector_sync(
         if selected_files:
             # Explicit files selected (e.g., from file picker) - sync those specific files
             from .documents import _ensure_index_exists
-            await _ensure_index_exists()
+            await _ensure_index_exists(jwt_token)
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
                 user.user_id,

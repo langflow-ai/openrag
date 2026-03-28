@@ -70,7 +70,6 @@ export const useGetSearchQuery = (
   options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-
   const getFileIdentity = (chunk: ChunkResult): string => {
     const normalizedFilename = chunk.filename?.trim();
     if (normalizedFilename) {
@@ -87,6 +86,7 @@ export const useGetSearchQuery = (
 
   // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
+  const normalizedQuery = effectiveQuery.trim();
 
   async function getFiles(): Promise<File[]> {
     try {
@@ -98,10 +98,21 @@ export const useGetSearchQuery = (
         ? SEARCH_CONSTANTS.WILDCARD_QUERY_LIMIT
         : queryData?.limit || 100;
 
+      const baseScoreThreshold =
+        queryData?.scoreThreshold ?? SEARCH_CONSTANTS.DEFAULT_SCORE_THRESHOLD;
+      const isShortSingleTokenQuery =
+        normalizedQuery !== "*" &&
+        normalizedQuery.length > 0 &&
+        normalizedQuery.length <= 4 &&
+        !normalizedQuery.includes(" ");
+      const dynamicScoreThreshold = isShortSingleTokenQuery
+        ? Math.min(baseScoreThreshold, 1.0)
+        : baseScoreThreshold;
+
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
         limit: searchLimit,
-        scoreThreshold: queryData?.scoreThreshold || 0,
+        scoreThreshold: dynamicScoreThreshold,
       };
       if (queryData?.filters) {
         searchPayload.filters =

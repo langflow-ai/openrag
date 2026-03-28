@@ -104,10 +104,16 @@ async def delete_documents_by_filename_core(
         )
 
 
-async def _ensure_index_exists():
+async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
     from main import init_index
-    await init_index()
+    from config.settings import IBM_AUTH_ENABLED, clients as app_clients
+
+    opensearch_client = None
+    if IBM_AUTH_ENABLED and jwt_token:
+        opensearch_client = app_clients.create_user_opensearch_client(jwt_token)
+
+    await init_index(opensearch_client)
 
 
 async def check_filename_exists(
@@ -126,25 +132,32 @@ async def check_filename_exists(
         )
 
         from utils.opensearch_queries import build_filename_search_body
+        from utils.file_utils import get_filename_aliases
 
-        search_body = build_filename_search_body(filename, size=1, source=["filename"])
+        candidate_filenames = get_filename_aliases(filename)
+        if not candidate_filenames:
+            return JSONResponse({"exists": False, "filename": filename}, status_code=200)
 
         logger.debug("Checking filename existence", filename=filename, index_name=get_index_name())
+        exists = False
 
         try:
-            response = await opensearch_client.search(
-                index=get_index_name(),
-                body=search_body
-            )
+            for candidate in candidate_filenames:
+                search_body = build_filename_search_body(candidate, size=1, source=["filename"])
+                response = await opensearch_client.search(
+                    index=get_index_name(),
+                    body=search_body
+                )
+                hits = response.get("hits", {}).get("hits", [])
+                if hits:
+                    exists = True
+                    break
         except Exception as search_err:
             if "index_not_found_exception" in str(search_err):
                 logger.info("Index does not exist, creating it now before upload")
-                await _ensure_index_exists()
+                await _ensure_index_exists(jwt_token)
                 return JSONResponse({"exists": False, "filename": filename}, status_code=200)
             raise
-
-        hits = response.get("hits", {}).get("hits", [])
-        exists = len(hits) > 0
 
         return JSONResponse({"exists": exists, "filename": filename}, status_code=200)
 

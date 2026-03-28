@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import time
@@ -342,38 +343,41 @@ class GoogleDriveConnector(BaseConnector):
           - items inside folder_ids (with optional recursion)
         Shortcuts are resolved to their targets automatically.
         """
-        # Clear shortcut cache to ensure fresh data
+        logger.debug(
+            "[GoogleDrive] _iter_selected_items: entry (file_ids=%s, folder_ids=%s)",
+            self.cfg.file_ids,
+            self.cfg.folder_ids,
+        )
         self._clear_shortcut_cache()
 
         seen: Set[str] = set()
         items: List[Dict[str, Any]] = []
         folders_to_expand: List[str] = []
 
-        # Process file_ids: separate actual files from folders
         if self.cfg.file_ids:
+            logger.debug("[GoogleDrive] _iter_selected_items: processing %d file_id(s)", len(self.cfg.file_ids))
             for fid in self.cfg.file_ids:
                 meta = self._get_file_meta_by_id(fid)
                 if not meta:
+                    logger.debug("[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid)
                     continue
 
-                # If it's a folder, add to folders_to_expand instead
                 if meta.get("mimeType") == "application/vnd.google-apps.folder":
                     logger.debug(
-                        f"Item {fid} ({meta.get('name')}) is a folder, "
-                        f"will expand to contents"
+                        "[GoogleDrive] _iter_selected_items: %s (%s) is a folder, will expand",
+                        fid,
+                        meta.get("name"),
                     )
                     folders_to_expand.append(fid)
                 elif meta["id"] not in seen:
-                    # It's a regular file, add it directly
                     seen.add(meta["id"])
                     items.append(meta)
 
-        # Collect all folders to expand (from both file_ids and folder_ids)
         if self.cfg.folder_ids:
             folders_to_expand.extend(self.cfg.folder_ids)
 
-        # Expand all folders to their contents
         if folders_to_expand:
+            logger.debug("[GoogleDrive] _iter_selected_items: expanding %d folder(s)", len(folders_to_expand))
             folder_children = self._bfs_expand_folders(folders_to_expand)
             for meta in folder_children:
                 meta = self._resolve_shortcut(meta)
@@ -382,34 +386,28 @@ class GoogleDriveConnector(BaseConnector):
                 seen.add(meta["id"])
                 items.append(meta)
 
-        # If neither file_ids nor folder_ids are set, you could:
-        #  - return [] to force explicit selection
-        #  - OR default to entire drive.
-        # Here we choose to require explicit selection:
         if not self.cfg.file_ids and not self.cfg.folder_ids:
             logger.warning(
-                "No file_ids or folder_ids specified - returning empty result. "
-                "Explicit selection is required."
+                "[GoogleDrive] _iter_selected_items: no file_ids or folder_ids specified, returning empty"
             )
             return []
 
         items = self._filter_by_mime(items)
-        # Exclude folders from final emits:
         items = [
             m
             for m in items
             if m.get("mimeType") != "application/vnd.google-apps.folder"
         ]
 
-        # Log a warning if we ended up with no files after expansion/filtering
         if not items and (self.cfg.file_ids or self.cfg.folder_ids):
             logger.warning(
-                f"No files found after expanding and filtering. "
-                f"file_ids={self.cfg.file_ids}, folder_ids={self.cfg.folder_ids}. "
-                f"This could mean: (1) folders are empty, (2) all files were filtered by mime types, "
-                f"or (3) permissions prevent access to the files."
+                "[GoogleDrive] _iter_selected_items: no files after filtering. "
+                "file_ids=%s, folder_ids=%s",
+                self.cfg.file_ids,
+                self.cfg.folder_ids,
             )
 
+        logger.debug("[GoogleDrive] _iter_selected_items: returning %d file(s)", len(items))
         return items
 
     # -------------------------
@@ -453,7 +451,10 @@ class GoogleDriveConnector(BaseConnector):
         mime_type = file_meta.get("mimeType") or ""
 
         logger.debug(
-            f"Downloading file {file_id} ({file_name}) with mimetype: {mime_type}"
+            "[GoogleDrive] _download_file_bytes: file_id=%s, name=%s, mimeType=%s",
+            file_id,
+            file_name,
+            mime_type,
         )
 
         # Folders cannot be downloaded or exported - this should never be reached
@@ -484,7 +485,9 @@ class GoogleDriveConnector(BaseConnector):
                 export_mime = "application/pdf"
 
             logger.debug(
-                f"Using export_media for {file_id} ({mime_type} -> {export_mime})"
+                "[GoogleDrive] _download_file_bytes: using export_media (%s -> %s)",
+                mime_type,
+                export_mime,
             )
             # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
             request = self.service.files().export_media(
@@ -493,7 +496,7 @@ class GoogleDriveConnector(BaseConnector):
         else:
             # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
             # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
-            logger.debug(f"Using get_media for {file_id} ({mime_type})")
+            logger.debug("[GoogleDrive] _download_file_bytes: using get_media (%s)", mime_type)
             # Binary download (get_media also doesn't accept the Drive flags)
             request = self.service.files().get_media(fileId=file_id)
 
@@ -526,7 +529,9 @@ class GoogleDriveConnector(BaseConnector):
             else:
                 raise
 
-        return fh.getvalue()
+        data = fh.getvalue()
+        logger.debug("[GoogleDrive] _download_file_bytes: done, %d bytes", len(data))
+        return data
 
     # -------------------------
     # Public sync surface
@@ -538,27 +543,30 @@ class GoogleDriveConnector(BaseConnector):
         Returns True if ready to use; False otherwise.
         """
         try:
-            # Load/refresh creds from token file (async)
+            logger.debug("[GoogleDrive] authenticate: loading credentials")
             self.creds = await self.oauth.load_credentials()
 
-            # If still not authenticated, bail (caller should kick off OAuth init)
+            logger.debug("[GoogleDrive] authenticate: checking is_authenticated")
             if not await self.oauth.is_authenticated():
                 logger.debug(
-                    "authenticate: no valid credentials; run OAuth init/callback first."
+                    "[GoogleDrive] authenticate: no valid credentials; run OAuth init/callback first."
                 )
                 return False
 
-            # Build Drive service from OAuth helper
+            logger.debug("[GoogleDrive] authenticate: building Drive service")
             self.service = self.oauth.get_service()
 
-            # Optional sanity check (small, fast request)
-            _ = self.service.files().get(fileId="root", fields="id").execute()
+            logger.debug("[GoogleDrive] authenticate: running sanity check (files.get root)")
+            req = self.service.files().get(fileId="root", fields="id")
+            await asyncio.to_thread(req.execute)
+            logger.debug("[GoogleDrive] authenticate: sanity check passed")
+
             self._authenticated = True
             return True
 
         except Exception as e:
             self._authenticated = False
-            logger.error(f"GoogleDriveConnector.authenticate failed: {e}")
+            logger.error("[GoogleDrive] authenticate failed: %s", e)
             return False
 
     async def list_files(
@@ -575,34 +583,29 @@ class GoogleDriveConnector(BaseConnector):
         - If page_token is None: return all files in one batch.
         - Otherwise: return {} and no next_page_token.
         """
-        # Ensure service is initialized
         if self.service is None:
             raise RuntimeError(
                 "Google Drive service is not initialized. Please authenticate first."
             )
 
-        try:
-            items = self._iter_selected_items()
+        logger.debug("[GoogleDrive] list_files: entry (page_token=%s, max_files=%s)", page_token, max_files)
 
-            # Optionally honor a request-scoped max_files (e.g., from your API payload)
+        try:
+            items = await asyncio.to_thread(self._iter_selected_items)
+
             if isinstance(max_files, int) and max_files > 0:
                 items = items[:max_files]
 
-            # Simplest: ignore page_token and just dump all
-            # If you want real pagination, slice items here
             if page_token:
                 return {"files": [], "next_page_token": None}
 
+            logger.debug("[GoogleDrive] list_files: returning %d file(s)", len(items))
             return {
                 "files": items,
-                "next_page_token": None,  # no more pages
+                "next_page_token": None,
             }
         except Exception as e:
-            # Log the error and re-raise to surface authentication/permission issues
-            logger.error(
-                f"GoogleDriveConnector.list_files failed: {e}",
-                exc_info=True
-            )
+            logger.error("[GoogleDrive] list_files failed: %s", e, exc_info=True)
             raise
 
     def _extract_google_drive_acl(self, file_meta: Dict) -> DocumentACL:
@@ -676,11 +679,11 @@ class GoogleDriveConnector(BaseConnector):
         Fetch a file's metadata and content from Google Drive and wrap it in a ConnectorDocument.
         Raises FileNotFoundError if the ID is a folder (folders cannot be downloaded).
         """
-        meta = self._get_file_meta_by_id(file_id)
+        logger.debug("[GoogleDrive] get_file_content: fetching metadata for file_id=%s", file_id)
+        meta = await asyncio.to_thread(self._get_file_meta_by_id, file_id)
         if not meta:
             raise FileNotFoundError(f"Google Drive file not found: {file_id}")
 
-        # Check if this is a folder - folders cannot be downloaded
         if meta.get("mimeType") == "application/vnd.google-apps.folder":
             raise FileNotFoundError(
                 f"Cannot download folder {file_id} ({meta.get('name')}). "
@@ -688,13 +691,15 @@ class GoogleDriveConnector(BaseConnector):
                 f"This ID should not have been passed to get_file_content()."
             )
 
+        logger.debug(
+            "[GoogleDrive] get_file_content: downloading file_id=%s, name=%s",
+            file_id,
+            meta.get("name"),
+        )
         try:
-            blob = self._download_file_bytes(meta)
+            blob = await asyncio.to_thread(self._download_file_bytes, meta)
         except Exception as e:
-            try:
-                logger.error(f"Download failed for {file_id}: {e}")
-            except Exception:
-                pass
+            logger.error("[GoogleDrive] get_file_content: download failed for %s: %s", file_id, e)
             raise
 
         from datetime import datetime
@@ -703,7 +708,6 @@ class GoogleDriveConnector(BaseConnector):
             if not dt_str:
                 return None
             try:
-                # Google Drive returns RFC3339 format
                 return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ")
             except ValueError:
                 try:
@@ -711,7 +715,6 @@ class GoogleDriveConnector(BaseConnector):
                 except ValueError:
                     return None
 
-        # Extract ACL from file metadata
         acl = self._extract_google_drive_acl(meta)
 
         doc = ConnectorDocument(
@@ -731,6 +734,7 @@ class GoogleDriveConnector(BaseConnector):
                 else None,
             },
         )
+        logger.debug("[GoogleDrive] get_file_content: done for file_id=%s (%d bytes)", file_id, len(blob))
         return doc
 
     async def setup_subscription(self) -> str:

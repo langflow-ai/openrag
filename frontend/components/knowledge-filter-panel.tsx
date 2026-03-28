@@ -7,6 +7,10 @@ import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
 import { useGetSearchAggregations } from "@/app/api/queries/useGetSearchAggregations";
 import {
+  type File as SearchFile,
+  useGetSearchQuery,
+} from "@/app/api/queries/useGetSearchQuery";
+import {
   type FilterColor,
   FilterIconPopover,
   type IconKey,
@@ -25,6 +29,11 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useTask } from "@/contexts/task-context";
+import {
+  buildActiveSourceOptions,
+  buildKnowledgeTableRows,
+} from "@/lib/knowledge-table-state";
 
 interface FacetBucket {
   key: string;
@@ -59,6 +68,7 @@ export function KnowledgeFilterPanel() {
     createMode,
     endCreateMode,
   } = useKnowledgeFilter();
+  const { files: taskFiles } = useTask();
   const deleteFilterMutation = useDeleteFilter();
   const updateFilterMutation = useUpdateFilter();
   const createFilterMutation = useCreateFilter();
@@ -149,6 +159,10 @@ export function KnowledgeFilterPanel() {
     gcTime: 5 * 60_000,
   });
 
+  const { data: allSearchData = [] } = useGetSearchQuery("*", null, {
+    enabled: isPanelOpen,
+  });
+
   useEffect(() => {
     if (!aggregations) return;
     const facets = {
@@ -159,6 +173,12 @@ export function KnowledgeFilterPanel() {
     };
     setAvailableFacets(facets);
   }, [aggregations]);
+
+  const tableRows = buildKnowledgeTableRows(
+    allSearchData as SearchFile[],
+    taskFiles,
+  );
+  const sourceOptions = buildActiveSourceOptions(tableRows);
 
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
@@ -337,11 +357,7 @@ export function KnowledgeFilterPanel() {
           <div className="space-y-4">
             <div className="space-y-2">
               <MultiSelect
-                options={(availableFacets.data_sources || []).map((bucket) => ({
-                  value: bucket.key,
-                  label: bucket.key,
-                  count: bucket.count,
-                }))}
+                options={sourceOptions}
                 value={selectedFilters.data_sources}
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)

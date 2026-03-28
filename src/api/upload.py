@@ -95,7 +95,7 @@ async def upload_path(
         owner_email = user.email
 
     from api.documents import _ensure_index_exists
-    await _ensure_index_exists()
+    await _ensure_index_exists(jwt_token)
 
     task_id = await task_service.create_upload_task(
         owner_user_id,
@@ -208,7 +208,7 @@ async def upload_bucket(
         task_user_id = user.user_id
 
     from api.documents import _ensure_index_exists
-    await _ensure_index_exists()
+    await _ensure_index_exists(jwt_token)
 
     processor = S3FileProcessor(
         task_service.document_service,

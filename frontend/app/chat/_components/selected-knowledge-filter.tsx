@@ -15,19 +15,20 @@ export const SelectedKnowledgeFilter = ({
   onClear,
 }: SelectedKnowledgeFilterProps) => {
   return (
-    <span
-      className={`inline-flex items-center p-1 rounded-sm text-xs font-medium transition-colors ${
+    <div
+      className={`flex min-w-0 items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
         filterAccentClasses[parsedFilterData?.color || "zinc"]
       }`}
     >
-      {selectedFilter.name}
+      <span className="truncate">{selectedFilter.name}</span>
       <button
         type="button"
         onClick={onClear}
-        className="ml-0.5 rounded-full p-0.5"
+        className="ml-0.5 rounded-full p-0.5 shrink-0"
+        aria-label="Clear selected filter"
       >
         <X className="h-4 w-4" />
       </button>
-    </span>
+    </div>
   );
 };

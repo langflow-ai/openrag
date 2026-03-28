@@ -13,11 +13,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/auth-context";
+import { decodeBase64 } from "@/lib/utils";
 
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { refreshAuth } = useAuth();
+  const { refreshAuth, isIbmAuthMode } = useAuth();
   const [status, setStatus] = useState<"processing" | "success" | "error">(
     "processing",
   );
@@ -39,6 +40,8 @@ function AuthCallbackContent() {
         // Get parameters from URL
         const state = searchParams.get("state");
         const errorParam = searchParams.get("error");
+
+        console.log("OAuth callback state (raw):", state);
 
         // Get stored auth info
         const connectorId = localStorage.getItem("connecting_connector_id");
@@ -80,13 +83,55 @@ function AuthCallbackContent() {
         }
 
         // Send callback data to backend
+        const stateParam = searchParams.get("state");
+        let parsedConnectionId = finalConnectorId;
+        let stateReturnUrl: string | null = null;
+
+        // In IBM auth mode, state is base64-encoded: id=<connection_id>&return=<broker_callback_url>
+        if (isIbmAuthMode && stateParam) {
+          try {
+            const decodedState = decodeBase64(stateParam);
+            console.log("OAuth callback state (decoded):", decodedState);
+            const params = new URLSearchParams(decodedState);
+
+            if (params.has("id")) {
+              parsedConnectionId = params.get("id") || finalConnectorId;
+              stateReturnUrl = params.get("return");
+              console.log("Parsed Base64 state parameter:", {
+                parsedConnectionId,
+                stateReturnUrl,
+              });
+            } else if (stateParam.includes("id=")) {
+              // Fallback: If not base64 but contains id=, try to parse as raw for backward compatibility
+              const rawParams = new URLSearchParams(stateParam);
+              parsedConnectionId = rawParams.get("id") || finalConnectorId;
+              stateReturnUrl = rawParams.get("return");
+            }
+          } catch (e) {
+            console.error(
+              "Failed to Base64 decode or parse state parameter",
+              e,
+            );
+            // Fallback: If decoding fails, try to parse as raw if it contains id=
+            if (stateParam.includes("id=")) {
+              try {
+                const params = new URLSearchParams(stateParam);
+                parsedConnectionId = params.get("id") || finalConnectorId;
+                stateReturnUrl = params.get("return");
+              } catch (innerE) {
+                console.error("Failed to parse raw state parameter", innerE);
+              }
+            }
+          }
+        }
+
         const response = await fetch("/api/auth/callback", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            connection_id: finalConnectorId,
+            connection_id: parsedConnectionId,
             authorization_code: code,
             state: state,
           }),
@@ -101,13 +146,16 @@ function AuthCallbackContent() {
             // App authentication - refresh auth context and redirect to home/original page
             await refreshAuth();
 
-            // Get redirect URL from login page
-            const redirectTo = searchParams.get("redirect") || "/chat";
+            const redirectTo =
+              localStorage.getItem("auth_redirect_to") ||
+              searchParams.get("redirect") ||
+              "/chat";
 
             // Clean up localStorage
             localStorage.removeItem("connecting_connector_id");
             localStorage.removeItem("connecting_connector_type");
             localStorage.removeItem("auth_purpose");
+            localStorage.removeItem("auth_redirect_to");
 
             // Redirect to the original page or home
             setTimeout(() => {
@@ -138,6 +186,7 @@ function AuthCallbackContent() {
         localStorage.removeItem("connecting_connector_id");
         localStorage.removeItem("connecting_connector_type");
         localStorage.removeItem("auth_purpose");
+        localStorage.removeItem("auth_redirect_to");
       }
     };
 

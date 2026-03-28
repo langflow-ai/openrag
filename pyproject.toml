@@ -42,7 +42,6 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
-    "ibm-secrets-manager-sdk>=2.1.19",
     "openai>=1.0.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",

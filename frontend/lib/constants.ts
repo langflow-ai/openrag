@@ -30,6 +30,7 @@ export const UI_CONSTANTS = {
  */
 export const SEARCH_CONSTANTS = {
   WILDCARD_QUERY_LIMIT: 10000, // Maximum allowed limit for wildcard searches
+  DEFAULT_SCORE_THRESHOLD: 1.25, // Default relevance threshold for knowledge search
 } as const;
 
 export const ANIMATION_DURATION = 0.4;

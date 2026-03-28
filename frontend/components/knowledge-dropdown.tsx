@@ -45,33 +45,61 @@ import {
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
-// Supported file extensions - single source of truth
-// If modified, please also update the list in the documentation (openrag/docs/docs)
+/**
+ * Local / chat file picker + folder ingest filter — single source of truth.
+ * Only extensions verified to ingest successfully in the Langflow pipeline.
+ * If modified, update docs (docs/docs/core-components/ingestion.mdx).
+ *
+ * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx
+ * spreadsheets: csv
+ *
+ * TODO: Re-add other MIME/extension groups (images, xlsx/xls/ppt, rtf/odt, etc.)
+ * once ingestion is verified end-to-end in Langflow; keep this list and ingestion.mdx in sync.
+ */
 export const SUPPORTED_FILE_TYPES = {
-  "image/*": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"],
-  "application/pdf": [".pdf"],
-  "application/msword": [".doc"],
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
-    ".docx",
-  ],
-  "application/vnd.ms-powerpoint": [".ppt"],
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
-    ".pptx",
-  ],
-  "application/vnd.ms-excel": [".xls"],
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-    ".xlsx",
-  ],
-  "text/csv": [".csv"],
   "text/plain": [".txt"],
   "text/markdown": [".md"],
   "text/html": [".html", ".htm"],
-  "application/rtf": [".rtf"],
-  "application/vnd.oasis.opendocument.text": [".odt"],
-  "text/asciidoc": [".adoc", ".asciidoc"],
+  "text/asciidoc": [".adoc", ".asciidoc", ".asc"],
+  "application/pdf": [".pdf"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+    ".docx",
+  ],
+  "text/csv": [".csv"],
 };
 
 export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
+
+const getFilenameVariants = (filename: string): string[] => {
+  const dotIndex = filename.lastIndexOf(".");
+  if (dotIndex === -1) return [filename];
+
+  const baseName = filename.slice(0, dotIndex);
+  const extension = filename.slice(dotIndex).toLowerCase();
+
+  if (extension === ".txt") return [filename, `${baseName}.md`];
+  if (extension === ".md") return [filename, `${baseName}.txt`];
+
+  return [filename];
+};
+
+const isDuplicateFile = async (file: File): Promise<boolean> => {
+  const variants = getFilenameVariants(file.name);
+  const checks = await Promise.all(
+    variants.map(async (variantName) => {
+      const variantFile =
+        variantName === file.name
+          ? file
+          : new File([file], variantName, {
+              type: file.type,
+              lastModified: file.lastModified,
+            });
+      const checkData = await duplicateCheck(variantFile);
+      return checkData.exists;
+    }),
+  );
+  return checks.some(Boolean);
+};
 
 const FileIconWithColor = ({ className }: { className?: string }) => (
   <FileIcon className={cn(className, "text-muted-foreground")} />
@@ -100,6 +128,13 @@ export function KnowledgeDropdown() {
   const [s3Configured, setS3Configured] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
+  const [pendingFolderUpload, setPendingFolderUpload] = useState<{
+    allFiles: File[];
+    nonDuplicateFiles: File[];
+    duplicateCount: number;
+    unsupportedCount: number;
+  } | null>(null);
+  const isFolderOverwriteConfirmedRef = useRef(false);
   const [cloudConnectors, setCloudConnectors] = useState<{
     [key: string]: {
       name: string;
@@ -110,6 +145,12 @@ export function KnowledgeDropdown() {
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const resetDuplicateDialogState = () => {
+    setPendingFolderUpload(null);
+    setPendingFile(null);
+    setDuplicateFilename("");
+  };
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -249,11 +290,11 @@ export function KnowledgeDropdown() {
 
       try {
         console.log("[Duplicate Check] Checking file:", file.name);
-        const checkData = await duplicateCheck(file);
-        console.log("[Duplicate Check] Result:", checkData);
+        const exists = await isDuplicateFile(file);
 
-        if (checkData.exists) {
+        if (exists) {
           console.log("[Duplicate Check] Duplicate detected, showing dialog");
+          resetDuplicateDialogState();
           setPendingFile(file);
           setDuplicateFilename(file.name);
           setShowDuplicateDialog(true);
@@ -299,7 +340,49 @@ export function KnowledgeDropdown() {
     }
   };
 
+  const uploadFolderBatches = async (
+    filesToUpload: File[],
+    replace: boolean,
+  ) => {
+    const batches: File[][] = [];
+    for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
+      batches.push(filesToUpload.slice(i, i + uploadBatchSize));
+    }
+
+    console.log(
+      `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
+    );
+
+    for (const batch of batches) {
+      try {
+        const result = await uploadFiles(batch, replace);
+        addTask(result.taskId);
+      } catch (error) {
+        console.error("[Folder Upload] Batch upload failed:", error);
+        toast.error("Batch upload failed", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    refetchTasks();
+  };
+
   const handleOverwriteFile = async () => {
+    if (pendingFolderUpload) {
+      isFolderOverwriteConfirmedRef.current = true;
+      const { allFiles, duplicateCount, unsupportedCount } =
+        pendingFolderUpload;
+      await uploadFolderBatches(allFiles, true);
+      const unsupportedMessage =
+        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
+      toast.success(
+        `Processed ${allFiles.length} file(s), including ${duplicateCount} overwrite(s)${unsupportedMessage}`,
+      );
+      resetDuplicateDialogState();
+      return;
+    }
+
     if (pendingFile) {
       // Remove the old file from all search query caches before overwriting
       queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: []) => {
@@ -312,9 +395,42 @@ export function KnowledgeDropdown() {
 
       await uploadFile(pendingFile, true);
 
-      setPendingFile(null);
-      setDuplicateFilename("");
+      resetDuplicateDialogState();
     }
+  };
+
+  const handleDuplicateDialogOpenChange = async (open: boolean) => {
+    if (!open && pendingFolderUpload) {
+      if (isFolderOverwriteConfirmedRef.current) {
+        isFolderOverwriteConfirmedRef.current = false;
+      } else {
+        const { nonDuplicateFiles, duplicateCount, unsupportedCount } =
+          pendingFolderUpload;
+        if (nonDuplicateFiles.length > 0) {
+          await uploadFolderBatches(nonDuplicateFiles, false);
+          const extraParts: string[] = [];
+          if (duplicateCount > 0) {
+            extraParts.push(`skipped ${duplicateCount} duplicate(s)`);
+          }
+          if (unsupportedCount > 0) {
+            extraParts.push(`skipped ${unsupportedCount} unsupported`);
+          }
+          const suffix =
+            extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
+          toast.success(
+            `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
+          );
+        } else {
+          toast.info(
+            "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
+          );
+        }
+      }
+
+      resetDuplicateDialogState();
+    }
+
+    setShowDuplicateDialog(open);
   };
 
   const handleFolderSelect = async (
@@ -334,6 +450,7 @@ export function KnowledgeDropdown() {
           .toLowerCase();
         return SUPPORTED_EXTENSIONS.includes(ext);
       });
+      const unsupportedCount = fileList.length - filteredFiles.length;
 
       if (filteredFiles.length === 0) {
         toast.error("No supported files found", {
@@ -359,8 +476,8 @@ export function KnowledgeDropdown() {
       const duplicateResults = await Promise.all(
         cleanFiles.map(async (file) => {
           try {
-            const checkData = await duplicateCheck(file);
-            return { file, isDuplicate: checkData.exists };
+            const exists = await isDuplicateFile(file);
+            return { file, isDuplicate: exists };
           } catch (error) {
             console.error(
               `[Folder Upload] Duplicate check failed for ${file.name}:`,
@@ -375,12 +492,32 @@ export function KnowledgeDropdown() {
       const nonDuplicateFiles = duplicateResults
         .filter((r) => !r.isDuplicate)
         .map((r) => r.file);
-      const skippedCount = duplicateResults.filter((r) => r.isDuplicate).length;
+      const duplicateCount = duplicateResults.filter(
+        (r) => r.isDuplicate,
+      ).length;
 
-      if (skippedCount > 0) {
-        console.log(
-          `[Folder Upload] Skipping ${skippedCount} duplicate file(s)`,
+      if (unsupportedCount > 0) {
+        toast.error(
+          `Unsupported files detected: only ${filteredFiles.length} of ${fileList.length} file(s) will be ingested.`,
+          {
+            description: `${unsupportedCount} file(s) have unsupported types and will be skipped.`,
+          },
         );
+      }
+
+      if (duplicateCount > 0) {
+        console.log(
+          `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
+        );
+        resetDuplicateDialogState();
+        setPendingFolderUpload({
+          allFiles: cleanFiles,
+          nonDuplicateFiles,
+          duplicateCount,
+          unsupportedCount,
+        });
+        setShowDuplicateDialog(true);
+        return;
       }
 
       if (nonDuplicateFiles.length === 0) {
@@ -388,41 +525,12 @@ export function KnowledgeDropdown() {
         return;
       }
 
-      // Chunk non-duplicate files into batches
-      const batches: File[][] = [];
-      for (let i = 0; i < nonDuplicateFiles.length; i += uploadBatchSize) {
-        batches.push(nonDuplicateFiles.slice(i, i + uploadBatchSize));
-      }
-
-      console.log(
-        `[Folder Upload] Uploading ${nonDuplicateFiles.length} file(s) in ${batches.length} batch(es)`,
+      await uploadFolderBatches(nonDuplicateFiles, false);
+      const unsupportedMessage =
+        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
+      toast.success(
+        `Successfully processed ${nonDuplicateFiles.length} file(s)${unsupportedMessage}`,
       );
-
-      // Upload each batch as a single task
-      for (const batch of batches) {
-        try {
-          const result = await uploadFiles(batch, false);
-          addTask(result.taskId);
-          console.log(
-            `[Folder Upload] Batch uploaded: taskId=${result.taskId}, files=${result.fileCount}`,
-          );
-        } catch (error) {
-          console.error("[Folder Upload] Batch upload failed:", error);
-          toast.error("Batch upload failed", {
-            description:
-              error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-      }
-
-      refetchTasks();
-
-      const processedCount = nonDuplicateFiles.length;
-      const message =
-        skippedCount > 0
-          ? `Processed ${processedCount} file(s), skipped ${skippedCount} duplicate(s)`
-          : `Successfully processed ${processedCount} file(s)`;
-      toast.success(message);
     } catch (error) {
       console.error("Folder upload error:", error);
       toast.error("Folder upload failed", {
@@ -661,9 +769,11 @@ export function KnowledgeDropdown() {
       {/* Duplicate Handling Dialog */}
       <DuplicateHandlingDialog
         open={showDuplicateDialog}
-        onOpenChange={setShowDuplicateDialog}
+        onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteFile}
-        isLoading={fileUploading}
+        isLoading={fileUploading || folderLoading}
+        duplicateLabel={duplicateFilename}
+        duplicateCount={pendingFolderUpload?.duplicateCount}
       />
     </>
   );

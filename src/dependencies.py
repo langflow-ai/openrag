@@ -126,7 +126,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
             if not sub:
                 logger.warning("IBM JWT is missing required 'sub' claim; treating as unauthenticated")
             else:
-                user_id = claims.get("uid") or sub
+                user_id = claims.get("username", sub)
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
 

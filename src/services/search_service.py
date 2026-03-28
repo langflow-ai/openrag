@@ -1,5 +1,6 @@
 import copy
 import json
+from collections import Counter
 from typing import Any, Dict
 from config.settings import EMBED_MODEL, clients, get_embedding_model, get_index_name, WATSONX_EMBEDDING_DIMENSIONS
 from auth_context import get_auth_context
@@ -315,8 +316,23 @@ class SearchService:
                                 "query": query,
                                 "fields": ["text^2", "filename^1.5"],
                                 "type": "best_fields",
-                                "fuzziness": "AUTO",
+                                "operator": "or",
+                                "fuzziness": "AUTO:4,7",
                                 "boost": 0.3,  # 30% weight for keyword search
+                            }
+                        },
+                        {
+                            # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
+                            # Avoid bool_prefix here because our current mappings are:
+                            # - text: standard "text" (not search_as_you_type / edge-ngram)
+                            # - filename: "keyword"
+                            # match_phrase_prefix with a bounded expansion is safer.
+                            "match_phrase_prefix": {
+                                "text": {
+                                    "query": query,
+                                    "max_expansions": 50,
+                                    "boost": 0.25,
+                                }
                             }
                         },
                     ],
@@ -479,15 +495,62 @@ class SearchService:
                 }
             )
 
+        # If query text appears verbatim in one subset of files, prefer those files
+        # to avoid broad semantic spillover for unique lookups.
+        normalized_query = query.strip().lower()
+        aggregations = results.get("aggregations", {})
+        if (
+            normalized_query
+            and not is_wildcard_match_all
+            and len(normalized_query) >= 4
+        ):
+            exact_files = {
+                filename
+                for chunk in chunks
+                for filename in [chunk.get("filename")]
+                if isinstance(filename, str)
+                and (
+                    normalized_query in filename.lower()
+                    or (
+                        isinstance(chunk.get("text"), str)
+                        and normalized_query in chunk.get("text", "").lower()
+                    )
+                )
+            }
+            if exact_files:
+                chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+
+                def _build_terms_agg(field: str) -> Dict[str, Any]:
+                    counts = Counter(
+                        value
+                        for chunk in chunks
+                        for value in [chunk.get(field)]
+                        if isinstance(value, str) and value
+                    )
+                    return {
+                        "doc_count_error_upper_bound": 0,
+                        "sum_other_doc_count": 0,
+                        "buckets": [
+                            {"key": key, "doc_count": count}
+                            for key, count in counts.most_common()
+                        ],
+                    }
+
+                # Keep aggregations consistent with the post-filtered result set.
+                aggregations = {
+                    **aggregations,
+                    "data_sources": _build_terms_agg("filename"),
+                    "document_types": _build_terms_agg("mimetype"),
+                    "owners": _build_terms_agg("owner"),
+                    "connector_types": _build_terms_agg("connector_type"),
+                    "embedding_models": _build_terms_agg("embedding_model"),
+                }
+
         # Return both transformed results and aggregations
         return {
             "results": chunks,
-            "aggregations": results.get("aggregations", {}),
-            "total": (
-                results.get("hits", {}).get("total", {}).get("value")
-                if isinstance(results.get("hits", {}).get("total"), dict)
-                else results.get("hits", {}).get("total")
-            ),
+            "aggregations": aggregations,
+            "total": len(chunks),
         }
 
     async def search(

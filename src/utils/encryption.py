@@ -19,66 +19,18 @@ KDF_ITERATIONS = 100000
 _cached_master_secret: Optional[str] = None
 
 def get_master_secret() -> str | None:
-    """Retrieve the master secret string from IBM Secrets Manager or local environment."""
+    """Retrieve the master secret string from local environment."""
     global _cached_master_secret
     if _cached_master_secret is not None:
         return _cached_master_secret
 
-    secret_str = None
-    ibm_auth_enabled = os.environ.get("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-
-    if ibm_auth_enabled:
-        ibm_api_key = os.environ.get("IBM_CLOUD_API_KEY")
-        ibm_secret_id = os.environ.get("IBM_SECRETS_MANAGER_SECRET_ID")
-        
-        trusted_profile_id = os.environ.get("IBM_CLOUD_TRUSTED_PROFILE_ID")
-        instance_id = os.environ.get("SECRET_MANAGER_INSTANCE_ID")
-        region = os.environ.get("SECRET_MANAGER_REGION", "us-south")
-        cr_token_file = os.environ.get("IBM_CLOUD_CR_TOKEN_FILE", "/var/run/secrets/tokens/sa-token")
-
-        if instance_id and ibm_secret_id:
-            try:
-                from ibm_secrets_manager_sdk.secrets_manager_v2 import SecretsManagerV2
-                
-                authenticator = None
-                if ibm_api_key:
-                    from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
-                    authenticator = IAMAuthenticator(ibm_api_key)
-                elif trusted_profile_id:
-                    from ibm_cloud_sdk_core.authenticators import ContainerAuthenticator
-                    authenticator = ContainerAuthenticator(
-                        cr_token_filename=cr_token_file,
-                        iam_profile_id=trusted_profile_id
-                    )
-                else:
-                    raise ValueError("Neither IBM_CLOUD_API_KEY nor IBM_CLOUD_TRUSTED_PROFILE_ID provided")
-
-                secrets_manager = SecretsManagerV2(authenticator=authenticator)
-                secrets_manager.set_service_url(f"https://{instance_id}.{region}.secrets-manager.appdomain.cloud")
-
-                # Retrieve the secret
-                response = secrets_manager.get_secret(id=ibm_secret_id).get_result()
-                
-                secret_data = response.get("secret_data")
-                if not secret_data and "resources" in response and len(response["resources"]) > 0:
-                    secret_data = response["resources"][0].get("secret_data")
-                    
-                if secret_data and "payload" in secret_data:
-                    secret_str = secret_data["payload"]
-                    logger.debug("Successfully retrieved master secret from IBM Secrets Manager.")
-                else:
-                    logger.warning("IBM Secrets Manager: 'payload' not found in secret_data.")
-            except Exception as e:
-                logger.warning(f"Failed to retrieve encryption key from IBM Secrets Manager: {e}. Falling back to OPENRAG_ENCRYPTION_KEY.")
-
-    if not secret_str:
-        secret_str = os.environ.get("OPENRAG_ENCRYPTION_KEY")
+    secret_str = os.environ.get("OPENRAG_ENCRYPTION_KEY")
 
     if not secret_str:
         if os.environ.get("OPENRAG_ENFORCE_PREREQUISITES", "false").lower() in ("true", "1", "yes"):
             raise RuntimeError(
                 "CRITICAL: OPENRAG_ENFORCE_PREREQUISITES is enabled but no master encryption key "
-                "could be retrieved from IBM Secrets Manager or OPENRAG_ENCRYPTION_KEY. "
+                "could be retrieved from OPENRAG_ENCRYPTION_KEY. "
                 "Application will not start in unencrypted mode."
             )
         return None
