@@ -156,8 +156,9 @@ async def create_dynamic_index_body(
 
     return {
         "settings": {
-            "index": {"knn": True, "number_of_replicas": 0},
+            "index": {"knn": True},
             "number_of_shards": 1,
+            "number_of_replicas": 0
         },
         "mappings": {
             "properties": {
