@@ -253,9 +253,18 @@ async def init_index():
                 embedding_model=embedding_model,
             )
             # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
-            await os_client.indices.put_settings(
-                index=index_name, body={"index": {"number_of_replicas": 0}}
+            current = await os_client.indices.get_settings(index=index_name)
+            current_replicas = int(
+                current[index_name]["settings"]["index"].get("number_of_replicas", 1)
             )
+            if current_replicas != 0:
+                await os_client.indices.put_settings(
+                    index=index_name,
+                    body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
+                )
+                logger.info(
+                    "Updated documents index settings",
+                    )
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
             )
@@ -297,14 +306,22 @@ async def init_index():
             )
         else:
             logger.info(
-                "Knowledge filters index already exists, skipping creation and changing number of replicas",
+                "Knowledge filters index already exists, skipping creation",
                 index_name=knowledge_filter_index_name,
             )
-            # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
-            await os_client.indices.put_settings(
-                index=knowledge_filter_index_name,
-                body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
+
+            current = await os_client.indices.get_settings(index=knowledge_filter_index_name)
+            current_replicas = int(
+                current[knowledge_filter_index_name]["settings"]["index"].get("number_of_replicas", 1)
             )
+            if current_replicas != 0:
+                await os_client.indices.put_settings(
+                    index=knowledge_filter_index_name,
+                    body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
+                )
+                logger.info(
+                    "Updated knowledge filters index settings",
+                    )
 
         # Create API keys index for public API authentication
         if not await clients.opensearch.indices.exists(index=API_KEYS_INDEX_NAME):
