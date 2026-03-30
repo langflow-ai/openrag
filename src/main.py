@@ -260,6 +260,9 @@ async def init_index(opensearch_client=None):
         # Create knowledge filters index
         knowledge_filter_index_name = "knowledge_filters"
         knowledge_filter_index_body = {
+            "settings": {
+                "index": {"number_of_replicas": 0},
+            },
             "mappings": {
                 "properties": {
                     "id": {"type": "keyword"},
