@@ -1,0 +1,22 @@
+{{- if or (.Values.backend.persistence.config.enabled) (.Values.backend.persistence.keys.enabled) }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.backend.storageClassName | default "backend-sc-wffc" }}
+  annotations:
+    {{- if .Values.backend.storageClassAnnotations }}
+{{ toYaml .Values.backend.storageClassAnnotations | indent 4 }}
+    {{- end }}
+  labels:
+    {{- if .Values.backend.storageClassLabels }}
+{{ toYaml .Values.backend.storageClassLabels | indent 4 }}
+    {{- end }}
+provisioner: {{ .Values.backend.storageClassProvisioner | default "vpc.block.csi.ibm.io" }}
+parameters:
+    {{- if .Values.backend.storageClassParameters }}
+{{ toYaml .Values.backend.storageClassParameters | indent 2 }}
+    {{- end }}
+reclaimPolicy: {{ .Values.backend.storageClassReclaimPolicy | default "Delete" }}
+volumeBindingMode: {{ .Values.backend.storageClassVolumeBindingMode | default "WaitForFirstConsumer" }}
+allowVolumeExpansion: {{ .Values.backend.storageClassAllowVolumeExpansion | default true }}
+{{- end }}
