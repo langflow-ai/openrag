@@ -104,9 +104,9 @@ stringData:
     {{- end }}
 
     # OpenSearch connection (for flows)
-    OPENSEARCH_HOST={{ .Values.global.opensearch.host | quote }}
-    OPENSEARCH_PORT={{ .Values.global.opensearch.port | quote }}
-    OPENSEARCH_URL={{ include "openrag.opensearch.url" . | quote }}
+    OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
+    OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
+    OPENSEARCH_URL={{ include "openrag.langflow.opensearch.url" . | quote }}
     OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
     {{- if .Values.global.opensearch.password }}
     OPENSEARCH_PASSWORD={{ .Values.global.opensearch.password | quote }}
