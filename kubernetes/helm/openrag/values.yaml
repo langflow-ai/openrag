@@ -42,7 +42,17 @@ global:
       enabled: false
       clientId: ""                        # Microsoft Graph OAuth client ID
       clientSecret: ""                    # Microsoft Graph OAuth client secret
-
+  ibmcos:
+    enabled: false
+    accessKeyId: ""                     # IBM Cloud Object Storage access key ID
+    secretAccessKey: ""                 # IBM Cloud Object Storage secret access key
+    endpoint: ""                       # IBM Cloud Object Storage endpoint
+  aws:
+    enabled: false
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""
+      
 # ============================================================================
 # Langflow Configuration
 # ============================================================================
@@ -100,8 +110,8 @@ langflow:
   # Authentication settings
   auth:
     autoLogin: false
+    skipAuthAutoLogin: false
     superuser: "admin"                    # Langflow superuser username
-    superuserPassword: ""                 # Langflow superuser password (stored in secret)
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
     apiKey: ""                            # Optional: pre-generated API key
     keyRetries: 15                        # Number of retries for key generation
@@ -116,6 +126,42 @@ langflow:
   doclingServeUrl: "http://host.docker.internal:5001"
   openragQueryFilter: "{}"
 
+  # Flow context default variables (injected into every flow execution)
+  flowDefaults:
+    jwt: "None"
+    owner: "None"
+    ownerName: "None"
+    ownerEmail: "None"
+    connectorType: "system"
+    connectorTypeUrl: "url"
+    documentId: ""
+    sourceUrl: ""
+    allowedUsers: "[]"
+    allowedGroups: "[]"
+    filename: "None"
+    mimetype: "None"
+    filesize: "0"
+    selectedEmbeddingModel: ""
+
+  backend:
+    externalDatabase:
+      enabled: true
+      driver:
+        value: "postgresql"
+      port:
+        value: "5432"
+      user:
+        value: "langflow"
+      password:
+        valueFrom:
+          secretKeyRef:
+            key: "password"
+            name: "openrag-langflow-dbpassword"
+      database:
+        value: "langflow-db"
+    sqlite:
+      enabled: false
+      
   # Langfuse Tracking
   langfuse:
     secretKey: ""
@@ -150,9 +196,27 @@ langflow:
 backend:
   enabled: true
 
+  # StorageClass templating fields
+  storageClassName: ""
+  storageClassAnnotations: {}
+  storageClassLabels: {}
+  storageClassProvisioner: ""
+  storageClassParameters: {}
+  storageClassReclaimPolicy: ""
+  storageClassVolumeBindingMode: ""
+  storageClassAllowVolumeExpansion: ""
+
+  encryption:
+    key: ""                               # Optional encryption key for at-rest encryption of confg data
+  auth:
+    ibmCloud:
+      enabled: false
+
   image:
     repository: langflowai/openrag-backend
     tag: ""                               # Uses global.imageTag if empty
+
+  oauthBrokerUrl: ""                      # Public return URL for OAuth redirects
 
   # Single pod for vertical scaling
   replicaCount: 1
@@ -236,12 +300,6 @@ backend:
   webhook:
     enabled: false
     baseUrl: ""                           # DNS routable URL for webhooks (e.g., ngrok URL)
-
-  # AWS credentials for S3 integration
-  aws:
-    enabled: false
-    accessKeyId: ""
-    secretAccessKey: ""
 
   # Probes
   livenessProbe:
@@ -346,6 +404,60 @@ dashboards:
   service:
     type: ClusterIP
     port: 5601
+
+# ============================================================================
+# PostgreSQL Configuration
+# ============================================================================
+postgres:
+  enabled: false                          # Enable to deploy PostgreSQL for Langflow
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+
+  # Single pod for PostgreSQL
+  replicaCount: 1
+
+  # Database configuration
+  database: "langflow"
+  username: "langflow"
+  # Note: Password is auto-generated and stored securely in Kubernetes secret
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  # Persistence for PostgreSQL data
+  persistence:
+    enabled: true
+    storageClass: ""                      # Empty uses cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /var/lib/postgresql/data
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5432
 
 # ============================================================================
 # Ingress Configuration

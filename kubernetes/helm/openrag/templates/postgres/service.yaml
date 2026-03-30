@@ -1,0 +1,20 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openrag.fullname" . }}-postgres
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.postgres.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.postgres.service.type }}
+  ports:
+    - port: {{ .Values.postgres.service.port }}
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "openrag.postgres.selectorLabels" . | nindent 4 }}
+{{- end }}
+
+# Made with Bob
