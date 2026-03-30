@@ -254,8 +254,7 @@ async def init_index():
             )
             # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
             await os_client.indices.put_settings(
-                index=index_name,
-                body={"index": {"number_of_replicas": 0}}
+                index=index_name, body={"index": {"number_of_replicas": 0}}
             )
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
@@ -265,7 +264,7 @@ async def init_index():
         knowledge_filter_index_name = "knowledge_filters"
         knowledge_filter_index_body = {
             "settings": {
-                "index": {"number_of_replicas": 0},
+                "index": {"number_of_replicas": 0, "number_of_shards": 1},
             },
             "mappings": {
                 "properties": {
@@ -280,7 +279,7 @@ async def init_index():
                     "created_at": {"type": "date"},
                     "updated_at": {"type": "date"},
                 }
-            }
+            },
         }
 
         if not await clients.opensearch.indices.exists(
@@ -304,7 +303,7 @@ async def init_index():
             # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
             await os_client.indices.put_settings(
                 index=knowledge_filter_index_name,
-                body={"index": {"number_of_replicas": 0}}
+                body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
             )
 
         # Create API keys index for public API authentication
