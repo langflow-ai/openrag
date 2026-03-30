@@ -185,6 +185,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-backend
                   key: session-secret
+            - name: OPENRAG_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-backend
+                  key: encryption-key
             # Flow IDs from ConfigMap
             - name: LANGFLOW_CHAT_FLOW_ID
               valueFrom:
