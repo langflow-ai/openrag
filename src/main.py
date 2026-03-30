@@ -260,7 +260,7 @@ async def init_index():
             if current_replicas != 0:
                 await os_client.indices.put_settings(
                     index=index_name,
-                    body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
+                    body={"index": {"number_of_replicas": 0}},
                 )
                 logger.info(
                     "Updated documents index settings",
@@ -317,7 +317,7 @@ async def init_index():
             if current_replicas != 0:
                 await os_client.indices.put_settings(
                     index=knowledge_filter_index_name,
-                    body={"index": {"number_of_replicas": 0, "number_of_shards": 1}},
+                    body={"index": {"number_of_replicas": 0}},
                 )
                 logger.info(
                     "Updated knowledge filters index settings",
