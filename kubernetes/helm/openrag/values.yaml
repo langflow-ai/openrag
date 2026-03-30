@@ -211,6 +211,7 @@ backend:
   auth:
     ibmCloud:
       enabled: false
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
 
   image:
     repository: langflowai/openrag-backend
@@ -234,11 +235,6 @@ backend:
   logFormat: "json"                       # json or text
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   serviceName: "openrag"
-
-  # Authentication
-  auth:
-    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
-    encryptionKey: ""                     # Master encryption key (stored in secret)
 
   # Persistence for documents, keys, and config
   persistence:
