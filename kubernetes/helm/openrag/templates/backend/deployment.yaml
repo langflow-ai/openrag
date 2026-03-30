@@ -134,7 +134,7 @@ spec:
           env:
             # OpenSearch connection (external SaaS)
             - name: OPENSEARCH_HOST
-              value: {{ .Values.global.opensearch.host | quote }}
+              value: {{ include "openrag.opensearch.host" . | quote }}
             - name: OPENSEARCH_PORT
               value: {{ .Values.global.opensearch.port | quote }}
             - name: OPENSEARCH_USERNAME
