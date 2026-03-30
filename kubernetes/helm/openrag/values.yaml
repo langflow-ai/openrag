@@ -209,9 +209,9 @@ backend:
   encryption:
     key: ""                               # Optional encryption key for at-rest encryption of confg data
   auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
     ibmCloud:
       enabled: false
-    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
 
   image:
     repository: langflowai/openrag-backend
