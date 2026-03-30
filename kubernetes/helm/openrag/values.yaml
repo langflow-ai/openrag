@@ -209,6 +209,7 @@ backend:
   encryption:
     key: ""                               # Optional encryption key for at-rest encryption of confg data
   auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
     ibmCloud:
       enabled: false
 
@@ -235,9 +236,6 @@ backend:
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   serviceName: "openrag"
 
-  # Authentication
-  auth:
-    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
 
   # Persistence for documents, keys, and config
   persistence:
