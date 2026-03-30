@@ -248,9 +248,14 @@ async def init_index():
             )
         else:
             logger.info(
-                "Index already exists, skipping creation",
+                "Index already exists, skipping creation and changing number of replicas",
                 index_name=index_name,
                 embedding_model=embedding_model,
+            )
+            # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
+            await os_client.indices.put_settings(
+                index=index_name,
+                body={"index": {"number_of_replicas": 0}}
             )
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
@@ -293,8 +298,13 @@ async def init_index():
             )
         else:
             logger.info(
-                "Knowledge filters index already exists, skipping creation",
+                "Knowledge filters index already exists, skipping creation and changing number of replicas",
                 index_name=knowledge_filter_index_name,
+            )
+            # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
+            await os_client.indices.put_settings(
+                index=knowledge_filter_index_name,
+                body={"index": {"number_of_replicas": 0}}
             )
 
         # Create API keys index for public API authentication
