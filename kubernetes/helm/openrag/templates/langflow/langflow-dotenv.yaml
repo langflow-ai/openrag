@@ -1,0 +1,168 @@
+{{- /*
+Creates a Secret with a single key ".env" that can be mounted into a pod as a file.
+
+Notes:
+- Uses stringData so you don't need to base64 encode manually.
+- Omits env vars whose source values are empty / unset.
+- Includes booleans / numbers from values.yaml because those are explicitly set.
+*/ -}}
+{{- if .Values.backend.enabled }}
+{{- $postgresPassword := "" }}
+{{- if .Values.postgres.enabled }}
+{{- $secretName := printf "%s-postgres" (include "openrag.fullname" .) }}
+{{- $secretNamespace := include "openrag.namespace" . }}
+{{- $existingSecret := lookup "v1" "Secret" $secretNamespace $secretName }}
+{{- if $existingSecret }}
+{{- $postgresPassword = index $existingSecret.data "postgres-password" | b64dec }}
+{{- else }}
+{{- /* If postgres secret doesn't exist yet, it will be created by postgres-secret.yaml with a generated password.
+     During helm install, both secrets are created in the same transaction, so we generate the same password here.
+     This ensures consistency between postgres-secret and langflow-dotenv on first install. */ -}}
+{{- $postgresPassword = include "openrag.postgres.password" . }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "openrag.fullname" . }}-langflow-dotenv
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+stringData:
+  .env: |
+    # Generated from Helm values.yaml (OpenRAG)
+    # Mounted as a file into the pod
+
+    # Langflow core settings
+    LANGFLOW_LOAD_FLOWS_PATH={{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}
+    {{- if .Values.postgres.enabled }}
+    LANGFLOW_DATABASE_URL="postgresql://{{ .Values.postgres.username }}:{{ $postgresPassword }}@{{ include "openrag.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.database }}"
+    {{- else }}
+    LANGFLOW_DATABASE_URL="sqlite:///{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.dbSubPath }}"
+    {{- end }}
+    LANGFLOW_DEACTIVATE_TRACING={{ .Values.langflow.deactivateTracing | quote }}
+    LANGFLOW_LOG_LEVEL={{ .Values.langflow.logLevel | quote }}
+    HIDE_GETTING_STARTED_PROGRESS="true"
+
+    # Langflow API secret key (https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key)
+    {{- if .Values.langflow.auth.secretKey }}
+    LANGFLOW_SECRET_KEY={{ .Values.langflow.auth.secretKey | quote }}
+    {{- end }}
+
+    # Model Provider API Keys / Endpoints
+    {{- if .Values.llmProviders.openai.apiKey }}
+    OPENAI_API_KEY={{ .Values.llmProviders.openai.apiKey | quote }}
+    {{- else }}
+    OPENAI_API_KEY="None"
+    {{- end }}
+    {{- if .Values.llmProviders.anthropic.apiKey }}
+    ANTHROPIC_API_KEY={{ .Values.llmProviders.anthropic.apiKey | quote }}
+    {{- else }}
+    ANTHROPIC_API_KEY="None"
+    {{- end }}
+    {{- if .Values.llmProviders.ollama.endpoint }}
+    OLLAMA_BASE_URL={{ .Values.llmProviders.ollama.endpoint | quote }}
+    {{- else }}
+    OLLAMA_BASE_URL="None"
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.apiKey }}
+    WATSONX_API_KEY={{ .Values.llmProviders.watsonx.apiKey | quote }}
+    {{- else }}
+    WATSONX_API_KEY="None"
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.endpoint }}
+    WATSONX_ENDPOINT={{ .Values.llmProviders.watsonx.endpoint | quote }}
+    {{- else }}
+    WATSONX_ENDPOINT="None"
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.projectId }}
+    WATSONX_PROJECT_ID={{ .Values.llmProviders.watsonx.projectId | quote }}
+    {{- else }}
+    WATSONX_PROJECT_ID="None"
+    {{- end }}
+
+    # LLM / Embedding provider configuration
+    {{- if .Values.appConfig.agent.llmProvider }}
+    LLM_PROVIDER={{ .Values.appConfig.agent.llmProvider | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.agent.llmModel }}
+    LLM_MODEL={{ .Values.appConfig.agent.llmModel | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.knowledge.embeddingProvider }}
+    EMBEDDING_PROVIDER={{ .Values.appConfig.knowledge.embeddingProvider | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.knowledge.embeddingModel }}
+    EMBEDDING_MODEL={{ .Values.appConfig.knowledge.embeddingModel | quote }}
+    {{- end }}
+
+    # Docling service URL
+    {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
+    DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
+    {{- end }}
+
+    # OpenSearch connection (for flows)
+    OPENSEARCH_HOST={{ .Values.global.opensearch.host | quote }}
+    OPENSEARCH_PORT={{ .Values.global.opensearch.port | quote }}
+    OPENSEARCH_URL={{ include "openrag.opensearch.url" . | quote }}
+    OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
+    {{- if .Values.global.opensearch.password }}
+    OPENSEARCH_PASSWORD={{ .Values.global.opensearch.password | quote }}
+    {{- end }}
+
+    # Langflow auth
+    LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
+    LANGFLOW_SKIP_AUTH_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.skipAuthAutoLogin }}
+
+    {{- if .Values.langflow.auth.superuser }}
+    LANGFLOW_SUPERUSER={{ .Values.langflow.auth.superuser | quote }}
+    {{- end }}
+    {{- if .Values.langflow.auth.superuserPassword }}
+    LANGFLOW_SUPERUSER_PASSWORD={{ .Values.langflow.auth.superuserPassword | quote }}
+    {{- end }}
+    LANGFLOW_NEW_USER_IS_ACTIVE={{ ternary "true" "false" .Values.langflow.auth.newUserIsActive }}
+    LANGFLOW_ENABLE_SUPERUSER_CLI={{ ternary "true" "false" .Values.langflow.auth.enableSuperuserCli }}
+
+    # Langfuse tracing (optional)
+    {{- if .Values.langflow.langfuse.secretKey }}
+    LANGFUSE_SECRET_KEY={{ .Values.langflow.langfuse.secretKey | quote }}
+    {{- end }}
+    {{- if .Values.langflow.langfuse.publicKey }}
+    LANGFUSE_PUBLIC_KEY={{ .Values.langflow.langfuse.publicKey | quote }}
+    {{- end }}
+    {{- if .Values.langflow.langfuse.host }}
+    LANGFUSE_HOST={{ .Values.langflow.langfuse.host | quote }}
+    {{- end }}
+
+    # Variables to expose to flows (NOTE: must use valid env var names; no hyphens)
+    LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT={{ .Values.langflow.variablesToGetFromEnvironment | quote }}
+
+    # Flow context variables (defaults for flow execution)
+    JWT={{ .Values.langflow.flowDefaults.jwt | quote }}
+    OWNER={{ .Values.langflow.flowDefaults.owner | quote }}
+    OWNER_NAME={{ .Values.langflow.flowDefaults.ownerName | quote }}
+    OWNER_EMAIL={{ .Values.langflow.flowDefaults.ownerEmail | quote }}
+    CONNECTOR_TYPE={{ .Values.langflow.flowDefaults.connectorType | quote }}
+    CONNECTOR_TYPE_URL={{ .Values.langflow.flowDefaults.connectorTypeUrl | quote }}
+    DOCUMENT_ID={{ .Values.langflow.flowDefaults.documentId | quote }}
+    SOURCE_URL={{ .Values.langflow.flowDefaults.sourceUrl | quote }}
+    ALLOWED_USERS={{ .Values.langflow.flowDefaults.allowedUsers | quote }}
+    ALLOWED_GROUPS={{ .Values.langflow.flowDefaults.allowedGroups | quote }}
+    OPENRAG-QUERY-FILTER={{ .Values.langflow.openragQueryFilter | quote }}
+    FILENAME={{ .Values.langflow.flowDefaults.filename | quote }}
+    MIMETYPE={{ .Values.langflow.flowDefaults.mimetype | quote }}
+    FILESIZE={{ .Values.langflow.flowDefaults.filesize | quote }}
+    SELECTED_EMBEDDING_MODEL={{ .Values.langflow.flowDefaults.selectedEmbeddingModel | quote }}
+
+    # Langflow API Key generation / retries
+    LANGFLOW_KEY={{ .Values.langflow.auth.apiKey | quote }}
+    {{- if .Values.langflow.auth.keyRetries }}
+    LANGFLOW_KEY_RETRIES={{ .Values.langflow.auth.keyRetries | quote }}
+    {{- end }}
+    {{- if .Values.langflow.auth.keyRetryDelay }}
+    LANGFLOW_KEY_RETRY_DELAY={{ .Values.langflow.auth.keyRetryDelay | quote }}
+    {{- end }}
+
+{{- end }}
