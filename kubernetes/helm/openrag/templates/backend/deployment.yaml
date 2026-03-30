@@ -148,6 +148,10 @@ spec:
             {{- end }}
             - name: OPENSEARCH_INDEX_NAME
               value: {{ .Values.global.opensearch.indexName | quote }}
+            - name: LANGFLOW_OPENSEARCH_HOST
+              value: {{ include "openrag.langflow.opensearch.host" . | quote }}
+            - name: LANGFLOW_OPENSEARCH_PORT
+              value: {{ include "openrag.langflow.opensearch.port" . | quote }}
             # Langflow connection
             - name: LANGFLOW_URL
               value: {{ include "openrag.langflow.url" . | quote }}
