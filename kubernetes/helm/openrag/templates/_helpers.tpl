@@ -168,3 +168,48 @@ Generate the Docling URL
 {{- define "openrag.docling.url" -}}
 {{ .Values.global.docling.scheme }}://{{ .Values.global.docling.host }}:{{ .Values.global.docling.port }}
 {{- end }}
+
+{{/*
+PostgreSQL component labels
+*/}}
+{{- define "openrag.postgres.labels" -}}
+{{ include "openrag.labels" . }}
+app.kubernetes.io/component: postgres
+{{- end }}
+
+{{/*
+PostgreSQL selector labels
+*/}}
+{{- define "openrag.postgres.selectorLabels" -}}
+{{ include "openrag.selectorLabels" . }}
+app.kubernetes.io/component: postgres
+{{- end }}
+
+{{/*
+Generate the PostgreSQL service URL
+*/}}
+{{- define "openrag.postgres.url" -}}
+postgresql://{{ .Values.postgres.username }}@{{ include "openrag.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.database }}
+{{- end }}
+
+{{/*
+Generate a strong random password for PostgreSQL
+Uses derivePassword for deterministic generation based on release context
+This ensures the same password is generated across all templates in a single Helm operation
+Always generates a secure 32-character password stored only in Kubernetes secret
+Note: Password is auto-generated on first install and persists in the secret
+*/}}
+{{- define "openrag.postgres.password" -}}
+{{- derivePassword 1 "maximum" .Release.Name "openrag-postgres" .Chart.Name -}}
+{{- end -}}
+
+{{/*
+Generate a strong random session secret for Backend
+Uses derivePassword for deterministic generation based on release context
+This ensures the same secret is generated across all templates in a single Helm operation
+Always generates a secure session secret stored only in Kubernetes secret
+Note: Secret is auto-generated on first install and persists in the secret
+*/}}
+{{- define "openrag.backend.sessionSecret" -}}
+{{- derivePassword 1 "maximum" .Release.Name "openrag-backend-session" .Chart.Name -}}
+{{- end -}}

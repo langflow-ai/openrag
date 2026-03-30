@@ -1,0 +1,208 @@
+{{- /*
+Creates a Secret with a single key ".env" that can be mounted into a pod as a file.
+
+Notes:
+- Uses stringData so you don't need to base64 encode manually.
+- Omits env vars whose source values are empty / unset.
+- Includes booleans / numbers from values.yaml because those are explicitly set.
+*/ -}}
+{{- if .Values.backend.enabled }}
+{{- $sessionSecret := "" }}
+{{- $secretName := printf "%s-backend" (include "openrag.fullname" .) }}
+{{- $secretNamespace := include "openrag.namespace" . }}
+{{- $existingSecret := lookup "v1" "Secret" $secretNamespace $secretName }}
+{{- if $existingSecret }}
+{{- $sessionSecret = index $existingSecret.data "session-secret" | b64dec }}
+{{- else }}
+{{- $sessionSecret = include "openrag.backend.sessionSecret" . }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "openrag.fullname" . }}-dotenv
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  .env: |
+    # Generated from Helm values.yaml (OpenRAG)
+    # Mounted as a file into the pod
+
+    IBM_AUTH_ENABLED={{ .Values.backend.auth.ibmCloud.enabled}}
+
+    # Ingestion Configuration
+    DISABLE_INGEST_WITH_LANGFLOW={{ ternary "true" "false" .Values.backend.features.disableIngestWithLangflow }}
+    INGEST_SAMPLE_DATA={{ ternary "true" "false" .Values.backend.features.ingestSampleData }}
+
+    # Langflow HTTP timeout configuration
+    {{- if .Values.backend.langflowTimeout }}
+    LANGFLOW_TIMEOUT={{ .Values.backend.langflowTimeout }}
+    {{- end }}
+    {{- if .Values.backend.langflowConnectTimeout }}
+    LANGFLOW_CONNECT_TIMEOUT={{ .Values.backend.langflowConnectTimeout }}
+    {{- end }}
+    {{- if .Values.backend.ingestionTimeout }}
+    INGESTION_TIMEOUT={{ .Values.backend.ingestionTimeout }}
+    {{- end }}
+    {{- if .Values.backend.uploadBatchSize }}
+    UPLOAD_BATCH_SIZE={{ .Values.backend.uploadBatchSize }}
+    {{- end }}
+
+    # Langflow url
+    LANGFLOW_URL={{ include "openrag.langflow.url" . | quote }}
+
+    # Flow IDs
+    {{- if .Values.langflow.flows.chatFlowId }}
+    LANGFLOW_CHAT_FLOW_ID={{ .Values.langflow.flows.chatFlowId | quote }}
+    {{- end }}
+    {{- if .Values.langflow.flows.ingestFlowId }}
+    LANGFLOW_INGEST_FLOW_ID={{ .Values.langflow.flows.ingestFlowId | quote }}
+    {{- end }}
+    {{- if .Values.langflow.flows.urlIngestFlowId }}
+    LANGFLOW_URL_INGEST_FLOW_ID={{ .Values.langflow.flows.urlIngestFlowId | quote }}
+    {{- end }}
+    {{- if .Values.langflow.flows.nudgesFlowId }}
+    NUDGES_FLOW_ID={{ .Values.langflow.flows.nudgesFlowId | quote }}
+    {{- end }}
+
+    # OpenSearch
+    {{- if .Values.global.opensearch.password }}
+    OPENSEARCH_PASSWORD={{ .Values.global.opensearch.password | quote }}
+    {{- end }}
+    OPENSEARCH_DATA_PATH=./opensearch-data
+    {{- if .Values.global.opensearch.host }}
+    OPENSEARCH_HOST={{ .Values.global.opensearch.host | quote }}
+    {{- end }}
+    {{- if .Values.global.opensearch.port }}
+    OPENSEARCH_PORT={{ .Values.global.opensearch.port | quote }}
+    {{- end }}
+    {{- if .Values.global.opensearch.username }}
+    OPENSEARCH_USERNAME={{ .Values.global.opensearch.username | quote }}
+    {{- end }}
+    {{- if .Values.global.opensearch.indexName }}
+    OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
+    {{- end }}
+
+    # Google OAuth
+    {{- if .Values.global.oauth.google.clientId }}
+    GOOGLE_OAUTH_CLIENT_ID={{ .Values.global.oauth.google.clientId | quote }}
+    {{- end }}
+    {{- if .Values.global.oauth.google.clientSecret }}
+    GOOGLE_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.google.clientSecret | quote }}
+    {{- end }}
+
+    # Microsoft Graph OAuth
+    {{- if .Values.global.oauth.microsoft.clientId }}
+    MICROSOFT_GRAPH_OAUTH_CLIENT_ID={{ .Values.global.oauth.microsoft.clientId | quote }}
+    {{- end }}
+    {{- if .Values.global.oauth.microsoft.clientSecret }}
+    MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
+    {{- end }}
+
+    # Webhook (continuous ingest)
+    {{- if .Values.backend.webhook.baseUrl }}
+    WEBHOOK_BASE_URL={{ .Values.backend.webhook.baseUrl | quote }}
+    {{- end }}
+
+    # Model Provider API Keys / Endpoints
+    {{- if .Values.llmProviders.openai.apiKey }}
+    OPENAI_API_KEY={{ .Values.llmProviders.openai.apiKey | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.anthropic.apiKey }}
+    ANTHROPIC_API_KEY={{ .Values.llmProviders.anthropic.apiKey | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.ollama.endpoint }}
+    OLLAMA_ENDPOINT={{ .Values.llmProviders.ollama.endpoint | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.apiKey }}
+    WATSONX_API_KEY={{ .Values.llmProviders.watsonx.apiKey | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.endpoint }}
+    WATSONX_ENDPOINT={{ .Values.llmProviders.watsonx.endpoint | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.projectId }}
+    WATSONX_PROJECT_ID={{ .Values.llmProviders.watsonx.projectId | quote }}
+    {{- end }}
+
+    # LLM / Embedding provider configuration
+    {{- if .Values.appConfig.agent.llmProvider }}
+    LLM_PROVIDER={{ .Values.appConfig.agent.llmProvider | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.agent.llmModel }}
+    LLM_MODEL={{ .Values.appConfig.agent.llmModel | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.knowledge.embeddingProvider }}
+    EMBEDDING_PROVIDER={{ .Values.appConfig.knowledge.embeddingProvider | quote }}
+    {{- end }}
+    {{- if .Values.appConfig.knowledge.embeddingModel }}
+    EMBEDDING_MODEL={{ .Values.appConfig.knowledge.embeddingModel | quote }}
+    {{- end }}
+
+    # Port Configuration
+    {{- if .Values.backend.langflowPublicUrl }}
+    LANGFLOW_PUBLIC_URL={{ .Values.backend.langflowPublicUrl | quote }}
+    {{- end }}
+
+    # Docling (optional override)
+    {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
+    DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
+    {{- end }}
+
+    # Langflow auth
+    {{- if .Values.langflow.auth.superuser }}
+    LANGFLOW_SUPERUSER={{ .Values.langflow.auth.superuser | quote }}
+    {{- end }}
+    {{- if .Values.langflow.auth.superuserPassword }}
+    LANGFLOW_SUPERUSER_PASSWORD={{ .Values.langflow.auth.superuserPassword | quote }}
+    {{- end }}
+
+    # Optional workers
+    {{- if .Values.backend.maxWorkers }}
+    MAX_WORKERS={{ .Values.backend.maxWorkers | quote }}
+    {{- end }}
+
+    # OpenRAG Configuration
+    {{- if .Values.global.imageTag }}
+    OPENRAG_VERSION={{ .Values.global.imageTag | quote }}
+    {{- end }}
+    {{- if .Values.backend.persistence.documents.mountPath }}
+    OPENRAG_DOCUMENTS_PATH={{ .Values.backend.persistence.documents.mountPath | quote }}
+    {{- end }}
+    {{- if .Values.backend.encryption.key }}
+    OPENRAG_ENCRYPTION_KEY={{ .Values.backend.encryption.key  | quote }}
+    {{- end }}
+    
+    # Langflow auth (OpenRag uses this to determine how to authenticate with Langflow)
+    LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
+
+    # OpenRag / OAuth return URL (Included in OAuth State)
+    OAUTH_BROKER_URL={{ .Values.backend.oauthBrokerUrl | quote }}
+
+    # Langflow API Key / Secret Key
+    {{- if .Values.langflow.auth.apiKey }}
+    LANGFLOW_KEY={{ .Values.langflow.auth.apiKey | quote }}
+    {{- end }}
+    {{- if .Values.langflow.auth.secretKey }}
+    LANGFLOW_SECRET_KEY={{ .Values.langflow.auth.secretKey | quote }}
+    {{- end }}
+
+    {{- if .Values.langflow.auth.keyRetries }}
+    LANGFLOW_KEY_RETRIES={{ .Values.langflow.auth.keyRetries | quote }}
+    {{- end }}
+    {{- if .Values.langflow.auth.keyRetryDelay }}
+    LANGFLOW_KEY_RETRY_DELAY={{ .Values.langflow.auth.keyRetryDelay | quote }}
+    {{- end }}
+
+    # Logging and Service
+    {{- if .Values.backend.logFormat }}
+    LOG_FORMAT={{ .Values.backend.logFormat | quote }}
+    {{- end }}
+    {{- if .Values.backend.logLevel }}
+    LOG_LEVEL={{ .Values.backend.logLevel | quote }}
+    {{- end }}
+    {{- if .Values.backend.serviceName }}
+    SERVICE_NAME={{ .Values.backend.serviceName | quote }}
+    {{- end }}
+    SESSION_SECRET={{ $sessionSecret | quote }}
+{{- end }}

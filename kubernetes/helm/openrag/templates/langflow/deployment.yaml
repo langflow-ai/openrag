@@ -121,169 +121,13 @@ spec:
               containerPort: 7860
               protocol: TCP
 
-          env:
-            # Langflow core settings
-            - name: LANGFLOW_DATABASE_URL
-              value: "sqlite:///{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.dbSubPath }}"
-            - name: LANGFLOW_CONFIG_DIR
-              value: {{ .Values.langflow.persistence.mountPath }}
-            - name: LANGFLOW_DEACTIVATE_TRACING
-              value: {{ .Values.langflow.deactivateTracing | quote }}
-            - name: LANGFLOW_LOG_LEVEL
-              value: {{ .Values.langflow.logLevel | quote }}
-            - name: HIDE_GETTING_STARTED_PROGRESS
-              value: "true"
-            # Langflow Tracking (Langfuse)
-            - name: LANGFUSE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-langflow
-                  key: langfuse-secret-key
-            - name: LANGFUSE_PUBLIC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-langflow
-                  key: langfuse-public-key
-            - name: LANGFUSE_HOST
-              value: {{ .Values.langflow.langfuse.host | quote }}
-            # Auth settings
-            - name: LANGFLOW_AUTO_LOGIN
-              value: {{ .Values.langflow.auth.autoLogin | quote }}
-            - name: LANGFLOW_NEW_USER_IS_ACTIVE
-              value: {{ .Values.langflow.auth.newUserIsActive | quote }}
-            - name: LANGFLOW_ENABLE_SUPERUSER_CLI
-              value: {{ .Values.langflow.auth.enableSuperuserCli | quote }}
-
-            # Variables to expose to flows (NOTE: must use valid env var names; no hyphens)
-            - name: LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT
-              value: {{ .Values.langflow.variablesToGetFromEnvironment | quote }}
-
-            # Flow context variables (defaults for flow execution)
-            - name: JWT
-              value: "None"
-            - name: OWNER
-              value: "None"
-            - name: OWNER_NAME
-              value: "None"
-            - name: OWNER_EMAIL
-              value: "None"
-            - name: CONNECTOR_TYPE
-              value: "system"
-            - name: CONNECTOR_TYPE_URL
-              value: "url"
-            - name: DOCUMENT_ID
-              value: ""
-            - name: SOURCE_URL
-              value: ""
-            - name: ALLOWED_USERS
-              value: "[]"
-            - name: ALLOWED_GROUPS
-              value: "[]"
-            - name: OPENRAG-QUERY-FILTER
-              value: {{ .Values.langflow.openragQueryFilter | quote }}
-            - name: FILENAME
-              value: "None"
-            - name: MIMETYPE
-              value: "None"
-            - name: FILESIZE
-              value: "0"
-            - name: SELECTED_EMBEDDING_MODEL
-              value: ""
-
-            # Secrets from langflow secret
-            - name: LANGFLOW_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-langflow
-                  key: secret-key
-            - name: LANGFLOW_SUPERUSER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-langflow
-                  key: superuser
-            - name: LANGFLOW_SUPERUSER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-langflow
-                  key: superuser-password
-
-            # OpenSearch connection (for flows)
-            - name: OPENSEARCH_HOST
-              value: {{ .Values.global.opensearch.host | quote }}
-            - name: OPENSEARCH_PORT
-              value: {{ .Values.global.opensearch.port | quote }}
-            - name: OPENSEARCH_URL
-              value: {{ include "openrag.opensearch.url" . | quote }}
-            - name: OPENSEARCH_INDEX_NAME
-              value: {{ .Values.global.opensearch.indexName | quote }}
-            # Docling service URL (for document processing in flows)
-            - name: DOCLING_SERVE_URL
-              value: {{ .Values.langflow.doclingServeUrl | quote }}
-            {{- if .Values.global.opensearch.password }}
-            - name: OPENSEARCH_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-opensearch
-                  key: password
-            {{- end }}
-
-            # LLM Provider keys
-            {{- if .Values.llmProviders.openai.enabled }}
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-llm-providers
-                  key: openai-api-key
-            {{- else }}
-            - name: OPENAI_API_KEY
-              value: "None"
-            {{- end }}
-
-            {{- if .Values.llmProviders.anthropic.enabled }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-llm-providers
-                  key: anthropic-api-key
-            {{- else }}
-            - name: ANTHROPIC_API_KEY
-              value: "None"
-            {{- end }}
-
-            {{- if .Values.llmProviders.watsonx.enabled }}
-            - name: WATSONX_APIKEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-llm-providers
-                  key: watsonx-api-key
-            - name: WATSONX_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-llm-providers
-                  key: watsonx-endpoint
-            - name: WATSONX_PROJECT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openrag.fullname" . }}-llm-providers
-                  key: watsonx-project-id
-            {{- else }}
-            - name: WATSONX_APIKEY
-              value: "None"
-            - name: WATSONX_URL
-              value: "None"
-            - name: WATSONX_PROJECT_ID
-              value: "None"
-            {{- end }}
-
-            {{- if .Values.llmProviders.ollama.enabled }}
-            - name: OLLAMA_BASE_URL
-              value: {{ .Values.llmProviders.ollama.endpoint | quote }}
-            {{- else }}
-            - name: OLLAMA_BASE_URL
-              value: "None"
-            {{- end }}
+          command: ["langflow", "run", "--env-file", "/app/.env"]
 
           volumeMounts:
+            - name: openrag-langflow-dotenv
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
             - name: langflow-data
               mountPath: {{ .Values.langflow.persistence.mountPath }}
 
@@ -313,6 +157,13 @@ spec:
           {{- end }}
 
       volumes:
+        - name: openrag-langflow-dotenv
+          secret:
+            secretName: {{ include "openrag.fullname" . }}-langflow-dotenv
+            defaultMode: 0400
+            items:
+              - key: .env
+                path: .env
         - name: langflow-data
           {{- if .Values.langflow.persistence.enabled }}
           persistentVolumeClaim:
