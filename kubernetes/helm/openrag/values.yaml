@@ -196,6 +196,16 @@ langflow:
 backend:
   enabled: true
 
+  # StorageClass templating fields
+  storageClassName: ""
+  storageClassAnnotations: {}
+  storageClassLabels: {}
+  storageClassProvisioner: ""
+  storageClassParameters: {}
+  storageClassReclaimPolicy: ""
+  storageClassVolumeBindingMode: ""
+  storageClassAllowVolumeExpansion: ""
+
   encryption:
     key: ""                               # Optional encryption key for at-rest encryption of confg data
   auth:
@@ -205,6 +215,8 @@ backend:
   image:
     repository: langflowai/openrag-backend
     tag: ""                               # Uses global.imageTag if empty
+
+  oauthBrokerUrl: ""                      # Public return URL for OAuth redirects
 
   # Single pod for vertical scaling
   replicaCount: 1

@@ -176,6 +176,9 @@ stringData:
     # Langflow auth (OpenRag uses this to determine how to authenticate with Langflow)
     LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
 
+    # OpenRag / OAuth return URL (Included in OAuth State)
+    OAUTH_BROKER_URL={{ .Values.backend.oauthBrokerUrl | quote }}
+
     # Langflow API Key / Secret Key
     {{- if .Values.langflow.auth.apiKey }}
     LANGFLOW_KEY={{ .Values.langflow.auth.apiKey | quote }}
