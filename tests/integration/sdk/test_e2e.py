@@ -33,7 +33,7 @@ class TestEndToEnd:
         assert search_results.results is not None
 
         chat_response = await client.chat.create(
-            message="What is the name of the flamingo and where does it live?"
+            message="According to the documents in my knowledge base, what is the name of the flamingo and where does it live?"
         )
         assert chat_response.response is not None
         assert len(chat_response.response) > 0

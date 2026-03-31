@@ -413,6 +413,14 @@ class TaskService:
             if upload_task.processed_files >= upload_task.total_files:
                 upload_task.status = TaskStatus.COMPLETED
                 upload_task.updated_at = time.time()
+                # Force an index refresh so newly indexed chunks are immediately
+                # searchable and deletable without waiting for the 1-second refresh window.
+                if upload_task.successful_files > 0:
+                    try:
+                        from config.settings import clients, get_index_name
+                        await clients.opensearch.indices.refresh(index=get_index_name())
+                    except Exception as e:
+                        logger.debug("Index refresh after ingest failed (non-fatal)", error=str(e))
 
             status: str = "FAILED"
 

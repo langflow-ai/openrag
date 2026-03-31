@@ -1,3 +1,4 @@
+import re
 from http.client import HTTPException
 
 from utils.logging_config import get_logger
@@ -626,20 +627,66 @@ async def async_langflow_chat(
 
     # Extract sources from retrieval tool calls in the response
     sources = []
+
+    # Layer 1: Structured output items (OpenAI Responses API format).
+    # Relaxed: check for any output item with a non-empty `results` field,
+    # regardless of `type` string (Langflow may use different type names).
     if hasattr(response_obj, "output") and response_obj.output:
         for output_item in response_obj.output:
-            item_type = getattr(output_item, "type", None)
-            if item_type in ("tool_call", "retrieval_call"):
-                for result in getattr(output_item, "results", None) or []:
-                    rd = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
-                    if "text" in rd:
-                        sources.append({
-                            "filename": rd.get("filename", ""),
-                            "text": rd.get("text", ""),
-                            "score": rd.get("score", 0),
-                            "page": rd.get("page"),
-                            "mimetype": rd.get("mimetype"),
-                        })
+            for result in getattr(output_item, "results", None) or []:
+                rd = (
+                    result.model_dump()
+                    if hasattr(result, "model_dump")
+                    else (result if isinstance(result, dict) else {})
+                )
+                if "text" in rd:
+                    sources.append({
+                        "filename": rd.get("filename", ""),
+                        "text": rd.get("text", ""),
+                        "score": rd.get("score", 0),
+                        "page": rd.get("page"),
+                        "mimetype": rd.get("mimetype"),
+                    })
+
+    # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
+    # Langflow may embed retrieval results directly in the response dict rather than
+    # inside typed output items.
+    if not sources:
+        resp_dict = (
+            response_obj.model_dump()
+            if hasattr(response_obj, "model_dump")
+            else getattr(response_obj, "__dict__", {})
+        )
+        implicit_results = (
+            resp_dict.get("results")
+            or resp_dict.get("outputs")
+            or resp_dict.get("retrieved_documents")
+            or resp_dict.get("retrieval_results")
+            or []
+        )
+        if isinstance(implicit_results, list):
+            for result in implicit_results:
+                if isinstance(result, dict) and "text" in result:
+                    sources.append({
+                        "filename": result.get("filename", ""),
+                        "text": result.get("text", ""),
+                        "score": result.get("score", 0),
+                        "page": result.get("page"),
+                        "mimetype": result.get("mimetype"),
+                    })
+
+    # Layer 3: Citation-text fallback.
+    # The LLM emits "(Source: filename)" citations when it retrieves documents.
+    # Parse these as a last resort to ensure sources is never empty when the LLM found results.
+    if not sources:
+        for match in re.finditer(r"\(Source:\s*([^\)]+)\)", response_text):
+            sources.append({
+                "filename": match.group(1).strip(),
+                "text": "",
+                "score": 0,
+                "page": None,
+                "mimetype": None,
+            })
 
     if not store_conversation:
         return response_text, response_id, sources
