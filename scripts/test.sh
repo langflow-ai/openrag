@@ -12,8 +12,8 @@ USER_B="${USER_B:?Set USER_B (user:password for second user)}"
 INDEX="${INDEX:-documents}"
 
 # Actual user identity used as document owner (may differ from API key username)
-USER_A_NAME="${USER_A_OWNER:?Set USER_A_OWNER (e.g. ming.luo@ibm.com)}"
-USER_B_NAME="${USER_B_OWNER:?Set USER_B_OWNER (e.g. AKHILDEV@ibm.com)}"
+USER_A_NAME="${USER_A_OWNER:?Set USER_A_OWNER}"
+USER_B_NAME="${USER_B_OWNER:?Set USER_B_OWNER}"
 
 PASS=0
 FAIL=0
