@@ -1,0 +1,33 @@
+_meta:
+  type: "roles"
+  config_version: 2
+
+openrag_user_role:
+  description: "DLS: user can read/write docs they own or are allowed on"
+  cluster_permissions:
+    - "indices:data/write/bulk"
+    - "indices:data/write/index"
+    - "indices:data/read/scroll"
+    - "indices:data/read/scroll/clear"
+    - "cluster:admin/opensearch/notifications/configs/create"
+    - "cluster:admin/opensearch/notifications/configs/list"
+    - "cluster:admin/opensearch/notifications/configs/get"
+    - "cluster:admin/opensearch/notifications/configs/update"
+    - "cluster:admin/opensearch/notifications/configs/delete"
+    - "cluster:admin/opensearch/alerting/*"
+
+  index_permissions:
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*"]
+      allowed_actions:
+        - crud
+        - create_index
+        - indices:admin/mappings/get
+        - indices:admin/mappings/put
+        - indices:admin/exists
+        - indices:admin/get
+      dls: >
+        {"bool":{"should":[
+          {"term":{"owner":"${user.name}"}},
+          {"term":{"allowed_users":"${user.name}"}},
+          {"bool":{"must_not":{"exists":{"field":"owner"}}}}
+        ],"minimum_should_match":1}}

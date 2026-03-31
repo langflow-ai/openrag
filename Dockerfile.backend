@@ -40,6 +40,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
 COPY src/ ./src/
 COPY flows/ ./flows/
 COPY securityconfig/ ./securityconfig/
+COPY cloud_securityconfig/ ./cloud_securityconfig/
 
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)
@@ -56,6 +57,7 @@ WORKDIR /app
 
 COPY --from=builder /app /app
 COPY securityconfig/ ./securityconfig/
+COPY cloud_securityconfig/ ./cloud_securityconfig/
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"

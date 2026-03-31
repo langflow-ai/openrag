@@ -1,0 +1,5 @@
+_meta:
+  type: "actiongroups"  
+  config_version: 2
+
+# Empty - using built-in OpenSearch action groups only
