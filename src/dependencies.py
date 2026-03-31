@@ -253,7 +253,10 @@ async def get_current_user(
     # IBM AMS cookie auth takes priority when enabled
     if IBM_AUTH_ENABLED:
         logger.debug("[IBM Auth] IBM auth mode enabled, getting current user")
-        return await _get_ibm_user(request, required=True)
+        user = await _get_ibm_user(request, required=True)
+        if user and user.user_id and user.user_id not in session_manager.users:
+            session_manager.users[user.user_id] = user
+        return user
 
     if is_no_auth_mode():
         user = AnonymousUser()
@@ -294,7 +297,10 @@ async def get_optional_user(
     # IBM AMS cookie auth takes priority when enabled
     if IBM_AUTH_ENABLED:
         logger.debug("[IBM Auth] IBM auth mode enabled, getting optional user")
-        return await _get_ibm_user(request, required=False)
+        user = await _get_ibm_user(request, required=False)
+        if user and user.user_id and user.user_id not in session_manager.users:
+            session_manager.users[user.user_id] = user
+        return user
 
     if is_no_auth_mode():
         user = AnonymousUser()
