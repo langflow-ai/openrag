@@ -234,11 +234,38 @@ async def setup_opensearch_security(opensearch_client: AsyncOpenSearch) -> None:
                     "GET", "/_plugins/_security/api/rolesmapping/all_access"
                 )
                 existing_mapping = existing.get("all_access", {})
-                existing_users = existing_mapping.get("users", [])
+                existing_users = existing_mapping.get("users", []) or []
+                existing_hosts = existing_mapping.get("hosts", []) or []
+                existing_backend_roles = existing_mapping.get("backend_roles", []) or []
+
                 if existing_users:
                     merged_users = list(set(all_access_body.get("users", []) + existing_users))
                     all_access_body["users"] = merged_users
-                    logger.debug("[OpenSearch Security] Preserved existing all_access users", users=merged_users)
+                    logger.debug(
+                        "[OpenSearch Security] Preserved existing all_access users",
+                        users=merged_users,
+                    )
+
+                if existing_hosts:
+                    merged_hosts = list(set(all_access_body.get("hosts", []) + existing_hosts))
+                    all_access_body["hosts"] = merged_hosts
+                    logger.debug(
+                        "[OpenSearch Security] Preserved existing all_access hosts",
+                        hosts=merged_hosts,
+                    )
+
+                if existing_backend_roles:
+                    safe_existing_backend_roles = [
+                        r for r in existing_backend_roles if r != "all_access"
+                    ]
+                    merged_backend_roles = list(
+                        set(all_access_body.get("backend_roles", []) + safe_existing_backend_roles)
+                    )
+                    all_access_body["backend_roles"] = merged_backend_roles
+                    logger.debug(
+                        "[OpenSearch Security] Preserved existing all_access backend_roles",
+                        backend_roles=merged_backend_roles,
+                    )
             except Exception:
                 logger.debug("[OpenSearch Security] No existing all_access mapping found, creating fresh")
 
