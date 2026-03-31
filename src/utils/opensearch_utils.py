@@ -126,7 +126,10 @@ async def wait_for_opensearch(
     raise OpenSearchNotReadyError(message)
 
 
-async def setup_opensearch_security(opensearch_client: AsyncOpenSearch) -> None:
+async def setup_opensearch_security(
+    opensearch_client: AsyncOpenSearch,
+    admin_username: str = None,
+) -> None:
     """Setup OpenSearch roles and roles mapping.
 
     The setup involves:
@@ -136,6 +139,13 @@ async def setup_opensearch_security(opensearch_client: AsyncOpenSearch) -> None:
     4. PUT /_plugins/_security/api/rolesmapping/openrag_user_role (create mapping)
     5. PUT /_plugins/_security/api/rolesmapping/all_access (merge admin mapping)
     6. Verify with final GETs.
+
+    Args:
+        opensearch_client: Authenticated OpenSearch client.
+        admin_username: OpenSearch username of the onboarding user (IBM mode).
+            When provided, this user is pinned into the all_access role mapping's
+            ``users`` list so they retain admin access after ``backend_roles``
+            are modified for DLS.
 
     This should be called during initial setup.
     """
@@ -228,6 +238,15 @@ async def setup_opensearch_security(opensearch_client: AsyncOpenSearch) -> None:
                 all_access_body["backend_roles"] = ["admin"]
             if "description" not in all_access_body:
                 all_access_body["description"] = "Maps admin to all_access"
+
+            if IBM_AUTH_ENABLED and admin_username:
+                users_list = all_access_body.setdefault("users", [])
+                if admin_username not in users_list:
+                    users_list.append(admin_username)
+                    logger.info(
+                        "[OpenSearch Security] Pinned onboarding user as admin",
+                        user=admin_username,
+                    )
 
             try:
                 existing = await opensearch_client.transport.perform_request(

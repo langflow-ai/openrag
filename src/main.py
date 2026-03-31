@@ -215,7 +215,7 @@ async def _ensure_opensearch_index():
         # The service can still function, document operations might fail later
 
 
-async def init_index(opensearch_client=None):
+async def init_index(opensearch_client=None, admin_username: str = None):
     """Initialize OpenSearch index and security roles"""
     os_client = opensearch_client or clients.opensearch
     try:
@@ -223,7 +223,7 @@ async def init_index(opensearch_client=None):
 
         # Initialize OpenSearch security configuration (roles and mapping)
         from utils.opensearch_utils import setup_opensearch_security
-        await setup_opensearch_security(os_client)
+        await setup_opensearch_security(os_client, admin_username=admin_username)
 
         # Get the configured embedding model from user configuration
         config = get_openrag_config()
