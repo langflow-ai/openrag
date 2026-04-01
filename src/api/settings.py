@@ -1664,8 +1664,6 @@ async def rollback_onboarding(
                 {"error": "No onboarding configuration to rollback"}, status_code=400
             )
 
-            jwt_token = user.jwt_token
-
         logger.info("Rolling back onboarding configuration due to file failures")
 
         # Get all tasks for the user
@@ -1728,7 +1726,7 @@ async def rollback_onboarding(
                         if filename:
                             try:
                                 opensearch_client = session_manager.get_user_opensearch_client(
-                                    user.user_id, jwt_token
+                                    user.user_id, user.jwt_token
                                 )
                                 from utils.opensearch_queries import build_filename_delete_body
                                 from config.settings import get_index_name
