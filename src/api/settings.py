@@ -1135,7 +1135,7 @@ async def onboarding(
                 logger.info(
                     "Initializing OpenSearch index after onboarding configuration"
                 )
-                admin_username = user.opensearch_username if IBM_AUTH_ENABLED and user else None
+                admin_username = user.user_id if IBM_AUTH_ENABLED and user else None
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
