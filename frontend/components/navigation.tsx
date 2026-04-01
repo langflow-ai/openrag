@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { FILES_REGEX } from "@/lib/constants";
@@ -74,6 +75,7 @@ export function Navigation({
   isConversationsLoading = false,
   onNewConversation,
 }: NavigationProps = {}) {
+  const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
   const {
     endpoint,
@@ -316,22 +318,35 @@ export function Navigation({
           {routes.map((route) => {
             const isDisabled = loading && !route.active;
             const tabClassName = cn(
-              "text-[13px] group flex p-3 w-full justify-start font-medium rounded-lg transition-all",
-              isDisabled
-                ? "opacity-50 cursor-not-allowed text-foreground"
-                : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
-              route.active
-                ? "bg-accent text-accent-foreground shadow-sm"
-                : "text-foreground",
+              "text-[13px] group flex p-3 w-full justify-start font-medium transition-all",
+              isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+              isCloudBrand
+                ? route.active
+                  ? "border-l-[3px] border-l-primary bg-[var(--layered-select-bg)] text-foreground rounded-r-lg"
+                  : cn(
+                      "border-l-[3px] border-l-transparent text-foreground rounded-lg",
+                      !isDisabled &&
+                        "hover:bg-accent hover:text-accent-foreground",
+                    )
+                : cn(
+                    "rounded-lg",
+                    route.active
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "text-foreground",
+                    !isDisabled &&
+                      "hover:bg-accent hover:text-accent-foreground",
+                  ),
             );
             const tabContent = (
               <div className="flex items-center flex-1">
                 <route.icon
                   className={cn(
                     "h-[18px] w-[18px] mr-2 shrink-0",
-                    route.active
-                      ? "text-muted-foreground"
-                      : "text-muted-foreground group-hover:text-muted-foreground",
+                    isCloudBrand
+                      ? "text-foreground"
+                      : route.active
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground group-hover:text-muted-foreground",
                   )}
                 />
                 {route.label}
@@ -378,7 +393,12 @@ export function Navigation({
                 title="Start new conversation"
                 disabled={loading}
               >
-                <Plus className="h-4 w-4 text-muted-foreground" />
+                <Plus
+                  className={cn(
+                    "h-4 w-4",
+                    isCloudBrand ? "text-foreground" : "text-muted-foreground",
+                  )}
+                />
               </button>
             </div>
           </div>

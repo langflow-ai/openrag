@@ -1,9 +1,17 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsCloudBrand } from "@/contexts/brand-context";
+import { cn } from "@/lib/utils";
 
 export default function ConnectorsSkeleton() {
+  const isCloudBrand = useIsCloudBrand();
   return (
-    <Card className="relative flex flex-col overflow-hidden">
+    <Card
+      className={cn(
+        "relative flex flex-col overflow-hidden",
+        isCloudBrand && "rounded-none border-0 bg-layer-contextual shadow-none",
+      )}
+    >
       <CardHeader className="pb-3">
         <div className="flex flex-col items-start justify-between">
           <div className="flex flex-col gap-4 w-full">

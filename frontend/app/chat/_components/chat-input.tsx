@@ -22,6 +22,7 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
@@ -78,6 +79,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [isWrapped, setIsWrapped] = useState(false);
     const isMultiline = input.includes("\n") || isWrapped;
     const isDragging = useFileDrag();
+    const isCloudBrand = useIsCloudBrand();
 
     // Internal state for filter dropdown
     const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -356,9 +358,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <div
             {...getRootProps()}
             className={cn(
-              "flex flex-col w-full p-2 rounded-xl border border-input transition-all",
+              "flex flex-col w-full p-2 rounded-xl border transition-all",
+              isCloudBrand
+                ? "border-[color:var(--chat-input-border)]"
+                : "border-input",
+              isCloudBrand ? "bg-[var(--chat-prompt-bg)]" : "bg-transparent",
               !isDragging &&
-                "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground",
+                (isCloudBrand
+                  ? "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-[color:var(--chat-input-border)]"
+                  : "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground"),
               isDragging && "border-dashed",
             )}
           >
@@ -426,7 +434,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                       type="button"
                       variant="ghost"
                       size="iconSm"
-                      className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
+                      className={cn(
+                        "h-8 w-8 p-0 rounded-md",
+                        isCloudBrand
+                          ? "hover:bg-[var(--layered-select-bg)]"
+                          : "hover:bg-muted/50",
+                      )}
                       onMouseDown={(e) => {
                         e.preventDefault();
                       }}
@@ -472,7 +485,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                       type="button"
                       variant="ghost"
                       size="iconSm"
-                      className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
+                      className={cn(
+                        "h-8 w-8 p-0 rounded-md",
+                        isCloudBrand
+                          ? "hover:bg-[var(--layered-select-bg)]"
+                          : "hover:bg-muted/50",
+                      )}
                       onMouseDown={(e) => {
                         e.preventDefault();
                       }}
@@ -489,7 +507,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     size="iconSm"
                     onClick={onFilePickerClick}
                     disabled={isUploading}
-                    className="h-8 w-8 p-0 !rounded-md hover:bg-muted/50"
+                    className={cn(
+                      "h-8 w-8 p-0 !rounded-md",
+                      isCloudBrand
+                        ? "hover:bg-[var(--layered-select-bg)]"
+                        : "hover:bg-muted/50",
+                    )}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -567,9 +590,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                       <button
                         type="button"
                         onClick={() => handleFilterSelect(null)}
-                        className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
-                          selectedFilterIndex === -1 ? "bg-muted/50" : ""
-                        }`}
+                        className={cn(
+                          "w-full text-left px-2 py-2 text-sm rounded flex items-center justify-between",
+                          isCloudBrand
+                            ? "hover:bg-[var(--layered-select-bg)]"
+                            : "hover:bg-muted/50",
+                          selectedFilterIndex === -1 &&
+                            (isCloudBrand
+                              ? "bg-[var(--layered-select-bg)]"
+                              : "bg-muted/50"),
+                        )}
                       >
                         <span>No knowledge filter</span>
                         {!selectedFilter && (
@@ -582,9 +612,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                         key={filter.id}
                         type="button"
                         onClick={() => handleFilterSelect(filter)}
-                        className={`w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
-                          index === selectedFilterIndex ? "bg-muted/50" : ""
-                        }`}
+                        className={cn(
+                          "w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded flex items-center justify-between",
+                          isCloudBrand
+                            ? "hover:bg-[var(--layered-select-bg)]"
+                            : "hover:bg-muted/50",
+                          index === selectedFilterIndex &&
+                            (isCloudBrand
+                              ? "bg-[var(--layered-select-bg)]"
+                              : "bg-muted/50"),
+                        )}
                       >
                         <div className="overflow-hidden">
                           <div className="font-medium truncate">

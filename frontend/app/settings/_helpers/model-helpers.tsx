@@ -5,6 +5,32 @@ import OpenAILogo from "@/components/icons/openai-logo";
 
 export type ModelProvider = "openai" | "anthropic" | "ollama" | "watsonx";
 
+// Full ordered list of providers for settings / cards
+export const ALL_PROVIDERS: ModelProvider[] = [
+  "openai",
+  "ollama",
+  "watsonx",
+  "anthropic",
+];
+
+// Preferred auto-select order for the LLM onboarding step
+export const LLM_PROVIDER_ORDER: ModelProvider[] = [
+  "anthropic",
+  "openai",
+  "watsonx",
+  "ollama",
+];
+
+// Preferred auto-select order for the embedding onboarding step
+export const EMBEDDING_PROVIDER_ORDER: ModelProvider[] = [
+  "openai",
+  "watsonx",
+  "ollama",
+];
+
+// Providers unavailable in cloud (IBM) deployments
+export const CLOUD_EXCLUDED_PROVIDERS: ModelProvider[] = ["ollama"];
+
 export interface ModelOption {
   value: string;
   label: string;

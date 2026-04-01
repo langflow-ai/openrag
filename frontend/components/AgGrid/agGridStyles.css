@@ -1,8 +1,6 @@
 body {
   --ag-text-color: hsl(var(--muted-foreground));
   --ag-background-color: hsl(var(--background));
-  --ag-header-background-color: hsl(var(--background));
-  --ag-header-text-color: hsl(var(--muted-foreground));
   --ag-header-column-resize-handle-color: hsl(var(--border));
   --ag-header-row-border: hsl(var(--border));
   --ag-header-font-weight: var(--font-medium);
@@ -39,5 +37,112 @@ body {
   .ag-checkbox-input-wrapper.ag-checked {
     background-color: hsl(var(--primary));
     border-color: hsl(var(--primary));
+  }
+}
+
+[data-theme="ibm"] .ag-root-wrapper,
+[data-theme="ibm"] .ag-root-wrapper-body,
+[data-theme="ibm"] .ag-header {
+  border-radius: 0 !important;
+  overflow: hidden;
+}
+
+/* IBM Theme specific AG Grid styles - Light Mode */
+[data-theme="ibm"] {
+  --ag-row-border: hsl(var(--border));
+  --ag-borders: solid 1px hsl(var(--border));
+  --ag-border-color: hsl(var(--border));
+
+  .ag-row {
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .ag-cell-wrapper {
+    align-items: center;
+    height: 100%;
+  }
+
+  .ag-cell-value {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Header background */
+  .ag-header {
+    background-color: #e0e0e0 !important;
+    border-bottom: 1px solid hsl(var(--border));
+    margin-bottom: 0;
+  }
+
+  .ag-header-row {
+    background-color: #e0e0e0 !important;
+  }
+
+  .ag-header-cell {
+    background-color: #e0e0e0 !important;
+  }
+
+  /* Header typography */
+  .ag-header-cell-text {
+    color: #161616 !important;
+    font-family: "IBM Plex Sans", var(--font-sans);
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 18px;
+    letter-spacing: 0.16px;
+  }
+
+  /* Square checkboxes for IBM theme - Light mode */
+  .ag-checkbox-input-wrapper {
+    border-radius: 0 !important;
+    border-color: #161616 !important;
+  }
+
+  .ag-checkbox-input-wrapper.ag-checked {
+    border-radius: 0 !important;
+    background-color: #161616 !important;
+    border-color: #161616 !important;
+  }
+
+  .ag-header .ag-checkbox-input-wrapper {
+    border-color: #161616 !important;
+    background-color: #e0e0e0 !important;
+  }
+}
+
+/* IBM Theme Dark mode */
+[data-theme="ibm"].dark {
+  .ag-header {
+    background-color: #393939 !important;
+  }
+
+  .ag-header-row {
+    background-color: #393939 !important;
+  }
+
+  .ag-header-cell {
+    background-color: #393939 !important;
+  }
+
+  .ag-header-cell-text {
+    color: #f4f4f4 !important;
+  }
+
+  /* Dark mode checkbox colors */
+  .ag-checkbox-input-wrapper {
+    border-color: #f4f4f4 !important;
+  }
+
+  .ag-header .ag-checkbox-input-wrapper {
+    border-color: #f4f4f4 !important;
+    background-color: #393939 !important;
+  }
+
+  .ag-checkbox-input-wrapper.ag-checked {
+    background-color: #f4f4f4 !important;
+    border-color: #f4f4f4 !important;
   }
 }

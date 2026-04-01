@@ -10,6 +10,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useIsCloudBrand } from "@/contexts/brand-context";
+import { cn } from "@/lib/utils";
 import CardIcon from "./card-icon";
 
 export interface Connector {
@@ -42,12 +44,19 @@ export default function ConnectorCard({
   onNavigateToKnowledge,
   onConfigure,
 }: ConnectorCardProps) {
-  console.log(connector);
+  const isCloudBrand = useIsCloudBrand();
   const isConnected =
     connector.status === "connected" && connector.connectionId;
 
   return (
-    <Card className="group relative flex flex-col hover:bg-secondary-hover hover:border-muted-foreground transition-colors">
+    <Card
+      className={cn(
+        "group relative flex flex-col transition-colors",
+        isCloudBrand
+          ? "rounded-none border-0 bg-layer-contextual text-layer-contextual-foreground shadow-none hover:bg-layer-contextual"
+          : "hover:bg-secondary-hover hover:border-muted-foreground",
+      )}
+    >
       <CardHeader className="pb-2">
         <div className="flex flex-col items-start justify-between">
           <div className="flex flex-col gap-4 mb-2 w-full">
@@ -56,17 +65,34 @@ export default function ConnectorCard({
                 {connector.icon}
               </CardIcon>
               {isConnected ? (
-                <div className="flex items-center gap-1.5 rounded-full bg-foreground px-2.5 py-1 text-xs font-medium text-muted">
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                    isCloudBrand
+                      ? "bg-primary/10 text-primary dark:bg-white/10 dark:text-layer-contextual-foreground"
+                      : "bg-foreground text-muted",
+                  )}
+                >
                   <span className="h-2 w-2 rounded-full bg-green-500" />
                   Active
                 </div>
               ) : null}
             </div>
             <div>
-              <CardTitle className="flex flex-row items-center">
+              <CardTitle
+                className={cn(
+                  "flex flex-row items-center",
+                  isCloudBrand && "text-layer-contextual-foreground",
+                )}
+              >
                 {connector.name}
               </CardTitle>
-              <CardDescription className="text-sm">
+              <CardDescription
+                className={cn(
+                  "text-sm",
+                  isCloudBrand && "!text-layer-contextual-foreground",
+                )}
+              >
                 {isConnected || connector?.available
                   ? `${connector.name} is configured.`
                   : "Not configured."}
@@ -84,7 +110,10 @@ export default function ConnectorCard({
                   variant="default"
                   onClick={() => onNavigateToKnowledge(connector)}
                   disabled={isDisconnecting || isConnecting}
-                  className="cursor-pointer !text-sm truncate rounded-md flex-1"
+                  className={cn(
+                    "cursor-pointer !text-sm truncate flex-1 text-primary-foreground [&_svg]:text-primary-foreground",
+                    isCloudBrand ? "rounded-none" : "rounded-md",
+                  )}
                   size="md"
                 >
                   <Plus className="h-4 w-4" />
@@ -96,7 +125,11 @@ export default function ConnectorCard({
                     onConfigure ? onConfigure(connector) : onConnect(connector)
                   }
                   disabled={isConnecting || isDisconnecting}
-                  className="cursor-pointer"
+                  className={cn(
+                    "cursor-pointer",
+                    isCloudBrand &&
+                      "rounded-none border-button-tertiary text-layer-contextual-foreground hover:bg-black/5 hover:text-layer-contextual-foreground dark:hover:bg-white/5",
+                  )}
                   size="iconMd"
                 >
                   {isConnecting ? (
@@ -109,7 +142,10 @@ export default function ConnectorCard({
                   variant="outline"
                   onClick={() => onDisconnect(connector)}
                   disabled={isDisconnecting || isConnecting}
-                  className="cursor-pointer text-destructive hover:text-destructive"
+                  className={cn(
+                    "cursor-pointer text-destructive hover:text-destructive",
+                    isCloudBrand && "rounded-none",
+                  )}
                   size="iconMd"
                 >
                   {isDisconnecting ? (
@@ -125,7 +161,13 @@ export default function ConnectorCard({
                   onConfigure ? onConfigure(connector) : onConnect(connector)
                 }
                 disabled={isConnecting}
-                className="w-full cursor-pointer group-hover:bg-background group-hover:border-zinc-700 group-hover:text-primary"
+                variant={isCloudBrand ? "outline" : "default"}
+                className={cn(
+                  "w-full cursor-pointer",
+                  isCloudBrand
+                    ? "rounded-none border-primary bg-layer-contextual text-layer-contextual-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                    : "group-hover:bg-background group-hover:border-zinc-700 group-hover:text-primary",
+                )}
                 size="sm"
               >
                 {isConnecting ? (
@@ -140,10 +182,21 @@ export default function ConnectorCard({
             )}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground">
+          <div
+            className={cn(
+              "text-sm",
+              isCloudBrand
+                ? "text-layer-contextual-foreground"
+                : "text-muted-foreground",
+            )}
+          >
             <p>For more details see our</p>
             <Link
-              className="text-accent-pink-foreground"
+              className={
+                isCloudBrand
+                  ? "underline-offset-2"
+                  : "text-accent-pink-foreground"
+              }
               href="https://docs.openr.ag/knowledge#oauth-ingestion"
               target="_blank"
               rel="noopener noreferrer"
