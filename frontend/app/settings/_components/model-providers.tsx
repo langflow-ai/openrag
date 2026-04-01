@@ -7,7 +7,12 @@ import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
 import { useAuth } from "@/contexts/auth-context";
-import type { ModelProvider } from "../_helpers/model-helpers";
+import { useIsCloudBrand } from "@/contexts/brand-context";
+import {
+  ALL_PROVIDERS,
+  CLOUD_EXCLUDED_PROVIDERS,
+  type ModelProvider,
+} from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
@@ -18,6 +23,7 @@ export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const isCloudBrand = useIsCloudBrand();
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -27,12 +33,9 @@ export const ModelProviders = () => {
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
-  const allProviderKeys: ModelProvider[] = [
-    "openai",
-    "ollama",
-    "watsonx",
-    "anthropic",
-  ];
+  const allProviderKeys = isCloudBrand
+    ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+    : ALL_PROVIDERS;
 
   // Handle URL search param to open dialogs
   useEffect(() => {

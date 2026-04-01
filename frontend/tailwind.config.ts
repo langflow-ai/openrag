@@ -156,6 +156,12 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "layer-contextual": "hsl(var(--layer-contextual))",
+        "layer-contextual-foreground":
+          "hsl(var(--layer-contextual-foreground))",
+        "text-text-01": "hsl(var(--text-text-01))",
+        "link-primary": "hsl(var(--link-primary))",
+        "button-tertiary": "hsl(var(--button-tertiary))",
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
@@ -192,6 +198,7 @@ const config = {
         sans: ["var(--font-sans)", ...fontFamily.sans],
         mono: ["var(--font-mono)", ...fontFamily.mono],
         chivo: ["var(--font-chivo)", ...fontFamily.sans],
+        "ibm-plex-sans": ["var(--font-ibm-plex-sans)", ...fontFamily.sans],
       },
       fontSize: {
         xxs: "11px",

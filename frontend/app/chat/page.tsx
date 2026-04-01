@@ -5,11 +5,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import { cn } from "@/lib/utils";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -29,6 +31,7 @@ import type {
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+  const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     setEndpoint,
@@ -1039,7 +1042,9 @@ function ChatPage() {
         </div>
       )}
 
-      <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden p-6">
+      <StickToBottom.Content
+        className={cn("flex flex-col min-h-full overflow-x-hidden p-6")}
+      >
         <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
           {messages.length === 0 && !streamingMessage ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -1223,9 +1228,17 @@ function ChatPage() {
 }
 
 export default function ProtectedChatPage() {
+  const isCloudBrand = useIsCloudBrand();
   return (
     <ProtectedRoute>
-      <div className="flex w-full h-full overflow-hidden">
+      <div
+        className={cn(
+          "flex w-full h-full overflow-hidden",
+          isCloudBrand && "ibm-chat-page",
+          isCloudBrand &&
+            "bg-[var(--chat-surface-bg)] [background-image:linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
+        )}
+      >
         <StickToBottom
           className="flex h-full flex-1 flex-col"
           resize="smooth"

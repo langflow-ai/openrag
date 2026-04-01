@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import {
   duplicateCheck,
@@ -111,6 +112,7 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 
 export function KnowledgeDropdown() {
   const { isIbmAuthMode } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
@@ -657,10 +659,21 @@ export function KnowledgeDropdown() {
 
   if (!mounted) {
     return (
-      <Button disabled variant="outline" className="opacity-50">
-        <span>Add Knowledge</span>
-        <ChevronDown className="h-4 w-4 ml-2" />
-      </Button>
+      <div className="flex h-12 pointer-events-none">
+        <Button
+          variant="outline"
+          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-[var(--icon-disabled)] cursor-not-allowed"
+        >
+          <span>Add {isCloudBrand ? `knowledge` : `Knowledge`}</span>
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12 w-12 flex-shrink-0 rounded-r-lg rounded-l-none border-l border-border text-[var(--icon-disabled)] cursor-not-allowed"
+          aria-label="Open add knowledge menu"
+        >
+          <ChevronDown className="h-5 w-5" />
+        </Button>
+      </div>
     );
   }
 
@@ -668,28 +681,68 @@ export function KnowledgeDropdown() {
     <>
       <DropdownMenu onOpenChange={setIsMenuOpen}>
         <DropdownMenuTrigger asChild>
-          <Button disabled={isLoading}>
-            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>
-              {isLoading
-                ? fileUploading
-                  ? "Uploading..."
-                  : folderLoading
-                    ? "Processing Folder..."
-                    : isNavigatingToCloud
-                      ? "Loading..."
-                      : "Processing..."
-                : "Add Knowledge"}
-            </span>
-            {!isLoading && (
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform duration-200",
-                  isMenuOpen && "rotate-180",
+          {isCloudBrand ? (
+            <div className="flex h-12">
+              <Button
+                type="button"
+                disabled={isLoading}
+                className="h-12 bg-blue-600 px-6 text-body-compact text-primary-foreground hover:bg-blue-700"
+              >
+                {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                <span>
+                  {isLoading
+                    ? fileUploading
+                      ? "Uploading..."
+                      : folderLoading
+                        ? "Processing Folder..."
+                        : isNavigatingToCloud
+                          ? "Loading..."
+                          : "Processing..."
+                    : "Add knowledge"}
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="icon"
+                disabled={isLoading}
+                className="h-12 w-12 flex-shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
+                aria-label="Open add knowledge menu"
+              >
+                {!isLoading && (
+                  <ChevronDown
+                    className={cn(
+                      "h-5 w-5 transition-transform duration-200",
+                      isMenuOpen && "rotate-180",
+                    )}
+                  />
                 )}
-              />
-            )}
-          </Button>
+              </Button>
+            </div>
+          ) : (
+            <Button disabled={isLoading} variant="outline">
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>
+                {isLoading
+                  ? fileUploading
+                    ? "Uploading..."
+                    : folderLoading
+                      ? "Processing Folder..."
+                      : isNavigatingToCloud
+                        ? "Loading..."
+                        : "Processing..."
+                  : "Add Knowledge"}
+              </span>
+              {!isLoading && (
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200",
+                    isMenuOpen && "rotate-180",
+                  )}
+                />
+              )}
+            </Button>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           {menuItems.map((item, index) => (

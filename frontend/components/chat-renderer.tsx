@@ -16,6 +16,7 @@ import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
 import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
 import {
   ANIMATION_DURATION,
@@ -36,6 +37,7 @@ export function ChatRenderer({
   const router = useRouter();
   const queryClient = useQueryClient(); // Move hook to component level
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     refreshTrigger,
@@ -278,8 +280,8 @@ export function ChatRenderer({
           }}
           animate={{
             width: showLayout ? "100%" : "850px",
-            borderRadius: showLayout ? "0" : "16px",
             border: showLayout ? "0" : "1px solid hsl(var(--border))",
+            borderRadius: showLayout || isCloudBrand ? "0" : "16px",
             height: showLayout ? "100%" : "800px",
             x: x,
             y: y,

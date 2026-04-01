@@ -1,4 +1,3 @@
-import re
 from http.client import HTTPException
 
 from utils.logging_config import get_logger
@@ -159,7 +158,7 @@ async def async_response_stream(
                 else:
                     delta_text = str(chunk.delta)
                 full_response += delta_text
-            
+
             # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
             chunk_attrs = dir(chunk) if hasattr(chunk, '__dict__') else []
             tool_related_attrs = [attr for attr in chunk_attrs if 'tool' in attr.lower() or 'call' in attr.lower() or 'retrieval' in attr.lower()]
@@ -181,7 +180,7 @@ async def async_response_stream(
                     chunk_data = chunk.__dict__
                 else:
                     chunk_data = str(chunk)
-                
+
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):
                     # Check for any fields that might indicate tool usage
@@ -219,7 +218,7 @@ async def async_response_stream(
                         'retrieved_documents' in chunk_data,
                         'retrieval_results' in chunk_data,
                     ])
-                    
+
                     if has_results:
                         logger.info(
                             "Detected implicit tool call in backend, injecting synthetic event",
@@ -243,7 +242,7 @@ async def async_response_stream(
                         # Send the synthetic event first
                         yield (json.dumps(synthetic_event, default=str) + "\n").encode("utf-8")
                         detected_tool_call = True  # Mark that we've injected a tool call
-                
+
                 yield (json.dumps(chunk_data, default=str) + "\n").encode("utf-8")
             except Exception as e:
                 # Fallback to string representation
@@ -676,9 +675,11 @@ async def async_langflow_chat(
                     })
 
     # Layer 3: Citation-text fallback.
-    # The LLM emits "(Source: filename)" citations when it retrieves documents.
-    # Parse these as a last resort to ensure sources is never empty when the LLM found results.
+    # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.
+    # This is the last-resort fallback when Langflow's response object carries no
+    # structured retrieval data.
     if not sources:
+        import re
         for match in re.finditer(r"\(Source:\s*([^\)]+)\)", response_text):
             sources.append({
                 "filename": match.group(1).strip(),
@@ -786,7 +787,7 @@ async def async_langflow_chat_stream(
                     response_id = chunk_data["id"]
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
-                
+
                 # Check for error status
                 if chunk_data.get("finish_reason") == "error" or chunk_data.get("status") == "failed":
                     error_occurred = True
@@ -835,7 +836,7 @@ async def async_langflow_chat_stream(
         # Log the error
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         error_occurred = True
-        
+
         # Store error message in conversation history so it persists
         error_message = {
             "role": "assistant",
@@ -844,19 +845,19 @@ async def async_langflow_chat_stream(
             "error": True,
         }
         conversation_state["messages"].append(error_message)
-        
+
         # Try to store the conversation with error message
         # Use a temporary response_id if we don't have one
         if not response_id:
             response_id = f"error_{user_id}_{int(datetime.now().timestamp())}"
-        
+
         try:
             conversation_state["last_activity"] = datetime.now()
             await store_conversation_thread(user_id, response_id, conversation_state)
             logger.debug(f"Stored conversation with error for user {user_id}")
         except Exception as store_error:
             logger.error(f"Failed to store error conversation: {store_error}")
-        
+
         # Re-raise the exception so it propagates to the API layer
         raise
 
