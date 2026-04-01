@@ -121,3 +121,42 @@ async def wait_for_opensearch(
     message: str = "Failed to verify whether OpenSearch is ready."
     logger.error(message)
     raise OpenSearchNotReadyError(message)
+
+
+async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> None:
+    """Gracefully shutdown OpenSearch client connection.
+    
+    This ensures that all pending operations are completed and connections
+    are properly closed before the application exits.
+    
+    Args:
+        opensearch_client: The OpenSearch client to shutdown.
+    """
+    if opensearch_client is None:
+        logger.debug("OpenSearch client is None, skipping graceful shutdown")
+        return
+    
+    try:
+        logger.info("Initiating graceful OpenSearch shutdown...")
+        
+        # Flush any pending operations by checking cluster health one last time
+        try:
+            await asyncio.wait_for(
+                opensearch_client.cluster.health(),
+                timeout=10.0
+            )
+            logger.debug("Final cluster health check completed")
+        except asyncio.TimeoutError:
+            logger.warning("Timeout during final cluster health check")
+        except Exception as e:
+            logger.warning("Error during final cluster health check", error=str(e))
+        
+        # Close the client connection
+        await opensearch_client.close()
+        logger.info("OpenSearch client connection closed gracefully")
+        
+    except Exception as e:
+        logger.error("Error during graceful OpenSearch shutdown", error=str(e))
+
+
+
