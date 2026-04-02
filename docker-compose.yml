@@ -38,7 +38,7 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    # image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
+    image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend
