@@ -2067,13 +2067,14 @@ async def create_app():
         try:
             from utils.opensearch_utils import graceful_opensearch_shutdown
             await graceful_opensearch_shutdown(clients.opensearch)
+            clients.opensearch = None  # prevent double-close in clients.cleanup()
         except Exception as e:
             logger.error("Error during graceful OpenSearch shutdown", error=str(e))
-        
+
         await cleanup_subscriptions_proper(services)
         # Cleanup task service (cancels background tasks and process pool)
         await services["task_service"].shutdown()
-        # Cleanup async clients (this will also close OpenSearch client if not already closed)
+        # Cleanup async clients
         await clients.cleanup()
         # Cleanup telemetry client
         from utils.telemetry.client import cleanup_telemetry_client
