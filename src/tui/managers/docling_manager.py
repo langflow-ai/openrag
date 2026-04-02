@@ -291,11 +291,11 @@ class DoclingManager:
 
             cmd = [
                 "uvx",
-                "--from", "docling-serve[ui]==1.5.0",
+                "--from", "docling-serve[ui]==1.15.1",
                 "--with", "onnxruntime",
                 "--with", "easyocr",
                 "--with", f"docling[{docling_extras}]",
-                "--with", "docling-core==2.48.1",
+                "--with", "docling-core==2.71.0",
             ]
             if override_path:
                 cmd += ["--override", override_path, "--with", "opencv-python-headless"]
