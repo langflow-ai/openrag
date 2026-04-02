@@ -39,10 +39,12 @@ class DoclingManager:
         self._starting = False
         self._external_process = False
 
-        # PID file to track docling-serve across sessions (centralized in ~/.openrag/tui/)
+        # PID file and log file to track docling-serve across sessions (centralized in ~/.openrag/tui/)
         from utils.paths import get_tui_dir
 
-        self._pid_file = get_tui_dir() / ".docling.pid"
+        self._tui_dir = get_tui_dir()
+        self._pid_file = self._tui_dir / ".docling.pid"
+        self._log_file_path = self._tui_dir / "docling-serve.log"
 
         # Log storage - simplified, no queue
         self._log_buffer: List[str] = []
@@ -315,14 +317,21 @@ class DoclingManager:
 
             self._add_log_entry(f"Starting process: {' '.join(cmd)}")
 
-            # Start as subprocess
+            # Redirect stdout/stderr to a log file instead of pipes.
+            # This prevents SIGPIPE crashes when the parent process exits
+            # (e.g. `make docling` via docling_ctl.py), which would break
+            # pipes and cause the uvicorn worker to crash and lose in-memory
+            # async task state (leading to 404 on /v1/result/{id}).
+            self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            log_file = open(self._log_file_path, "w")
             self._process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                bufsize=0,  # Unbuffered for real-time output
+                stdout=log_file,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
+                start_new_session=True,  # Detach from parent process group
             )
+            # Close parent's copy of the fd; the child has its own
+            log_file.close()
 
             self._running = True
             self._add_log_entry("External process started")
@@ -383,20 +392,11 @@ class DoclingManager:
                 self._add_log_entry(f"Process exited with code: {return_code}")
 
                 try:
-                    # Try to read any remaining output
-                    stdout_data = ""
-                    stderr_data = ""
-
-                    if self._process.stdout:
-                        stdout_data = self._process.stdout.read()
-                    if self._process.stderr:
-                        stderr_data = self._process.stderr.read()
-
-                    if stdout_data:
-                        self._add_log_entry(f"Final stdout: {stdout_data[:500]}")
-                    if stderr_data:
-                        self._add_log_entry(f"Final stderr: {stderr_data[:500]}")
-
+                    # Read output from log file (stdout/stderr are file-based, not pipes)
+                    if self._log_file_path.exists():
+                        log_content = self._log_file_path.read_text()
+                        if log_content:
+                            self._add_log_entry(f"Process output: {log_content[:1000]}")
                 except Exception as e:
                     self._add_log_entry(f"Error reading final output: {e}")
 
@@ -438,54 +438,33 @@ class DoclingManager:
             return False, f"Error starting docling serve: {str(e)}"
 
     def _start_output_capture(self):
-        """Start threads to capture subprocess stdout and stderr."""
+        """Start a thread to tail the docling-serve log file."""
 
-        def capture_stdout():
-            if not self._process or not self._process.stdout:
-                self._add_log_entry("No stdout pipe available")
+        def tail_log_file():
+            if not self._log_file_path.exists():
+                self._add_log_entry("No log file available")
                 return
 
-            self._add_log_entry("Starting stdout capture thread")
+            self._add_log_entry("Starting log file capture thread")
             try:
-                while self._running and self._process and self._process.poll() is None:
-                    line = self._process.stdout.readline()
-                    if line:
-                        self._add_log_entry(f"STDOUT: {line.rstrip()}")
-                    else:
-                        # No more output, wait a bit
-                        time.sleep(0.1)
+                with open(self._log_file_path, "r") as f:
+                    while self._running and self._process and self._process.poll() is None:
+                        line = f.readline()
+                        if line:
+                            self._add_log_entry(f"DOCLING: {line.rstrip()}")
+                        else:
+                            # No new content yet, wait a bit
+                            time.sleep(0.5)
             except Exception as e:
-                self._add_log_entry(f"Error capturing stdout: {e}")
+                self._add_log_entry(f"Error reading log file: {e}")
             finally:
-                self._add_log_entry("Stdout capture thread ended")
+                self._add_log_entry("Log file capture thread ended")
 
-        def capture_stderr():
-            if not self._process or not self._process.stderr:
-                self._add_log_entry("No stderr pipe available")
-                return
+        # Start single capture thread that tails the log file
+        log_thread = threading.Thread(target=tail_log_file, daemon=True)
+        log_thread.start()
 
-            self._add_log_entry("Starting stderr capture thread")
-            try:
-                while self._running and self._process and self._process.poll() is None:
-                    line = self._process.stderr.readline()
-                    if line:
-                        self._add_log_entry(f"STDERR: {line.rstrip()}")
-                    else:
-                        # No more output, wait a bit
-                        time.sleep(0.1)
-            except Exception as e:
-                self._add_log_entry(f"Error capturing stderr: {e}")
-            finally:
-                self._add_log_entry("Stderr capture thread ended")
-
-        # Start both capture threads
-        stdout_thread = threading.Thread(target=capture_stdout, daemon=True)
-        stderr_thread = threading.Thread(target=capture_stderr, daemon=True)
-
-        stdout_thread.start()
-        stderr_thread.start()
-
-        self._add_log_entry("Output capture threads started")
+        self._add_log_entry("Log file capture thread started")
 
     async def stop(self) -> Tuple[bool, str]:
         """Stop docling serve."""
