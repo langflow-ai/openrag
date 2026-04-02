@@ -139,17 +139,17 @@ async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> No
     try:
         logger.info("Initiating graceful OpenSearch shutdown...")
         
-        # Flush any pending operations by checking cluster health one last time
+        # Flush any pending write operations before closing
         try:
             await asyncio.wait_for(
-                opensearch_client.cluster.health(),
+                opensearch_client.indices.flush(index="_all", wait_if_ongoing=True),
                 timeout=10.0
             )
-            logger.debug("Final cluster health check completed")
+            logger.debug("Index flush completed")
         except asyncio.TimeoutError:
-            logger.warning("Timeout during final cluster health check")
+            logger.warning("Timeout during index flush")
         except Exception as e:
-            logger.warning("Error during final cluster health check", error=str(e))
+            logger.warning("Error during index flush", error=str(e))
         
         # Close the client connection
         await opensearch_client.close()
@@ -157,6 +157,4 @@ async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> No
         
     except Exception as e:
         logger.error("Error during graceful OpenSearch shutdown", error=str(e))
-
-
 
