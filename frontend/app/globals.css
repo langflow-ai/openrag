@@ -59,6 +59,9 @@
     --component-icon: #d8598a;
     --flow-icon: #2f67d0;
 
+    --badge: 0 0% 0%; /* #000000 */
+    --badge-foreground: 0 0% 100%; /* #FFFFFF */
+
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
@@ -142,6 +145,9 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
 
+    --badge: 0 0% 25%; /* #404040 */
+    --badge-foreground: 0 0% 100%; /* #FFFFFF */
+
     /* Failure Colors */
     --failure-soft: #46080933;
     --failure-pill: #fb2c361a;
@@ -167,7 +173,7 @@
     --secondary-foreground: 0 0% 15%;
     --secondary-hover: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
     --muted: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
-    --muted-foreground: 0 0% 78%; /* IBM Gray 30 #C6C6C6 - Secondary text IBM */
+    --muted-foreground: 0 0% 32%; /* IBM Gray 70 #525252 - Secondary text IBM light */
     --accent: 0 0% 90%;
     --accent-foreground: 0 0% 15%;
     --border: 240 5% 96%; /* same as --muted from :root (240 5% 96%) */
@@ -228,6 +234,9 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+
+    --badge: 0 0% 22.4%; /* #393939 */
+    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
   }
 
   /* IBM Dark */
@@ -246,7 +255,7 @@
     --secondary-foreground: 0 0% 97%;
     --secondary-hover: 0 0% 18%; /* IBM Gray 80 #393939 */
     --muted: 0 0% 18%; /* IBM Gray 80 */
-    --muted-foreground: 0 0% 32%; /* IBM Gray 70 #525252 - Secondary text IBM */
+    --muted-foreground: 0 0% 78%; /* IBM Gray 30 #C6C6C6 - Secondary text IBM dark */
     --accent: 0 0% 18%;
     --accent-foreground: 0 0% 97%;
     --border: 0 0% 22.4%; /* IBM Gray 80 #393939 - Ui-border 3 */
@@ -306,6 +315,9 @@
     --text-text-01: 0 0% 95.7%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
+
+    --badge: 0 0% 32%; /* #525252 */
+    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
   }
 
   /* IBM Settings: Override muted-foreground for settings page */
@@ -359,7 +371,7 @@
     border: none;
     border-radius: 0;
     border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--card));
+    background-color: hsl(var(--muted));
   }
 
   [data-theme="ibm"] .primary-input:hover {
