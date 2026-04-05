@@ -35,8 +35,10 @@ export default function S3SettingsDialog({
     values: {
       access_key: "",
       secret_key: "",
+      session_token: "",
       endpoint_url: defaults?.endpoint ?? "",
       region: defaults?.region ?? "",
+      bucket_names_input: defaults?.bucket_names?.join(", ") ?? "",
     },
   });
 
@@ -65,17 +67,34 @@ export default function S3SettingsDialog({
 
   const configureMutation = useS3ConfigureMutation();
 
+  const parseBucketNames = (value: string) =>
+    value
+      .split(",")
+      .map((bucket) => bucket.trim())
+      .filter(Boolean);
+
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
+
   const handleTestConnection = handleSubmit(async (data) => {
     setIsFetchingBuckets(true);
     setBucketsError(null);
     setFormError(null);
+    const parsedBucketNames = parseBucketNames(data.bucket_names_input);
 
     try {
       const result = await configureMutation.mutateAsync({
         access_key: data.access_key || undefined,
         secret_key: data.secret_key || undefined,
+        session_token: data.session_token || undefined,
         endpoint_url: data.endpoint_url || undefined,
         region: data.region || undefined,
+        bucket_names:
+          parsedBucketNames.length > 0
+            ? parsedBucketNames
+            : selectedBuckets.length > 0
+              ? selectedBuckets
+              : undefined,
         connection_id: defaults?.connection_id ?? undefined,
       });
 
@@ -89,12 +108,14 @@ export default function S3SettingsDialog({
       setBuckets(fetchedBuckets);
 
       setSelectedBuckets((prev) =>
-        prev.filter((b) => fetchedBuckets.includes(b)),
+        parsedBucketNames.length > 0
+          ? fetchedBuckets
+          : prev.filter((b) => fetchedBuckets.includes(b)),
       );
 
       queryClient.invalidateQueries({ queryKey: ["s3-defaults"] });
-    } catch (err: any) {
-      setBucketsError(err.message ?? "Connection failed");
+    } catch (error: unknown) {
+      setBucketsError(getErrorMessage(error, "Connection failed"));
     } finally {
       setIsFetchingBuckets(false);
     }
@@ -108,6 +129,7 @@ export default function S3SettingsDialog({
     }
 
     try {
+      const parsedBucketNames = parseBucketNames(data.bucket_names_input);
       const latestDefaults = await queryClient.fetchQuery({
         queryKey: ["s3-defaults"],
         queryFn: async () => {
@@ -120,9 +142,11 @@ export default function S3SettingsDialog({
       await configureMutation.mutateAsync({
         access_key: data.access_key || undefined,
         secret_key: data.secret_key || undefined,
+        session_token: data.session_token || undefined,
         endpoint_url: data.endpoint_url || undefined,
         region: data.region || undefined,
-        bucket_names: selectedBuckets,
+        bucket_names:
+          selectedBuckets.length > 0 ? selectedBuckets : parsedBucketNames,
         connection_id:
           latestDefaults?.connection_id ?? defaults?.connection_id ?? undefined,
       });
@@ -137,8 +161,8 @@ export default function S3SettingsDialog({
 
       queryClient.invalidateQueries({ queryKey: ["connectors"] });
       setOpen(false);
-    } catch (err: any) {
-      setFormError(err.message ?? "Failed to save configuration");
+    } catch (error: unknown) {
+      setFormError(getErrorMessage(error, "Failed to save configuration"));
     }
   });
 
@@ -168,6 +192,7 @@ export default function S3SettingsDialog({
               onTestConnection={handleTestConnection as () => void}
               accessKeySet={defaults?.access_key_set}
               secretKeySet={defaults?.secret_key_set}
+              sessionTokenSet={defaults?.session_token_set}
               formError={formError}
             />
 

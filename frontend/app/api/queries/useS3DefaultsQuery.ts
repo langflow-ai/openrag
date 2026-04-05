@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 export interface S3Defaults {
   access_key_set: boolean;
   secret_key_set: boolean;
+  session_token_set: boolean;
   endpoint: string;
   region: string;
   bucket_names: string[];

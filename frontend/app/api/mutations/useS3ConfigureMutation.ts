@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 export interface S3ConfigurePayload {
   access_key?: string;
   secret_key?: string;
+  session_token?: string;
   endpoint_url?: string;
   region?: string;
   bucket_names?: string[];

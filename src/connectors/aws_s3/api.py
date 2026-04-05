@@ -10,7 +10,7 @@ from dependencies import get_connector_service, get_session_manager, get_current
 from session_manager import User
 from utils.logging_config import get_logger
 
-from .auth import create_s3_resource
+from .auth import describe_s3_error, validate_s3_access
 from .models import S3ConfigureBody
 from .support import build_s3_config
 
@@ -27,6 +27,7 @@ async def s3_defaults(
     """
     access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    session_token = os.getenv("AWS_SESSION_TOKEN", "")
     endpoint_url = os.getenv("AWS_S3_ENDPOINT", "")
     region = os.getenv("AWS_REGION", "")
 
@@ -41,6 +42,7 @@ async def s3_defaults(
     return JSONResponse({
         "access_key_set": bool(access_key or conn_config.get("access_key")),
         "secret_key_set": bool(secret_key or conn_config.get("secret_key")),
+        "session_token_set": bool(session_token or conn_config.get("session_token")),
         "endpoint": _pick("endpoint_url", endpoint_url),
         "region": _pick("region", region),
         "bucket_names": conn_config.get("bucket_names", []),
@@ -68,12 +70,11 @@ async def s3_configure(
 
     # Test credentials
     try:
-        s3 = create_s3_resource(conn_config)
-        list(s3.buckets.all())
-    except Exception:
+        validate_s3_access(conn_config)
+    except Exception as exc:
         logger.exception("Failed to connect to S3 during credential test.")
         return JSONResponse(
-            {"error": "Could not connect to S3 with the provided configuration."},
+            {"error": describe_s3_error(exc, conn_config.get("bucket_names"))},
             status_code=400,
         )
 
@@ -110,12 +111,14 @@ async def s3_list_buckets(
         return JSONResponse({"error": "Not an S3 connection"}, status_code=400)
 
     try:
-        s3 = create_s3_resource(connection.config)
-        buckets = [b.name for b in s3.buckets.all()]
+        buckets = validate_s3_access(connection.config)
         return JSONResponse({"buckets": buckets})
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to list S3 buckets for connection %s", connection_id)
-        return JSONResponse({"error": "Failed to list buckets"}, status_code=500)
+        return JSONResponse(
+            {"error": describe_s3_error(exc, connection.config.get("bucket_names"))},
+            status_code=500,
+        )
 
 
 async def s3_bucket_status(
@@ -133,11 +136,13 @@ async def s3_bucket_status(
 
     # 1. List all buckets from S3
     try:
-        s3 = create_s3_resource(connection.config)
-        all_buckets = [b.name for b in s3.buckets.all()]
+        all_buckets = validate_s3_access(connection.config)
     except Exception as exc:
         logger.exception("Failed to list buckets from S3 for connection %s", connection_id)
-        return JSONResponse({"error": "Failed to list buckets"}, status_code=500)
+        return JSONResponse(
+            {"error": describe_s3_error(exc, connection.config.get("bucket_names"))},
+            status_code=500,
+        )
 
     # 2. Count indexed documents per bucket from OpenSearch
     ingested_counts: dict = {}
