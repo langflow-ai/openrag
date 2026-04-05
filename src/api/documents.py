@@ -40,6 +40,31 @@ async def delete_documents_by_filename_core(
         opensearch_client = session_manager.get_user_opensearch_client(
             user_id, jwt_token
         )
+
+        # Owner check: only the document owner may delete
+        check = await opensearch_client.search(
+            index=get_index_name(),
+            body={
+                "query": {"term": {"filename": normalized_filename}},
+                "size": 1,
+                "_source": ["owner"],
+            },
+        )
+        hits = check.get("hits", {}).get("hits", [])
+        if hits:
+            doc_owner = hits[0]["_source"].get("owner")
+            if doc_owner and doc_owner != user_id:
+                return (
+                    {
+                        "success": False,
+                        "deleted_chunks": 0,
+                        "filename": normalized_filename,
+                        "message": None,
+                        "error": "Access denied: only the document owner can delete this file",
+                    },
+                    403,
+                )
+
         delete_query = build_filename_delete_body(normalized_filename)
         result = await opensearch_client.delete_by_query(
             index=get_index_name(),

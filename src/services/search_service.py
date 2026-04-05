@@ -151,6 +151,11 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+            from utils.acl_utils import build_acl_filter
+            from config.settings import is_no_auth_mode
+            if user_id and not is_no_auth_mode():
+                filter_clauses.append(build_acl_filter(user_id))
+
             try:
                 # Build aggregation query with filters applied
                 agg_query = {
@@ -308,6 +313,11 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+            from utils.acl_utils import build_acl_filter
+            from config.settings import is_no_auth_mode
+            if user_id and not is_no_auth_mode():
+                filter_clauses.append(build_acl_filter(user_id))
+
         # Build query body
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope
@@ -457,7 +467,7 @@ class SearchService:
             except (KeyError, IndexError, AttributeError, TypeError):
                 fallback_search_body = None
 
-        # Authentication required - DLS will handle document filtering automatically
+        # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
             "search_service authentication info",
             user_id=user_id,

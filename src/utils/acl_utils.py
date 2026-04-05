@@ -243,3 +243,18 @@ async def batch_update_acls(
             "chunks_updated": 0,
             "error": str(e)
         }
+
+
+def build_acl_filter(user_id: str) -> dict:
+    """OpenSearch bool filter: return only docs visible to user_id."""
+    return {
+        "bool": {
+            "should": [
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},  # legacy/public
+                {"term": {"owner": ""}},                                  # empty owner
+                {"term": {"owner": user_id}},                             # user is owner
+                {"term": {"allowed_users": user_id}},                     # explicitly shared
+            ],
+            "minimum_should_match": 1,
+        }
+    }
