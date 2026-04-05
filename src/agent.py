@@ -801,6 +801,8 @@ async def async_langflow_chat_stream(
             yield chunk
 
         # Add the complete assistant response to message history with response_id, timestamp, and function call data
+        assistant_message = None  # 1. Initialize here
+
         if full_response:
             assistant_message = {
                 "role": "assistant",
@@ -810,10 +812,13 @@ async def async_langflow_chat_stream(
                 "chunks": collected_chunks,  # Store complete chunk data for function calls
                 "error": error_occurred,  # Mark if this was an error response
             }
+            
+        # 2. Safety check before appending
+        if assistant_message is not None:
             # Store usage data if available (from response.completed event)
-        if usage_data:
-            assistant_message["response_data"] = {"usage": usage_data}
-        conversation_state["messages"].append(assistant_message)
+            if usage_data:
+                assistant_message["response_data"] = {"usage": usage_data}
+            conversation_state["messages"].append(assistant_message)
 
         # Store the conversation thread with its response_id
         if response_id:
