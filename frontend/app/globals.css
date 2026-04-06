@@ -162,7 +162,7 @@
   [data-theme="ibm"] {
     --background: 0 0% 100%; /* same as OSS light #ffffff */
     --foreground: 0 0% 15%; /* IBM Gray 100 #262626 */
-    --card: 0 0% 100%;
+    --card: 0 0% 96%; /* IBM Gray 10 #f4f4f4 */
     --card-foreground: 0 0% 15%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 15%;
@@ -176,7 +176,7 @@
     --muted-foreground: 0 0% 32%; /* IBM Gray 70 #525252 - Secondary text IBM light */
     --accent: 0 0% 90%;
     --accent-foreground: 0 0% 15%;
-    --border: 240 5% 96%; /* same as --muted from :root (240 5% 96%) */
+    --border: 0 0% 78%; /* same as --muted from :root (240 5% 96%) */
     --input: 0 0% 82%;
     --ring: 217 100% 45%;
     --placeholder-foreground: var(
@@ -243,13 +243,12 @@
   [data-theme="ibm"].dark {
     --background: 0 0% 8.6%; /* IBM Gray 100 #161616 */
     --foreground: 0 0% 97%; /* IBM Gray 10 #f4f4f4 */
-    --card: 0 0% 12%; /* IBM Gray 90 #1c1c1c → ~#262626 */
+    --card: 0 0% 15%; /* IBM Gray 90 #262626 */
     --card-foreground: 0 0% 97%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 97%;
-    /* Dark UI: lighter blue (Blue 40 ~#78A9FF), not Blue 60 */
-    --primary: 217 100% 74%;
-    --primary-foreground: 0 0% 9%;
+    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary-foreground: 0 0% 100%;
     --primary-hover: 217 100% 82%;
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 97%;
@@ -318,11 +317,6 @@
 
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
-  }
-
-  /* IBM Settings: Override muted-foreground for settings page */
-  [data-theme="ibm"] .ibm-settings-page {
-    --muted-foreground: 0 0% 78%; /* #C6C6C6 - IBM Gray 30 */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
