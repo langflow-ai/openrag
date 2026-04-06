@@ -1,5 +1,7 @@
 import asyncio
 import os
+import threading
+import concurrent.futures
 from utils.env_utils import get_env_int, get_env_float
 
 import httpx
@@ -320,7 +322,7 @@ class AppClients:
         self.langflow_client = None
         self.langflow_http_client = None
         self._patched_async_client = None  # Private attribute - single client for all providers
-        self._client_init_lock = __import__('threading').Lock()  # Lock for thread-safe initialization
+        self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
 
     async def initialize(self):
@@ -455,6 +457,11 @@ class AppClients:
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
+                elif not os.environ.get("OPENAI_API_KEY"):
+                    # Provide dummy key to satisfy AsyncOpenAI constructor; 
+                    # LiteLLM/MCP will handle routing to other providers if needed.
+                    os.environ["OPENAI_API_KEY"] = "no-key-required"
+                    logger.debug("Using dummy OpenAI API key to satisfy client constructor")
 
                 # Set Anthropic credentials
                 if config.providers.anthropic.api_key:
@@ -481,11 +488,26 @@ class AppClients:
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
 
-            # Try to initialize the client - AsyncOpenAI() will read from environment
-            # We'll try HTTP/2 first with a probe, then fall back to HTTP/1.1 if it times out
-            import asyncio
-            import concurrent.futures
-            import threading
+            # Determine model and provider for both probe and production client
+            model_name = config.knowledge.embedding_model or EMBED_MODEL
+            provider = config.knowledge.embedding_provider or "openai"
+
+            # Format model name for LiteLLM compatibility (same logic as search_service)
+            formatted_model = model_name
+            known_prefixes = ["openai", "ollama", "watsonx", "anthropic", "gemini", "vertex_ai"]
+            if not any(model_name.startswith(p + "/") for p in known_prefixes):
+                if ":" in model_name:
+                    # Ollama models use tags with colons
+                    formatted_model = f"ollama/{model_name}"
+                elif model_name in WATSONX_EMBEDDING_DIMENSIONS:
+                    # WatsonX embedding models
+                    formatted_model = f"watsonx/{model_name}"
+                elif provider != "openai":
+                    # Explicit provider prefix
+                    formatted_model = f"{provider}/{model_name}"
+
+            # API key for AsyncOpenAI constructor
+            api_key = os.environ.get("OPENAI_API_KEY")
 
             async def probe_http2():
                 """Returns True if HTTP/2 works, False to fall back to HTTP/1.1.
@@ -495,20 +517,21 @@ class AppClients:
                 production client is created after this thread exits, in the
                 caller's event loop, avoiding cross-loop SSL transport errors.
                 """
-                client = AsyncOpenAI()
-                logger.info("Probing OpenAI client with HTTP/2...")
+                # Use a patched client for the probe so it routes correctly based on the model
+                client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
+                logger.info(f"Probing client with HTTP/2 using model {formatted_model}...")
                 try:
                     await asyncio.wait_for(
                         client.embeddings.create(
-                            model='text-embedding-3-small',
+                            model=formatted_model,
                             input=['test']
                         ),
                         timeout=5.0
                     )
-                    logger.info("HTTP/2 probe successful")
+                    logger.info(f"HTTP/2 probe successful with {formatted_model}")
                     return True
                 except (asyncio.TimeoutError, Exception) as probe_error:
-                    logger.warning("HTTP/2 probe failed, falling back to HTTP/1.1", error=str(probe_error))
+                    logger.warning(f"HTTP/2 probe failed with {formatted_model}, falling back to HTTP/1.1", error=str(probe_error))
                     return False
                 finally:
                     # Always close the probe client so its connections are fully
@@ -537,17 +560,17 @@ class AppClients:
                     use_http2 = future.result(timeout=15)
 
                 if use_http2:
-                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
-                    logger.info("OpenAI client initialized with HTTP/2")
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {formatted_model})")
                 else:
                     http_client = httpx.AsyncClient(
                         http2=False,
                         timeout=httpx.Timeout(60.0, connect=10.0)
                     )
                     self._patched_async_client = patch_openai_with_mcp(
-                        AsyncOpenAI(http_client=http_client)
+                        AsyncOpenAI(api_key=api_key, http_client=http_client)
                     )
-                    logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {formatted_model})")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
