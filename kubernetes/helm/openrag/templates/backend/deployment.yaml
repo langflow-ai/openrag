@@ -34,7 +34,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- if and .Values.backend.persistence.shared.enabled .Values.backend.persistence.shared.documents.loadDefaults .Values.backend.persistence.shared.documents.git.enabled }}
+        {{- if and .Values.backend.persistence.shared.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
         - name: load-default-documents
           image: curlimages/curl:8.5.0
           command: ["/bin/sh", "-c"]
@@ -42,17 +42,17 @@ spec:
             - |
               set -eu
 
-              DOCS_DIR="/shared/openrag-documents"
+              DOCS_DIR="{{ .Values.backend.persistence.documents.mountPath }}"
 
-              OWNER="{{ .Values.backend.persistence.shared.documents.git.owner }}"
-              REPO="{{ .Values.backend.persistence.shared.documents.git.repo }}"
-              BRANCH="{{ .Values.backend.persistence.shared.documents.git.branch }}"
-              {{- if .Values.backend.persistence.shared.documents.git.hash }}
-              GIT_REF="{{ .Values.backend.persistence.shared.documents.git.hash }}"
+              OWNER="{{ .Values.backend.persistence.documents.git.owner }}"
+              REPO="{{ .Values.backend.persistence.documents.git.repo }}"
+              BRANCH="{{ .Values.backend.persistence.documents.git.branch }}"
+              {{- if .Values.backend.persistence.documents.git.hash }}
+              GIT_REF="{{ .Values.backend.persistence.documents.git.hash }}"
               {{- else }}
               GIT_REF="${BRANCH}"
               {{- end }}
-              REPO_PATH="{{ .Values.backend.persistence.shared.documents.git.path }}"
+              REPO_PATH="{{ .Values.backend.persistence.documents.git.path }}"
 
               # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
               GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
@@ -103,7 +103,7 @@ spec:
               fi
           volumeMounts:
             - name: shared
-              mountPath: /shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
         {{- end }}
         {{- if .Values.langflow.enabled }}
         - name: wait-for-langflow
@@ -138,11 +138,11 @@ spec:
               readOnly: true
             {{- if .Values.backend.persistence.data.enabled }}
             - name: data
-              mountPath: /data
+              mountPath: {{ .Values.backend.persistence.data.mountPath | quote }}
             {{- end }}
             {{- if .Values.backend.persistence.shared.enabled }}
             - name: shared
-              mountPath: /shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
               readOnly: true
             {{- end }}
           resources:
