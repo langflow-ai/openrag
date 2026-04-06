@@ -3,6 +3,7 @@ import os
 from utils.env_utils import get_env_int, get_env_float
 
 import httpx
+from agentd.patch import patch_openai_with_mcp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
@@ -536,14 +537,16 @@ class AppClients:
                     use_http2 = future.result(timeout=15)
 
                 if use_http2:
-                    self._patched_async_client = AsyncOpenAI()
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
                     logger.info("OpenAI client initialized with HTTP/2")
                 else:
                     http_client = httpx.AsyncClient(
                         http2=False,
                         timeout=httpx.Timeout(60.0, connect=10.0)
                     )
-                    self._patched_async_client = AsyncOpenAI(http_client=http_client)
+                    self._patched_async_client = patch_openai_with_mcp(
+                        AsyncOpenAI(http_client=http_client)
+                    )
                     logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
