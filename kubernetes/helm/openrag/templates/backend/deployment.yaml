@@ -34,7 +34,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- if and .Values.backend.persistence.documents.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
+        {{- if and .Values.backend.persistence.shared.enabled .Values.backend.persistence.shared.documents.loadDefaults .Values.backend.persistence.shared.documents.git.enabled }}
         - name: load-default-documents
           image: curlimages/curl:8.5.0
           command: ["/bin/sh", "-c"]
@@ -42,17 +42,17 @@ spec:
             - |
               set -eu
 
-              DOCS_DIR="{{ .Values.backend.persistence.documents.mountPath }}"
+              DOCS_DIR="/shared/openrag-documents"
 
-              OWNER="{{ .Values.backend.persistence.documents.git.owner }}"
-              REPO="{{ .Values.backend.persistence.documents.git.repo }}"
-              BRANCH="{{ .Values.backend.persistence.documents.git.branch }}"
-              {{- if .Values.backend.persistence.documents.git.hash }}
-              GIT_REF="{{ .Values.backend.persistence.documents.git.hash }}"
+              OWNER="{{ .Values.backend.persistence.shared.documents.git.owner }}"
+              REPO="{{ .Values.backend.persistence.shared.documents.git.repo }}"
+              BRANCH="{{ .Values.backend.persistence.shared.documents.git.branch }}"
+              {{- if .Values.backend.persistence.shared.documents.git.hash }}
+              GIT_REF="{{ .Values.backend.persistence.shared.documents.git.hash }}"
               {{- else }}
               GIT_REF="${BRANCH}"
               {{- end }}
-              REPO_PATH="{{ .Values.backend.persistence.documents.git.path }}"
+              REPO_PATH="{{ .Values.backend.persistence.shared.documents.git.path }}"
 
               # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
               GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
@@ -102,8 +102,8 @@ spec:
                 echo "Documents already exist in $DOCS_DIR, skipping download."
               fi
           volumeMounts:
-            - name: documents
-              mountPath: {{ .Values.backend.persistence.documents.mountPath }}
+            - name: shared
+              mountPath: /shared
         {{- end }}
         {{- if .Values.langflow.enabled }}
         - name: wait-for-langflow
@@ -136,22 +136,13 @@ spec:
               mountPath: /app/.env
               subPath: .env
               readOnly: true
-            {{- if .Values.backend.persistence.documents.enabled }}
-            - name: documents
-              mountPath: {{ .Values.backend.persistence.documents.mountPath }}
+            {{- if .Values.backend.persistence.data.enabled }}
+            - name: data
+              mountPath: /data
             {{- end }}
-            {{- if .Values.backend.persistence.keys.enabled }}
-            - name: keys
-              mountPath: {{ .Values.backend.persistence.keys.mountPath }}
-            {{- end }}
-            {{- if .Values.backend.persistence.config.enabled }}
-            - name: config
-              mountPath: {{ .Values.backend.persistence.config.mountPath }}
-            {{- end }}
-            {{- if .Values.langflow.persistence.enabled }}
-            - name: flows
-              mountPath: /app/flows
-              subPath: {{ .Values.langflow.persistence.flowsSubPath }}
+            {{- if .Values.backend.persistence.shared.enabled }}
+            - name: shared
+              mountPath: /shared
               readOnly: true
             {{- end }}
           resources:
@@ -200,24 +191,15 @@ spec:
             items:
               - key: .env
                 path: .env
-        {{- if .Values.backend.persistence.documents.enabled }}
-        - name: documents
-          emptyDir: {}
-        {{- end }}
-        {{- if .Values.backend.persistence.keys.enabled }}
-        - name: keys
+        {{- if .Values.backend.persistence.data.enabled }}
+        - name: data
           persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-keys
+            claimName: {{ include "openrag.fullname" . }}-data
         {{- end }}
-        {{- if .Values.backend.persistence.config.enabled }}
-        - name: config
+        {{- if .Values.backend.persistence.shared.enabled }}
+        - name: shared
           persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-config
-        {{- end }}
-        {{- if .Values.langflow.persistence.enabled }}
-        - name: flows
-          persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-langflow
+            claimName: {{ include "openrag.fullname" . }}-shared
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

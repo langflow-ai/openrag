@@ -166,9 +166,14 @@ stringData:
     {{- if .Values.global.imageTag }}
     OPENRAG_VERSION={{ .Values.global.imageTag | quote }}
     {{- end }}
-    {{- if .Values.backend.persistence.documents.mountPath }}
-    OPENRAG_DOCUMENTS_PATH={{ .Values.backend.persistence.documents.mountPath | quote }}
-    {{- end }}
+    # Centralized Path Configuration
+    OPENRAG_DATA_PATH=/data/data
+    OPENRAG_FLOWS_BACKUP_PATH=/data/backup
+    OPENRAG_CONFIG_PATH=/data/config
+    OPENRAG_KEYS_PATH=/data/keys
+    OPENRAG_FLOWS_PATH=/shared/flows
+    OPENRAG_DOCUMENTS_PATH=/shared/openrag-documents
+
     {{- if .Values.backend.encryption.key }}
     OPENRAG_ENCRYPTION_KEY={{ .Values.backend.encryption.key  | quote }}
     {{- end }}
