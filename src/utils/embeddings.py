@@ -1,5 +1,6 @@
 import httpx
-from config.settings import KNN_EF_CONSTRUCTION, KNN_M, OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
+from config.embedding_constants import OPENAI_EMBEDDING_DIMENSIONS, WATSONX_EMBEDDING_DIMENSIONS
+from config.settings import KNN_EF_CONSTRUCTION, KNN_M, VECTOR_DIM
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 

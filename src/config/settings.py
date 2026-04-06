@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
+from config.embedding_constants import EMBED_MODEL
+from utils.model_utils import get_formatted_model_name
 
 from utils.container_utils import get_container_host
 from utils.logging_config import get_logger
@@ -109,26 +111,6 @@ WEBHOOK_BASE_URL = os.getenv(
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
-EMBED_MODEL = "text-embedding-3-small"
-
-OPENAI_EMBEDDING_DIMENSIONS = {
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        "text-embedding-ada-002": 1536,
-    }
-
-WATSONX_EMBEDDING_DIMENSIONS = {
-# IBM Models
-"ibm/granite-embedding-107m-multilingual": 384,
-"ibm/granite-embedding-278m-multilingual": 1024,
-"ibm/slate-125m-english-rtrvr": 768,
-"ibm/slate-125m-english-rtrvr-v2": 768,
-"ibm/slate-30m-english-rtrvr": 384,
-"ibm/slate-30m-english-rtrvr-v2": 384,
-# Third Party Models
-"intfloat/multilingual-e5-large": 1024,
-"sentence-transformers/all-minilm-l6-v2": 384,
-}
 
 INDEX_BODY = {
     "settings": {
@@ -492,19 +474,8 @@ class AppClients:
             model_name = config.knowledge.embedding_model or EMBED_MODEL
             provider = config.knowledge.embedding_provider or "openai"
 
-            # Format model name for LiteLLM compatibility (same logic as search_service)
-            formatted_model = model_name
-            known_prefixes = ["openai", "ollama", "watsonx", "anthropic", "gemini", "vertex_ai"]
-            if not any(model_name.startswith(p + "/") for p in known_prefixes):
-                if ":" in model_name:
-                    # Ollama models use tags with colons
-                    formatted_model = f"ollama/{model_name}"
-                elif model_name in WATSONX_EMBEDDING_DIMENSIONS:
-                    # WatsonX embedding models
-                    formatted_model = f"watsonx/{model_name}"
-                elif provider != "openai":
-                    # Explicit provider prefix
-                    formatted_model = f"{provider}/{model_name}"
+            # Format model name for LiteLLM compatibility (centralized logic)
+            formatted_model = get_formatted_model_name(model_name, provider)
 
             # API key for AsyncOpenAI constructor
             api_key = os.environ.get("OPENAI_API_KEY")
