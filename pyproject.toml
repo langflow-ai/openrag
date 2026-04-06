@@ -44,6 +44,7 @@ dependencies = [
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
     "prometheus-fastapi-instrumentator>=7.1.0",
+    "litellm==1.83.3",
 ]
 
 [dependency-groups]
