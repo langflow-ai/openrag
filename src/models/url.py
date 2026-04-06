@@ -94,13 +94,9 @@ class LangflowUrlProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
-            effective_jwt = self.jwt_token
-            if self.session_manager and not effective_jwt:
-                self.session_manager.get_user_opensearch_client(
-                    self.owner_user_id, self.jwt_token
-                )
-                if hasattr(self.session_manager, "_anonymous_jwt"):
-                    effective_jwt = self.session_manager._anonymous_jwt
+            effective_jwt = self.session_manager.get_effective_jwt_token(
+                self.owner_user_id, self.jwt_token
+            ) if self.session_manager else self.jwt_token
 
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 self.owner_user_id, effective_jwt

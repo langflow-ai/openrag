@@ -249,22 +249,17 @@ class SessionManager:
         else:
             user_id = user_or_id
 
+        from config.settings import IBM_AUTH_ENABLED, clients
+
+        # In non-IBM mode, OpenSearch uses basic auth — return the shared admin client
+        if not IBM_AUTH_ENABLED:
+            return clients.opensearch
+
         # Get the effective JWT token (handles anonymous JWT creation)
         jwt_token = self.get_effective_jwt_token(user_id, jwt_token)
 
-        from config.settings import IBM_AUTH_ENABLED, clients
-
         # In IBM mode credentials may rotate per-request — always create a fresh client
-        if IBM_AUTH_ENABLED:
-            return clients.create_user_opensearch_client(jwt_token)
-
-        # Check if we have a cached client for this user
-        if user_id not in self.user_opensearch_clients:
-            self.user_opensearch_clients[user_id] = (
-                clients.create_user_opensearch_client(jwt_token)
-            )
-
-        return self.user_opensearch_clients[user_id]
+        return clients.create_user_opensearch_client(jwt_token)
 
     def get_effective_jwt_token(self, user_id: str, jwt_token: str) -> str:
         """Get the effective JWT token, creating anonymous JWT if needed in no-auth mode"""
