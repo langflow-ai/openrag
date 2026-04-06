@@ -3,7 +3,9 @@ import json
 from collections import Counter
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import EMBED_MODEL, clients, get_embedding_model, get_index_name, WATSONX_EMBEDDING_DIMENSIONS
+from config.settings import clients, get_embedding_model, get_index_name
+from config.embedding_constants import EMBED_MODEL
+from utils.model_utils import get_formatted_model_name
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -149,26 +151,8 @@ class SearchService:
                 attempts = 0
                 last_exception = None
 
-                # Format model name for LiteLLM compatibility
-                # The patched client routes through LiteLLM for non-OpenAI providers
-                formatted_model = model_name
-
-                # Skip if already has a provider prefix
-                if not any(model_name.startswith(prefix + "/") for prefix in ["openai", "ollama", "watsonx", "anthropic"]):
-                    # Detect provider from model name characteristics:
-                    # - Ollama: contains ":" (e.g., "nomic-embed-text:latest")
-                    # - WatsonX: check against known IBM embedding models
-                    # - OpenAI: everything else (no prefix needed)
-
-                    if ":" in model_name:
-                        # Ollama models use tags with colons
-                        formatted_model = f"ollama/{model_name}"
-                        logger.debug(f"Formatted Ollama model: {model_name} -> {formatted_model}")
-                    elif model_name in WATSONX_EMBEDDING_DIMENSIONS:
-                        # WatsonX embedding models - use hardcoded list from settings
-                        formatted_model = f"watsonx/{model_name}"
-                        logger.debug(f"Formatted WatsonX model: {model_name} -> {formatted_model}")
-                    # else: OpenAI models don't need a prefix
+                # Use centralized utility for LiteLLM model formatting
+                formatted_model = get_formatted_model_name(model_name)
 
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
