@@ -86,8 +86,9 @@ class AuthService:
 
         # We'll validate client credentials when creating the connector
 
-        # Create connection configuration - use data/ directory for persistence
-        token_file = f"data/{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json"
+        # Create connection configuration - use data directory for persistence
+        from config.paths import get_data_file
+        token_file = get_data_file(f"{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json")
         effective_redirect_uri = OAUTH_BROKER_URL or redirect_uri
         config = {
             "token_file": token_file,
