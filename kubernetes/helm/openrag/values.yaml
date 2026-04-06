@@ -248,25 +248,31 @@ backend:
       accessMode: ReadWriteOnce
       size: 10Gi
       mountPath: /data
+      dataPath: "/data/data"
+      backupPath: "/data/backup"
+      configPath: "/data/config"
+      keysPath: "/data/keys"
     shared:
       enabled: true
       storageClass: ""
       accessMode: ReadWriteMany  # Often beneficial for shared content between backend/langflow
       size: 50Gi
       mountPath: /shared
-      documents:
-        loadDefaults: true
-        git:
-          enabled: true
-          owner: langflow-ai
-          repo: openrag
-          branch: main
-          path: openrag-documents
-          files:
-            - docling.pdf
-            - ibm_anthropic.pdf
-            - openrag-documentation.pdf
-            - warmup_ocr.pdf
+      flowsPath: "/shared/flows"
+    documents:
+      mountPath: "/shared/openrag-documents"
+      loadDefaults: true
+      git:
+        enabled: true
+        owner: langflow-ai
+        repo: openrag
+        branch: main
+        path: openrag-documents
+        files:
+          - docling.pdf
+          - ibm_anthropic.pdf
+          - openrag-documentation.pdf
+          - warmup_ocr.pdf
 
   # Logging
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
