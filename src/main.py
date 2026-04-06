@@ -35,6 +35,7 @@ from api import (
     connectors,
     docling,
     documents,
+    files,
     flows,
     knowledge_filter,
     langflow_files,
@@ -1698,6 +1699,12 @@ async def create_app():
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
 
+    # File listing endpoints
+    app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/files/search", files.search_files, methods=["GET"], tags=["internal"]
+    )
+
     # Knowledge Filter endpoints
     app.add_api_route(
         "/knowledge-filter",
@@ -1844,6 +1851,13 @@ async def create_app():
     app.add_api_route(
         "/connectors/aws_s3/{connection_id}/bucket-status",
         s3_bucket_status,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    # Browse remote files with ingestion status (registered before generic /{connector_type}/... to avoid shadowing)
+    app.add_api_route(
+        "/connectors/{connector_type}/{connection_id}/browse",
+        connectors.browse_connection_files,
         methods=["GET"],
         tags=["internal"],
     )

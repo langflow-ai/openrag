@@ -914,3 +914,105 @@ async def connector_token(
     except Exception as e:
         logger.error("Error getting connector token", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def browse_connection_files(
+    connector_type: str,
+    connection_id: str,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+    bucket: Optional[str] = None,
+    search: Optional[str] = None,
+    page_token: Optional[str] = None,
+    max_files: int = 100,
+):
+    """
+    Browse remote files in a connector with ingestion status.
+
+    Lists files from the remote source (e.g., S3 bucket) and marks each
+    as ingested or not by cross-referencing with OpenSearch.
+    """
+    try:
+        connector = await connector_service.get_connector(connection_id)
+        if not connector:
+            return JSONResponse(
+                {"error": "Connection not found or connector unavailable"},
+                status_code=404,
+            )
+
+        if not await connector.authenticate():
+            return JSONResponse(
+                {"error": "Connector authentication failed"},
+                status_code=401,
+            )
+
+        # Temporarily override bucket filter if specified
+        original_buckets = None
+        if bucket and hasattr(connector, "bucket_names"):
+            original_buckets = connector.bucket_names
+            connector.bucket_names = [bucket]
+
+        try:
+            files_result = await connector.list_files(
+                page_token=page_token, max_files=max_files
+            )
+        finally:
+            if original_buckets is not None:
+                connector.bucket_names = original_buckets
+
+        remote_files = files_result.get("files", [])
+        next_page_token = files_result.get("next_page_token")
+
+        # Filter by filename search if provided
+        if search:
+            search_lower = search.lower()
+            remote_files = [
+                f for f in remote_files
+                if search_lower in f.get("name", "").lower()
+            ]
+
+        # Get already-ingested file IDs from OpenSearch
+        ingested_ids, ingested_filenames = await get_synced_file_ids_for_connector(
+            connector_type=connector_type,
+            user_id=user.user_id,
+            session_manager=session_manager,
+            jwt_token=user.jwt_token,
+        )
+        ingested_set = set(ingested_ids) | set(ingested_filenames)
+
+        # Merge ingestion status into remote file list
+        enriched_files = []
+        for f in remote_files:
+            is_ingested = (
+                f.get("id", "") in ingested_set
+                or f.get("name", "") in ingested_set
+            )
+            enriched_files.append({
+                "id": f.get("id", ""),
+                "name": f.get("name", ""),
+                "bucket": f.get("bucket", ""),
+                "key": f.get("key", ""),
+                "size": f.get("size", 0),
+                "modified_time": f.get("modified_time", ""),
+                "is_ingested": is_ingested,
+            })
+
+        return JSONResponse({
+            "files": enriched_files,
+            "next_page_token": next_page_token,
+            "total_remote": len(enriched_files),
+            "total_ingested": sum(1 for f in enriched_files if f["is_ingested"]),
+        })
+
+    except Exception as e:
+        logger.error(
+            "Failed to browse connection files",
+            connector_type=connector_type,
+            connection_id=connection_id,
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": f"Failed to browse files: {str(e)}"},
+            status_code=500,
+        )
