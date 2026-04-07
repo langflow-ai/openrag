@@ -271,9 +271,7 @@ backend:
           - ibm_anthropic.pdf
           - openrag-documentation.pdf
           - warmup_ocr.pdf
-    storageMigration:
-      enabled: false  # Set to true if upgrading from Chart < 0.2.0 to migrate legacy config/keys PVCs to the new data PVC
-      image: alpine:latest
+
 
   # Logging
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
