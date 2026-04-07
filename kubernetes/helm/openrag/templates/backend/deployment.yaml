@@ -148,7 +148,7 @@ spec:
                       return 0
                     fi
                     retry=$((retry + 1))
-                    if [ "$retry" -lt "$max_retries" ].
+                    if [ "$retry" -lt "$max_retries" ]; then
                       echo "Retrying ${file}..."
                       sleep 2
                     fi
