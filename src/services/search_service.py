@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import os
 import json
@@ -20,6 +21,15 @@ EMBED_RETRY_MAX_DELAY = 8.0
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def register_search_service(service: "SearchService") -> None:
+    """
+    Explicitly register the active search service for the @tool wrapper.
+    This prevents stale instance risks and test interference.
+    """
+    global _global_search_service
+    _global_search_service = service
 
 
 @tool
@@ -45,8 +55,20 @@ async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]
 class SearchService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
-        global _global_search_service
-        _global_search_service = self
+        self._configure_provider_env()
+
+    def _configure_provider_env(self):
+        """Set provider env vars once at init time."""
+        try:
+            config = get_openrag_config()
+            if config.providers.ollama.endpoint:
+                fixed = transform_localhost_url(config.providers.ollama.endpoint)
+                # Use setdefault to avoid clobbering existing env vars if they were
+                # set explicitly via shell, but ensures we have a working default.
+                os.environ.setdefault("OLLAMA_API_BASE", fixed)
+                os.environ.setdefault("OLLAMA_BASE_URL", fixed)
+        except Exception as e:
+            logger.debug("Could not configure Ollama endpoint from config", error=str(e))
 
     async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
@@ -171,17 +193,6 @@ class SearchService:
                 available_models = [embedding_model]
 
             # Parallelize embedding generation for all models
-            import asyncio
-
-            # Configure Ollama endpoint dynamically for LiteLLM routing
-            # (matches backend/docling expectations: host.docker.internal vs localhost)
-            config = get_openrag_config()
-            ollama_endpoint = config.providers.ollama.endpoint
-            if ollama_endpoint:
-                fixed_endpoint = transform_localhost_url(ollama_endpoint)
-                os.environ["OLLAMA_API_BASE"] = fixed_endpoint
-                os.environ["OLLAMA_BASE_URL"] = fixed_endpoint
-
             async def embed_with_model(model_name):
                 delay = EMBED_RETRY_INITIAL_DELAY
                 attempts = 0

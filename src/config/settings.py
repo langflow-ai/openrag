@@ -475,6 +475,11 @@ class AppClients:
                 # Provide fallbacks if config loading failed
                 model_name = OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = "openai"
+                # Ensure a dummy key is available to satisfy the AsyncOpenAI constructor
+                # and avoid AuthenticationError if config loading failed.
+                if not os.environ.get("OPENAI_API_KEY"):
+                    os.environ["OPENAI_API_KEY"] = "no-key-required"
+                    logger.debug("Using dummy OpenAI API key fallback (config load failed)")
 
             # Format model name for LiteLLM compatibility (centralized logic)
             formatted_model = get_formatted_model_name(model_name, provider)
