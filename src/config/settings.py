@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
-from config.embedding_constants import EMBED_MODEL
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from utils.model_utils import get_formatted_model_name
 
 from utils.container_utils import get_container_host
@@ -468,12 +468,12 @@ class AppClients:
                     logger.debug("Loaded Ollama endpoint from config")
 
                 # Determine model and provider for both probe and production client
-                model_name = config.knowledge.embedding_model or EMBED_MODEL
+                model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = config.knowledge.embedding_provider or "openai"
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
                 # Provide fallbacks if config loading failed
-                model_name = EMBED_MODEL
+                model_name = OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = "openai"
 
             # Format model name for LiteLLM compatibility (centralized logic)
@@ -875,7 +875,7 @@ def get_agent_config():
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+    return get_openrag_config().knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
 
 
 def get_index_name() -> str:

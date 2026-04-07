@@ -4,11 +4,10 @@ from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
     ANTHROPIC_VALIDATION_MODELS,
     OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN,
-    OPENAI_DEFAULT_EMBEDDING_MODEL,
     OPENAI_DEFAULT_LANGUAGE_MODEL,
-    OPENAI_EMBEDDING_MODEL_PREFIX,
     OPENAI_VALIDATION_MODELS,
 )
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 

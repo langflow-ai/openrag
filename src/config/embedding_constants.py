@@ -1,6 +1,7 @@
 """Embedding model constants and dimensions."""
 
-EMBED_MODEL = "text-embedding-3-small"
+OPENAI_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_EMBEDDING_MODEL_PREFIX = "text-embedding"
 
 OPENAI_EMBEDDING_DIMENSIONS = {
     "text-embedding-3-small": 1536,
