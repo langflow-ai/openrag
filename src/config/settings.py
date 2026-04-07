@@ -467,12 +467,14 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Determine model and provider for both probe and production client
+                model_name = config.knowledge.embedding_model or EMBED_MODEL
+                provider = config.knowledge.embedding_provider or "openai"
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
-
-            # Determine model and provider for both probe and production client
-            model_name = config.knowledge.embedding_model or EMBED_MODEL
-            provider = config.knowledge.embedding_provider or "openai"
+                # Provide fallbacks if config loading failed
+                model_name = EMBED_MODEL
+                provider = "openai"
 
             # Format model name for LiteLLM compatibility (centralized logic)
             formatted_model = get_formatted_model_name(model_name, provider)
@@ -858,7 +860,7 @@ def get_openrag_config():
 # Expose configuration settings for backward compatibility and easy access
 def get_provider_config():
     """Get provider configuration."""
-    return get_openrag_config().provider
+    return get_openrag_config().providers
 
 
 def get_knowledge_config():
