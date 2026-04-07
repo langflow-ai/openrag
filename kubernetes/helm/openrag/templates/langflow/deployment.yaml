@@ -42,7 +42,7 @@ spec:
             - |
               set -eu
 
-              FLOWS_DIR="{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}"
+              FLOWS_DIR="{{ .Values.backend.persistence.shared.flowsPath }}"
 
               OWNER="{{ .Values.langflow.flows.git.owner }}"
               REPO="{{ .Values.langflow.flows.git.repo }}"
@@ -102,8 +102,8 @@ spec:
                 echo "Flows already exist in $FLOWS_DIR, skipping download."
               fi
           volumeMounts:
-            - name: langflow-data
-              mountPath: {{ .Values.langflow.persistence.mountPath }}
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
       {{- end }}
 
       containers:
@@ -130,6 +130,9 @@ spec:
               readOnly: true
             - name: langflow-data
               mountPath: {{ .Values.langflow.persistence.mountPath }}
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
+              readOnly: true
 
           resources:
             {{- toYaml .Values.langflow.resources | nindent 12 }}
@@ -171,6 +174,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.backend.persistence.shared.enabled }}
+        - name: shared
+          persistentVolumeClaim:
+            claimName: {{ include "openrag.fullname" . }}-shared
+        {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:

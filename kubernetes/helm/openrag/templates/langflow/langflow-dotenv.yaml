@@ -37,7 +37,7 @@ stringData:
     # Mounted as a file into the pod
 
     # Langflow core settings
-    LANGFLOW_LOAD_FLOWS_PATH={{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}
+    LANGFLOW_LOAD_FLOWS_PATH={{ .Values.backend.persistence.shared.flowsPath | quote }}
     {{- if .Values.postgres.enabled }}
     LANGFLOW_DATABASE_URL="postgresql://{{ .Values.postgres.username }}:{{ $postgresPassword }}@{{ include "openrag.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.database }}"
     {{- else }}
