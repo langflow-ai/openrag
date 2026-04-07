@@ -490,8 +490,8 @@ class AppClients:
                 production client is created after this thread exits, in the
                 caller's event loop, avoiding cross-loop SSL transport errors.
                 """
-                # Use a patched client for the probe so it routes correctly based on the model
-                client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
+                # Use a standard OpenAI client for the probe (only runs for OpenAI provider)
+                client = AsyncOpenAI(api_key=api_key)
                 logger.info(f"Probing client with HTTP/2 using model {formatted_model}...")
                 try:
                     await asyncio.wait_for(
