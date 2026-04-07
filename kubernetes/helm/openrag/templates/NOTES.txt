@@ -92,5 +92,7 @@ IF YOU ARE UPGRADING FROM A VERSION < 0.2.0:
 2. This job will copy your existing config.yaml and JWT keys to the new data volume.
 3. Once the upgrade is successful, you can set storageMigration.enabled back to false.
 4. Old PVCs ({{ include "openrag.fullname" . }}-config, {{ include "openrag.fullname" . }}-keys) will remain in your cluster and should be manually deleted after verification.
+5. The flag 'backend.persistence.documents.enabled' has been removed. 
+   To disable default document loading, use 'backend.persistence.documents.loadDefaults: false' instead.
 
 For more information, visit: https://github.com/langflow-ai/openrag
