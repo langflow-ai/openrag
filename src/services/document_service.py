@@ -5,7 +5,6 @@ import os
 import aiofiles
 from io import BytesIO
 from typing import List
-import openai
 import tiktoken
 from utils.logging_config import get_logger
 
