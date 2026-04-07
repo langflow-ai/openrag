@@ -101,7 +101,7 @@ from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.models_service import ModelsService
 from services.monitor_service import MonitorService
-from services.search_service import SearchService
+from services.search_service import SearchService, register_search_service
 from services.task_service import TaskService
 from session_manager import SessionManager
 
@@ -1421,6 +1421,7 @@ async def initialize_services():
     # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
+    register_search_service(search_service)
     task_service = TaskService(document_service, ingestion_timeout=INGESTION_TIMEOUT)
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
