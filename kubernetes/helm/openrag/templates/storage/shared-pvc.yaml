@@ -1,4 +1,4 @@
-{{- if and .Values.backend.enabled .Values.backend.persistence.shared.enabled }}
+{{- if and .Values.backend.persistence.shared.enabled (or .Values.backend.enabled .Values.langflow.enabled) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
