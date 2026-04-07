@@ -1325,7 +1325,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentd", specifier = ">=0.2.2" },
+    { name = "agentd", specifier = ">=0.8.1" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "boto3", specifier = ">=1.35.0" },
     { name = "cryptography", specifier = ">=45.0.6" },
