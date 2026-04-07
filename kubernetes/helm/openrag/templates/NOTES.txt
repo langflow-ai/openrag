@@ -77,4 +77,20 @@ Check pod logs:
   kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=backend
   kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=frontend
 
+ === Breakthrough Notice / Breaking Changes ===
+
+CRITICAL: Chart version 0.2.0 introduces a major storage refactoring.
+Legacy PVCs (config, keys, documents) have been consolidated into 'data' and 'shared' PVCs.
+
+IF YOU ARE UPGRADING FROM A VERSION < 0.2.0:
+1. You MUST enable the migration job in your values.yaml to avoid data loss:
+   backend:
+     persistence:
+       storageMigration:
+         enabled: true
+
+2. This job will copy your existing config.yaml and JWT keys to the new data volume.
+3. Once the upgrade is successful, you can set storageMigration.enabled back to false.
+4. Old PVCs ({{ include "openrag.fullname" . }}-config, {{ include "openrag.fullname" . }}-keys) will remain in your cluster and should be manually deleted after verification.
+
 For more information, visit: https://github.com/langflow-ai/openrag
