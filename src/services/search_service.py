@@ -1,11 +1,13 @@
 import copy
+import os
 import json
 from collections import Counter
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import clients, get_embedding_model, get_index_name
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from utils.model_utils import get_formatted_model_name
+from utils.container_utils import transform_localhost_url
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -170,6 +172,15 @@ class SearchService:
 
             # Parallelize embedding generation for all models
             import asyncio
+
+            # Configure Ollama endpoint dynamically for LiteLLM routing
+            # (matches backend/docling expectations: host.docker.internal vs localhost)
+            config = get_openrag_config()
+            ollama_endpoint = config.providers.ollama.endpoint
+            if ollama_endpoint:
+                fixed_endpoint = transform_localhost_url(ollama_endpoint)
+                os.environ["OLLAMA_API_BASE"] = fixed_endpoint
+                os.environ["OLLAMA_BASE_URL"] = fixed_endpoint
 
             async def embed_with_model(model_name):
                 delay = EMBED_RETRY_INITIAL_DELAY
