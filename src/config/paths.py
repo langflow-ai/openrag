@@ -1,8 +1,7 @@
 """Centralized path helpers for OpenRAG.
 
-The *environment variables* themselves are declared in ``config.settings``
-(``OPENRAG_DOCUMENTS_PATH``, ``OPENRAG_KEYS_PATH``, etc.) for visibility.
-This module reads them directly via ``os.getenv`` to avoid circular imports
+This module is the single source of truth for the OPENRAG_*_PATH environment variables.
+Variables are read directly via ``os.getenv`` here to avoid circular imports
 (settings → config_manager → paths → settings).
 """
 
