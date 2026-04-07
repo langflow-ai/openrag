@@ -77,4 +77,15 @@ Check pod logs:
   kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=backend
   kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=frontend
 
+ === Breakthrough Notice / Breaking Changes ===
+
+CRITICAL: Chart version 0.2.0 introduces a major storage refactoring.
+Legacy PVCs (config, keys, documents) have been consolidated into 'data' and 'shared' PVCs.
+
+IF YOU ARE UPGRADING FROM A VERSION < 0.2.0:
+1. Manually migrate data from legacy PVCs (config, keys) to the new 'data' volume to avoid data loss.
+2. Old PVCs ({{ include "openrag.fullname" . }}-config, {{ include "openrag.fullname" . }}-keys) should be manually deleted after verification.
+5. The flag 'backend.persistence.documents.enabled' has been removed. 
+   To disable default document loading, use 'backend.persistence.documents.loadDefaults: false' instead.
+
 For more information, visit: https://github.com/langflow-ai/openrag
