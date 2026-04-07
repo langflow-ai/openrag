@@ -266,6 +266,9 @@ backend:
         repo: openrag
         branch: main
         path: openrag-documents
+    storageMigration:
+      enabled: false  # Set to true if upgrading from Chart < 0.2.0 to migrate legacy config/keys PVCs to the new data PVC
+      image: alpine:latest
         files:
           - docling.pdf
           - ibm_anthropic.pdf

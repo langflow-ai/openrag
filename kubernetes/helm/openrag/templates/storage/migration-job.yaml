@@ -1,0 +1,65 @@
+{{- if .Values.backend.persistence.storageMigration.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "openrag.fullname" . }}-storage-migration
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ include "openrag.fullname" . }}-storage-migration
+      labels:
+        {{- include "openrag.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: migration
+        image: {{ .Values.backend.persistence.storageMigration.image | quote }}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -e
+            echo "Starting storage migration..."
+            
+            # Migration for Config
+            if [ -f "/legacy-config/config.yaml" ]; then
+              echo "Migrating config.yaml to new data volume..."
+              mkdir -p /new-data/config
+              cp -v /legacy-config/config.yaml /new-data/config/config.yaml
+            else
+              echo "No legacy config.yaml found, skipping."
+            fi
+            
+            # Migration for Keys
+            if [ -d "/legacy-keys" ] && [ "$(ls -A /legacy-keys)" ]; then
+              echo "Migrating JWT keys to new data volume..."
+              mkdir -p /new-data/keys
+              cp -rv /legacy-keys/* /new-data/keys/
+            else
+              echo "No legacy keys found, skipping."
+            fi
+            
+            echo "Migration completed successfully."
+        volumeMounts:
+        - name: legacy-config
+          mountPath: /legacy-config
+        - name: legacy-keys
+          mountPath: /legacy-keys
+        - name: new-data
+          mountPath: /new-data
+      volumes:
+      - name: legacy-config
+        persistentVolumeClaim:
+          claimName: {{ include "openrag.fullname" . }}-config
+      - name: legacy-keys
+        persistentVolumeClaim:
+          claimName: {{ include "openrag.fullname" . }}-keys
+      - name: new-data
+        persistentVolumeClaim:
+          claimName: {{ include "openrag.fullname" . }}-data
+{{- end -}}
