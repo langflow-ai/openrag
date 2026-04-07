@@ -16,11 +16,36 @@ EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 
 
+# Variable used to store the active instance for the tool wrapper
+_global_search_service = None
+
+
+@tool
+async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]:
+    """
+    Use this tool to search for documents relevant to the query.
+
+    Args:
+        query (str): query string to search the corpus
+        embedding_model (str): Optional override for embedding model.
+                              If not provided, uses the current embedding
+                              model from configuration.
+
+    Returns:
+        dict (str, Any): {"results": [chunks]} on success
+    """
+    if not _global_search_service:
+        logger.error("SearchService tool called before initialization")
+        return {"results": [], "error": "Search service not available"}
+    return await _global_search_service.search_tool(query, embedding_model=embedding_model)
+
+
 class SearchService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
+        global _global_search_service
+        _global_search_service = self
 
-    @tool
     async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
