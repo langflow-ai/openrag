@@ -482,6 +482,24 @@
     background-color: #1d2431;
   }
 
+  [data-theme="ibm"]:not(.dark) .chat-submit {
+    background-color: transparent;
+    color: #161616;
+  }
+
+  [data-theme="ibm"]:not(.dark) .chat-submit:hover:not(:disabled) {
+    background-color: #e8e8e8;
+  }
+
+  [data-theme="ibm"].dark .chat-submit {
+    background-color: transparent;
+    color: #f4f4f4;
+  }
+
+  [data-theme="ibm"].dark .chat-submit:hover:not(:disabled) {
+    background-color: rgba(141, 141, 141, 0.4);
+  }
+
   [data-theme="ibm"]:not(.dark) .fc-status-completed {
     background-color: #a7f0ba;
     color: #0e6027;
