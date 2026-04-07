@@ -521,7 +521,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     type="submit"
                     size="iconSm"
                     disabled={(!input.trim() && !uploadedFile) || loading}
-                    className="!rounded-md h-8 w-8 p-0"
+                    className="chat-submit !rounded-md h-8 w-8 p-0"
                   >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

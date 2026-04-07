@@ -459,6 +459,58 @@
     color: hsl(var(--primary));
   }
 
+  [data-theme="ibm"] .fc-card {
+    background-color: #eaeff6;
+  }
+
+  [data-theme="ibm"] .fc-card pre,
+  [data-theme="ibm"] .fc-card .fc-value {
+    background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
+  }
+
+  [data-theme="ibm"]:not(.dark) .fc-card .fc-id {
+    color: #0f62fe;
+  }
+
+  [data-theme="ibm"].dark .fc-card {
+    background-color: #1d2431;
+  }
+
+  [data-theme="ibm"]:not(.dark) .chat-submit {
+    background-color: transparent;
+    color: #161616;
+  }
+
+  [data-theme="ibm"]:not(.dark) .chat-submit:hover:not(:disabled) {
+    background-color: #e8e8e8;
+  }
+
+  [data-theme="ibm"].dark .chat-submit {
+    background-color: transparent;
+    color: #f4f4f4;
+  }
+
+  [data-theme="ibm"].dark .chat-submit:hover:not(:disabled) {
+    background-color: rgba(141, 141, 141, 0.4);
+  }
+
+  [data-theme="ibm"]:not(.dark) .fc-status-completed {
+    background-color: #a7f0ba;
+    color: #0e6027;
+    border-color: #a7f0ba;
+  }
+
+  [data-theme="ibm"].dark .fc-status-completed {
+    background-color: #0e6027;
+    color: #a7f0ba;
+    border-color: #0e6027;
+  }
+
+  [data-theme="ibm"].dark .fc-card pre,
+  [data-theme="ibm"].dark .fc-card .fc-value {
+    background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
+  }
+
   * {
     @apply border-border;
   }
