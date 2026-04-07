@@ -45,7 +45,6 @@ dependencies = [
     "zxcvbn>=4.5.0",
     "prometheus-fastapi-instrumentator>=7.1.0",
     "litellm==1.83.3",
-    "openai>=1.0.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
 ]
