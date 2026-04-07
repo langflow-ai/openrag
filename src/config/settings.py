@@ -543,13 +543,19 @@ class AppClients:
                     loop.close()
 
             try:
-                # Run the probe in a separate thread with its own event loop.
-                # Only the probe result (bool) crosses the thread boundary;
-                # the production client is created here so its connections are
-                # bound to the caller's event loop, not the (now closed) probe loop.
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_probe_in_thread)
-                    use_http2 = future.result(timeout=15)
+                # Run the probe only for OpenAI provider; local and other providers
+                # (Ollama, WatsonX) typically use HTTP/1.1 for reliability.
+                if provider.lower() == "openai":
+                    # Run the probe in a separate thread with its own event loop.
+                    # Only the probe result (bool) crosses the thread boundary;
+                    # the production client is created here so its connections are
+                    # bound to the caller's event loop, not the (now closed) probe loop.
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(run_probe_in_thread)
+                        use_http2 = future.result(timeout=15)
+                else:
+                    use_http2 = False
+                    logger.debug(f"Skipping HTTP/2 probe for provider: {provider}")
 
                 if use_http2:
                     self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
