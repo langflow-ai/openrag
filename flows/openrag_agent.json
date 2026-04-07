@@ -202,34 +202,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
-            "name": "component_as_tool",
-            "output_types": [
-              "Tool"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "tools",
-            "id": "Agent-Nfw7u",
-            "inputTypes": [
-              "Tool"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "xy-edge__OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvEœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
-        "sourceHandle": "{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvEœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
-        "target": "Agent-Nfw7u",
-        "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "TextInput",
             "id": "TextInput-i0a3P",
             "name": "text",
@@ -312,6 +284,31 @@
         "sourceHandle": "{œdataTypeœ:œAgentœ,œidœ:œAgent-Nfw7uœ,œnameœ:œresponseœ,œoutput_typesœ:[œMessageœ]}",
         "target": "ChatOutput-gWl8E",
         "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-gWl8Eœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}"
+      },
+      {
+        "data": {
+          "sourceHandle": {
+            "dataType": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
+            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
+            "name": "component_as_tool",
+            "output_types": [
+              "Tool"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "tools",
+            "id": "Agent-Nfw7u",
+            "inputTypes": [
+              "Tool"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvEœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "source": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
+        "sourceHandle": "{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvEœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "target": "Agent-Nfw7u",
+        "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -341,6 +338,7 @@
             "key": "mcp_lf-starter_project",
             "last_updated": "2026-04-07T17:35:25.058Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "mcpServerName": "lf-starter_project",
             "metadata": {
               "code_hash": "756d1e10d0ca",
@@ -648,6 +646,7 @@
             "frozen": false,
             "icon": "MessagesSquare",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "7a26c54d89ed",
               "dependencies": {
@@ -946,6 +945,7 @@
             "frozen": false,
             "icon": "MessagesSquare",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "84009527d08c",
               "dependencies": {
@@ -1259,6 +1259,7 @@
             "frozen": false,
             "icon": "bot",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "7db77aa1eed6",
               "dependencies": {
@@ -2027,6 +2028,7 @@
             "icon": "calculator",
             "last_updated": "2026-04-07T17:35:25.059Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "37caa1aba62c",
               "dependencies": {
@@ -2211,6 +2213,7 @@
             "icon": "binary",
             "last_updated": "2026-04-07T17:35:25.059Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "965b8431bfd8",
               "dependencies": {
@@ -2752,8 +2755,9 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-04-07T18:51:38.045Z",
+            "last_updated": "2026-04-07T19:13:24.610Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "4a05432fb489",
               "dependencies": {
@@ -3110,7 +3114,7 @@
                 "dynamic": false,
                 "info": "Valid JSON Web Token for authentication. Will be sent in the Authorization header (with optional 'Bearer ' prefix).",
                 "input_types": [],
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "jwt_token",
                 "override_skip": false,
                 "password": true,
@@ -3241,7 +3245,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "8$8@SqVR&ZvbGBrd"
               },
               "request_timeout": {
                 "_input_type": "StrInput",
@@ -3287,7 +3291,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "query",
-                "value": "hisense"
+                "value": "ibm"
               },
               "should_cache_vector_store": {
                 "_input_type": "BoolInput",
@@ -3449,7 +3453,7 @@
                 "info": "",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "username",
                 "override_skip": false,
                 "placeholder": "",
@@ -3460,7 +3464,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "JWT"
+                "value": "admin"
               },
               "vector_field": {
                 "_input_type": "StrInput",
@@ -3520,7 +3524,7 @@
           "x": 982.8593504384346,
           "y": 1372.6753259451405
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -3559,6 +3563,7 @@
             "icon": "binary",
             "last_updated": "2026-04-07T17:35:25.062Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "965b8431bfd8",
               "dependencies": {
@@ -4088,6 +4093,7 @@
             "icon": "binary",
             "last_updated": "2026-04-07T17:35:25.062Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "965b8431bfd8",
               "dependencies": {
@@ -4610,6 +4616,7 @@
             "frozen": false,
             "icon": "prompts",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "5b3e6730923e",
               "dependencies": {
@@ -4818,6 +4825,7 @@
             "icon": "type",
             "last_updated": "2026-02-27T18:42:16.883Z",
             "legacy": false,
+            "lf_version": "1.9.0",
             "metadata": {
               "code_hash": "518f16485886",
               "dependencies": {
@@ -4951,9 +4959,9 @@
       }
     ],
     "viewport": {
-      "x": -116.53172771493962,
-      "y": -422.6592646452426,
-      "zoom": 0.5198222532796387
+      "x": -169.68076736399166,
+      "y": -734.2500559151576,
+      "zoom": 0.6012722580995798
     }
   },
   "description": "OpenRAG OpenSearch Agent",
