@@ -43,7 +43,7 @@ body {
 [data-theme="ibm"] .ag-root-wrapper,
 [data-theme="ibm"] .ag-root-wrapper-body,
 [data-theme="ibm"] .ag-header {
-  border-radius: 0 !important;
+  border-radius: 1px !important;
   overflow: hidden;
 }
 
@@ -100,12 +100,12 @@ body {
 
   /* Square checkboxes for IBM theme - Light mode */
   .ag-checkbox-input-wrapper {
-    border-radius: 0 !important;
+    border-radius: 1px !important;
     border-color: #161616 !important;
   }
 
   .ag-checkbox-input-wrapper.ag-checked {
-    border-radius: 0 !important;
+    border-radius: 1px !important;
     background-color: #161616 !important;
     border-color: #161616 !important;
   }
@@ -158,6 +158,6 @@ body {
   }
 
   .ag-paging-panel {
-    color: #525252;
+    color: #c6c6c6;
   }
 }
