@@ -34,7 +34,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- if and .Values.backend.persistence.documents.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
+        {{- if and .Values.backend.persistence.shared.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
         - name: load-default-documents
           image: curlimages/curl:8.5.0
           command: ["/bin/sh", "-c"]
@@ -102,8 +102,79 @@ spec:
                 echo "Documents already exist in $DOCS_DIR, skipping download."
               fi
           volumeMounts:
-            - name: documents
-              mountPath: {{ .Values.backend.persistence.documents.mountPath }}
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
+        {{- end }}
+        {{- if and .Values.backend.persistence.shared.enabled .Values.langflow.flows.loadDefaults .Values.langflow.flows.git.enabled }}
+        - name: load-default-flows
+          image: curlimages/curl:8.5.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              FLOWS_DIR="{{ .Values.backend.persistence.shared.flowsPath }}"
+
+              OWNER="{{ .Values.langflow.flows.git.owner }}"
+              REPO="{{ .Values.langflow.flows.git.repo }}"
+              BRANCH="{{ .Values.langflow.flows.git.branch }}"
+              {{- if .Values.langflow.flows.git.hash }}
+              GIT_REF="{{ .Values.langflow.flows.git.hash }}"
+              {{- else }}
+              GIT_REF="${BRANCH}"
+              {{- end }}
+              REPO_PATH="{{ .Values.langflow.flows.git.path }}"
+
+              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
+
+              mkdir -p "$FLOWS_DIR"
+
+              if [ -z "$(ls -A "$FLOWS_DIR" 2>/dev/null)" ]; then
+                echo "Loading default flows from ${OWNER}/${REPO}@${GIT_REF}/${REPO_PATH} ..."
+
+                download_with_retry() {
+                  file="$1"
+                  url="${GITHUB_RAW_URL}/${file}"
+                  dest="${FLOWS_DIR}/${file}"
+                  max_retries=3
+                  timeout=60
+                  retry=0
+
+                  while [ "$retry" -lt "$max_retries" ]; do
+                    echo "Downloading ${file} (attempt $((retry + 1))/${max_retries})..."
+                    if curl -f -L -m "$timeout" -o "$dest" "$url"; then
+                      echo "OK: ${file}"
+                      return 0
+                    fi
+                    retry=$((retry + 1))
+                    if [ "$retry" -lt "$max_retries" ]; then
+                      echo "Retrying ${file}..."
+                      sleep 2
+                    fi
+                  done
+
+                  echo "ERROR: Failed to download ${file} from ${url}"
+                  return 1
+                }
+
+                failed=0
+{{- range .Values.langflow.flows.git.files }}
+                if ! download_with_retry "{{ . }}"; then failed=1; fi
+{{- end }}
+
+                if [ "$failed" -eq 1 ]; then
+                  echo "ERROR: One or more flows failed to download"
+                  exit 1
+                fi
+
+                echo "Flows loaded: $(ls "$FLOWS_DIR")"
+              else
+                echo "Flows already exist in $FLOWS_DIR, skipping download."
+              fi
+          volumeMounts:
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
         {{- end }}
         {{- if .Values.langflow.enabled }}
         - name: wait-for-langflow
@@ -136,22 +207,13 @@ spec:
               mountPath: /app/.env
               subPath: .env
               readOnly: true
-            {{- if .Values.backend.persistence.documents.enabled }}
-            - name: documents
-              mountPath: {{ .Values.backend.persistence.documents.mountPath }}
+            {{- if .Values.backend.persistence.data.enabled }}
+            - name: data
+              mountPath: {{ .Values.backend.persistence.data.mountPath | quote }}
             {{- end }}
-            {{- if .Values.backend.persistence.keys.enabled }}
-            - name: keys
-              mountPath: {{ .Values.backend.persistence.keys.mountPath }}
-            {{- end }}
-            {{- if .Values.backend.persistence.config.enabled }}
-            - name: config
-              mountPath: {{ .Values.backend.persistence.config.mountPath }}
-            {{- end }}
-            {{- if .Values.langflow.persistence.enabled }}
-            - name: flows
-              mountPath: /app/flows
-              subPath: {{ .Values.langflow.persistence.flowsSubPath }}
+            {{- if .Values.backend.persistence.shared.enabled }}
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
               readOnly: true
             {{- end }}
           resources:
@@ -200,24 +262,15 @@ spec:
             items:
               - key: .env
                 path: .env
-        {{- if .Values.backend.persistence.documents.enabled }}
-        - name: documents
-          emptyDir: {}
-        {{- end }}
-        {{- if .Values.backend.persistence.keys.enabled }}
-        - name: keys
+        {{- if .Values.backend.persistence.data.enabled }}
+        - name: data
           persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-keys
+            claimName: {{ include "openrag.fullname" . }}-data
         {{- end }}
-        {{- if .Values.backend.persistence.config.enabled }}
-        - name: config
+        {{- if .Values.backend.persistence.shared.enabled }}
+        - name: shared
           persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-config
-        {{- end }}
-        {{- if .Values.langflow.persistence.enabled }}
-        - name: flows
-          persistentVolumeClaim:
-            claimName: {{ include "openrag.fullname" . }}-langflow
+            claimName: {{ include "openrag.fullname" . }}-shared
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
