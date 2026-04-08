@@ -26,6 +26,24 @@ class ModelsService:
     def __init__(self):
         self.session_manager = None
 
+    # Helper to add models to registry
+    def add_models(self, models_res, provider, new_registry):
+        if not models_res:
+            return
+        for m in models_res.get("language_models", []):
+            new_registry[m["value"]] = provider
+        for m in models_res.get("embedding_models", []):
+            new_registry[m["value"]] = provider
+
+    async def add_models_to_registry(self, models_res, provider):
+        async with self._registry_lock:
+            try:
+                new_registry = ModelsService._model_provider_registry.copy()
+                self.add_models(models_res, provider, new_registry)
+                ModelsService._model_provider_registry = new_registry
+            except Exception as e:
+                logger.error(f"Error adding models to registry: {str(e)}")
+
     async def update_model_registry(self):
         """Fetch all models from all providers and update the internal registry.
         
@@ -38,39 +56,30 @@ class ModelsService:
             try:
                 config = config_manager.get_config()
                 new_registry = {}
-                
-                # Helper to add models to registry
-                def add_models(models_res, provider):
-                    if not models_res:
-                        return
-                    for m in models_res.get("language_models", []):
-                        new_registry[m["value"]] = provider
-                    for m in models_res.get("embedding_models", []):
-                        new_registry[m["value"]] = provider
 
                 # Fetch from providers
                 
                 # OpenAI
                 if config.providers.openai.api_key:
                     try:
-                        res = await self.get_openai_models(config.providers.openai.api_key)
-                        add_models(res, "openai")
+                        res = await self.get_openai_models(config.providers.openai.api_key, update_index=False)
+                        self.add_models(res, "openai", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch OpenAI models for registry: {str(e)}")
 
                 # Anthropic
                 if config.providers.anthropic.api_key:
                     try:
-                        res = await self.get_anthropic_models(config.providers.anthropic.api_key)
-                        add_models(res, "anthropic")
+                        res = await self.get_anthropic_models(config.providers.anthropic.api_key, update_index=False)
+                        self.add_models(res, "anthropic", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch Anthropic models for registry: {str(e)}")
 
                 # Ollama
                 if config.providers.ollama.endpoint:
                     try:
-                        res = await self.get_ollama_models(config.providers.ollama.endpoint)
-                        add_models(res, "ollama")
+                        res = await self.get_ollama_models(config.providers.ollama.endpoint, update_index=False)
+                        self.add_models(res, "ollama", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch Ollama models for registry: {str(e)}")
                         
@@ -80,9 +89,10 @@ class ModelsService:
                         res = await self.get_ibm_models(
                             config.providers.watsonx.endpoint,
                             config.providers.watsonx.api_key,
-                            config.providers.watsonx.project_id
+                            config.providers.watsonx.project_id,
+                            update_index=False
                         )
-                        add_models(res, "watsonx")
+                        self.add_models(res, "watsonx", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
@@ -118,7 +128,7 @@ class ModelsService:
             
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
-    async def get_openai_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+    async def get_openai_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
             headers = {
@@ -186,10 +196,16 @@ class ModelsService:
                     )
 
                 logger.info("OpenAI API key validated successfully without consuming credits")
-                return {
+
+                result = {
                     "language_models": language_models,
                     "embedding_models": embedding_models,
                 }
+
+                if update_index:
+                    await self.add_models_to_registry(result, "openai")
+
+                return result
             else:
                 logger.error(f"Failed to fetch OpenAI models: {response.status_code}")
                 raise Exception(
@@ -200,7 +216,7 @@ class ModelsService:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
             raise
 
-    async def get_anthropic_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+    async def get_anthropic_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from Anthropic API"""
         try:
             headers = {
@@ -249,10 +265,15 @@ class ModelsService:
                         len(models),
                     )
 
-                return {
+                result = {
                     "language_models": language_models,
-                    "embedding_models": [],  # Anthropic doesn't provide embedding models
+                    "embedding_models": [],
                 }
+
+                if update_index:
+                    await self.add_models_to_registry(result, "anthropic")
+
+                return result
             else:
                 logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
                 raise Exception(
@@ -264,7 +285,7 @@ class ModelsService:
             raise
 
     async def get_ollama_models(
-        self, endpoint: str = None
+        self, endpoint: str = None, update_index: bool = True
     ) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from Ollama API with tool calling capabilities for language models"""
         try:
@@ -365,17 +386,22 @@ class ModelsService:
                     f"Found {len(language_models)} language models with tool calling and {len(embedding_models)} embedding models"
                 )
 
-                return {
+                result = {
                     "language_models": language_models,
                     "embedding_models": embedding_models,
                 }
+
+                if update_index:
+                    await self.add_models_to_registry(result, "ollama")
+
+                return result
 
         except Exception as e:
             logger.error(f"Error fetching Ollama models: {str(e)}")
             raise
 
     async def get_ibm_models(
-        self, endpoint: str = None, api_key: str = None, project_id: str = None
+        self, endpoint: str = None, api_key: str = None, project_id: str = None, update_index: bool = True
     ) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from IBM Watson API"""
         try:
@@ -509,10 +535,15 @@ class ModelsService:
                 )
                 raise Exception(error_msg)
 
-            return {
+            result = {
                 "language_models": language_models,
                 "embedding_models": embedding_models,
             }
+
+            if update_index:
+                await self.add_models_to_registry(result, "watsonx")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching IBM models: {str(e)}")

@@ -1254,6 +1254,19 @@ async def startup_tasks(services):
         Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT
     )
 
+    # Update model registry to allow further search calls to be instant
+    try:
+        models_service = services["models_service"]
+        await models_service.update_model_registry()
+    except Exception as e:
+        logger.error(
+            "Failed to update model registry at startup — "
+            "models may be missing until the next restart",
+            error=str(e),
+        )
+
+
+
     if IBM_AUTH_ENABLED:
         logger.info(
             "IBM auth mode: skipping startup OpenSearch checks. "
