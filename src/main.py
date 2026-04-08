@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
-from utils.embeddings import create_dynamic_index_body
+from utils.embeddings import create_index_body
 from utils.logging_config import configure_from_env, get_logger
 from utils.encryption import enforce_startup_prerequisites
 from utils.telemetry import TelemetryClient, Category, MessageId
@@ -228,21 +228,14 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         # Get the configured embedding model from user configuration
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        embedding_provider = config.knowledge.embedding_provider
-        embedding_provider_config = config.get_embedding_provider_config()
 
-        # Create dynamic index body based on the configured embedding model
-        # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
-        dynamic_index_body = await create_dynamic_index_body(
-            embedding_model,
-            provider=embedding_provider,
-            endpoint=getattr(embedding_provider_config, "endpoint", None),
-        )
+        # Create index body
+        index_body = await create_index_body()
 
         # Create documents index
         index_name = get_index_name()
         if not await os_client.indices.exists(index=index_name):
-            await os_client.indices.create(index=index_name, body=dynamic_index_body)
+            await os_client.indices.create(index=index_name, body=index_body)
             logger.info(
                 "Created OpenSearch index",
                 index_name=index_name,
