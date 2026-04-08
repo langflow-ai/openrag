@@ -12,7 +12,6 @@ from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
-from utils.model_utils import get_formatted_model_name
 
 from utils.container_utils import get_container_host
 from utils.logging_config import get_logger
@@ -500,8 +499,6 @@ class AppClients:
                     os.environ["OPENAI_API_KEY"] = "no-key-required"
                     logger.debug("Using dummy OpenAI API key fallback (config load failed)")
 
-            # Format model name for LiteLLM compatibility (centralized logic)
-            formatted_model = get_formatted_model_name(model_name, provider)
 
             # API key for AsyncOpenAI constructor
             api_key = os.environ.get("OPENAI_API_KEY")
@@ -516,19 +513,19 @@ class AppClients:
                 """
                 # Use a standard OpenAI client for the probe (only runs for OpenAI provider)
                 client = AsyncOpenAI(api_key=api_key)
-                logger.info(f"Probing client with HTTP/2 using model {formatted_model}...")
+                logger.info(f"Probing client with HTTP/2 using model {model_name}...")
                 try:
                     await asyncio.wait_for(
                         client.embeddings.create(
-                            model=formatted_model,
+                            model=model_name,
                             input=['test']
                         ),
                         timeout=5.0
                     )
-                    logger.info(f"HTTP/2 probe successful with {formatted_model}")
+                    logger.info(f"HTTP/2 probe successful with {model_name}")
                     return True
                 except (asyncio.TimeoutError, Exception) as probe_error:
-                    logger.warning(f"HTTP/2 probe failed with {formatted_model}, falling back to HTTP/1.1", error=str(probe_error))
+                    logger.warning(f"HTTP/2 probe failed with {model_name}, falling back to HTTP/1.1", error=str(probe_error))
                     return False
                 finally:
                     # Always close the probe client so its connections are fully
@@ -564,7 +561,7 @@ class AppClients:
 
                 if use_http2:
                     self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {formatted_model})")
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name})")
                 else:
                     http_client = httpx.AsyncClient(
                         http2=False,
@@ -573,7 +570,7 @@ class AppClients:
                     self._patched_async_client = patch_openai_with_mcp(
                         AsyncOpenAI(api_key=api_key, http_client=http_client)
                     )
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {formatted_model})")
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name})")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")

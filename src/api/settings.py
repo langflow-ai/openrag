@@ -1,3 +1,4 @@
+from dependencies import get_models_service
 import asyncio
 import json
 import platform
@@ -885,6 +886,7 @@ async def onboarding(
     flows_service=Depends(get_flows_service),
     session_manager=Depends(get_session_manager),
     document_service=Depends(get_document_service),
+    models_service=Depends(get_models_service),
     task_service=Depends(get_task_service),
     langflow_file_service=Depends(get_langflow_file_service),
     knowledge_filter_service=Depends(get_knowledge_filter_service),
@@ -1160,6 +1162,7 @@ async def onboarding(
 
                     task_id = await ingest_default_documents_when_ready(
                         document_service,
+                        models_service,
                         task_service,
                         langflow_file_service,
                         session_manager,

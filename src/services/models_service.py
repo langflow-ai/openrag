@@ -1,5 +1,6 @@
 import httpx
-from typing import Dict, List
+import asyncio
+from typing import Dict, List, Optional
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
     ANTHROPIC_VALIDATION_MODELS,
@@ -12,11 +13,110 @@ from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx"]
+
 class ModelsService:
-    """Service for fetching available models from different AI providers"""
+    """Service for fetching available models from different AI providers and managing a model registry."""
+
+    # Registry for caching model-to-provider mapping
+    _model_provider_registry: Dict[str, str] = {}
+    _registry_lock = asyncio.Lock()
 
     def __init__(self):
         self.session_manager = None
+
+    async def update_model_registry(self):
+        """Fetch all models from all providers and update the internal registry.
+        
+        This method calls provider-specific methods to get the list of available
+        models and stores the mapping in a registry for fast lookup.
+        """
+        from config.config_manager import config_manager
+        
+        async with self._registry_lock:
+            try:
+                config = config_manager.get_config()
+                new_registry = {}
+                
+                # Helper to add models to registry
+                def add_models(models_res, provider):
+                    if not models_res:
+                        return
+                    for m in models_res.get("language_models", []):
+                        new_registry[m["value"]] = provider
+                    for m in models_res.get("embedding_models", []):
+                        new_registry[m["value"]] = provider
+
+                # Fetch from providers
+                
+                # OpenAI
+                if config.providers.openai.api_key:
+                    try:
+                        res = await self.get_openai_models(config.providers.openai.api_key)
+                        add_models(res, "openai")
+                    except Exception as e:
+                        logger.debug(f"Could not fetch OpenAI models for registry: {str(e)}")
+
+                # Anthropic
+                if config.providers.anthropic.api_key:
+                    try:
+                        res = await self.get_anthropic_models(config.providers.anthropic.api_key)
+                        add_models(res, "anthropic")
+                    except Exception as e:
+                        logger.debug(f"Could not fetch Anthropic models for registry: {str(e)}")
+
+                # Ollama
+                if config.providers.ollama.endpoint:
+                    try:
+                        res = await self.get_ollama_models(config.providers.ollama.endpoint)
+                        add_models(res, "ollama")
+                    except Exception as e:
+                        logger.debug(f"Could not fetch Ollama models for registry: {str(e)}")
+                        
+                # WatsonX
+                if config.providers.watsonx.api_key:
+                    try:
+                        res = await self.get_ibm_models(
+                            config.providers.watsonx.endpoint,
+                            config.providers.watsonx.api_key,
+                            config.providers.watsonx.project_id
+                        )
+                        add_models(res, "watsonx")
+                    except Exception as e:
+                        logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
+
+                ModelsService._model_provider_registry = new_registry
+                logger.info(f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered")
+                
+            except Exception as e:
+                logger.error(f"Error updating model registry: {str(e)}")
+
+    async def get_litellm_model_name(self, model_name: str, provider: Optional[str] = None) -> str:
+        """Synchronous version of model formatting for when provider is already known.
+        
+        This is useful for synchronous contexts (like properties) where the provider
+        information is already available and doesn't need to be looked up in the registry.
+        """
+
+        if not model_name:
+            return ""
+            
+        # Skip formatting if already has a known provider prefix
+        if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
+            return model_name
+            
+        # Check if provider is explicitly given and not "openai"
+        provider_lower = provider.lower() if provider else None
+        
+        if provider_lower is None:
+            # Try looking in registry
+            provider_lower = ModelsService._model_provider_registry.get(model_name)
+            if provider_lower is None:
+                await self.update_model_registry()
+                provider_lower = ModelsService._model_provider_registry.get(model_name)
+            
+        return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
     async def get_openai_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""

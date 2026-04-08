@@ -1,3 +1,4 @@
+from dependencies import get_models_service
 import os
 from typing import Optional
 from urllib.parse import urlparse
@@ -163,6 +164,7 @@ async def upload_options(
 async def upload_bucket(
     body: UploadBucketBody,
     task_service=Depends(get_task_service),
+    models_service=Depends(get_models_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
 ):
@@ -213,6 +215,7 @@ async def upload_bucket(
     processor = S3FileProcessor(
         task_service.document_service,
         bucket,
+        models_service=models_service,
         s3_client=s3_client,
         owner_user_id=owner_user_id,
         jwt_token=jwt_token,

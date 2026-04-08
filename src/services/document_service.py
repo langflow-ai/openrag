@@ -87,8 +87,9 @@ def chunk_texts_for_embeddings(
 
 
 class DocumentService:
-    def __init__(self, session_manager=None):
+    def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
+        self.models_service = models_service
         self._mapping_ensured = False
 
 
@@ -138,7 +139,7 @@ class DocumentService:
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor
-            processor = TaskProcessor(document_service=self)
+            processor = TaskProcessor(document_service=self, models_service=self.models_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=file_hash,

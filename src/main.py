@@ -474,6 +474,7 @@ async def ingest_openrag_docs_when_ready(
 
 async def ingest_default_documents_when_ready(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -529,6 +530,7 @@ async def ingest_default_documents_when_ready(
         if DISABLE_INGEST_WITH_LANGFLOW:
             new_task_id = await _ingest_default_documents_openrag(
                 document_service,
+                models_service,
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
@@ -694,6 +696,7 @@ async def _ingest_default_documents_url_langflow(
 
 async def _ingest_default_documents_url(
     document_service,
+    models_service,
     docs_url: str,
     crawl_depth: int,
     jwt_token=None,
@@ -717,6 +720,7 @@ async def _ingest_default_documents_url(
 
         processor = DocumentFileProcessor(
             document_service,
+            models_service=models_service,
             owner_user_id=None,
             jwt_token=jwt_token,
             owner_name=None,
@@ -1146,6 +1150,7 @@ async def opensearch_health_ready(request):
 
 async def _ingest_default_documents_openrag(
     document_service,
+    models_service,
     task_service,
     file_paths,
     connector_type: str = "openrag_docs",
@@ -1162,6 +1167,7 @@ async def _ingest_default_documents_openrag(
 
     processor = DocumentFileProcessor(
         document_service,
+        models_service=models_service,
         owner_user_id=None,
         jwt_token=jwt_token,
         owner_name=None,
@@ -1419,14 +1425,14 @@ async def initialize_services():
     session_manager = SessionManager(SESSION_SECRET)
 
     # Initialize services
-    document_service = DocumentService(session_manager=session_manager)
-    search_service = SearchService(session_manager)
+    models_service = ModelsService()
+    document_service = DocumentService(session_manager=session_manager, models_service=models_service)
+    search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
-    task_service = TaskService(document_service, ingestion_timeout=INGESTION_TIMEOUT)
+    task_service = TaskService(document_service, models_service, ingestion_timeout=INGESTION_TIMEOUT)
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
-    models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(flows_service=flows_service)
 
@@ -1441,6 +1447,8 @@ async def initialize_services():
         index_name=get_index_name(),
         task_service=task_service,
         session_manager=session_manager,
+        models_service=models_service,
+        document_service=document_service,
     )
 
     # Create connector router that chooses based on configuration
