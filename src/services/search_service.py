@@ -7,7 +7,6 @@ from typing import Any, Dict
 from agentd.tool_decorator import tool
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
-from utils.model_utils import get_formatted_model_name
 from utils.container_utils import transform_localhost_url
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
@@ -53,8 +52,9 @@ async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]
 
 
 class SearchService:
-    def __init__(self, session_manager=None):
+    def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
+        self.models_service = models_service
         self._configure_provider_env()
 
     def _configure_provider_env(self):
@@ -199,7 +199,11 @@ class SearchService:
                 last_exception = None
 
                 # Use centralized utility for LiteLLM model formatting
-                formatted_model = get_formatted_model_name(model_name)
+                if self.models_service:
+                    formatted_model = await self.models_service.get_litellm_model_name(model_name)
+                else:
+                    # Fallback if service not injected (tests/etc)
+                    formatted_model = model_name
 
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1

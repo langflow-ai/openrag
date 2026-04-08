@@ -13,8 +13,9 @@ logger = get_logger(__name__)
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
-    def __init__(self, document_service=None):
+    def __init__(self, document_service=None, models_service=None):
         self.document_service = document_service
+        self.models_service = models_service
 
     async def check_document_exists(
         self,
@@ -268,11 +269,16 @@ class TaskProcessor:
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
         embeddings = []
 
+        if self.models_service:
+            formatted_model = await self.models_service.get_litellm_model_name(embedding_model)
+        else:
+            formatted_model = embedding_model
+
         for batch in text_batches:
             resp = await clients.patched_embedding_client.embeddings.create(
-                model=embedding_model, input=batch
+                model=formatted_model, input=batch
             )
-            embeddings.extend([d.embedding for d in resp.data])
+            embeddings.extend([d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data])
 
         # Index each chunk as a separate document
         for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):
@@ -358,6 +364,7 @@ class DocumentFileProcessor(TaskProcessor):
     def __init__(
         self,
         document_service,
+        models_service,
         owner_user_id: str = None,
         jwt_token: str = None,
         owner_name: str = None,
@@ -365,7 +372,7 @@ class DocumentFileProcessor(TaskProcessor):
         is_sample_data: bool = False,
         connector_type: str = "local",
     ):
-        super().__init__(document_service)
+        super().__init__(document_service, models_service)
         self.owner_user_id = owner_user_id
         self.jwt_token = jwt_token
         self.owner_name = owner_name
@@ -438,8 +445,9 @@ class ConnectorFileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         document_service=None,
+        models_service=None,
     ):
-        super().__init__(document_service=document_service)
+        super().__init__(document_service=document_service, models_service=models_service)
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
@@ -643,10 +651,11 @@ class S3FileProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        models_service=None,
     ):
         import boto3
 
-        super().__init__(document_service)
+        super().__init__(document_service, models_service)
         self.bucket = bucket
         self.s3_client = s3_client or boto3.client("s3")
         self.owner_user_id = owner_user_id
