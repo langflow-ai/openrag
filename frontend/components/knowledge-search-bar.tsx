@@ -47,31 +47,30 @@ export const KnowledgeSearchBar = () => {
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
 
   return (
-    <form
-      onSubmit={handleSearch}
-      className={"relative flex w-full items-stretch"}
-    >
-      {!!selectedFilter?.name && (
-        <div
-          title={selectedFilter.name}
-          className={cn(
-            "absolute -top-3 left-0 z-10 flex h-8 max-w-[260px] items-center gap-2 rounded-md border border-primary/60 px-3 text-sm shadow-sm",
-            filterAccentClasses[parsedFilterData?.color || "zinc"],
-          )}
-        >
-          <span className="truncate font-medium">{selectedFilter.name}</span>
-          <button
-            type="button"
-            aria-label="Remove filter"
-            className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center opacity-80 transition-opacity hover:opacity-100"
-            onClick={() => setSelectedFilter(null)}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
+    <form onSubmit={handleSearch} className={"flex w-full items-stretch"}>
       <div className="flex h-12 w-full overflow-hidden border border-border bg-card">
+        {!!selectedFilter?.name && (
+          <div
+            title={selectedFilter.name}
+            className={cn(
+              "flex h-full flex-shrink-0 items-center gap-1.5 border-r border-border px-2 max-w-[200px]",
+              filterAccentClasses[parsedFilterData?.color || "zinc"],
+            )}
+          >
+            <span className="truncate text-xs font-medium">
+              {selectedFilter.name}
+            </span>
+            <button
+              type="button"
+              aria-label="Remove filter"
+              className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center opacity-80 transition-opacity hover:opacity-100"
+              onClick={() => setSelectedFilter(null)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="flex h-full flex-shrink-0 items-center justify-center">
           <Search
             className="h-4 w-4 m-4 text-[var(--icon-secondary)]"
