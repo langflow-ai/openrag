@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
@@ -1493,13 +1494,91 @@ async def initialize_services():
     }
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup Tasks
+    app.state.background_tasks = set()
+
+    await TelemetryClient.send_event(
+        Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
+    )
+    # Start index initialization in background to avoid blocking OIDC endpoints
+    t1 = asyncio.create_task(startup_tasks(app.state.services))
+    app.state.background_tasks.add(t1)
+    t1.add_done_callback(app.state.background_tasks.discard)
+
+    # Start periodic task cleanup scheduler
+    app.state.services["task_service"].start_cleanup_scheduler()
+
+    # Start periodic flow backup task (every 5 minutes)
+    async def periodic_backup():
+        """Periodic backup task that runs every 15 minutes"""
+        while True:
+            try:
+                await asyncio.sleep(5 * 60)  # Wait 5 minutes
+
+                # Check if onboarding has been completed
+                config = get_openrag_config()
+                if not config.edited:
+                    logger.debug(
+                        "Onboarding not completed yet, skipping periodic backup"
+                    )
+                    continue
+
+                flows_service = app.state.services.get("flows_service")
+                if flows_service:
+                    logger.info("Running periodic flow backup")
+                    backup_results = await flows_service.backup_all_flows(
+                        only_if_changed=True
+                    )
+                    if backup_results["backed_up"]:
+                        logger.info(
+                            "Periodic backup completed",
+                            backed_up=len(backup_results["backed_up"]),
+                            skipped=len(backup_results["skipped"]),
+                        )
+                    else:
+                        logger.debug(
+                            "Periodic backup: no flows changed",
+                            skipped=len(backup_results["skipped"]),
+                        )
+            except asyncio.CancelledError:
+                logger.info("Periodic backup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic backup task: {str(e)}")
+                # Continue running even if one backup fails
+
+    backup_task = asyncio.create_task(periodic_backup())
+    app.state.background_tasks.add(backup_task)
+    backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    yield
+
+    # shutdown tasks
+
+    await TelemetryClient.send_event(
+        Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
+    )
+    await cleanup_subscriptions_proper(app.state.services)
+    # Cleanup task service (cancels background tasks and process pool)
+    await app.state.services["task_service"].shutdown()
+    # Cleanup async clients
+    await clients.cleanup()
+    # Cleanup telemetry client
+    from utils.telemetry.client import cleanup_telemetry_client
+
+    await cleanup_telemetry_client()
+
+
 async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
+    app = FastAPI(
+        title="OpenRAG API", version=OPENRAG_VERSION, debug=True, lifespan=lifespan
+    )
     app.state.services = services  # Store services for cleanup
-    app.state.background_tasks = set()
 
     # Register route handlers — auth and service injection done via FastAPI Depends() in each handler
 
@@ -1990,80 +2069,6 @@ async def create_app():
         methods=["DELETE"],
         tags=["public"],
     )
-
-    # Add startup event handler
-    @app.on_event("startup")
-    async def startup_event():
-        await TelemetryClient.send_event(
-            Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
-        )
-        # Start index initialization in background to avoid blocking OIDC endpoints
-        t1 = asyncio.create_task(startup_tasks(services))
-        app.state.background_tasks.add(t1)
-        t1.add_done_callback(app.state.background_tasks.discard)
-
-        # Start periodic task cleanup scheduler
-        services["task_service"].start_cleanup_scheduler()
-
-        # Start periodic flow backup task (every 5 minutes)
-        async def periodic_backup():
-            """Periodic backup task that runs every 15 minutes"""
-            while True:
-                try:
-                    await asyncio.sleep(5 * 60)  # Wait 5 minutes
-
-                    # Check if onboarding has been completed
-                    config = get_openrag_config()
-                    if not config.edited:
-                        logger.debug(
-                            "Onboarding not completed yet, skipping periodic backup"
-                        )
-                        continue
-
-                    flows_service = services.get("flows_service")
-                    if flows_service:
-                        logger.info("Running periodic flow backup")
-                        backup_results = await flows_service.backup_all_flows(
-                            only_if_changed=True
-                        )
-                        if backup_results["backed_up"]:
-                            logger.info(
-                                "Periodic backup completed",
-                                backed_up=len(backup_results["backed_up"]),
-                                skipped=len(backup_results["skipped"]),
-                            )
-                        else:
-                            logger.debug(
-                                "Periodic backup: no flows changed",
-                                skipped=len(backup_results["skipped"]),
-                            )
-                except asyncio.CancelledError:
-                    logger.info("Periodic backup task cancelled")
-                    break
-                except Exception as e:
-                    logger.error(f"Error in periodic backup task: {str(e)}")
-                    # Continue running even if one backup fails
-
-        backup_task = asyncio.create_task(periodic_backup())
-        app.state.background_tasks.add(backup_task)
-        backup_task.add_done_callback(app.state.background_tasks.discard)
-
-    # Add shutdown event handler
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        await TelemetryClient.send_event(
-            Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
-        )
-        await cleanup_subscriptions_proper(services)
-        # Cleanup task service (cancels background tasks and process pool)
-        await services["task_service"].shutdown()
-        # Cleanup async clients
-        await clients.cleanup()
-        # Cleanup telemetry client
-        from utils.telemetry.client import cleanup_telemetry_client
-
-        await cleanup_telemetry_client()
-
     return app
 
 
