@@ -818,8 +818,6 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         "query": {
             "bool": {
                 "should": [
-                    # URL-based default docs are ingested as system_default and
-                    # owned by the anonymous onboarding user.
                     {
                         "bool": {
                             "must": [
@@ -828,8 +826,6 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
                             ]
                         }
                     },
-                    # Legacy file-based default docs were ingested as local and
-                    # marked with is_sample_data=true.
                     {
                         "bool": {
                             "must": [
@@ -867,9 +863,6 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     current_version = OPENRAG_VERSION
     should_reingest = bool(previous_version) and previous_version != current_version
 
-    # Legacy installs may not have a stored docs ingestion version.
-    # Use the presence of the OpenRAG docs filter as the signal that docs were
-    # already onboarded, independent of whether config.edited is set.
     if not previous_version and config.onboarding.openrag_docs_filter_id:
         should_reingest = True
 
@@ -890,8 +883,6 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     )
     config.onboarding.openrag_docs_ingested_version = current_version
     if _should_use_url_default_docs_ingest():
-        # Refresh signature metadata after upgrade reingestion so startup
-        # signature checks don't trigger an immediate duplicate ingest.
         config.onboarding.openrag_docs_remote_signature = (
             await _get_remote_docs_signature(DEFAULT_DOCS_URL)
         )
@@ -925,14 +916,10 @@ async def _get_remote_docs_signature(docs_url: str):
             etag = (head_response.headers.get("etag") or "").strip()
             last_modified = (head_response.headers.get("last-modified") or "").strip()
             if etag:
-                # Prefer ETag when available: it is typically the strongest
-                # cache validator and stays stable if extra cache headers
-                # appear/disappear without content changes.
                 return f"etag={etag}"
             if last_modified:
                 return f"last_modified={last_modified}"
 
-            # HEAD has no body. If cache headers are missing, fetch the page body.
             get_response = await client.get(docs_url)
             if get_response.status_code >= 400:
                 logger.warning(
@@ -1049,9 +1036,6 @@ async def refresh_default_openrag_docs(
             session_manager,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
-        # Keep docs version/signature metadata consistent after a refresh.
-        # If signature retrieval failed, persist None explicitly instead of
-        # leaving a stale previous signature value.
         config.onboarding.openrag_docs_remote_signature = signature
         if not config_manager.save_config_file(config):
             logger.warning(
@@ -1089,9 +1073,6 @@ async def opensearch_health_ready(request):
 
     if IBM_AUTH_ENABLED:
         logger.debug("[IBM Auth] IBM auth mode enabled, health check per-request")
-        # In IBM auth mode we cannot rely on the global OpenSearch client
-        # (auth is established per-request), so perform a lightweight,
-        # unauthenticated connectivity check against the OpenSearch endpoint.
         opensearch_url = OPENSEARCH_URL.rstrip("/")
         try:
             timeout = httpx.Timeout(5.0)
@@ -1184,11 +1165,7 @@ async def _ingest_default_documents_openrag(
 
 
 async def _update_mcp_servers_with_provider_credentials(services):
-    """Update MCP servers with provider credentials at startup.
-
-    This is especially important for no-auth mode where users don't go through
-    the OAuth login flow that would normally set these credentials.
-    """
+    """Update MCP servers with provider credentials at startup."""
     try:
         auth_service = services.get("auth_service")
         session_manager = services.get("session_manager")
@@ -1199,7 +1176,6 @@ async def _update_mcp_servers_with_provider_credentials(services):
 
         config = get_openrag_config()
 
-        # Build global vars with provider credentials using utility function
         from utils.langflow_headers import build_mcp_global_vars_from_config
 
         flows_service = services.get("flows_service")
@@ -1207,22 +1183,17 @@ async def _update_mcp_servers_with_provider_credentials(services):
             config, flows_service=flows_service
         )
 
-        # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
             from session_manager import AnonymousUser
 
-            # Create/get anonymous JWT for no-auth mode
             anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
             if anonymous_jwt:
                 global_vars["JWT"] = anonymous_jwt
 
-            # Add anonymous user details
             anonymous_user = AnonymousUser()
-            global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            global_vars["OWNER_NAME"] = (
-                f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
-            )
-            global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
+            global_vars["OWNER"] = anonymous_user.user_id
+            global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'
+            global_vars["OWNER_EMAIL"] = anonymous_user.email
 
             logger.info(
                 "Added anonymous JWT and user details to MCP servers for no-auth mode"
@@ -1245,7 +1216,6 @@ async def _update_mcp_servers_with_provider_credentials(services):
             "Failed to update MCP servers with provider credentials at startup",
             error=str(e),
         )
-        # Don't fail startup if MCP update fails
 
 
 async def startup_tasks(services):
@@ -1263,15 +1233,11 @@ async def startup_tasks(services):
             "OpenSearch will be initialized during onboarding with user credentials."
         )
     else:
-        # Only initialize basic OpenSearch connection, not the index
-        # Index will be created after onboarding when we know the embedding model
         await wait_for_opensearch()
 
         if DISABLE_INGEST_WITH_LANGFLOW:
             await _ensure_opensearch_index()
 
-        # Ensure that the OpenSearch index exists if onboarding was already completed
-        # - Handles the case where OpenSearch is reset (e.g., volume deleted) after onboarding
         embedding_model = None
         try:
             config = get_openrag_config()
@@ -1297,10 +1263,8 @@ async def startup_tasks(services):
             )
             raise
 
-        # Configure alerting security
         await configure_alerting_security()
 
-    # Reingest bundled OpenRAG docs once after application upgrade.
     upgrade_reingested = False
     try:
         upgrade_reingested = await _reingest_default_docs_on_upgrade_if_needed(
@@ -1325,12 +1289,8 @@ async def startup_tasks(services):
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
-    # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)
 
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites).
-    # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
-    # every container start and discarded any user edits made in the Langflow UI.
     newly_created: set[str] = set()
     try:
         flows_service = services["flows_service"]
@@ -1342,15 +1302,12 @@ async def startup_tasks(services):
             error=str(e),
         )
 
-    # Check if flows were reset and reapply settings if config is edited
     try:
         config = get_openrag_config()
         if config.edited:
             logger.info("Checking if Langflow flows were reset")
             flows_service = services["flows_service"]
             reset_flows = await flows_service.check_flows_reset()
-            # Exclude flows that were just seeded — they match the JSON by design,
-            # not because they were externally reset.
             reset_flows = [f for f in reset_flows if f not in newly_created]
 
             if reset_flows:
@@ -1380,7 +1337,6 @@ async def startup_tasks(services):
         await TelemetryClient.send_event(
             Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
         )
-        # Don't fail startup if this check fails
 
 
 async def initialize_services():
@@ -1388,7 +1344,6 @@ async def initialize_services():
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
     )
-    # Generate JWT keys if they don't exist
     generate_jwt_keys()
 
     from config.settings import IBM_AUTH_ENABLED
@@ -1396,7 +1351,6 @@ async def initialize_services():
     if IBM_AUTH_ENABLED:
         logger.info("IBM auth mode enabled — JWT validation delegated to Traefik")
 
-    # Initialize clients (now async to generate Langflow API key)
     try:
         await clients.initialize()
     except Exception as e:
@@ -1406,10 +1360,8 @@ async def initialize_services():
         )
         raise
 
-    # Initialize session manager
     session_manager = SessionManager(SESSION_SECRET)
 
-    # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
     task_service = TaskService(document_service, ingestion_timeout=INGESTION_TIMEOUT)
@@ -1420,7 +1372,6 @@ async def initialize_services():
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(flows_service=flows_service)
 
-    # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
@@ -1433,23 +1384,17 @@ async def initialize_services():
         session_manager=session_manager,
     )
 
-    # Create connector router that chooses based on configuration
     connector_service = ConnectorRouter(
         langflow_connector_service=langflow_connector_service,
         openrag_connector_service=openrag_connector_service,
     )
 
-    # Initialize auth service
     auth_service = AuthService(
         session_manager,
         connector_service,
         flows_service,
         langflow_mcp_service=LangflowMCPService(),
     )
-
-    # Load persisted connector connections at startup so webhooks and syncs
-    # can resolve existing subscriptions immediately after server boot
-    # Skip in no-auth mode since connectors require OAuth
 
     if not is_no_auth_mode():
         try:
@@ -1473,7 +1418,6 @@ async def initialize_services():
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS
     )
 
-    # API Key service for public API authentication
     api_key_service = APIKeyService(session_manager)
 
     return {
@@ -1498,10 +1442,8 @@ async def create_app():
     services = await initialize_services()
 
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
-    app.state.services = services  # Store services for cleanup
+    app.state.services = services
     app.state.background_tasks = set()
-
-    # Register route handlers — auth and service injection done via FastAPI Depends() in each handler
 
     # Langflow Files endpoints
     app.add_api_route(
@@ -1610,7 +1552,7 @@ async def create_app():
         tags=["internal"],
     )
 
-    # Knowledge Filter Webhook endpoint (no auth required - called by OpenSearch)
+    # Knowledge Filter Webhook endpoint
     app.add_api_route(
         "/knowledge-filter/{filter_id}/webhook/{subscription_id}",
         knowledge_filter.knowledge_filter_webhook,
@@ -1660,7 +1602,6 @@ async def create_app():
     app.add_api_route(
         "/connectors", connectors.list_connectors, methods=["GET"], tags=["internal"]
     )
-    # IBM COS-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
     app.add_api_route(
         "/connectors/ibm_cos/defaults",
         ibm_cos_defaults,
@@ -1685,7 +1626,6 @@ async def create_app():
         methods=["GET"],
         tags=["internal"],
     )
-    # AWS S3-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
     app.add_api_route(
         "/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"]
     )
@@ -1754,6 +1694,12 @@ async def create_app():
     app.add_api_route(
         "/documents/delete-by-filename",
         documents.delete_documents_by_filename,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/documents/rename",
+        documents.rename_document,
         methods=["POST"],
         tags=["internal"],
     )
@@ -1892,7 +1838,6 @@ async def create_app():
     )
 
     # ===== Public API v1 Endpoints (API Key auth) =====
-    # Chat endpoints
     app.add_api_route(
         "/v1/chat", v1_chat.chat_create_endpoint, methods=["POST"], tags=["public"]
     )
@@ -1912,12 +1857,10 @@ async def create_app():
         tags=["public"],
     )
 
-    # Search endpoint
     app.add_api_route(
         "/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"]
     )
 
-    # Documents endpoints
     app.add_api_route(
         "/v1/documents/ingest",
         v1_documents.ingest_endpoint,
@@ -1937,7 +1880,6 @@ async def create_app():
         tags=["public"],
     )
 
-    # Settings endpoints
     app.add_api_route(
         "/v1/settings",
         v1_settings.get_settings_endpoint,
@@ -1951,7 +1893,6 @@ async def create_app():
         tags=["public"],
     )
 
-    # Models endpoint
     app.add_api_route(
         "/v1/models/{provider}",
         v1_models.list_models_endpoint,
@@ -1959,7 +1900,6 @@ async def create_app():
         tags=["public"],
     )
 
-    # Knowledge filters endpoints
     app.add_api_route(
         "/v1/knowledge-filters",
         v1_knowledge_filters.create_endpoint,
@@ -1991,28 +1931,23 @@ async def create_app():
         tags=["public"],
     )
 
-    # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
         await TelemetryClient.send_event(
             Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
         )
-        # Start index initialization in background to avoid blocking OIDC endpoints
         t1 = asyncio.create_task(startup_tasks(services))
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
 
-        # Start periodic task cleanup scheduler
         services["task_service"].start_cleanup_scheduler()
 
-        # Start periodic flow backup task (every 5 minutes)
         async def periodic_backup():
             """Periodic backup task that runs every 15 minutes"""
             while True:
                 try:
-                    await asyncio.sleep(5 * 60)  # Wait 5 minutes
+                    await asyncio.sleep(5 * 60)
 
-                    # Check if onboarding has been completed
                     config = get_openrag_config()
                     if not config.edited:
                         logger.debug(
@@ -2042,24 +1977,19 @@ async def create_app():
                     break
                 except Exception as e:
                     logger.error(f"Error in periodic backup task: {str(e)}")
-                    # Continue running even if one backup fails
 
         backup_task = asyncio.create_task(periodic_backup())
         app.state.background_tasks.add(backup_task)
         backup_task.add_done_callback(app.state.background_tasks.discard)
 
-    # Add shutdown event handler
     @app.on_event("shutdown")
     async def shutdown_event():
         await TelemetryClient.send_event(
             Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
         )
         await cleanup_subscriptions_proper(services)
-        # Cleanup task service (cancels background tasks and process pool)
         await services["task_service"].shutdown()
-        # Cleanup async clients
         await clients.cleanup()
-        # Cleanup telemetry client
         from utils.telemetry.client import cleanup_telemetry_client
 
         await cleanup_telemetry_client()
@@ -2069,7 +1999,6 @@ async def create_app():
 
 def cleanup():
     """Cleanup on application shutdown"""
-    # Cleanup process pools only (webhooks handled by FastAPI shutdown)
     logger.info("Application shutting down")
     pass
 
@@ -2082,7 +2011,6 @@ async def cleanup_subscriptions_proper(services):
         connector_service = services["connector_service"]
         await connector_service.connection_manager.load_connections()
 
-        # Get all active connections with webhook subscriptions
         all_connections = await connector_service.connection_manager.list_connections()
         active_connections = [
             c
@@ -2124,22 +2052,17 @@ async def cleanup_subscriptions_proper(services):
 if __name__ == "__main__":
     import uvicorn
 
-    # TUI check already handled at top of file
-    # Register cleanup function
     atexit.register(cleanup)
 
-    # Create app asynchronously
     app = asyncio.run(create_app())
 
-    # Enable or disable HTTP access logging events
     access_log = os.getenv("ACCESS_LOG", "true").lower() == "true"
 
-    # Run the server (startup tasks now handled by FastAPI startup event)
     uvicorn.run(
         app,
         workers=1,
         host="0.0.0.0",
         port=8000,
-        reload=False,  # Disable reload since we're running from main
+        reload=False,
         access_log=access_log,
     )

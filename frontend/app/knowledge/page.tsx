@@ -50,6 +50,7 @@ import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
+import { useRenameDocument } from "../api/mutations/useRenameDocument";
 import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
 // Function to get the appropriate icon for a connector type
@@ -100,7 +101,12 @@ function SearchPage() {
   const hasInitializedFailedFilesRef = useRef(false);
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
+  // Rename state
+  const [editingFilename, setEditingFilename] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
   const deleteDocumentMutation = useDeleteDocument();
+  const renameDocumentMutation = useRenameDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
 
@@ -161,7 +167,6 @@ function SearchPage() {
   );
 
   // Auto-open unified task panel only when a NEW task file transitions to failed
-  // (skip initial failed files that already existed on page load).
   useEffect(() => {
     const failedFiles = taskFiles.filter((file) => file.status === "failed");
     const seenKeys = seenFailedFileKeysRef.current;
@@ -289,7 +294,6 @@ function SearchPage() {
     if (isError && error) {
       const errorMessage =
         error instanceof Error ? error.message : "Search failed";
-      // Avoid showing duplicate toasts for the same error
       if (lastErrorRef.current !== errorMessage) {
         lastErrorRef.current = errorMessage;
         toast.error("Search error", {
@@ -298,10 +302,34 @@ function SearchPage() {
         });
       }
     } else if (!isError) {
-      // Reset when query succeeds
       lastErrorRef.current = null;
     }
   }, [isError, error]);
+
+  // Rename handler
+  const handleRename = useCallback(
+    async (oldFilename: string, newFilename: string) => {
+      setEditingFilename(null);
+      const trimmed = newFilename.trim();
+      if (!trimmed || trimmed === oldFilename) return;
+
+      try {
+        await renameDocumentMutation.mutateAsync({
+          oldFilename,
+          newFilename: trimmed,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["search"] });
+        await queryClient.refetchQueries({ queryKey: ["search"] });
+        toast.success(`Renamed to "${trimmed}"`);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to rename document",
+        );
+      }
+    },
+    [renameDocumentMutation, queryClient],
+  );
+
   const fileResults = buildKnowledgeTableRows(
     searchData as File[],
     taskFiles,
@@ -340,6 +368,26 @@ function SearchPage() {
         const isActive = status === "active";
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        const isEditing = editingFilename === value;
+
+        if (isEditing) {
+          return (
+            <div className="flex items-center w-full px-1">
+              <input
+                autoFocus
+                className="border border-border rounded px-2 py-0.5 text-sm w-full bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={() => handleRename(value, editValue)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename(value, editValue);
+                  if (e.key === "Escape") setEditingFilename(null);
+                }}
+              />
+            </div>
+          );
+        }
+
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
             <div
@@ -365,6 +413,11 @@ function SearchPage() {
                   )}`,
                 );
               }}
+              onDoubleClick={() => {
+                if (!isActive) return;
+                setEditingFilename(value);
+                setEditValue(value);
+              }}
             >
               {getSourceIcon(data?.connector_type)}
               <Tooltip>
@@ -381,7 +434,7 @@ function SearchPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start">
-                  {value}
+                  {value} — double-click to rename
                 </TooltipContent>
               </Tooltip>
             </button>
@@ -558,6 +611,10 @@ function SearchPage() {
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
             connectorType={data?.connector_type}
+            onRename={(filename) => {
+              setEditingFilename(filename);
+              setEditValue(filename);
+            }}
           />
         );
       },
@@ -589,7 +646,6 @@ function SearchPage() {
     if (selectedRows.length === 0) return;
 
     try {
-      // Delete each file individually since the API expects one filename at a time
       const deletePromises = selectedRows.map((row) =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename }),
       );
@@ -629,7 +685,6 @@ function SearchPage() {
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
 
-      // Clear selection in the grid
       if (gridRef.current) {
         gridRef.current.api.deselectAll();
       }
@@ -643,13 +698,8 @@ function SearchPage() {
     }
   };
 
-  // enables pagination in the grid
   const pagination = true;
-
-  // sets 25 rows per page (default is 100)
   const paginationPageSize = 25;
-
-  // allows the user to select the page size from a predefined list of page sizes
   const paginationPageSizeSelector = [10, 25, 50, 100];
 
   return (

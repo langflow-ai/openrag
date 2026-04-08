@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, EllipsisVertical, RefreshCw } from "lucide-react";
+import { AlertCircle, EllipsisVertical, Pencil, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import { Button } from "./ui/button";
 interface KnowledgeActionsDropdownProps {
   filename: string;
   connectorType?: string;
+  onRename?: (filename: string) => void;
 }
 
 // Cloud connector types that support sync
@@ -39,6 +40,7 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 export const KnowledgeActionsDropdown = ({
   filename,
   connectorType,
+  onRename,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -47,10 +49,8 @@ export const KnowledgeActionsDropdown = ({
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
 
-  // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
 
-  // Check if the connector is connected
   const isConnected = useMemo(() => {
     if (!connectorType) return false;
     const connector = connectors.find((c) => c.type === connectorType);
@@ -119,6 +119,13 @@ export const KnowledgeActionsDropdown = ({
             }}
           >
             View chunks
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-primary focus:text-primary cursor-pointer"
+            onClick={() => onRename?.(filename)}
+          >
+            <Pencil className="h-4 w-4 mr-2" />
+            Rename
           </DropdownMenuItem>
           {isCloudFile && (
             <TooltipProvider>
