@@ -1170,6 +1170,19 @@ async def startup_tasks(services):
     await TelemetryClient.send_event(
         Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT
     )
+
+    # Update model registry to allow further search calls to be instant
+    try:
+        models_service = services["models_service"]
+        await models_service.update_model_registry()
+    except Exception as e:
+        logger.error(
+            "Failed to update model registry at startup — "
+            "models may be missing until the next restart",
+            error=str(e),
+        )
+
+
     # Only initialize basic OpenSearch connection, not the index
     # Index will be created after onboarding when we know the embedding model
     await wait_for_opensearch()
