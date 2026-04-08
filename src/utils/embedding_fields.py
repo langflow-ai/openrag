@@ -70,6 +70,7 @@ async def ensure_embedding_field_exists(
     opensearch_client,
     model_name: str,
     index_name: str = None,
+    dimensions: int = None,
 ) -> str:
     """
     Ensure that an embedding field for the specified model exists in the OpenSearch index.
@@ -93,7 +94,8 @@ async def ensure_embedding_field_exists(
         index_name = get_index_name()
 
     field_name = get_embedding_field_name(model_name)
-    dimensions = await get_embedding_dimensions(model_name)
+    if dimensions is None:
+        dimensions = await get_embedding_dimensions(model_name)
 
     logger.info(
         "Ensuring embedding field exists",

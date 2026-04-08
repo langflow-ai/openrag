@@ -228,16 +228,11 @@ class TaskProcessor:
         # Check if already exists
         if await self.check_document_exists(file_hash, opensearch_client):
             return {"status": "unchanged", "id": file_hash}
-
-        # Ensure the embedding field exists for this model
-        embedding_field_name = await ensure_embedding_field_exists(
-            opensearch_client, embedding_model, get_index_name()
-        )
+            
 
         logger.info(
             "Processing document with embedding model",
             embedding_model=embedding_model,
-            embedding_field=embedding_field_name,
             file_hash=file_hash,
         )
 
@@ -279,6 +274,13 @@ class TaskProcessor:
                 model=formatted_model, input=batch
             )
             embeddings.extend([d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data])
+
+        dimensions = len(embeddings[0])
+
+        # Ensure the embedding field exists for this model
+        embedding_field_name = await ensure_embedding_field_exists(
+            opensearch_client, embedding_model, get_index_name(), dimensions
+        )
 
         # Index each chunk as a separate document
         for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):

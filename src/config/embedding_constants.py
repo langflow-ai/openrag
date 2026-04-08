@@ -12,7 +12,7 @@ OPENAI_EMBEDDING_DIMENSIONS = {
 WATSONX_EMBEDDING_DIMENSIONS = {
     # IBM Models
     "ibm/granite-embedding-107m-multilingual": 384,
-    "ibm/granite-embedding-278m-multilingual": 1024,
+    "ibm/granite-embedding-278m-multilingual": 768,
     "ibm/slate-125m-english-rtrvr": 768,
     "ibm/slate-125m-english-rtrvr-v2": 768,
     "ibm/slate-30m-english-rtrvr": 384,
