@@ -46,6 +46,7 @@ dependencies = [
     "litellm==1.83.3",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
+    "openai>=2.30.0",
 ]
 
 [dependency-groups]
