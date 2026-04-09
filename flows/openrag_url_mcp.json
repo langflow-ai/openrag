@@ -4002,7 +4002,7 @@
                 "dynamic": false,
                 "info": "Valid JSON Web Token for authentication. Will be sent in the Authorization header (with optional 'Bearer ' prefix).",
                 "input_types": [],
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "jwt_token",
                 "override_skip": false,
                 "password": true,
@@ -4330,7 +4330,7 @@
           "x": 2729.318175939116,
           "y": 1398.252846147518
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -4354,7 +4354,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2026-04-07T17:32:29.795Z",
+            "last_updated": "2026-04-09T14:18:34.963Z",
             "legacy": false,
             "lf_version": "1.8.0",
             "metadata": {},
@@ -4404,7 +4404,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "18ca84dc-4277-40a5-bbca-8bf9d7343bff"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "code": {
@@ -6146,7 +6146,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -6671,7 +6671,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -7196,7 +7196,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -7648,7 +7648,7 @@
       }
     ],
     "viewport": {
-      "x": -137.0447917939623,
+      "x": 64.9552082060377,
       "y": -83.58254357131239,
       "zoom": 0.34893413159301545
     }
@@ -7657,9 +7657,8 @@
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.0.dev38",
   "locked": true,
-  "mcp_enabled": true,
   "name": "OpenSearch URL Ingestion Flow",
   "tags": [
     "openai",

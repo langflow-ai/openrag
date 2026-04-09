@@ -1735,7 +1735,7 @@ async def rollback_onboarding(
                         if filename:
                             try:
                                 opensearch_client = session_manager.get_user_opensearch_client(
-                                    user.user_id, jwt_token
+                                    user.user_id, user.jwt_token
                                 )
                                 from utils.opensearch_queries import build_filename_delete_body
                                 from config.settings import get_index_name

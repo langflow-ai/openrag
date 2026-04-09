@@ -828,7 +828,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2026-04-07T17:30:48.988Z",
+            "last_updated": "2026-04-09T14:17:24.701Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {},
@@ -878,7 +878,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "18ca84dc-4277-40a5-bbca-8bf9d7343bff"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "code": {
@@ -3818,7 +3818,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-04-07T18:50:36.701Z",
+            "last_updated": "2026-04-09T14:08:46.327Z",
             "legacy": false,
             "metadata": {
               "code_hash": "4a05432fb489",
@@ -3905,7 +3905,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "auth_mode": {
@@ -4212,7 +4212,7 @@
                 "dynamic": false,
                 "info": "Valid JSON Web Token for authentication. Will be sent in the Authorization header (with optional 'Bearer ' prefix).",
                 "input_types": [],
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "jwt_token",
                 "override_skip": false,
                 "password": true,
@@ -4540,7 +4540,7 @@
           "x": 1756.949537574781,
           "y": 1525.6023642029047
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -4620,7 +4620,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -6373,7 +6373,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -6900,7 +6900,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "d89df57e-0640-47c5-973b-37849ac97186"
               },
               "_type": "Component",
               "api_base": {
@@ -7351,16 +7351,16 @@
       }
     ],
     "viewport": {
-      "x": -76.77828650352444,
-      "y": -477.7149184337984,
-      "zoom": 0.5164469534707714
+      "x": -105.59760021687578,
+      "y": -426.71954436081523,
+      "zoom": 0.49198699185028627
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.0.dev38",
   "locked": true,
   "name": "OpenSearch Ingestion Flow",
   "tags": [
