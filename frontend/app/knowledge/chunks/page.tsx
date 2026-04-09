@@ -9,6 +9,7 @@ import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
 import { ProtectedRoute } from "@/components/protected-route";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -203,9 +204,9 @@ function ChunksPageContent() {
                       <span className="text-sm font-bold">
                         Chunk {chunk.index}
                       </span>
-                      <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                      <Badge variant="secondary">
                         {chunk.text.length} chars
-                      </span>
+                      </Badge>
                       <div className="py-1">
                         <Button
                           onClick={() => handleCopy(chunk.text, index)}
@@ -221,9 +222,9 @@ function ChunksPageContent() {
                       </div>
                     </div>
 
-                    <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                    <Badge variant="secondary">
                       {chunk.score.toFixed(2)} score
-                    </span>
+                    </Badge>
 
                     {/* TODO: Update to use active toggle */}
                     {/* <span className="px-2 py-1 text-green-500">

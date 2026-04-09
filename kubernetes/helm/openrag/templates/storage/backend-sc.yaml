@@ -1,4 +1,4 @@
-{{- if or (.Values.backend.persistence.config.enabled) (.Values.backend.persistence.keys.enabled) }}
+{{- if or (.Values.backend.persistence.data.enabled) (.Values.backend.persistence.shared.enabled) }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -18,5 +18,5 @@ parameters:
     {{- end }}
 reclaimPolicy: {{ .Values.backend.storageClassReclaimPolicy | default "Delete" }}
 volumeBindingMode: {{ .Values.backend.storageClassVolumeBindingMode | default "WaitForFirstConsumer" }}
-allowVolumeExpansion: {{ .Values.backend.storageClassAllowVolumeExpansion | default true }}
+allowVolumeExpansion: {{ default true .Values.backend.storageClassAllowVolumeExpansion }}
 {{- end }}

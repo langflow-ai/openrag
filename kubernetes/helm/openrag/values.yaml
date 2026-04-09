@@ -238,41 +238,42 @@ backend:
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   serviceName: "openrag"
 
-
-  # Persistence for documents, keys, and config
+  # Persistence consolidated into two main volumes:
+  # 1. /data: internal application state (data, backups, config, keys)
+  # 2. /shared: shared content (documents, flows)
   persistence:
-    documents:
+    data:
       enabled: true
       storageClass: ""
       accessMode: ReadWriteOnce
+      size: 10Gi
+      mountPath: /data
+      dataPath: "/data/data"
+      backupPath: "/data/backup"
+      configPath: "/data/config"
+      keysPath: "/data/keys"
+    shared:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteMany  # Often beneficial for shared content between backend/langflow
       size: 50Gi
-      mountPath: /app/openrag-documents
-      loadDefaults: true                        # Load default documents on first deployment
+      mountPath: /shared
+      flowsPath: "/shared/flows"
+    documents:
+      mountPath: "/shared/openrag-documents"
+      loadDefaults: true
       git:
         enabled: true
         owner: langflow-ai
         repo: openrag
         branch: main
-        # Optional: specific git commit hash (overrides branch if set)
-        #hash: ""
         path: openrag-documents
         files:
           - docling.pdf
           - ibm_anthropic.pdf
           - openrag-documentation.pdf
           - warmup_ocr.pdf
-    keys:
-      enabled: true
-      storageClass: ""
-      accessMode: ReadWriteOnce
-      size: 1Gi
-      mountPath: /app/keys
-    config:
-      enabled: true
-      storageClass: ""
-      accessMode: ReadWriteOnce
-      size: 1Gi
-      mountPath: /app/config
+
 
   # Logging
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
