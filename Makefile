@@ -19,6 +19,11 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
+
+# Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
+# so that Alpine (running as root) can re-own volume directories back to the host user.
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
 OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
@@ -70,6 +75,22 @@ define test_jwt_opensearch
 	echo "";
 endef
 
+# Fix ownership of backend volume directories
+# Re-owns directories to the host user so local dev (make backend) can always read/write them,
+# even after a container run chowned them to UID 1000 (appuser). Runs via Docker Alpine as root
+# so it succeeds regardless of current ownership; falls back to native chown if Docker is unavailable.
+# Usage: $(call fix_backend_volume_ownership)
+define fix_backend_volume_ownership
+	$(CONTAINER_RUNTIME) run --rm \
+		-v "$$(pwd)/flows:/mnt/flows" \
+		-v "$$(pwd)/keys:/mnt/keys" \
+		-v "$$(pwd)/config:/mnt/config" \
+		-v "$$(pwd)/data:/mnt/data" \
+		-v "$$(pwd)/openrag-documents:/mnt/openrag-documents" \
+		alpine sh -c "chown -R $(HOST_UID):$(HOST_GID) /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents && chmod 775 /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents" 2>/dev/null \
+		|| { chown -R $(HOST_UID):$(HOST_GID) flows keys config data openrag-documents 2>/dev/null || true; chmod 775 flows keys config data openrag-documents 2>/dev/null || true; }
+endef
+
 ######################
 # PHONY TARGETS
 ######################
@@ -80,7 +101,7 @@ endef
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
-       ensure-langflow-data
+       ensure-langflow-data ensure-backend-volumes
 
 all: help
 
@@ -324,7 +345,12 @@ ensure-langflow-data: ## Create the langflow-data directory if it does not exist
 	@mkdir -p langflow-data
 	@chmod 777 langflow-data
 
-dev: ensure-langflow-data ## Start full stack with GPU support
+ensure-backend-volumes: ## Create and permission backend volume directories
+	@mkdir -p flows keys config data openrag-documents
+	@chmod 775 flows keys config data openrag-documents 2>/dev/null \
+		|| echo "$(YELLOW)Warning: Could not chmod backend volume directories.$(NC)"
+
+dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
@@ -334,7 +360,7 @@ dev: ensure-langflow-data ## Start full stack with GPU support
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 
-dev-cpu: ensure-langflow-data ## Start full stack with CPU only
+dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
@@ -344,7 +370,7 @@ dev-cpu: ensure-langflow-data ## Start full stack with CPU only
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 
-dev-local: ensure-langflow-data ## Start infrastructure for local development
+dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -355,7 +381,7 @@ dev-local: ensure-langflow-data ## Start infrastructure for local development
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-cpu: ensure-langflow-data ## Start infrastructure for local development, with CPU only
+dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -366,7 +392,7 @@ dev-local-cpu: ensure-langflow-data ## Start infrastructure for local developmen
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-build-lf: ensure-langflow-data ## Start infrastructure for local development, building only Langflow image
+dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -379,7 +405,7 @@ dev-local-build-lf: ensure-langflow-data ## Start infrastructure for local devel
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-build-lf-cpu: ensure-langflow-data ## Start infrastructure for local development, building only Langflow image with CPU only
+dev-local-build-lf-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image with CPU only
 	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
 	$(COMPOSE_CMD) build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -398,7 +424,7 @@ dev-local-build-lf-cpu: ensure-langflow-data ## Start infrastructure for local d
 # Usage: make dev-branch BRANCH=test-openai-responses
 #        make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
 
-dev-branch: ensure-langflow-data ## Build & run full stack with custom Langflow branch
+dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	@echo ""
@@ -414,7 +440,7 @@ dev-branch: ensure-langflow-data ## Build & run full stack with custom Langflow 
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
 
-dev-branch-cpu: ensure-langflow-data ## Build & run full stack with custom Langflow branch and CPU only mode
+dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch and CPU only mode
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	@echo ""
@@ -441,7 +467,7 @@ stop-dev: ## Stop dev environment containers
 	$(COMPOSE_CMD) -f docker-compose.dev.yml down
 	@echo "$(PURPLE)Dev environment stopped.$(NC)"
 
-restart-dev: ensure-langflow-data ## Restart dev environment
+restart-dev: ensure-langflow-data ensure-backend-volumes ## Restart dev environment
 	@echo "$(YELLOW)Restarting dev environment with branch: $(BRANCH)$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.dev.yml down
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml up -d
@@ -543,7 +569,8 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	fi; \
 	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
-		rm -f keys/private_key.pem keys/public_key.pem; \
+		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
 	fi; \
 	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
@@ -559,6 +586,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 backend: ## Run backend locally
 	@echo "$(YELLOW)Starting backend locally...$(NC)"
 	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
+	@$(call fix_backend_volume_ownership)
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
@@ -682,19 +710,10 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/core/ -v
 
-test-ci: ensure-langflow-data ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
-	@chmod 777 langflow-data
+test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
-	if [ ! -f keys/private_key.pem ]; then \
-		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
-		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
-	else \
-		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
-		chmod 600 keys/private_key.pem 2>/dev/null || true; \
-		chmod 644 keys/public_key.pem 2>/dev/null || true; \
-	fi; \
 	echo "::group::Cleanup, Pull & Build Images"; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
@@ -729,6 +748,8 @@ test-ci: ensure-langflow-data ## Start infra, run integration + SDK tests, tear 
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
+	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
@@ -812,19 +833,10 @@ test-ci: ensure-langflow-data ## Start infra, run integration + SDK tests, tear 
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
-test-ci-local: ensure-langflow-data ## Same as test-ci but builds all images locally
-	@chmod 777 langflow-data
+test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci but builds all images locally
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --group dev; \
-	if [ ! -f keys/private_key.pem ]; then \
-		echo "$(YELLOW)Generating RSA keys for JWT signing...$(NC)"; \
-		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
-	else \
-		echo "$(CYAN)RSA keys already exist, ensuring correct permissions...$(NC)"; \
-		chmod 600 keys/private_key.pem 2>/dev/null || true; \
-		chmod 644 keys/public_key.pem 2>/dev/null || true; \
-	fi; \
 	echo "::group::Cleanup & Build Images"; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
@@ -860,6 +872,8 @@ test-ci-local: ensure-langflow-data ## Same as test-ci but builds all images loc
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
+	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \

@@ -701,6 +701,55 @@ def migrate_legacy_data_directories():
     logger.info("Data migration completed successfully")
 
 
+def _reclaim_host_ownership(directories: list[Path]) -> None:
+    """Re-own directories to the current host user via a container running as root.
+
+    On Linux with rootful Docker the backend entrypoint.sh calls
+    ``chown -R appuser:appuser`` on volume-mounted directories, changing their
+    *host-side* ownership to UID 1000.  Subsequent TUI startups then cannot
+    chmod or write into those directories (e.g. to regenerate JWT keys after a
+    reset), causing a silent crash.
+
+    This mirrors the ``fix_backend_volume_ownership`` Makefile define: an Alpine
+    container is launched as root and asked to chown the directories back to the
+    host user.  Silently skips directories that are already owned by the current
+    user, or when no container runtime is available.
+    """
+    import shutil as _shutil
+
+    host_uid = os.getuid()
+    host_gid = os.getgid()
+
+    needs_reclaim = [d for d in directories if d.exists() and d.stat().st_uid != host_uid]
+    if not needs_reclaim:
+        return
+
+    runtime = (
+        "docker" if _shutil.which("docker")
+        else "podman" if _shutil.which("podman")
+        else None
+    )
+    if not runtime:
+        logger.error("No container runtime found; cannot reclaim directory ownership")
+        return
+
+    for directory in needs_reclaim:
+        try:
+            subprocess.run(
+                [
+                    runtime, "run", "--rm",
+                    "-v", f"{directory}:/mnt/target",
+                    "alpine", "chown", "-R", f"{host_uid}:{host_gid}", "/mnt/target",
+                ],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            logger.info(f"Reclaimed ownership of {directory} → {host_uid}:{host_gid}")
+        except Exception as e:
+            logger.error(f"Could not reclaim ownership of {directory}: {e}")
+
+
 def generate_jwt_keys(keys_dir: Path):
     """Generate RSA keys for JWT signing if they don't exist.
 
@@ -772,6 +821,34 @@ def setup_host_directories():
         directory.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Ensured directory exists: {directory}")
 
+    # Backend volume-mounted directories must be writable by the container user
+    # (appuser, UID 1000). Podman handles this via :U in docker-compose.yml, but
+    # Docker ignores :U. Applying 0o775 means any process in the directory's group
+    # can write; the entrypoint.sh in the image also re-chowns these at startup as
+    # a belt-and-suspenders fallback.
+    backend_writable = [
+        base_dir / "documents",
+        base_dir / "flows",
+        base_dir / "keys",
+        base_dir / "config",
+        base_dir / "data",
+    ]
+
+    # On Linux + rootful Docker the backend container's entrypoint.sh chowns these
+    # directories to UID 1000 (appuser).  Reclaim ownership before chmod so that
+    # subsequent TUI startups can chmod and write into them (e.g. key regeneration
+    # after a factory reset).
+    _reclaim_host_ownership(backend_writable)
+
+    for directory in backend_writable:
+        try:
+            os.chmod(directory, 0o775)
+            logger.debug(f"Set permissions 775 on: {directory}")
+        except PermissionError:
+            # Reclaim may have been skipped (no runtime available); the mode was
+            # already set on first run so this is non-fatal.
+            logger.error(f"Cannot chmod {directory} (not owner), skipping")
+
     # Resolve the configured LANGFLOW_DATA_PATH so we pre-create the exact
     # directory that Docker/Podman will mount, regardless of user customisation.
     langflow_data_dir = _resolve_langflow_data_path(base_dir)
@@ -781,7 +858,10 @@ def setup_host_directories():
     # langflow-data must be world-writable so the Langflow container user (uid 1000)
     # can write into it on macOS where Podman's :U uid-remapping does not reliably
     # update host directory ownership through the VM layer.
-    os.chmod(langflow_data_dir, 0o777)
+    try:
+        os.chmod(langflow_data_dir, 0o777)
+    except PermissionError:
+        logger.error(f"Cannot chmod {langflow_data_dir} (not owner), skipping")
 
     # Generate JWT keys on host to avoid container permission issues
     generate_jwt_keys(base_dir / "keys")

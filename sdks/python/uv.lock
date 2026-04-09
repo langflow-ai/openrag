@@ -121,7 +121,7 @@ wheels = [
 
 [[package]]
 name = "openrag-sdk"
-version = "0.2.2"
+version = "0.3.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

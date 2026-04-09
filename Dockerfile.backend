@@ -51,17 +51,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     openssl \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user/group.
+# UID/GID 1000 is the conventional first non-root account and
+# matches what Podman's :U volume flag maps to.
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid 1000 --no-create-home appuser
 
 WORKDIR /app
 
 COPY --from=builder /app /app
 COPY securityconfig/ ./securityconfig/
 COPY cloud_securityconfig/ ./cloud_securityconfig/
+COPY entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Pre-create every directory the app writes to at runtime so they are owned
+# by appuser in the image layer. When Docker/Podman mounts a host volume over
+# one of these paths the mount takes precedence, but the ownership baked here
+# acts as a safe default when no volume is attached (e.g. CI, unit tests).
+#
+# Writable paths:
+#   keys/              - RSA JWT keys (private_key.pem / public_key.pem)
+#   data/              - connections.json
+#   config/            - config.yaml (ConfigManager runtime settings)
+#   flows/backup/      - Langflow flow backups (flows/ itself is COPY'd from builder)
+#   openrag-documents/ - uploaded documents staging area
+RUN mkdir -p keys data config flows/backup openrag-documents \
+    && chown -R appuser:appuser /app \
+    && chmod +x /entrypoint.sh
+
+# entrypoint.sh runs as root, re-chowns volume-mounted directories to appuser
+# (belt-and-suspenders for Docker where :U is not supported), then execs the
+# application as appuser via gosu.
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "src/main.py"]
