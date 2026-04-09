@@ -481,11 +481,10 @@ async def ingest_default_documents_when_ready(
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
-        task_id = None
-        if _should_use_url_default_docs_ingest():
-            task_id = await ingest_openrag_docs_when_ready(
-                document_service, models_service, task_service, langflow_file_service, session_manager
-            )
+
+        task_id = await ingest_openrag_docs_when_ready(
+            document_service, models_service, task_service, langflow_file_service, session_manager
+        )
 
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
