@@ -248,10 +248,23 @@ async def init_index(opensearch_client=None):
             )
         else:
             logger.info(
-                "Index already exists, skipping creation",
+                "Index already exists, skipping creation and changing number of replicas",
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
+            # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
+            current = await os_client.indices.get_settings(index=index_name)
+            current_replicas = int(
+                current[index_name]["settings"]["index"].get("number_of_replicas", 1)
+            )
+            if current_replicas != 0:
+                await os_client.indices.put_settings(
+                    index=index_name,
+                    body={"index": {"number_of_replicas": 0}},
+                )
+                logger.info(
+                    "Updated documents index settings",
+                    )
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
             )
@@ -259,6 +272,9 @@ async def init_index(opensearch_client=None):
         # Create knowledge filters index
         knowledge_filter_index_name = "knowledge_filters"
         knowledge_filter_index_body = {
+            "settings": {
+                "index": {"number_of_replicas": 0, "number_of_shards": 1},
+            },
             "mappings": {
                 "properties": {
                     "id": {"type": "keyword"},
@@ -272,7 +288,7 @@ async def init_index(opensearch_client=None):
                     "created_at": {"type": "date"},
                     "updated_at": {"type": "date"},
                 }
-            }
+            },
         }
 
         if not await os_client.indices.exists(index=knowledge_filter_index_name):
@@ -291,6 +307,19 @@ async def init_index(opensearch_client=None):
                 "Knowledge filters index already exists, skipping creation",
                 index_name=knowledge_filter_index_name,
             )
+
+            current = await os_client.indices.get_settings(index=knowledge_filter_index_name)
+            current_replicas = int(
+                current[knowledge_filter_index_name]["settings"]["index"].get("number_of_replicas", 1)
+            )
+            if current_replicas != 0:
+                await os_client.indices.put_settings(
+                    index=knowledge_filter_index_name,
+                    body={"index": {"number_of_replicas": 0}},
+                )
+                logger.info(
+                    "Updated knowledge filters index settings",
+                    )
 
         # Create API keys index for public API authentication
         if not await os_client.indices.exists(index=API_KEYS_INDEX_NAME):

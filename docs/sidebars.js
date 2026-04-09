@@ -81,6 +81,7 @@ const sidebars = {
     },
     "support/contribute",
     "support/troubleshoot",
+    "support/ibm-elite-support",
     {
       type: "link",
       label: "Changelog",

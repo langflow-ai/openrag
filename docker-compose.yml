@@ -10,26 +10,20 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
-    # Run security setup in background after OpenSearch starts
-    command: >
-      bash -c "
-        # Ensure data directory has correct permissions
-        sudo chown -R opensearch:opensearch /usr/share/opensearch/data || true
-
-        # Start OpenSearch in background
-        /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch &
-
-        # Wait a bit for OpenSearch to start, then apply security config
-        sleep 10 && /usr/share/opensearch/setup-security.sh &
-
-        # Wait for background processes
-        wait
-      "
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
       - "9200:9200"
       - "9600:9600"
     volumes:
-      - ${OPENSEARCH_DATA_PATH:-./opensearch-data}:/usr/share/opensearch/data:U,z
+      - opensearch-data:/usr/share/opensearch/data
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:3.0.0
@@ -65,6 +59,8 @@ services:
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
+      - LANGFLOW_OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
+      - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -112,6 +108,9 @@ services:
       - ${OPENRAG_FLOWS_BACKUP_PATH:-./flows/backup}:/app/flows/backup:U,z
       - ${OPENRAG_CONFIG_PATH:-./config}:/app/config:U,z
       - ${OPENRAG_DATA_PATH:-./data}:/app/data:U,z
+    # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
@@ -127,9 +126,6 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    volumes:
-      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
-      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
     image: langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .
@@ -137,6 +133,12 @@ services:
     container_name: langflow
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
+    volumes:
+      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
+      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
+    # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -163,9 +165,9 @@ services:
       - ALLOWED_GROUPS=[]
       - OPENRAG-QUERY-FILTER="{}"
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
-      - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
-      - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}
+      - OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
+      - OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
+      - OPENSEARCH_URL=https://${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}:${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - FILENAME=None
@@ -182,3 +184,6 @@ services:
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
+
+volumes:
+  opensearch-data:
