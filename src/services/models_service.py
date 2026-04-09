@@ -125,6 +125,13 @@ class ModelsService:
             if provider_lower is None:
                 await self.update_model_registry()
                 provider_lower = ModelsService._model_provider_registry.get(model_name)
+
+        if provider_lower is None:
+            logger.warning(
+                "Could not determine provider for model; using model name as-is",
+                model_name=model_name,
+            )
+            return model_name  # OpenAI-compatible models work without a prefix
             
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
