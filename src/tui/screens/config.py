@@ -201,7 +201,6 @@ class ConfigScreen(Screen):
     # Fields that need custom rendering beyond the standard pattern
     SPECIAL_FIELDS = {
         "opensearch_password",
-        "opensearch_data_path",
         "langflow_superuser_password",
         "langflow_superuser",
         "langflow_data_path",
@@ -287,25 +286,6 @@ class ConfigScreen(Screen):
             yield input_widget
             self.inputs[field.name] = input_widget
             yield Button("👁", id=f"toggle-{field.name}", variant="default")
-        yield Static(" ")
-
-    def _render_opensearch_data_path(self, field: ConfigField) -> ComposeResult:
-        """OpenSearch data path with file picker."""
-        yield Label(field.label)
-        yield Static(field.helper_text, classes="helper-text")
-        current_value = getattr(self.env_manager.config, field.name, field.default)
-        input_widget = Input(
-            placeholder=field.placeholder,
-            value=current_value,
-            id=f"input-{field.name}",
-        )
-        yield input_widget
-        yield Horizontal(
-            Button("Pick…", id="pick-opensearch-data-btn"),
-            id="opensearch-data-path-actions",
-            classes="controls-row",
-        )
-        self.inputs[field.name] = input_widget
         yield Static(" ")
 
     def _render_langflow_data_path(self, field: ConfigField) -> ComposeResult:
@@ -475,8 +455,6 @@ class ConfigScreen(Screen):
             self.action_back()
         elif event.button.id == "pick-docs-btn":
             self.action_pick_documents_path()
-        elif event.button.id == "pick-opensearch-data-btn":
-            self.action_pick_opensearch_data_path()
         elif event.button.id == "pick-langflow-data-btn":
             self.action_pick_langflow_data_path()
         elif event.button.id and event.button.id.startswith("toggle-"):
@@ -620,62 +598,6 @@ class ConfigScreen(Screen):
             self.app.push_screen(picker, _append_path)  # type: ignore[arg-type]
         except TypeError:
             self._docs_pick_callback = _append_path  # type: ignore[attr-defined]
-            self.app.push_screen(picker)
-
-    def action_pick_opensearch_data_path(self) -> None:
-        """Open textual-fspicker to select OpenSearch data directory."""
-        try:
-            import importlib
-
-            fsp = importlib.import_module("textual_fspicker")
-        except Exception:
-            self.notify("textual-fspicker not available", severity="warning")
-            return
-
-        # Determine starting path from current input if possible
-        input_widget = self.inputs.get("opensearch_data_path")
-        start = Path.home()
-        if input_widget and input_widget.value:
-            path_str = input_widget.value.strip()
-            if path_str:
-                candidate = Path(path_str).expanduser()
-                # If path doesn't exist, use parent or fallback to home
-                if candidate.exists():
-                    start = candidate
-                elif candidate.parent.exists():
-                    start = candidate.parent
-
-        # Prefer SelectDirectory for directories; fallback to FileOpen
-        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
-            fsp, "FileOpen", None
-        )
-        if PickerClass is None:
-            self.notify(
-                "No compatible picker found in textual-fspicker", severity="warning"
-            )
-            return
-        try:
-            picker = PickerClass(location=start)
-        except Exception:
-            try:
-                picker = PickerClass(start)
-            except Exception:
-                self.notify("Could not initialize textual-fspicker", severity="warning")
-                return
-
-        def _set_path(result) -> None:
-            if not result:
-                return
-            path_str = str(result)
-            if input_widget is None:
-                return
-            input_widget.value = path_str
-
-        # Push with callback when supported; otherwise, use on_screen_dismissed fallback
-        try:
-            self.app.push_screen(picker, _set_path)  # type: ignore[arg-type]
-        except TypeError:
-            self._opensearch_data_pick_callback = _set_path  # type: ignore[attr-defined]
             self.app.push_screen(picker)
 
     def action_pick_langflow_data_path(self) -> None:

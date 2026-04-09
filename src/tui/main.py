@@ -608,7 +608,6 @@ def migrate_legacy_data_directories():
             env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
             env_manager.config.openrag_config_path = f"{home}/.openrag/config"
             env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-            env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
             env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
             env_manager.save_env_file()
             logger.info("Updated .env file with centralized paths")
@@ -688,7 +687,6 @@ def migrate_legacy_data_directories():
         env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
         env_manager.config.openrag_config_path = f"{home}/.openrag/config"
         env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-        env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
         env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
         env_manager.save_env_file()
         print("  Updated .env with centralized paths")
