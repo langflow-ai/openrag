@@ -116,6 +116,11 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       }
     }
 
+    // Explicitly forward Set-Cookie headers (entries() may omit them)
+    for (const cookie of response.headers.getSetCookie()) {
+      responseHeaders.append("set-cookie", cookie);
+    }
+
     // For streaming responses, pass the body directly without buffering
     if (response.body) {
       return new NextResponse(response.body, {

@@ -20,6 +20,7 @@ spec:
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secrets/langflow-secret.yaml") . | sha256sum }}
         checksum/config: {{ include (print $.Template.BasePath "/configmaps/flow-ids-configmap.yaml") . | sha256sum }}
+        checksum/dotenv: {{ include (print $.Template.BasePath "/templates/langflow/langflow-dotenv.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "openrag.serviceAccountName" . }}
 

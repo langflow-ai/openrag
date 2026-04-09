@@ -64,8 +64,8 @@ async def add_provider_credentials_to_headers(
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
     # Inject OpenSearch URL so Langflow flows always use the correct endpoint
-    from config.settings import OPENSEARCH_HOST, OPENSEARCH_PORT
-    headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
+    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT
+    headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
 
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
     from config.settings import IBM_AUTH_ENABLED
@@ -120,8 +120,8 @@ async def build_mcp_global_vars_from_config(
         global_vars["SELECTED_EMBEDDING_MODEL"] = config.knowledge.embedding_model
 
     # Inject OpenSearch URL so MCP servers always use the correct endpoint
-    from config.settings import OPENSEARCH_HOST, OPENSEARCH_PORT
-    global_vars["OPENSEARCH_URL"] = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
+    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT
+    global_vars["OPENSEARCH_URL"] = f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
 
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
     from config.settings import IBM_AUTH_ENABLED

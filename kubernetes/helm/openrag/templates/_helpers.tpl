@@ -156,10 +156,46 @@ http://{{ include "openrag.fullname" . }}-backend:{{ .Values.backend.service.por
 {{- end }}
 
 {{/*
+Generate the general OpenSearch Host
+*/}}
+{{- define "openrag.opensearch.host" -}}
+{{- if .Values.global.opensearch.host -}}
+{{- .Values.global.opensearch.host -}}
+{{- else -}}
+{{- printf "%s-opensearch.%s.svc.cluster.local" (include "openrag.fullname" .) .Release.Namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Generate the OpenSearch URL
 */}}
 {{- define "openrag.opensearch.url" -}}
-{{ .Values.global.opensearch.scheme }}://{{ .Values.global.opensearch.host }}:{{ .Values.global.opensearch.port }}
+{{ .Values.global.opensearch.scheme }}://{{ include "openrag.opensearch.host" . }}:{{ .Values.global.opensearch.port }}
+{{- end }}
+
+{{/*
+Generate the Langflow-specific OpenSearch Host
+*/}}
+{{- define "openrag.langflow.opensearch.host" -}}
+{{- if .Values.global.opensearch.langflowHost -}}
+{{- .Values.global.opensearch.langflowHost -}}
+{{- else -}}
+{{- include "openrag.opensearch.host" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Generate the Langflow-specific OpenSearch Port
+*/}}
+{{- define "openrag.langflow.opensearch.port" -}}
+{{- default .Values.global.opensearch.port .Values.global.opensearch.langflowPort }}
+{{- end }}
+
+{{/*
+Generate the Langflow-specific OpenSearch URL
+*/}}
+{{- define "openrag.langflow.opensearch.url" -}}
+{{ .Values.global.opensearch.scheme }}://{{ include "openrag.langflow.opensearch.host" . }}:{{ include "openrag.langflow.opensearch.port" . }}
 {{- end }}
 
 {{/*

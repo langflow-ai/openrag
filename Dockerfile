@@ -123,6 +123,11 @@ RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Security configuration applied successfully"' >> /usr/share/opensearch/setup-security.sh && \
     chmod +x /usr/share/opensearch/setup-security.sh
 
+# Copy custom entrypoint wrapper that handles graceful shutdown
+COPY opensearch-entrypoint-wrapper.sh /usr/share/opensearch/
+RUN chmod +x /usr/share/opensearch/opensearch-entrypoint-wrapper.sh && \
+    chown opensearch:opensearch /usr/share/opensearch/opensearch-entrypoint-wrapper.sh
+
 ########################################
 # Final runtime settings
 ########################################
@@ -134,6 +139,6 @@ ENV PATH=$PATH:$JAVA_HOME/bin:$OPENSEARCH_HOME/bin
 # Expose ports
 EXPOSE 9200 9300 9600 9650
 
-ENTRYPOINT ["./opensearch-docker-entrypoint.sh"]
-CMD ["opensearch"]
+ENTRYPOINT ["./opensearch-entrypoint-wrapper.sh"]
+CMD []
 
