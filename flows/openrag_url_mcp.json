@@ -7658,6 +7658,7 @@
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
   "last_tested_version": "1.9.0.dev38",
+  "mcp_enabled": true,
   "locked": true,
   "name": "OpenSearch URL Ingestion Flow",
   "tags": [
