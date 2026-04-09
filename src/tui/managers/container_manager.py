@@ -1282,37 +1282,33 @@ class ContainerManager:
         # Docker Compose usually prefixes it with the project name (defaulting to the directory name).
         volume_name = "opensearch-data"
         
-        # Try both the plain name and common prefixed versions
-        possible_names = [volume_name]
-        
-        # Current folder name is a common prefix
-        project_name = Path.cwd().name.lower().replace("-", "").replace("_", "")
-        possible_names.append(f"{project_name}_{volume_name}")
-        
-        # Another common prefix pattern
-        project_name_simple = Path.cwd().name.lower()
-        possible_names.append(f"{project_name_simple}_{volume_name}")
+        possible_names = list(dict.fromkeys([
+            volume_name,
+            f"{Path.cwd().name.lower()}_{volume_name}",              # e.g. openrag_opensearch-data
+            f"{Path.cwd().name.lower().replace('-', '')}_{volume_name}",  # e.g. openrag_opensearch-data (dashes stripped)
+        ]))
 
-        last_error = "Unknown error"
-        for name in possible_names:
-            # Use alpine with root to clear container-owned files
-            cmd = [
-                "run", "--rm",
-                "-v", f"{name}:/work:Z",
-                "alpine",
-                "sh", "-c",
-                "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"
-            ]
-            
-            success, stdout, stderr = await self._run_runtime_command(cmd)
-            if success and "done" in stdout:
-                yield True, f"OpenSearch data volume '{name}' cleared successfully"
-                return
+        # List volumes and find the correct one
+        list_success, stdout, _ = await self._run_runtime_command(["volume", "ls", "--format", "{{.Name}}"])
+        if not list_success:
+            yield False, "Could not list Docker volumes"
+            return
 
-            if stderr:
-                last_error = stderr.strip()
+        existing_volumes = set(stdout.splitlines())
+        found_name = next((n for n in possible_names if n in existing_volumes), None)
 
-        yield False, f"Failed to clear OpenSearch data volume: {last_error}"
+        if found_name is None:
+            yield True, "OpenSearch data volume not found — already removed or never created"
+            return
+
+        # Only clear the volume we know exists
+        cmd = ["run", "--rm", "-v", f"{found_name}:/work:Z", "alpine", "sh", "-c",
+            "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"]
+        success, stdout, stderr = await self._run_runtime_command(cmd)
+        if success and "done" in stdout:
+            yield True, f"OpenSearch data volume '{found_name}' cleared successfully"
+        else:
+            yield False, f"Failed to clear OpenSearch data volume '{found_name}': {stderr}"
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""
