@@ -14,7 +14,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-KNOWN_PREFIXES = ["openai", "ollama", "watsonx"]
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
 
 class ModelsService:
     """Service for fetching available models from different AI providers and managing a model registry."""
