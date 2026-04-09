@@ -10,7 +10,6 @@ from utils.telemetry import TelemetryClient, Category, MessageId
 from utils.version_utils import OPENRAG_VERSION
 from config.settings import (
     DEFAULT_DOCS_URL,
-    DISABLE_INGEST_WITH_LANGFLOW,
     INGEST_SAMPLE_DATA,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
@@ -938,7 +937,7 @@ async def onboarding(
         embedding_model_selected = None
         embedding_provider_selected = None
 
-        if body.embedding_model and not DISABLE_INGEST_WITH_LANGFLOW:
+        if body.embedding_model:
             embedding_model_selected = body.embedding_model.strip()
             current_config.knowledge.embedding_model = embedding_model_selected
             config_updated = True
@@ -1152,6 +1151,9 @@ async def onboarding(
                 try:
                     # Import the function here to avoid circular imports
                     from main import ingest_default_documents_when_ready
+
+                    if not config_manager.save_config_file(current_config):
+                        logger.error("Failed to save embedding model to config")
 
                     task_id = await ingest_default_documents_when_ready(
                         document_service,
@@ -1891,6 +1893,7 @@ async def update_docling_preset(
 async def refresh_openrag_docs(
     document_service=Depends(get_document_service),
     task_service=Depends(get_task_service),
+    models_service=Depends(get_models_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
@@ -1901,6 +1904,7 @@ async def refresh_openrag_docs(
 
         refreshed = await refresh_default_openrag_docs(
             document_service=document_service,
+            models_service=models_service,
             task_service=task_service,
             langflow_file_service=langflow_file_service,
             session_manager=session_manager,

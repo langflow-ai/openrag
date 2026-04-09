@@ -685,13 +685,17 @@ async def _ingest_default_documents_url(
         from models.processors import DocumentFileProcessor
         from utils.hash_utils import hash_id
 
+        from session_manager import AnonymousUser
+
+        anonymous_user = AnonymousUser()
+
         processor = DocumentFileProcessor(
             document_service,
             models_service=models_service,
             owner_user_id=None,
             jwt_token=None,
-            owner_name=None,
-            owner_email=None,
+            owner_name=anonymous_user.name,
+            owner_email=anonymous_user.email,
             is_sample_data=True,
             connector_type="openrag_docs",
         )
@@ -701,8 +705,8 @@ async def _ingest_default_documents_url(
             owner_user_id=None,
             original_filename="openrag-url-default.txt",
             jwt_token=None,
-            owner_name=None,
-            owner_email=None,
+            owner_name=anonymous_user.name,
+            owner_email=anonymous_user.email,
             file_size=os.path.getsize(temp_file_path),
             connector_type="openrag_docs",
             is_sample_data=True,
@@ -794,16 +798,6 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
                             "must": [
                                 {"term": {"connector_type": connector_type}},
                                 {"term": {"owner_email": anonymous_user.email}},
-                            ]
-                        }
-                    },
-                    # Legacy file-based default docs were ingested as local and
-                    # marked with is_sample_data=true.
-                    {
-                        "bool": {
-                            "must": [
-                                {"term": {"connector_type": "local"}},
-                                {"term": {"is_sample_data": "true"}},
                             ]
                         }
                     },
@@ -1086,13 +1080,16 @@ async def _ingest_default_documents_openrag(
     # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
     from models.processors import DocumentFileProcessor
 
+    from session_manager import AnonymousUser
+    anonymous_user = AnonymousUser()
+
     processor = DocumentFileProcessor(
         document_service,
         models_service=models_service,
         owner_user_id=None,
         jwt_token=None,
-        owner_name=None,
-        owner_email=None,
+        owner_name=anonymous_user.name,
+        owner_email=anonymous_user.email,
         is_sample_data=True,  # Mark as sample data
         connector_type=connector_type,
     )

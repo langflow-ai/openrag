@@ -36,15 +36,10 @@ async def upload(
     try:
 
         from config.settings import is_no_auth_mode
-
-        if is_no_auth_mode():
-            owner_user_id = None
-            owner_name = None
-            owner_email = None
-        else:
-            owner_user_id = user.user_id
-            owner_name = user.name
-            owner_email = user.email
+        is_no_auth = is_no_auth_mode()
+        owner_user_id = user.user_id if (user and not is_no_auth) else None
+        owner_name = user.name if user else None
+        owner_email = user.email if user else None
 
         result = await document_service.process_upload_file(
             file,
@@ -85,15 +80,10 @@ async def upload_path(
     jwt_token = user.jwt_token
 
     from config.settings import is_no_auth_mode
-
-    if is_no_auth_mode():
-        owner_user_id = None
-        owner_name = None
-        owner_email = None
-    else:
-        owner_user_id = user.user_id
-        owner_name = user.name
-        owner_email = user.email
+    is_no_auth = is_no_auth_mode()
+    owner_user_id = user.user_id if (user and not is_no_auth) else None
+    owner_name = user.name if user else None
+    owner_email = user.email if user else None
 
     from api.documents import _ensure_index_exists
     await _ensure_index_exists()
@@ -196,18 +186,13 @@ async def upload_bucket(
     jwt_token = user.jwt_token
 
     from models.processors import S3FileProcessor
-    from config.settings import is_no_auth_mode
 
-    if is_no_auth_mode():
-        owner_user_id = None
-        owner_name = None
-        owner_email = None
-        task_user_id = None
-    else:
-        owner_user_id = user.user_id
-        owner_name = user.name
-        owner_email = user.email
-        task_user_id = user.user_id
+    from config.settings import is_no_auth_mode
+    is_no_auth = is_no_auth_mode()
+    owner_user_id = user.user_id if (user and not is_no_auth) else None
+    owner_name = user.name if user else None
+    owner_email = user.email if user else None
+    task_user_id = user.user_id if (user and not is_no_auth) else None
 
     from api.documents import _ensure_index_exists
     await _ensure_index_exists()
