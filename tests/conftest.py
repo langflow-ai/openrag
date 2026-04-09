@@ -47,8 +47,6 @@ async def onboard_system():
     except Exception as e:
         print(f"[DEBUG] Could not wipe OpenSearch indices: {e}")
 
-    # Initialize clients again (just to be safe, though already done)
-    await clients.initialize()
 
     # Create app and perform onboarding via API
     from main import create_app, startup_tasks
