@@ -269,14 +269,9 @@ class TaskProcessor:
             text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
         embeddings = []
 
-        if self.models_service:
-            formatted_model = await self.models_service.get_litellm_model_name(embedding_model)
-        else:
-            formatted_model = embedding_model
-
         for batch in text_batches:
             resp = await clients.patched_embedding_client.embeddings.create(
-                model=formatted_model, input=batch
+                model=litellm_embedding_model, input=batch
             )
             embeddings.extend([d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data])
 
