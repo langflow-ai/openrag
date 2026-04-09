@@ -421,6 +421,7 @@ def _should_use_url_default_docs_ingest() -> bool:
 
 async def ingest_openrag_docs_when_ready(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -437,6 +438,7 @@ async def ingest_openrag_docs_when_ready(
             if DISABLE_INGEST_WITH_LANGFLOW:
                 task_id = await _ingest_default_documents_url(
                     document_service=document_service,
+                    models_service=models_service,
                     docs_url=DEFAULT_DOCS_URL,
                     crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
                     jwt_token=jwt_token,
@@ -483,17 +485,9 @@ async def ingest_default_documents_when_ready(
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
-        task_id = None
-        if _should_use_url_default_docs_ingest():
-            task_id = await ingest_openrag_docs_when_ready(
-                document_service,
-                task_service,
-                langflow_file_service,
-                session_manager,
-                jwt_token=jwt_token,
-            )
-        await ingest_openrag_docs_when_ready(
+        task_id = await ingest_openrag_docs_when_ready(
             document_service,
+            models_service,
             task_service,
             langflow_file_service,
             session_manager,
@@ -851,6 +845,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
 
 async def _reingest_default_docs_on_upgrade_if_needed(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -879,6 +874,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
     await ingest_openrag_docs_when_ready(
         document_service,
+        models_service,
         task_service,
         langflow_file_service,
         session_manager,
@@ -948,6 +944,7 @@ async def _get_remote_docs_signature(docs_url: str):
 
 async def refresh_default_openrag_docs(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -1039,6 +1036,7 @@ async def refresh_default_openrag_docs(
         )
         await ingest_openrag_docs_when_ready(
             document_service,
+            models_service,
             task_service,
             langflow_file_service,
             session_manager,
@@ -1326,6 +1324,7 @@ async def startup_tasks(services):
     try:
         upgrade_reingested = await _reingest_default_docs_on_upgrade_if_needed(
             services["document_service"],
+            services["models_service"],
             services["task_service"],
             services["langflow_file_service"],
             services["session_manager"],
@@ -1337,6 +1336,7 @@ async def startup_tasks(services):
         try:
             await refresh_default_openrag_docs(
                 services["document_service"],
+                services["models_service"],
                 services["task_service"],
                 services["langflow_file_service"],
                 services["session_manager"],
