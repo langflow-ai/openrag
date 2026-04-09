@@ -67,12 +67,6 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             helper_text="Override for remote OpenSearch instances (default: 9200)",
         ),
         ConfigField(
-            "opensearch_data_path", "OPENSEARCH_DATA_PATH", "Data Path",
-            placeholder="~/.openrag/data/opensearch-data",
-            default="$HOME/.openrag/data/opensearch-data",
-            helper_text="Directory to persist OpenSearch indices across upgrades",
-        ),
-        ConfigField(
             "opensearch_index_name", "OPENSEARCH_INDEX_NAME", "Index Name",
             placeholder="documents", default="documents",
             helper_text="Name of the index to use in OpenSearch",

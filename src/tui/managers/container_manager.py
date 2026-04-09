@@ -1278,23 +1278,41 @@ class ContainerManager:
 
         yield False, "Clearing OpenSearch data volume..."
 
-        # Get opensearch data path from env config
-        from .env_manager import EnvManager
-        env_manager = EnvManager()
-        env_manager.load_existing_env()
-        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser().absolute()
+        # The volume name is 'opensearch-data' as defined in docker-compose.yml.
+        # Docker Compose usually prefixes it with the project name (defaulting to the directory name).
+        volume_name = "opensearch-data"
+        
+        # Try both the plain name and common prefixed versions
+        possible_names = [volume_name]
+        
+        # Current folder name is a common prefix
+        project_name = Path.cwd().name.lower().replace("-", "").replace("_", "")
+        possible_names.append(f"{project_name}_{volume_name}")
+        
+        # Another common prefix pattern
+        project_name_simple = Path.cwd().name.lower()
+        possible_names.append(f"{project_name_simple}_{volume_name}")
 
-        if not opensearch_data_path.exists():
-            yield True, "OpenSearch data directory does not exist, skipping"
-            return
+        last_error = "Unknown error"
+        for name in possible_names:
+            # Use alpine with root to clear container-owned files
+            cmd = [
+                "run", "--rm",
+                "-v", f"{name}:/work:Z",
+                "alpine",
+                "sh", "-c",
+                "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"
+            ]
+            
+            success, stdout, stderr = await self._run_runtime_command(cmd)
+            if success and "done" in stdout:
+                yield True, f"OpenSearch data volume '{name}' cleared successfully"
+                return
 
-        # Use alpine with root to clear container-owned files
-        success, msg = await self.clear_directory_with_container(opensearch_data_path)
+            if stderr:
+                last_error = stderr.strip()
 
-        if success:
-            yield True, "OpenSearch data cleared successfully"
-        else:
-            yield False, f"Failed to clear OpenSearch data: {msg}"
+        yield False, f"Failed to clear OpenSearch data volume: {last_error}"
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""

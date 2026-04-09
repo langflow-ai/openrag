@@ -506,7 +506,6 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "$(YELLOW)This will:$(NC)"; \
 	echo "  - Stop all containers"; \
 	echo "  - Remove all volumes"; \
-	echo "  - Delete opensearch-data directory"; \
 	echo "  - Delete langflow-data directory"; \
 	echo "  - Delete config directory"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
@@ -524,13 +523,6 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v --remove-orphans || true; \
 	echo "$(YELLOW)Removing local data directories...$(NC)"; \
-	if [ -d "opensearch-data" ]; then \
-		echo "Removing opensearch-data..."; \
-		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
-		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
-		rm -rf opensearch-data/* 2>/dev/null || true; \
-		echo "$(PURPLE)opensearch-data removed$(NC)"; \
-	fi; \
 	if [ -d "langflow-data" ]; then \
 		echo "Removing langflow-data..."; \
 		rm -rf langflow-data; \
@@ -1014,10 +1006,10 @@ db-reset: ## Reset OpenSearch indices
 	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
 	@echo "$(PURPLE)Indices reset. Restart backend to recreate.$(NC)"
 
-clear-os-data: ## Clear OpenSearch data directory
-	@echo "$(YELLOW)Clearing OpenSearch data directory...$(NC)"
+clear-os-data: ## Clear OpenSearch data volume
+	@echo "$(YELLOW)Clearing OpenSearch data volume...$(NC)"
 	@uv run python scripts/clear_opensearch_data.py
-	@echo "$(PURPLE)OpenSearch data cleared.$(NC)"
+	@echo "$(PURPLE)OpenSearch data volume cleared.$(NC)"
 
 ######################
 # FLOW MANAGEMENT

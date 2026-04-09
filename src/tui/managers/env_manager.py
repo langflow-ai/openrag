@@ -94,7 +94,6 @@ class EnvConfig:
     openrag_flows_path: str = "$HOME/.openrag/flows"
     openrag_config_path: str = "$HOME/.openrag/config"
     openrag_data_path: str = "$HOME/.openrag/data"  # Backend data (conversations, tokens, etc.)
-    opensearch_data_path: str = "$HOME/.openrag/data/opensearch-data"
     langflow_data_path: str = "$HOME/.openrag/data/langflow-data"
     openrag_tui_config_path_legacy: str = "$HOME/.openrag/tui/config"
 
@@ -212,7 +211,6 @@ class EnvManager:
             "OPENRAG_FLOWS_PATH": "openrag_flows_path",
             "OPENRAG_CONFIG_PATH": "openrag_config_path",
             "OPENRAG_DATA_PATH": "openrag_data_path",
-            "OPENSEARCH_DATA_PATH": "opensearch_data_path",
             "LANGFLOW_DATA_PATH": "langflow_data_path",
             "LANGFLOW_AUTO_LOGIN": "langflow_auto_login",
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
@@ -492,9 +490,6 @@ class EnvManager:
                     f"OPENRAG_DATA_PATH={self._quote_env_value(expand_path(self.config.openrag_data_path))}\n"
                 )
                 f.write(
-                    f"OPENSEARCH_DATA_PATH={self._quote_env_value(expand_path(self.config.opensearch_data_path))}\n"
-                )
-                f.write(
                     f"LANGFLOW_DATA_PATH={self._quote_env_value(expand_path(self.config.langflow_data_path))}\n"
                 )
                 # Set OPENRAG_VERSION to TUI version
@@ -762,11 +757,11 @@ class EnvManager:
                     else:
                         new_lines.append(line)
 
-                # If not found, add it after OPENSEARCH_DATA_PATH or at the end
+                # If not found, add it after LANGFLOW_DATA_PATH or at the end
                 if not updated:
                     insert_pos = len(new_lines)
                     for i, line in enumerate(new_lines):
-                        if "OPENSEARCH_DATA_PATH" in line:
+                        if "LANGFLOW_DATA_PATH" in line:
                             insert_pos = i + 1
                             break
                     new_lines.insert(insert_pos, f"OPENRAG_VERSION={self._quote_env_value(current_version)}")
