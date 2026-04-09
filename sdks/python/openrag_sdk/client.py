@@ -37,9 +37,7 @@ class ModelsClient:
         """
         from .models import ModelsResponse
 
-        response = await self._client._request(
-            "GET", f"/api/v1/models/{provider}"
-        )
+        response = await self._client._request("GET", f"/api/v1/models/{provider}")
         data = response.json()
         return ModelsResponse(**data)
 
@@ -136,12 +134,16 @@ class OpenRAGClient:
         # Resolve API key from argument or environment
         self._api_key = api_key or os.environ.get("OPENRAG_API_KEY")
         self._extra_headers: dict[str, str] = extra_headers or {}
+        if not (self._api_key or self._extra_headers):
+            raise AuthenticationError(
+                "API key or extra headers are required.",
+                "Set OPENRAG_API_KEY environment variable or,"
+                "pass api_key or extra_headers argument.",
+            )
 
         # Resolve base URL from argument or environment
         self._base_url = (
-            base_url
-            or os.environ.get("OPENRAG_URL")
-            or self.DEFAULT_BASE_URL
+            base_url or os.environ.get("OPENRAG_URL") or self.DEFAULT_BASE_URL
         ).rstrip("/")
 
         self._timeout = timeout
@@ -164,7 +166,10 @@ class OpenRAGClient:
     @property
     def _headers(self) -> dict[str, str]:
         """Get request headers with authentication."""
-        headers: dict[str, str] = {"Content-Type": "application/json", **self._extra_headers}
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            **self._extra_headers,
+        }
         if self._api_key:
             headers["X-API-Key"] = self._api_key
         return headers
