@@ -43,6 +43,7 @@ class SourcesEvent(StreamEvent):
 
     type: Literal["sources"] = "sources"
     sources: list[Source]
+    query: str
 
 
 class DoneEvent(StreamEvent):
@@ -98,6 +99,12 @@ class DeleteDocumentResponse(BaseModel):
     filename: str | None = None
     message: str | None = None
     error: str | None = None
+
+
+class FilenameExistsResponse(BaseModel):
+    """Response from checking if a filename exists."""
+
+    exists: bool
 
 
 # Chat history models
@@ -181,6 +188,7 @@ class SettingsUpdateOptions(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    index_name: str | None = None
 
 
 class SettingsUpdateResponse(BaseModel):
@@ -281,3 +289,11 @@ class DeleteKnowledgeFilterResponse(BaseModel):
 
     success: bool
     error: str | None = None
+
+
+# Onboarding models
+class OnboardingResponse(BaseModel):
+    """Response from onboarding endpoint."""
+
+    message: str
+    success: bool = True

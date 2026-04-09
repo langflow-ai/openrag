@@ -29,17 +29,35 @@ class ChatV1Body(BaseModel):
 
 
 def _extract_sources(item: dict) -> list[dict]:
-    """Extract sources from a retrieval tool call item."""
+    """Extract sources from a retrieval tool call item.
+    
+    Expected input format:
+    {
+        "results": [
+            {
+                "data": {
+                    "text": "...",
+                    "filename": "doc.pdf",
+                    "score": 0.95,
+                    "page": 1,
+                    "mimetype": "application/pdf"
+                }
+            }
+        ]
+    }
+    """
     sources = []
     for result in item.get("results", []):
-        if isinstance(result, dict) and "text" in result:
-            sources.append({
-                "filename": result.get("filename", ""),
-                "text": result.get("text", ""),
-                "score": result.get("score", 0),
-                "page": result.get("page"),
-                "mimetype": result.get("mimetype"),
-            })
+        if isinstance(result, dict):
+            data = result.get("data", {})
+            if "text" in data:
+                sources.append({
+                    "filename": data.get("filename", ""),
+                    "text": data.get("text", ""),
+                    "score": data.get("score", 0),
+                    "page": data.get("page"),
+                    "mimetype": data.get("mimetype"),
+                })
     return sources
 
 
@@ -49,6 +67,7 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
     chat_id = None
 
     async for chunk in raw_stream:
+        chunk_str = ""
         try:
             if isinstance(chunk, bytes):
                 chunk_str = chunk.decode("utf-8").strip()
@@ -59,33 +78,83 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
                 continue
 
             chunk_data = json.loads(chunk_str)
-            delta_text = ""
+            chunk_type = chunk_data.get("type")
+                
+            # Process chunk based on type
+            if chunk_type == "response.output_item.added":
+                # Function/tool call started
+                item = chunk_data.get("item", {})
+                if item.get("type") == "function_call":
+                    logger.debug("Function call started", name=item.get("name"), call_id=item.get("call_id"))
+                    
+            elif chunk_type == "response.function_call_arguments.delta":
+                # Streaming function arguments (incremental)
+                logger.debug("Function arguments delta", item_id=chunk_data.get("item_id"))
+                
+            elif chunk_type == "response.function_call_arguments.done":
+                # Function arguments complete
+                logger.debug("Function arguments complete",
+                           item_id=chunk_data.get("item_id"),
+                           arguments=chunk_data.get("arguments"))
+                
+            elif chunk_type == "response.output_item.done":
+                # Output item (e.g., message, tool call) completed
+                # This chunk contains the complete item with all results
+                item = chunk_data.get("item", {})
+                logger.debug("Output item done",
+                           output_index=chunk_data.get("output_index"),
+                           sequence_number=chunk_data.get("sequence_number"),
+                           item_type=item.get("type"))
+                
+                # Extract sources and query from completed tool calls
+                if item.get("type") == "tool_call" and item.get("status") == "completed":
+                    # Extract the search query from inputs
+                    inputs = item.get("inputs", {})
+                    query = inputs.get("search_query", "")
+                    
+                    # Extract sources (may be empty list)
+                    sources = []
+                    if item.get("results"):
+                        sources = _extract_sources(item)
+                    
+                    logger.debug("Tool results received",
+                               tool_name=item.get("tool_name"),
+                               result_count=len(sources),
+                               query=query)
+                    yield f"data: {json.dumps({'type': 'sources', 'sources': sources, 'query': query})}\n\n"
+                
+            elif chunk_type is None:
+                # Handle null-type chunks (content deltas, completion)
+                
+                # Check for completion status
+                if chunk_data.get("status") == "completed" and chunk_data.get("finish_reason"):
+                    logger.debug("Stream completed", finish_reason=chunk_data.get("finish_reason"))
+                
+                # Extract content delta
+                delta_text = ""
+                if "delta" in chunk_data:
+                    delta = chunk_data["delta"]
+                    if isinstance(delta, dict):
+                        delta_text = delta.get("content", "") or delta.get("text", "")
+                    elif isinstance(delta, str):
+                        delta_text = delta
 
-            if "delta" in chunk_data:
-                delta = chunk_data["delta"]
-                if isinstance(delta, dict):
-                    delta_text = delta.get("content", "") or delta.get("text", "")
-                elif isinstance(delta, str):
-                    delta_text = delta
+                if not delta_text and chunk_data.get("output_text"):
+                    delta_text = chunk_data["output_text"]
+                if not delta_text and chunk_data.get("text"):
+                    delta_text = chunk_data["text"]
+                if not delta_text and chunk_data.get("content"):
+                    delta_text = chunk_data["content"]
 
-            if not delta_text and chunk_data.get("output_text"):
-                delta_text = chunk_data["output_text"]
-            if not delta_text and chunk_data.get("text"):
-                delta_text = chunk_data["text"]
-            if not delta_text and chunk_data.get("content"):
-                delta_text = chunk_data["content"]
+                if delta_text:
+                    full_text += delta_text
+                    yield f"data: {json.dumps({'type': 'content', 'delta': delta_text})}\n\n"
+                    
+            elif chunk_data.get("response"):
+                # Response summary chunk (final metadata)
+                logger.debug("Response summary received", response_id=chunk_data.get("response", {}).get("id"))
 
-            if delta_text:
-                full_text += delta_text
-                yield f"data: {json.dumps({'type': 'content', 'delta': delta_text})}\n\n"
-
-            # Emit sources from retrieval tool calls
-            item = chunk_data.get("item", {})
-            if item.get("type") in ("retrieval_call", "tool_call") and item.get("results"):
-                sources = _extract_sources(item)
-                if sources:
-                    yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
-
+            # Extract chat_id from various possible locations
             if not chat_id:
                 chat_id = chunk_data.get("id") or chunk_data.get("response_id")
 

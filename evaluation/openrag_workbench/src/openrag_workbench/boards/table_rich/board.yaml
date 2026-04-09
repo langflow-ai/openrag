@@ -1,0 +1,61 @@
+name: OpenRAG Benchmarking Results
+
+description: An example of an OpenRAG benchamrking results with the AIT-QA dataset.
+
+datasets:
+
+  - name: ait_qa
+    sampling:
+      question_limit: 100
+
+configurations:
+  - name: openrag
+    description: OpenRAG
+    ingest:
+      name: openrag
+      params:
+        embedding_model:
+          - provider_id: openai
+            model_id: text-embedding-3-large
+          - provider_id: openai
+            model_id: text-embedding-3-small
+        chunking:
+          chunk_size: 1000
+          chunk_overlap: 200
+    inference:
+      name: openrag
+      params:
+        generative_model:
+          provider_id: openai
+          model_id: gpt-5.2
+
+metrics:
+  - unitxt.context_correctness.retrieval_at_k
+  - unitxt.context_correctness.mrr
+  - unitxt.context_correctness.map
+  - unitxt.answer_correctness.llmaaj_llama
+
+report:
+  screens:
+    - title: Answer-Correctness
+      scores:
+        unitxt.answer_correctness.llmaaj_llama_mean: AC
+      chart:
+        type: bar
+        title: Answer-correctness
+    - title: Match@K
+      scores:
+        unitxt.context_correctness.retrieval_at_k.match_at_1_mean: M@1
+        unitxt.context_correctness.retrieval_at_k.match_at_3_mean: M@3
+        unitxt.context_correctness.retrieval_at_k.match_at_5_mean: M@5
+        unitxt.context_correctness.retrieval_at_k.match_at_10_mean: M@10
+      chart:
+        type: line
+        title: Match@K
+    - title: MAP & MRR
+      scores:
+        unitxt.context_correctness.mrr_mean: MRR
+        unitxt.context_correctness.map_mean: MAP
+      chart:
+        type: scatter
+        title: MAP & MRR
