@@ -165,7 +165,8 @@ class ChatStream:
                     elif event_type == "sources":
                         sources = [Source(**s) for s in data.get("sources", [])]
                         self._sources = sources
-                        yield SourcesEvent(sources=sources)
+                        query = data.get("query", "")
+                        yield SourcesEvent(sources=sources, query=query)
 
                     elif event_type == "done":
                         self._chat_id = data.get("chat_id")
@@ -391,7 +392,8 @@ class ChatClient:
                             yield ContentEvent(delta=data.get("delta", ""))
                         elif event_type == "sources":
                             sources = [Source(**s) for s in data.get("sources", [])]
-                            yield SourcesEvent(sources=sources)
+                            query = data.get("query", "")
+                            yield SourcesEvent(sources=sources, query=query)
                         elif event_type == "done":
                             yield DoneEvent(chat_id=data.get("chat_id"))
 

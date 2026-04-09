@@ -157,3 +157,25 @@ class DocumentsClient:
 
         data = response.json()
         return DeleteDocumentResponse(**data)
+
+    async def filename_exists(self, filename: str) -> bool:
+        """
+        Check if a filename exists in the knowledge base.
+
+        Args:
+            filename: Name of the file to check.
+
+        Returns:
+            True if the file exists, False otherwise.
+        """
+        from .models import FilenameExistsResponse
+
+        response = await self._client._request(
+            "GET",
+            "/api/v1/documents/check-filename",
+            params={"filename": filename},
+        )
+
+        data = response.json()
+        exists_response = FilenameExistsResponse(**data)
+        return exists_response.exists
