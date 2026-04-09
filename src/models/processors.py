@@ -275,6 +275,14 @@ class TaskProcessor:
             )
             embeddings.extend([d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data])
 
+        if not embeddings or len(embeddings) == 0:
+            logger.error(
+                "No embeddings generated — document may be empty or unreadable",
+                file_hash=file_hash,
+                embedding_model=embedding_model,
+            )
+            return {"status": "error", "error": "No text content could be extracted from document"}
+
         dimensions = len(embeddings[0])
 
         # Ensure the embedding field exists for this model
