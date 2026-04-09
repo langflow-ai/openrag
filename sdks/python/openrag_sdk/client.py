@@ -116,6 +116,7 @@ class OpenRAGClient:
         self,
         api_key: str | None = None,
         *,
+        extra_headers: dict[str, str] | None = None,
         base_url: str | None = None,
         timeout: float = 30.0,
         http_client: httpx.AsyncClient | None = None,
@@ -125,16 +126,16 @@ class OpenRAGClient:
 
         Args:
             api_key: API key for authentication. Falls back to OPENRAG_API_KEY env var.
+                Optional when using IBM auth — pass credentials via extra_headers instead.
+            extra_headers: Additional headers forwarded on every request. Used in IBM
+                auth mode to pass X-Username and X-Api-Key from the user's MCP config.
             base_url: Base URL for the API. Falls back to OPENRAG_URL env var, then default.
             timeout: Request timeout in seconds (default 30).
             http_client: Optional custom httpx.AsyncClient instance.
         """
         # Resolve API key from argument or environment
         self._api_key = api_key or os.environ.get("OPENRAG_API_KEY")
-        if not self._api_key:
-            raise AuthenticationError(
-                "API key is required. Set OPENRAG_API_KEY environment variable or pass api_key argument."
-            )
+        self._extra_headers: dict[str, str] = extra_headers or {}
 
         # Resolve base URL from argument or environment
         self._base_url = (
@@ -163,10 +164,10 @@ class OpenRAGClient:
     @property
     def _headers(self) -> dict[str, str]:
         """Get request headers with authentication."""
-        return {
-            "X-API-Key": self._api_key,
-            "Content-Type": "application/json",
-        }
+        headers: dict[str, str] = {"Content-Type": "application/json", **self._extra_headers}
+        if self._api_key:
+            headers["X-API-Key"] = self._api_key
+        return headers
 
     async def _request(
         self,

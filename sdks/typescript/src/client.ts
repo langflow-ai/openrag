@@ -91,7 +91,8 @@ interface RequestOptions {
 export class OpenRAGClient {
   private static readonly DEFAULT_BASE_URL = "http://localhost:3000";
 
-  private readonly _apiKey: string;
+  private readonly _apiKey: string | undefined;
+  private readonly _extraHeaders: Record<string, string>;
   private readonly _baseUrl: string;
   private readonly _timeout: number;
 
@@ -108,12 +109,8 @@ export class OpenRAGClient {
 
   constructor(options: OpenRAGClientOptions = {}) {
     // Resolve API key from argument or environment
-    this._apiKey = options.apiKey || getEnv("OPENRAG_API_KEY") || "";
-    if (!this._apiKey) {
-      throw new AuthenticationError(
-        "API key is required. Set OPENRAG_API_KEY environment variable or pass apiKey option."
-      );
-    }
+    this._apiKey = options.apiKey || getEnv("OPENRAG_API_KEY") || undefined;
+    this._extraHeaders = options.extraHeaders ?? {};
 
     // Resolve base URL from argument or environment
     this._baseUrl = (
@@ -134,9 +131,11 @@ export class OpenRAGClient {
 
   /** @internal Get request headers with authentication. */
   _getHeaders(isMultipart = false): Record<string, string> {
-    const headers: Record<string, string> = {
-      "X-API-Key": this._apiKey,
-    };
+    const headers: Record<string, string> = { ...this._extraHeaders };
+
+    if (this._apiKey) {
+      headers["X-API-Key"] = this._apiKey;
+    }
 
     if (!isMultipart) {
       headers["Content-Type"] = "application/json";
