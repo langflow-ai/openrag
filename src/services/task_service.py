@@ -1,3 +1,4 @@
+import traceback
 import asyncio
 import os
 import random
@@ -392,6 +393,7 @@ class TaskService:
                         logger.error(
                             "File processing task exception encountered",
                             status="FAILED",
+                            traceback=traceback.format_exc(),
                             task_number=upload_task.sequence_number,
                             task_id=task_id,
                             file_path=file_task.file_path,

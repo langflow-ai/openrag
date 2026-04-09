@@ -208,7 +208,7 @@ class TaskProcessor:
         )
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
-        from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
+        from utils.embedding_fields import ensure_embedding_field_exists
 
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
@@ -260,8 +260,13 @@ class TaskProcessor:
 
         texts = [c["text"] for c in slim_doc["chunks"]]
 
-        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer)
-        text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
+        litellm_embedding_model = await self.models_service.get_litellm_model_name(embedding_model) if self.models_service is not None else embedding_model
+
+        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
+        if "ollama" in litellm_embedding_model:
+            text_batches = chunk_texts_for_embeddings(texts, max_tokens=2000)
+        else:
+            text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
         embeddings = []
 
         if self.models_service:
@@ -318,10 +323,9 @@ class TaskProcessor:
                 chunk_doc["allowed_groups"] = acl.allowed_groups
             else:
                 # Fallback to owner_user_id if no ACL (local uploads)
-                if owner_user_id is not None:
-                    chunk_doc["owner"] = owner_user_id
-                    chunk_doc["allowed_users"] = []
-                    chunk_doc["allowed_groups"] = []
+                chunk_doc["owner"] = owner_user_id
+                chunk_doc["allowed_users"] = []
+                chunk_doc["allowed_groups"] = []
 
             # Set owner metadata fields (for display)
             if owner_name is not None:
@@ -684,7 +688,6 @@ class S3FileProcessor(TaskProcessor):
         import asyncio
         import datetime
         from config.settings import clients, get_embedding_model, get_index_name
-        from services.document_service import chunk_texts_for_embeddings
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
