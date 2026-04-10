@@ -70,7 +70,6 @@ stringData:
     {{- if .Values.global.opensearch.password }}
     OPENSEARCH_PASSWORD={{ .Values.global.opensearch.password | quote }}
     {{- end }}
-    OPENSEARCH_DATA_PATH=./opensearch-data
     OPENSEARCH_HOST={{ include "openrag.opensearch.host" . | quote }}
     OPENSEARCH_PORT={{ .Values.global.opensearch.port | quote }}
     {{- if .Values.global.opensearch.username }}
