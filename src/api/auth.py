@@ -76,9 +76,14 @@ async def auth_callback(
             response = JSONResponse(
                 {k: v for k, v in result.items() if k != "jwt_token"}
             )
+            # Store only the raw JWT (without "Bearer " prefix) in the cookie.
+            # The prefix is added by the OpenSearch client when building the Authorization header.
+            jwt_value = result["jwt_token"]
+            if jwt_value.startswith("Bearer "):
+                jwt_value = jwt_value[len("Bearer "):]
             response.set_cookie(
                 key="auth_token",
-                value=result["jwt_token"],
+                value=jwt_value,
                 httponly=True,
                 secure=False,
                 samesite="lax",
