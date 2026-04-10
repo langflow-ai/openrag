@@ -46,6 +46,7 @@ dependencies = [
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
     "prometheus-fastapi-instrumentator>=7.1.0",
+    "fastmcp>=3.2.3",
 ]
 
 [dependency-groups]

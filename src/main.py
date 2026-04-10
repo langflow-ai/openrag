@@ -67,6 +67,7 @@ from api.v1 import (
     models as v1_models,
     knowledge_filters as v1_knowledge_filters,
 )
+from mcp_http.server import create_mcp_server
 
 # Configuration and setup
 from config.settings import (
@@ -1970,6 +1971,32 @@ async def create_app():
         methods=["DELETE"],
         tags=["public"],
     )
+
+    # ===== FastMCP Streamable HTTP Server =====
+    # Exposes /v1/* endpoints as MCP tools at POST /mcp
+    # Client config: { "url": "http://localhost:8000/mcp", "headers": { "X-API-Key": "..." } }
+    logger.info("Creating MCP server")
+    mcp_server = create_mcp_server(app)
+    mcp_http_app = mcp_server.http_app(transport="streamable-http", path="/")
+    app.mount("/mcp", mcp_http_app)
+    logger.info("MCP server mounted at /mcp (streamable-http)")
+
+    # FastMCP requires its own lifespan to be run so that the
+    # StreamableHTTPSessionManager task group is initialized before requests arrive.
+    # FastAPI does not automatically propagate lifespan to mounted sub-apps,
+    # so we wire it in manually via startup/shutdown handlers.
+    _mcp_lifespan_ctx = mcp_http_app.router.lifespan_context(mcp_http_app)
+
+    async def _start_mcp_lifespan():
+        await _mcp_lifespan_ctx.__aenter__()
+        logger.info("FastMCP lifespan started")
+
+    async def _stop_mcp_lifespan():
+        await _mcp_lifespan_ctx.__aexit__(None, None, None)
+        logger.info("FastMCP lifespan stopped")
+
+    app.add_event_handler("startup", _start_mcp_lifespan)
+    app.add_event_handler("shutdown", _stop_mcp_lifespan)
 
     # Add startup event handler
     @app.on_event("startup")
