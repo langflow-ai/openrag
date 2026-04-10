@@ -335,15 +335,36 @@ async def get_api_key_user_async(
     session_manager=Depends(get_session_manager),
 ) -> User:
     """
-    Async dependency: require API key authentication.
+    Async dependency: require API key or IBM authentication.
 
     Accepts:
       - X-API-Key: orag_... header
       - Authorization: Bearer orag_... header
+      - X-Username + X-Api-Key headers (when IBM_AUTH_ENABLED)
 
-    Raises HTTP 401 if no valid key is provided.
+    Raises HTTP 401 if no valid credentials are provided.
     """
-    # Extract key from headers
+    from config.settings import IBM_AUTH_ENABLED
+
+    # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
+    if IBM_AUTH_ENABLED:
+        ibm_username = request.headers.get("X-Username")
+        ibm_api_key = request.headers.get("X-Api-Key")
+        if ibm_username and ibm_api_key:
+            user = User(
+                user_id=ibm_username,
+                email=ibm_username,
+                name=ibm_username,
+                picture=None,
+                provider="ibm_ams",
+                jwt_token=None,
+                opensearch_username=ibm_username,
+                opensearch_credentials=ibm_api_key,
+            )
+            request.state.user = user
+            return user
+
+    # API key path
     api_key = request.headers.get("X-API-Key")
     if not api_key or not api_key.startswith("orag_"):
         auth_header = request.headers.get("Authorization", "")
