@@ -20,9 +20,10 @@ async def _send_convert_request(
     file_bytes: bytes,
 ) -> dict:
     """Send a file to docling-serve and return the DoclingDocument dict."""
-    from api.docling import DOCLING_SERVICE_URL
+    from api.docling import get_docling_service_url
 
-    url = f"{DOCLING_SERVICE_URL}/v1/convert/file"
+    docling_url = get_docling_service_url()
+    url = f"{docling_url}/v1/convert/file"
 
     ocr_engine = os.getenv("DOCLING_OCR_ENGINE")
     data: dict[str, str] = {"to_formats": "json"}
@@ -41,7 +42,7 @@ async def _send_convert_request(
         response.raise_for_status()
     except httpx.ConnectError as exc:
         raise DoclingServeError(
-            f"Cannot connect to docling-serve at {DOCLING_SERVICE_URL}. "
+            f"Cannot connect to docling-serve at {docling_url}. "
             f"Is it running? Start with: uvx docling-serve run"
         ) from exc
     except httpx.TimeoutException as exc:
