@@ -50,7 +50,7 @@ services:
       OPENSEARCH_USERNAME: "${OPENSEARCH_USERNAME:-admin}"
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
-      - "5601:5601"
+      - "${DASHBOARD_PORT:-5601}:5601"
 
   openrag-backend:
     image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
