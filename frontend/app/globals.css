@@ -239,6 +239,16 @@
     --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
   }
 
+  /* IBM: match OSS switch colors — black track when checked, white thumb always */
+  [data-theme="ibm"] [role="switch"][data-state="checked"] {
+    background-color: hsl(var(--foreground));
+  }
+  [data-theme="ibm"]
+    [role="switch"][data-state="unchecked"]
+    > span[data-state="unchecked"] {
+    background-color: hsl(var(--foreground));
+  }
+
   /* IBM Dark */
   [data-theme="ibm"].dark {
     --background: 0 0% 8.6%; /* IBM Gray 100 #161616 */
@@ -464,7 +474,8 @@
   }
 
   [data-theme="ibm"] .fc-card pre,
-  [data-theme="ibm"] .fc-card .fc-value {
+  [data-theme="ibm"] .fc-card .fc-value,
+  [data-theme="ibm"] .fc-card .fc-result {
     background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
   }
 
@@ -507,7 +518,8 @@
   }
 
   [data-theme="ibm"].dark .fc-card pre,
-  [data-theme="ibm"].dark .fc-card .fc-value {
+  [data-theme="ibm"].dark .fc-card .fc-value,
+  [data-theme="ibm"].dark .fc-card .fc-result {
     background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
   }
 

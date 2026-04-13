@@ -25,7 +25,7 @@ export const ThemeSwitcherButtons = () => {
         type="button"
         className={`h-6 w-6 rounded-full flex items-center justify-center ${
           selectedTheme === "light"
-            ? "bg-amber-400 text-primary"
+            ? "bg-amber-400 text-foreground"
             : "text-foreground hover:bg-amber-400 hover:text-background"
         }`}
         onClick={() => handleThemeChange("light")}
