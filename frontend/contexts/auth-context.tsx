@@ -25,6 +25,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
+  version: string | null;
   login: () => void;
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isNoAuthMode, setIsNoAuthMode] = useState(false);
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
 
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
@@ -65,6 +67,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const data = await response.json();
       console.log("[checkAuth] /api/auth/me response:", data);
+      if (data.version) setVersion(data.version);
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -235,6 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!user,
     isNoAuthMode,
     isIbmAuthMode,
+    version,
     login,
     loginWithIbm,
     logout,
