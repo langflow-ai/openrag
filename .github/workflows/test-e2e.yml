@@ -104,6 +104,23 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ""
         run: npx playwright test
 
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs os > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs langflow > service-logs/langflow.log 2>&1 || true
+          docker logs openrag-backend-proxy > service-logs/backend-proxy.log 2>&1 || true
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs
+          path: service-logs/
+          retention-days: 7
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
