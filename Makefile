@@ -358,7 +358,7 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
@@ -368,7 +368,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CP
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 
 dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -377,7 +377,7 @@ dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure f
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
@@ -388,7 +388,7 @@ dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructu
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
@@ -401,7 +401,7 @@ dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrast
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
@@ -414,7 +414,7 @@ dev-local-build-lf-cpu: ensure-langflow-data ensure-backend-volumes ## Start inf
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${DASHBOARD_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
@@ -438,7 +438,7 @@ dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stac
 	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${DASHBOARD_PORT:-5601}"
 
 dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch and CPU only mode
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
@@ -454,7 +454,7 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${DASHBOARD_PORT:-5601}"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
@@ -995,6 +995,8 @@ health: ## Check health of all services
 	@if curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Langflow:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${LANGFLOW_PORT:-7860}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@printf "$(CYAN)Dashboards:$(NC) "
+	@if curl -s -k --fail http://127.0.0.1:$${DASHBOARD_PORT:-5601} >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)OpenSearch:$(NC) "
 	@RESULTS=$$(curl -s -k -u "admin:$$OPENSEARCH_PASSWORD" https://127.0.0.1:9200/_cluster/health 2>/dev/null); \
 	if [ -z "$$RESULTS" ]; then \
