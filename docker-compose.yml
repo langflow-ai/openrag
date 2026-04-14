@@ -147,8 +147,6 @@ services:
       context: .
       dockerfile: Dockerfile.langflow
     container_name: langflow
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
