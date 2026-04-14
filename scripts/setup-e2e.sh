@@ -27,14 +27,15 @@ echo "Starting docling..."
 make docling
 
 # Forward backend port 8000 using a proxy container
-# We join the network of the backend container to access its port 8000 and map it to host 8000.
+# We find the network of the backend container and use a proxy to bridge it to the host.
 echo "Starting backend port forwarder at localhost:8000..."
 ${CONTAINER_RUNTIME} rm -f openrag-backend-proxy 2>/dev/null || true
+BACKEND_NETWORK=$(${CONTAINER_RUNTIME} inspect openrag-backend -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' | head -n 1)
 ${CONTAINER_RUNTIME} run -d --rm \
     --name openrag-backend-proxy \
-    --network container:openrag-backend \
+    --network "$BACKEND_NETWORK" \
     -p 8000:8000 \
-    alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:localhost:8000
+    alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:openrag-backend:8000
 
 # On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
 if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then

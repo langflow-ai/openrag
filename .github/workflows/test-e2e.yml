@@ -73,12 +73,6 @@ jobs:
       - name: Install Python
         run: uv python install 3.13
 
-      - name: Install backend dependencies
-        run: uv sync
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
 
 
       - name: Install Playwright Browsers
@@ -94,18 +88,6 @@ jobs:
           chmod +x scripts/setup-e2e.sh
           ./scripts/setup-e2e.sh
 
-
-      - name: Ensure JWT keys for local backend
-        run: |
-          # Keys created by Docker are root-owned and unreadable by the runner.
-          # Remove via Docker (handles root ownership), then regenerate as runner user.
-          docker run --rm -v $(pwd):/work alpine sh -c "rm -f /work/keys/private_key.pem /work/keys/public_key.pem" || true
-          uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"
-          chmod 600 keys/private_key.pem
-          chmod 644 keys/public_key.pem
-
-      - name: Start docling-serve
-        run: make docling
 
       - name: Run Playwright tests
         working-directory: frontend
