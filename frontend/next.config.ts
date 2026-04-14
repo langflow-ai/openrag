@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: 300000, // 5 minutes
   },
+  async rewrites() {
+    return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
+  },
   // Ignore ESLint errors during build
   eslint: {
     ignoreDuringBuilds: true,
