@@ -335,7 +335,6 @@ name = "openrag-mcp"
 version = "0.3.0rc4"
 source = { editable = "." }
 dependencies = [
-    { name = "httpx" },
     { name = "mcp" },
     { name = "openrag-sdk" },
 ]
