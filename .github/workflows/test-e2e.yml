@@ -74,6 +74,9 @@ jobs:
         run: uv python install 3.13
 
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
 
       - name: Install Playwright Browsers
         working-directory: frontend
