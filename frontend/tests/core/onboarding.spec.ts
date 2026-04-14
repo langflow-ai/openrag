@@ -5,6 +5,7 @@ test("can configure OpenAI provider", async ({ page }) => {
   await completeOnboarding(page, {
     llmProvider: "openai",
     embeddingProvider: "openai",
+    reset: true,
   });
 
   // Chat page
@@ -14,7 +15,7 @@ test("can configure OpenAI provider", async ({ page }) => {
   });
 
   await expect(
-    page.getByTestId("conversation-button-What is OpenRAG?"),
+    page.getByTestId("conversation-button-What is OpenRAG?").first(),
   ).toBeVisible();
 
   await expect(page.getByTestId(/^suggestion-/)).toHaveCount(3);
