@@ -2,15 +2,40 @@
 FastMCP streamable HTTP server integration.
 
 Exposes all /v1/ FastAPI endpoints as MCP tools over streamable HTTP transport.
-Auth headers (X-API-Key) passed by MCP clients are forwarded transparently to
-the underlying FastAPI endpoint handlers via FastMCP's internal proxy.
+Auth headers passed by MCP clients are forwarded transparently to the underlying
+FastAPI endpoint handlers via FastMCP's internal proxy.
+
+Supported authentication methods:
+
+1. OpenRAG API Key:
+   - X-API-Key: orag_...
+   - Authorization: Bearer orag_...
+
+2. IBM Auth (when IBM_AUTH_ENABLED=true):
+   - X-Username: <ibm_username>
+   - X-Api-Key: <ibm_api_key>
 
 Usage (MCP client config):
+
+    Standard API key:
     {
       "mcpServers": {
         "openrag": {
           "url": "http://localhost:8000/mcp",
           "headers": { "X-API-Key": "orag_..." }
+        }
+      }
+    }
+
+    IBM auth:
+    {
+      "mcpServers": {
+        "openrag": {
+          "url": "http://localhost:8000/mcp",
+          "headers": {
+            "X-Username": "your_ibm_username",
+            "X-Api-Key": "your_ibm_api_key"
+          }
         }
       }
     }
