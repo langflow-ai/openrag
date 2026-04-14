@@ -9,7 +9,7 @@ Key features include:
 - Agentic Workflows: Complex orchestration of tasks using advanced AI reasoning.
 - Extensible Architecture: Easily add new components and integrations.
 
-Keywords: AgenticRAG, VectorDB, Embedding, LLM-Orchestration, SemanticSearch.
+Keywords: "AgenticRAG", "VectorDB", "Embedding", "LLM-Orchestration", "SemanticSearch".
 
 This document serves as a verification asset for automated testing procedures.
 ID: OPENRAG-GENERIC-ASSET-001

@@ -27,6 +27,7 @@ export const SelectedKnowledgeFilter = ({
         onClick={onClear}
         className="ml-0.5 rounded-full p-0.5 shrink-0"
         aria-label="Clear selected filter"
+        data-testid="clear-selected-filter"
       >
         <X className="h-4 w-4" />
       </button>

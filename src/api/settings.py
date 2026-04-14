@@ -33,6 +33,7 @@ from dependencies import (
     get_document_service,
     get_langflow_file_service,
     get_knowledge_filter_service,
+    get_chat_service,
 )
 from session_manager import User
 
@@ -210,6 +211,8 @@ class RollbackResponse(BaseModel):
     message: str
     cancelled_tasks: int
     deleted_files: int
+    reset_flows: int
+    deleted_conversations: int
 
 class RollbackBody(BaseModel):
     embedding_only: bool = False
@@ -1653,6 +1656,8 @@ async def rollback_onboarding(
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     knowledge_filter_service=Depends(get_knowledge_filter_service),
+    flows_service=Depends(get_flows_service),
+    chat_service=Depends(get_chat_service),
     user: User = Depends(get_current_user),
 ) -> RollbackResponse:
     """Rollback onboarding configuration when sample data files fail.
@@ -1759,6 +1764,29 @@ async def rollback_onboarding(
                     task_service.task_store[check_user_id].pop(task_id, None)
                     logger.info(f"Purged task {task_id} completely from task_store for user {check_user_id}")
 
+        # 4. Reset Langflow flows to their original state
+        reset_flows_count = 0
+        for flow_type in ["nudges", "retrieval", "ingest"]:
+            try:
+                result = await flows_service.reset_langflow_flow(flow_type)
+                if result.get("success"):
+                    reset_flows_count += 1
+                    logger.info(f"Successfully reset {flow_type} flow during rollback")
+                else:
+                    logger.warning(f"Failed to reset {flow_type} flow during rollback: {result.get('error')}")
+            except Exception as e:
+                logger.error(f"Error resetting {flow_type} flow during rollback: {e}")
+
+        # 5. Delete all user conversations
+        deleted_conversations_count = 0
+        try:
+            result = await chat_service.delete_all_user_sessions(user.user_id)
+            if result.get("success"):
+                deleted_conversations_count = result.get("deleted_count", 0)
+                logger.info(f"Deleted {deleted_conversations_count} conversations during rollback")
+        except Exception as e:
+            logger.error(f"Error deleting conversations during rollback: {e}")
+
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
@@ -1803,7 +1831,8 @@ async def rollback_onboarding(
 
         logger.info(
             f"Successfully rolled back onboarding configuration. "
-            f"Cancelled {len(cancelled_tasks)} tasks, deleted {len(deleted_files)} files"
+            f"Cancelled {len(cancelled_tasks)} tasks, deleted {len(deleted_files)} files, "
+            f"reset {reset_flows_count} flows, deleted {deleted_conversations_count} conversations"
         )
         await TelemetryClient.send_event(
             Category.ONBOARDING,
@@ -1814,6 +1843,8 @@ async def rollback_onboarding(
             message="Onboarding configuration rolled back successfully",
             cancelled_tasks=len(cancelled_tasks),
             deleted_files=len(deleted_files),
+            reset_flows=reset_flows_count,
+            deleted_conversations=deleted_conversations_count
         )
 
     except Exception as e:

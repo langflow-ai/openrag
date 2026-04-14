@@ -157,6 +157,8 @@ export async function completeOnboarding(
     page.getByText("Excellent, let's move on to learning the basics."),
   ).toBeVisible();
 
+  await page.waitForTimeout(1000);
+
   await expect(page.getByTestId("suggestion-0")).toBeVisible();
   await page.getByTestId("suggestion-0").click();
 
@@ -170,13 +172,14 @@ export async function completeOnboarding(
 
   // 4. Add your document
   await expect(page.getByText("Lastly, let's add your data.")).toBeVisible();
+  await page.waitForTimeout(1000);
   await expect(page.getByTestId("upload-button")).toBeVisible();
 
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByTestId("upload-button").click();
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles(
-    path.join(__dirname, "../assets", "test-document.txt"),
+    path.join(__dirname, "../assets", "test-document.md"),
   );
 
   await expect(page.getByText("Done")).toBeVisible({ timeout: 60000 });

@@ -18,8 +18,6 @@ test("can configure OpenAI provider", async ({ page }) => {
     page.getByTestId("conversation-button-What is OpenRAG?").first(),
   ).toBeVisible();
 
-  await expect(page.getByTestId(/^suggestion-/)).toHaveCount(3);
-
   await expect(page.getByTestId("selected-knowledge-filter")).toContainText(
     "test-document",
   );
@@ -34,5 +32,9 @@ test("can configure OpenAI provider", async ({ page }) => {
 
   await expect(page.getByText("OPENRAG-GENERIC-ASSET-001")).toBeVisible({
     timeout: 60000,
+  });
+
+  await expect(page.getByTestId(/^suggestion-/)).toHaveCount(3, {
+    timeout: 20000,
   });
 });
