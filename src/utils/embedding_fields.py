@@ -70,6 +70,7 @@ async def ensure_embedding_field_exists(
     opensearch_client,
     model_name: str,
     index_name: str = None,
+    dimensions: int = 0,
 ) -> str:
     """
     Ensure that an embedding field for the specified model exists in the OpenSearch index.
@@ -87,13 +88,14 @@ async def ensure_embedding_field_exists(
         Exception: If unable to add the field mapping
     """
     from config.settings import KNN_EF_CONSTRUCTION, KNN_M, get_index_name
-    from utils.embeddings import get_embedding_dimensions
 
     if index_name is None:
         index_name = get_index_name()
 
     field_name = get_embedding_field_name(model_name)
-    dimensions = await get_embedding_dimensions(model_name)
+
+    if dimensions == 0:
+        raise ValueError("Dimensions must be provided")
 
     logger.info(
         "Ensuring embedding field exists",

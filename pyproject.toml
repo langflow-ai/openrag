@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "agentd>=0.8.1",
     "aiofiles>=24.1.0",
     "cryptography>=45.0.6",
     "google-api-python-client>=2.143.0",
@@ -42,10 +43,11 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
-    "openai>=1.0.0",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "litellm==1.83.3",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
-    "prometheus-fastapi-instrumentator>=7.1.0",
+    "openai>=2.30.0",
 ]
 
 [dependency-groups]

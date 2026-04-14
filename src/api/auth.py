@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.version_utils import OPENRAG_VERSION
 
 from dependencies import (
     get_auth_service,
@@ -103,6 +104,7 @@ async def auth_me(
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
+    result["version"] = OPENRAG_VERSION
     return JSONResponse(result)
 
 
