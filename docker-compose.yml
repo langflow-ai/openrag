@@ -96,6 +96,7 @@ services:
       - LOG_FORMAT=${LOG_FORMAT}
       - SERVICE_NAME=${SERVICE_NAME}
       - SESSION_SECRET=${SESSION_SECRET}
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
       - OPENRAG_ENCRYPTION_KEY=${OPENRAG_ENCRYPTION_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - NO_COLOR=${NO_COLOR:-}
@@ -130,6 +131,8 @@ services:
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
       - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     image: langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .

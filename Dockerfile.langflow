@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:1.8.0
+FROM langflowai/langflow-nightly:1.9.0.dev40
 
 # Install uv and pre-create the Langflow data directory.
 # The base image already runs as uid=1000 and owns /app, so no root or chown needed.
@@ -7,13 +7,6 @@ RUN pip install uv \
     && pip uninstall -y litellm \
     && mkdir -p /app/langflow-data
 
-# Copy the entrypoint before switching to root so the COPY runs as uid=1000
-# (which owns /app), then switch to root so the entrypoint can correct
-# bind-mount permissions at runtime before dropping back to uid=1000.
-COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
-USER root
-
 EXPOSE 7860
 
-ENTRYPOINT ["langflow-entrypoint"]
 CMD ["langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

@@ -375,13 +375,7 @@ def generate_jwt_keys():
             )
             raise
     else:
-        # Ensure correct permissions on existing keys
-        try:
-            os.chmod(private_key_path, 0o600)
-            os.chmod(public_key_path, 0o644)
-            logger.info("RSA keys already exist, ensured correct permissions")
-        except OSError as e:
-            logger.error("Failed to set permissions on existing keys", error=str(e))
+        logger.info("RSA keys already exist")
 
 
 def _get_documents_dir():
@@ -1368,8 +1362,9 @@ async def initialize_services():
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
     )
-    # Generate JWT keys if they don't exist
-    generate_jwt_keys()
+    # Generate JWT keys if they don't exist and a JWT signing key isn't specified
+    if not os.getenv("JWT_SIGNING_KEY"):
+        generate_jwt_keys()
 
     from config.settings import IBM_AUTH_ENABLED
 
@@ -1480,7 +1475,7 @@ async def create_app():
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
-    
+
     try:
         Instrumentator().instrument(app).expose(app)
     except Exception as e:
@@ -2040,14 +2035,14 @@ async def create_app():
             Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
         )
         logger.info("Application shutdown initiated")
-        
+
         # Gracefully shutdown OpenSearch connection first
         try:
             from utils.opensearch_utils import graceful_opensearch_shutdown
             await graceful_opensearch_shutdown(clients.opensearch)
         except Exception as e:
             logger.error("Error during graceful OpenSearch shutdown", error=str(e))
-        
+
         await cleanup_subscriptions_proper(services)
         # Cleanup task service (cancels background tasks and process pool)
         await services["task_service"].shutdown()
