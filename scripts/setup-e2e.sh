@@ -4,50 +4,6 @@ set -e
 # Go to project root
 cd "$(dirname "$0")/.."
 
-# Environment file for E2E tests
-E2E_ENV="frontend/.env.test"
-E2E_ENV_EXAMPLE="frontend/.env.test.example"
-
-# Create .env.test from the example template (never modify the tracked example file)
-if [ ! -f "$E2E_ENV" ]; then
-    cp "$E2E_ENV_EXAMPLE" "$E2E_ENV"
-fi
-
-# Auto-generate a strong OpenSearch password if not already set in the env file or environment.
-# OpenSearch requires: uppercase, lowercase, digit, special char, min 8 chars.
-CURRENT_PASSWORD=$(grep -E '^OPENSEARCH_PASSWORD=' "$E2E_ENV" | cut -d'=' -f2- | sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
-if [ -n "$OPENSEARCH_PASSWORD" ]; then
-    echo "Using OpenSearch password from environment."
-    GENERATED_PASSWORD="$OPENSEARCH_PASSWORD"
-elif [ -z "$CURRENT_PASSWORD" ]; then
-    # Generate a random base (alphanumeric) and append required character classes
-    RANDOM_BASE=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 12)
-    GENERATED_PASSWORD="${RANDOM_BASE}Aa1@"
-    echo "Auto-generated OpenSearch password for E2E tests."
-else
-    echo "Using existing OpenSearch password from $E2E_ENV."
-    GENERATED_PASSWORD="$CURRENT_PASSWORD"
-fi
-
-# Make's `include` treats `#` as comments. If the password contains `#`, remove it from the file
-# and rely entirely on the exported environment variable below.
-if [[ "$GENERATED_PASSWORD" == *"#"* ]]; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' '/^OPENSEARCH_PASSWORD=/d' "$E2E_ENV"
-    else
-        sed -i '/^OPENSEARCH_PASSWORD=/d' "$E2E_ENV"
-    fi
-else
-    # Write the password into the env file (no quotes needed if no #)
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
-    else
-        sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
-    fi
-fi
-
-export OPENSEARCH_PASSWORD="$GENERATED_PASSWORD"
-
 # Detect container runtime
 if command -v docker >/dev/null 2>&1; then
     CONTAINER_RUNTIME="docker"
@@ -56,23 +12,29 @@ else
 fi
 
 echo "Using container runtime: $CONTAINER_RUNTIME"
-echo "Starting E2E Setup using $E2E_ENV..."
-
-# Clean up using make
-echo "Cleaning up..."
-make factory-reset FORCE=true ENV_FILE=$E2E_ENV
+echo "Starting E2E Setup..."
 
 # Pre-create langflow-data as world-writable so the Langflow container (UID 1000)
 # and the runner (UID 1001) can both access it, regardless of Docker's :U flag behavior.
 mkdir -p langflow-data
 chmod 777 langflow-data
 
-# Start infrastructure using make (this will use the new .env)
-echo "Starting infrastructure..."
-make dev-local-cpu ENV_FILE=$E2E_ENV
+# Start full stack using make
+echo "Starting full stack (CPU)..."
+make dev-cpu
 
 echo "Starting docling..."
 make docling
+
+# Forward backend port 8000 using a proxy container
+# We join the network of the backend container to access its port 8000 and map it to host 8000.
+echo "Starting backend port forwarder at localhost:8000..."
+${CONTAINER_RUNTIME} rm -f openrag-backend-proxy 2>/dev/null || true
+${CONTAINER_RUNTIME} run -d --rm \
+    --name openrag-backend-proxy \
+    --network container:openrag-backend \
+    -p 8000:8000 \
+    alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:localhost:8000
 
 # On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
 if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then
@@ -105,6 +67,31 @@ until curl -s http://localhost:7860/health >/dev/null; do
         exit 1
     fi
     echo "Waiting for Langflow... (${ELAPSED}s/${TIMEOUT}s)"
+done
+
+echo "Waiting for Frontend..."
+ELAPSED=0
+until curl -s http://localhost:3000 >/dev/null; do
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: Frontend did not become ready within ${TIMEOUT}s"
+        exit 1
+    fi
+    echo "Waiting for Frontend... (${ELAPSED}s/${TIMEOUT}s)"
+done
+
+echo "Waiting for Backend (via proxy)..."
+ELAPSED=0
+until curl -s http://localhost:8000/health >/dev/null; do
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: Backend did not become ready within ${TIMEOUT}s"
+        ${CONTAINER_RUNTIME} logs openrag-backend 2>&1 | tail -n 100
+        exit 1
+    fi
+    echo "Waiting for Backend... (${ELAPSED}s/${TIMEOUT}s)"
 done
 
 echo "Infrastructure Ready!"
