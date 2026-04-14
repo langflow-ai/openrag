@@ -117,6 +117,7 @@ body {
 
   .ag-paging-panel {
     color: #525252;
+    border-top: 1px solid hsl(var(--border));
   }
 }
 
@@ -159,5 +160,6 @@ body {
 
   .ag-paging-panel {
     color: #c6c6c6;
+    border-top: 1px solid hsl(var(--border));
   }
 }
