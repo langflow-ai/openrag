@@ -229,14 +229,24 @@
     --icon-disabled: #525252;
     /* Contextual layer (~Gray 100); use hsl(var(--layer-contextual)) */
     /* Layer / contextual surfaces (IBM Gray 10 light, Gray 100 dark) */
-    --layer-contextual: 0 0% 95.7%;
+    --layer-contextual: 0 0% 96%;
     --layer-contextual-foreground: 0 0% 9%;
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
 
     --badge: 0 0% 22.4%; /* #393939 */
-    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
+    --badge-foreground: 0 0% 96%; /* #F4F4F4 */
+  }
+
+  /* IBM: match OSS switch colors — black track when checked, white thumb always */
+  [data-theme="ibm"] [role="switch"][data-state="checked"] {
+    background-color: hsl(var(--foreground));
+  }
+  [data-theme="ibm"]
+    [role="switch"][data-state="unchecked"]
+    > span[data-state="unchecked"] {
+    background-color: hsl(var(--foreground));
   }
 
   /* IBM Dark */
@@ -310,13 +320,13 @@
     --placeholder: 0 0% 44%; /* #6F6F6F */
 
     --layer-contextual: 0 0% 15%;
-    --layer-contextual-foreground: 0 0% 95.7%;
-    --text-text-01: 0 0% 95.7%;
+    --layer-contextual-foreground: 0 0% 96%;
+    --text-text-01: 0 0% 96%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
 
     --badge: 0 0% 32%; /* #525252 */
-    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
+    --badge-foreground: 0 0% 96%; /* #F4F4F4 */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
@@ -365,7 +375,11 @@
     border: none;
     border-radius: 0;
     border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--muted));
+    background-color: hsl(var(--layer-contextual));
+  }
+
+  [data-theme="ibm"].dark .primary-input {
+    background-color: hsl(var(--layer-contextual));
   }
 
   [data-theme="ibm"] .primary-input:hover {
@@ -386,14 +400,14 @@
     border: none;
     border-radius: 0;
     border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--card));
+    background-color: hsl(var(--layer-contextual));
   }
 
   [data-theme="ibm"]
     .ibm-settings-page
     button[role="combobox"]:hover:not(:disabled) {
     border-bottom-color: hsl(var(--foreground));
-    background-color: hsl(var(--card));
+    background-color: hsl(var(--layer-contextual));
   }
 
   [data-theme="ibm"] .ibm-settings-page button[role="combobox"]:focus {
@@ -464,7 +478,8 @@
   }
 
   [data-theme="ibm"] .fc-card pre,
-  [data-theme="ibm"] .fc-card .fc-value {
+  [data-theme="ibm"] .fc-card .fc-value,
+  [data-theme="ibm"] .fc-card .fc-result {
     background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
   }
 
@@ -507,7 +522,8 @@
   }
 
   [data-theme="ibm"].dark .fc-card pre,
-  [data-theme="ibm"].dark .fc-card .fc-value {
+  [data-theme="ibm"].dark .fc-card .fc-value,
+  [data-theme="ibm"].dark .fc-card .fc-result {
     background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
   }
 

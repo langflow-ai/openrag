@@ -14,7 +14,9 @@ const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
     ? isCloudBrand
       ? DOG_ICON_IBM_DISABLED_FILL
       : DOG_ICON_DISABLED_FILL
-    : stroke || DOG_ICON_DEFAULT_FILL;
+    : isCloudBrand
+      ? "currentColor"
+      : stroke || DOG_ICON_DEFAULT_FILL;
 
   // CSS for the stepped animation states
   const animationCSS = `
