@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448
 
 import os
 from utils.logging_config import get_logger
+from config.settings import IBM_AUTH_ENABLED
 
 logger = get_logger(__name__)
 @dataclass
@@ -106,9 +107,16 @@ class SessionManager:
                 self.public_key_pem = None  # No JWKS for symmetric
                 self.algorithm = "HS256"
         else:
-            # Fall back to file-based RSA keys
-            self._load_rsa_keys()
-            self.algorithm = "RS256"
+            if IBM_AUTH_ENABLED:
+                # IBM Auth Mode: Traefik handles auth (no local JWT signing required)
+                self.private_key = None
+                self.public_key = None
+                self.public_key_pem = None
+                self.algorithm = None
+            else:
+                # Fall back to file-based RSA keys
+                self._load_rsa_keys()
+                self.algorithm = "RS256"
         logger.info(f"Initialized JWT signing with {self.algorithm}")
 
 
@@ -215,11 +223,17 @@ class SessionManager:
         if token and (token.startswith("Bearer ") or token.startswith("Basic ")):
             return token
         if not token:
+            if self.private_key is None:
+                logger.error("create_jwt_token called but JWT signing is disabled (IBM auth mode)")
+                return None
             token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return f"Bearer {token}"
 
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify JWT token and return user info"""
+        if IBM_AUTH_ENABLED:
+            # IBM Auth Mode: Token verification handled externally by Traefik
+            return None
         try:
             raw = token.removeprefix("Bearer ")
             payload = jwt.decode(
@@ -258,7 +272,7 @@ class SessionManager:
         # Get the effective JWT token (handles anonymous JWT creation)
         jwt_token = self.get_effective_jwt_token(user_id, jwt_token)
 
-        from config.settings import IBM_AUTH_ENABLED, clients
+        from config.settings import clients
 
         # In IBM mode credentials may rotate per-request — always create a fresh client
         if IBM_AUTH_ENABLED:
@@ -274,7 +288,7 @@ class SessionManager:
 
     def get_effective_jwt_token(self, user_id: str, jwt_token: str) -> str:
         """Get the effective JWT token, creating anonymous JWT if needed in no-auth mode"""
-        from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
+        from config.settings import is_no_auth_mode
 
         # IBM JWT is used as-is — never override with an anonymous OpenRAG JWT
         if IBM_AUTH_ENABLED and jwt_token:
@@ -285,6 +299,9 @@ class SessionManager:
 
         # No token — create one
         if is_no_auth_mode() or user_id in (None, AnonymousUser().user_id):
+            # IBM Auth Mode: No anonymous JWT concept (disable signing)
+            if self.private_key is None:
+                return None
             # anonymous JWT (cached)
             if not hasattr(self, "_anonymous_jwt"):
                 self._anonymous_jwt = self._create_anonymous_jwt()
