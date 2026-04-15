@@ -34,6 +34,7 @@ export default function Nudges({
                   {nudges.map((suggestion: string, index: number) => (
                     <button
                       key={index}
+                      data-testid={`suggestion-${index}`}
                       onClick={() => handleSuggestionClick(suggestion)}
                       className={cn(
                         onboarding || isCloudBrand

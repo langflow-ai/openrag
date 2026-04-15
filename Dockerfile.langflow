@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow-nightly:1.9.0.dev38
+FROM langflowai/langflow-nightly:1.9.0.dev40
 
 # Install uv and pre-create the Langflow data directory.
 # The base image already runs as uid=1000 and owns /app, so no root or chown needed.

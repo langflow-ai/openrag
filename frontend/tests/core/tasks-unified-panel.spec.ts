@@ -1,4 +1,14 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { completeOnboarding } from "../utils/onboarding";
+
+test.describe.configure({ mode: "serial" });
+
+test.beforeEach(async ({ page }) => {
+  await completeOnboarding(page, {
+    llmProvider: "openai",
+    embeddingProvider: "openai",
+  });
+});
 
 type MockTaskStatus =
   | "pending"
@@ -114,7 +124,7 @@ const openRecentTasksSection = async (page: Page) => {
   await expect(failureAccordionTrigger.first()).toBeVisible({ timeout: 15000 });
 };
 
-test.skip("completed task with failures keeps failure log in Tasks panel", async ({
+test("completed task with failures keeps failure log in Tasks panel", async ({
   page,
 }) => {
   const runningTask = buildTask({
@@ -175,7 +185,7 @@ test.skip("completed task with failures keeps failure log in Tasks panel", async
   ).toBeVisible();
 });
 
-test.skip("completed task with failures requires View click to open tasks panel", async ({
+test("completed task with failures requires View click to open tasks panel", async ({
   page,
 }) => {
   const runningTask = buildTask({
@@ -223,7 +233,7 @@ test.skip("completed task with failures requires View click to open tasks panel"
   await expect(page.getByText("Auto-open on partial success")).toBeVisible();
 });
 
-test.skip("new failed task auto-opens tasks panel", async ({ page }) => {
+test("new failed task auto-opens tasks panel", async ({ page }) => {
   const runningTask = buildTask({
     task_id: "task-auto-open-failed",
     status: "running",
@@ -269,7 +279,7 @@ test.skip("new failed task auto-opens tasks panel", async ({ page }) => {
   await expect(page.getByText("Auto-open on failed task")).toBeVisible();
 });
 
-test.skip("unified panel groups terminal tasks into recent and past", async ({
+test("unified panel groups terminal tasks into recent and past", async ({
   page,
 }) => {
   const recentFailedTask = buildTask({

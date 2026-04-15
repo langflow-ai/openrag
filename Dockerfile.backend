@@ -65,7 +65,7 @@ WORKDIR /app
 COPY --from=builder /app /app
 COPY securityconfig/ ./securityconfig/
 COPY cloud_securityconfig/ ./cloud_securityconfig/
-COPY entrypoint.sh /entrypoint.sh
+COPY scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
