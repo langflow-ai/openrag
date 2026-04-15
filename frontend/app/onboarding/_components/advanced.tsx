@@ -36,7 +36,9 @@ export function AdvancedOnboarding({
   return (
     <Accordion type="single" collapsible>
       <AccordionItem value="item-1">
-        <AccordionTrigger>Advanced settings</AccordionTrigger>
+        <AccordionTrigger data-testid="advanced-settings-button">
+          Advanced settings
+        </AccordionTrigger>
         <AccordionContent className="space-y-6">
           {hasEmbeddingModels && (
             <LabelWrapper
@@ -47,6 +49,7 @@ export function AdvancedOnboarding({
             >
               <ModelSelector
                 options={embeddingModels}
+                data-testid="embedding-model-selector"
                 icon={icon}
                 value={embeddingModel}
                 onValueChange={setEmbeddingModel}
@@ -62,6 +65,7 @@ export function AdvancedOnboarding({
             >
               <ModelSelector
                 options={languageModels}
+                data-testid="language-model-selector"
                 icon={icon}
                 value={languageModel}
                 onValueChange={setLanguageModel}

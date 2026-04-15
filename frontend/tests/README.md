@@ -11,25 +11,27 @@ The E2E tests for the frontend are written using Playwright and are located in t
 To run the Playwright E2E tests locally, follow these steps:
 
 #### 1. Setup Infrastructure
-The E2E tests require the backend infrastructure (database, API, etc.) to be running.
-We provide a setup script that automates the process of creating a test environment, managing environment variables, and starting the required containers:
+The E2E tests require the full stack (database, API, frontend, etc.) to be running.
+We provide a setup script that automates the process of starting the full stack and waiting for all services to be ready:
 
 ```bash
 ./scripts/setup-e2e.sh
 ```
 
 **What this script does:**
-- Copies `frontend/.env.test.example` to `frontend/.env.test` if it doesn't already exist.
-- Auto-generates any required missing secrets (e.g., `OPENSEARCH_PASSWORD`) in the `.env.test` file.
-- Performs a factory reset to clear old data (using `make factory-reset`).
-- Starts the infrastructure using `make dev-local-cpu` with the new `.env.test` file.
-- Waits for services like OpenSearch and the Langflow backend to become healthy before proceeding.
+- Pre-creates required directories (e.g., `langflow-data`).
+- Starts the full stack using `make dev-cpu`.
+- Starts the docling service using `make docling`.
+- Waits for services (OpenSearch, Langflow, and Frontend) to become healthy before proceeding.
+
+**Note:** This script uses your standard root `.env` file configuration. Specialized `.env.test` files are no longer required.
 
 **Alternative: Manual Setup**
 If you prefer not to use the automated setup script, you can manually start the infrastructure:
-1. Ensure that `frontend/.env.test` is created and configured correctly (e.g., `OPENSEARCH_PASSWORD` must be set).
-2. Clean up old data by running: `make factory-reset ENV_FILE=frontend/.env.test`
-3. Start the infrastructure by running: `make dev-local-cpu ENV_FILE=frontend/.env.test`
+1. Ensure your root `.env` is configured correctly.
+2. Start the services: `make dev-cpu`
+3. Start docling: `make docling`
+4. Wait for all services to be healthy: `make health`
 
 #### 2. Run Playwright Tests
 Once the infrastructure is up and running, you can execute the Playwright tests.
@@ -41,11 +43,12 @@ npx playwright test
 ```
 
 *Note: You may need to run `npx playwright install` first to download the required browsers if you haven't already.*
+*The Playwright configuration is set to reuse existing servers on ports 8000 (Backend) and 3000 (Frontend) if they are already running.*
 
 ### Teardown
 
-After running the tests, you can shut down and clean up the test infrastructure using Docker Compose. Ensure you use the same environment file:
+After running the tests, you can shut down and clean up the test infrastructure using the Makefile:
 
 ```bash
-docker compose --env-file frontend/.env.test down -v --remove-orphans
+make clean
 ```

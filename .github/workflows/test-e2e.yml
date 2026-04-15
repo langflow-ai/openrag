@@ -24,11 +24,27 @@ env:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
     env:
       LANGFLOW_AUTO_LOGIN: "True"
       LANGFLOW_NEW_USER_IS_ACTIVE: "True"
       LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+      WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+      WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+      OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+      LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+      LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+      LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
+      NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
 
     steps:
       - name: Cleanup Docker cache
@@ -61,88 +77,26 @@ jobs:
       - name: Install Python
         run: uv python install 3.13
 
-      - name: Install backend dependencies
-        run: uv sync
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Cache Docker Images
-        id: cache-docker
-        uses: actions/cache@v5
-        with:
-          path: ${{ runner.temp }}/docker-cache
-          key: docker-images-v1-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            docker-images-v1-${{ runner.os }}-
-
-      - name: Validate Docker Cache
-        id: validate-docker-cache
-        if: steps.cache-docker.outputs.cache-hit == 'true'
-        run: |
-          TAR="${{ runner.temp }}/docker-cache/images.tar"
-          # Require at least 100 MB to consider the cache valid
-          MIN_SIZE=$((100 * 1024 * 1024))
-          if [ -f "$TAR" ] && [ "$(stat -c%s "$TAR")" -ge "$MIN_SIZE" ]; then
-            echo "Docker cache is valid ($(du -sh "$TAR" | cut -f1))"
-            echo "valid=true" >> $GITHUB_OUTPUT
-          else
-            echo "Docker cache is invalid or too small, deleting..."
-            rm -f "$TAR"
-            echo "valid=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Load Cached Docker Images
-        if: steps.cache-docker.outputs.cache-hit == 'true' && steps.validate-docker-cache.outputs.valid == 'true'
-        run: |
-          echo "Loading cached Docker images..."
-          docker load -i ${{ runner.temp }}/docker-cache/images.tar
-
-      # Cache Playwright browsers using a composite key
-      - name: Cache Playwright Browsers
-        id: cache-playwright
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ env.PLAYWRIGHT_VERSION }}-chromium-${{ runner.os }}
-          restore-keys: |
-            playwright-${{ env.PLAYWRIGHT_VERSION }}-chromium-${{ runner.os }}
-
       - name: Install Playwright Browsers
         working-directory: frontend
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: |
           npx playwright install --with-deps chromium
+
+      - name: Build Docker images
+        run: |
+          make build
+          docker builder prune -af
 
       - name: Setup E2E infrastructure
         run: |
           chmod +x scripts/setup-e2e.sh
           ./scripts/setup-e2e.sh
 
-      - name: Save Docker Images for Caching
-        if: steps.cache-docker.outputs.cache-hit != 'true' || steps.validate-docker-cache.outputs.valid == 'false'
-        run: |
-          echo "Saving Docker images to cache..."
-          rm -rf ${{ runner.temp }}/docker-cache
-          mkdir -p ${{ runner.temp }}/docker-cache
-          docker save -o ${{ runner.temp }}/docker-cache/images.tar \
-            langflowai/openrag-opensearch:latest \
-            langflowai/openrag-backend:latest \
-            langflowai/openrag-langflow:latest \
-            opensearchproject/opensearch-dashboards:3.0.0 || true
-
-      - name: Ensure JWT keys for local backend
-        run: |
-          # Keys created by Docker are root-owned and unreadable by the runner.
-          # Remove via Docker (handles root ownership), then regenerate as runner user.
-          docker run --rm -v $(pwd):/work alpine sh -c "rm -f /work/keys/private_key.pem /work/keys/public_key.pem" || true
-          uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"
-          chmod 600 keys/private_key.pem
-          chmod 644 keys/public_key.pem
-
-      - name: Start docling-serve
-        run: make docling
 
       - name: Run Playwright tests
         working-directory: frontend
@@ -151,9 +105,27 @@ jobs:
           OPENSEARCH_HOST: localhost
           OPENSEARCH_PORT: "9200"
           OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
         run: npx playwright test
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs os > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs langflow > service-logs/langflow.log 2>&1 || true
+          docker logs openrag-backend-proxy > service-logs/backend-proxy.log 2>&1 || true
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs
+          path: service-logs/
+          retention-days: 7
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -175,7 +147,6 @@ jobs:
         if: always()
         run: |
           make docling-stop || true
-          ENV_FILE="frontend/.env.test"
-          if [ ! -f "$ENV_FILE" ]; then ENV_FILE="frontend/.env.test.example"; fi
-          docker compose --env-file "$ENV_FILE" down -v --remove-orphans || true
+          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          make clean || true
           docker system prune -f || true

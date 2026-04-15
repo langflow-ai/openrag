@@ -482,6 +482,7 @@ const OnboardingCard = ({
                   {!isEmbedding && (
                     <TabsTrigger
                       value="anthropic"
+                      data-testid={`anthropic-llm-tab`}
                       className={cn(
                         error &&
                           modelProvider === "anthropic" &&
@@ -520,6 +521,7 @@ const OnboardingCard = ({
                         modelProvider === "openai" &&
                         "data-[state=active]:border-destructive",
                     )}
+                    data-testid={`openai-${isEmbedding ? "embedding" : "llm"}-tab`}
                   >
                     <TabTrigger
                       selected={modelProvider === "openai"}
@@ -545,6 +547,7 @@ const OnboardingCard = ({
                   </TabsTrigger>
                   <TabsTrigger
                     value="watsonx"
+                    data-testid={`watsonx-${isEmbedding ? "embedding" : "llm"}-tab`}
                     className={cn(
                       error &&
                         modelProvider === "watsonx" &&
@@ -578,6 +581,7 @@ const OnboardingCard = ({
                   {!isCloudBrand && (
                     <TabsTrigger
                       value="ollama"
+                      data-testid={`ollama-${isEmbedding ? "embedding" : "llm"}-tab`}
                       className={cn(
                         error &&
                           modelProvider === "ollama" &&
@@ -677,6 +681,7 @@ const OnboardingCard = ({
                   <div>
                     <Button
                       size="sm"
+                      data-testid="onboarding-complete-button"
                       onClick={handleComplete}
                       disabled={!isComplete || isLoadingModels}
                       loading={onboardingMutation.isPending}

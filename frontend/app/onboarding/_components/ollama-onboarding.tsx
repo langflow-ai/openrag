@@ -140,6 +140,7 @@ export function OllamaOnboarding({
         >
           <ModelSelector
             options={embeddingModels}
+            data-testid="embedding-model-selector"
             icon={<OllamaLogo className="w-4 h-4" />}
             noOptionsPlaceholder={
               isLoadingModels
@@ -160,6 +161,7 @@ export function OllamaOnboarding({
         >
           <ModelSelector
             options={languageModels}
+            data-testid="language-model-selector"
             icon={<OllamaLogo className="w-4 h-4" />}
             noOptionsPlaceholder={
               isLoadingModels
