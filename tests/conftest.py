@@ -34,25 +34,19 @@ async def onboard_system():
         yield
         return
 
-    from pathlib import Path
-    import shutil
-
     # Delete any existing config to ensure clean onboarding
     config_file = Path("config/config.yaml")
     if config_file.exists():
         config_file.unlink()
 
-    # Clean up OpenSearch data directory to ensure fresh state for tests
-    opensearch_data_path = Path(os.getenv("OPENSEARCH_DATA_PATH", "./opensearch-data"))
-    if opensearch_data_path.exists():
-        try:
-            shutil.rmtree(opensearch_data_path)
-            print(f"[DEBUG] Cleaned up OpenSearch data directory: {opensearch_data_path}")
-        except Exception as e:
-            print(f"[DEBUG] Could not clean OpenSearch data directory: {e}")
+    # Clean up OpenSearch indices to ensure fresh state for tests
+    try:
+        await clients.initialize()
+        await clients.opensearch.indices.delete(index="_all", ignore_unavailable=True)
+        print("[DEBUG] Wiped all OpenSearch indices via API")
+    except Exception as e:
+        print(f"[DEBUG] Could not wipe OpenSearch indices: {e}")
 
-    # Initialize clients
-    await clients.initialize()
 
     # Create app and perform onboarding via API
     from main import create_app, startup_tasks

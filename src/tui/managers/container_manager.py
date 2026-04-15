@@ -1278,23 +1278,37 @@ class ContainerManager:
 
         yield False, "Clearing OpenSearch data volume..."
 
-        # Get opensearch data path from env config
-        from .env_manager import EnvManager
-        env_manager = EnvManager()
-        env_manager.load_existing_env()
-        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser().absolute()
+        # The volume name is 'opensearch-data' as defined in docker-compose.yml.
+        # Docker Compose usually prefixes it with the project name (defaulting to the directory name).
+        volume_name = "opensearch-data"
+        
+        possible_names = list(dict.fromkeys([
+            volume_name,
+            f"{Path.cwd().name.lower()}_{volume_name}",              # e.g. openrag_opensearch-data
+            f"{Path.cwd().name.lower().replace('-', '')}_{volume_name}",  # e.g. openrag_opensearch-data (dashes stripped)
+        ]))
 
-        if not opensearch_data_path.exists():
-            yield True, "OpenSearch data directory does not exist, skipping"
+        # List volumes and find the correct one
+        list_success, stdout, _ = await self._run_runtime_command(["volume", "ls", "--format", "{{.Name}}"])
+        if not list_success:
+            yield False, "Could not list Docker volumes"
             return
 
-        # Use alpine with root to clear container-owned files
-        success, msg = await self.clear_directory_with_container(opensearch_data_path)
+        existing_volumes = set(stdout.splitlines())
+        found_name = next((n for n in possible_names if n in existing_volumes), None)
 
-        if success:
-            yield True, "OpenSearch data cleared successfully"
+        if found_name is None:
+            yield True, "OpenSearch data volume not found — already removed or never created"
+            return
+
+        # Only clear the volume we know exists
+        cmd = ["run", "--rm", "-v", f"{found_name}:/work:Z", "alpine", "sh", "-c",
+            "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"]
+        success, stdout, stderr = await self._run_runtime_command(cmd)
+        if success and "done" in stdout:
+            yield True, f"OpenSearch data volume '{found_name}' cleared successfully"
         else:
-            yield False, f"Failed to clear OpenSearch data: {msg}"
+            yield False, f"Failed to clear OpenSearch data volume '{found_name}': {stderr}"
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""

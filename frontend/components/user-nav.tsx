@@ -17,8 +17,15 @@ import ThemeButtons from "./theme-switcher-buttons";
 
 export function UserNav() {
   const isCloudBrand = useIsCloudBrand();
-  const { user, isLoading, isAuthenticated, isNoAuthMode, login, logout } =
-    useAuth();
+  const {
+    user,
+    isLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    login,
+    logout,
+    version,
+  } = useAuth();
   const { theme, setTheme } = useTheme();
 
   if (isLoading) {
@@ -106,6 +113,17 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="m-0" />
+        {version && (
+          <>
+            <div className="flex items-center justify-between pl-3 pr-2 h-9">
+              <span className="text-sm">Version</span>
+              <p className="text-xs leading-none text-muted-foreground">
+                v{version}
+              </p>
+            </div>
+            <DropdownMenuSeparator className="m-0" />
+          </>
+        )}
         <div className="flex items-center justify-between pl-3 pr-2 h-9">
           <span className="text-sm">Theme</span>
           <ThemeButtons />

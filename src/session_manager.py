@@ -236,6 +236,8 @@ class SessionManager:
 
     def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID"""
+        if user_id == "anonymous":
+            return AnonymousUser()
         return self.users.get(user_id)
 
     def get_user_from_token(self, token: str) -> Optional[User]:

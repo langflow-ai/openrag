@@ -1,7 +1,7 @@
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -30,6 +30,20 @@ export type GroupedModelOption = {
   icon?: React.ReactNode;
 };
 
+export interface ModelSelectorProps extends ButtonProps {
+  options?: ModelOption[];
+  groupedOptions?: GroupedModelOption[];
+  value: string;
+  icon?: React.ReactNode;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  noOptionsPlaceholder?: string;
+  custom?: boolean;
+  onValueChange: (value: string, provider?: string) => void;
+  hasError?: boolean;
+  defaultOpen?: boolean;
+}
+
 export function ModelSelector({
   options,
   groupedOptions,
@@ -42,19 +56,11 @@ export function ModelSelector({
   custom = false,
   hasError = false,
   defaultOpen = false,
-}: {
-  options?: ModelOption[];
-  groupedOptions?: GroupedModelOption[];
-  value: string;
-  icon?: React.ReactNode;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  noOptionsPlaceholder?: string;
-  custom?: boolean;
-  onValueChange: (value: string, provider?: string) => void;
-  hasError?: boolean;
-  defaultOpen?: boolean;
-}) {
+  className,
+  disabled,
+  variant = "outline",
+  ...props
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [searchValue, setSearchValue] = useState("");
 
@@ -91,14 +97,16 @@ export function ModelSelector({
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant={variant}
           role="combobox"
-          disabled={allOptions.length === 0}
+          disabled={disabled || allOptions.length === 0}
           aria-expanded={open}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
             hasError && "!border-destructive",
+            className,
           )}
+          {...props}
         >
           {value ? (
             <div className="flex items-center gap-2">
@@ -162,6 +170,7 @@ export function ModelSelector({
                       <CommandItem
                         key={option.value}
                         value={option.value}
+                        data-testid={`model-option-${option.value}`}
                         onSelect={(currentValue) => {
                           if (currentValue !== value) {
                             onValueChange(currentValue, option.provider);
@@ -191,6 +200,7 @@ export function ModelSelector({
                   <CommandItem
                     key={option.value}
                     value={option.value}
+                    data-testid={`model-option-${option.value}`}
                     onSelect={(currentValue) => {
                       if (currentValue !== value) {
                         onValueChange(currentValue, option.provider);
@@ -216,6 +226,7 @@ export function ModelSelector({
                   ) && (
                     <CommandItem
                       value={searchValue}
+                      data-testid={`model-custom-option-${searchValue}`}
                       onSelect={(currentValue) => {
                         if (currentValue !== value) {
                           onValueChange(currentValue);

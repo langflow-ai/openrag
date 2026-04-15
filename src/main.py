@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
-from utils.embeddings import create_dynamic_index_body
+from utils.embeddings import create_index_body
 from utils.logging_config import configure_from_env, get_logger
 from utils.encryption import enforce_startup_prerequisites
 from utils.telemetry import TelemetryClient, Category, MessageId
@@ -101,7 +101,7 @@ from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.models_service import ModelsService
 from services.monitor_service import MonitorService
-from services.search_service import SearchService
+from services.search_service import SearchService, register_search_service
 from services.task_service import TaskService
 from session_manager import SessionManager
 
@@ -228,21 +228,14 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         # Get the configured embedding model from user configuration
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        embedding_provider = config.knowledge.embedding_provider
-        embedding_provider_config = config.get_embedding_provider_config()
 
-        # Create dynamic index body based on the configured embedding model
-        # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
-        dynamic_index_body = await create_dynamic_index_body(
-            embedding_model,
-            provider=embedding_provider,
-            endpoint=getattr(embedding_provider_config, "endpoint", None),
-        )
+        # Create index body
+        index_body = await create_index_body()
 
         # Create documents index
         index_name = get_index_name()
         if not await os_client.indices.exists(index=index_name):
-            await os_client.indices.create(index=index_name, body=dynamic_index_body)
+            await os_client.indices.create(index=index_name, body=index_body)
             logger.info(
                 "Created OpenSearch index",
                 index_name=index_name,
@@ -404,13 +397,7 @@ def generate_jwt_keys():
             )
             raise
     else:
-        # Ensure correct permissions on existing keys
-        try:
-            os.chmod(private_key_path, 0o600)
-            os.chmod(public_key_path, 0o644)
-            logger.info("RSA keys already exist, ensured correct permissions")
-        except OSError as e:
-            logger.error("Failed to set permissions on existing keys", error=str(e))
+        logger.info("RSA keys already exist")
 
 
 def _get_documents_dir():
@@ -428,6 +415,7 @@ def _should_use_url_default_docs_ingest() -> bool:
 
 async def ingest_openrag_docs_when_ready(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -444,6 +432,7 @@ async def ingest_openrag_docs_when_ready(
             if DISABLE_INGEST_WITH_LANGFLOW:
                 task_id = await _ingest_default_documents_url(
                     document_service=document_service,
+                    models_service=models_service,
                     docs_url=DEFAULT_DOCS_URL,
                     crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
                     jwt_token=jwt_token,
@@ -474,6 +463,7 @@ async def ingest_openrag_docs_when_ready(
 
 async def ingest_default_documents_when_ready(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -489,17 +479,9 @@ async def ingest_default_documents_when_ready(
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
-        task_id = None
-        if _should_use_url_default_docs_ingest():
-            task_id = await ingest_openrag_docs_when_ready(
-                document_service,
-                task_service,
-                langflow_file_service,
-                session_manager,
-                jwt_token=jwt_token,
-            )
-        await ingest_openrag_docs_when_ready(
+        task_id = await ingest_openrag_docs_when_ready(
             document_service,
+            models_service,
             task_service,
             langflow_file_service,
             session_manager,
@@ -529,6 +511,7 @@ async def ingest_default_documents_when_ready(
         if DISABLE_INGEST_WITH_LANGFLOW:
             new_task_id = await _ingest_default_documents_openrag(
                 document_service,
+                models_service,
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
@@ -694,6 +677,7 @@ async def _ingest_default_documents_url_langflow(
 
 async def _ingest_default_documents_url(
     document_service,
+    models_service,
     docs_url: str,
     crawl_depth: int,
     jwt_token=None,
@@ -715,12 +699,17 @@ async def _ingest_default_documents_url(
         from models.processors import DocumentFileProcessor
         from utils.hash_utils import hash_id
 
+        from session_manager import AnonymousUser
+
+        anonymous_user = AnonymousUser()
+
         processor = DocumentFileProcessor(
             document_service,
+            models_service=models_service,
             owner_user_id=None,
             jwt_token=jwt_token,
-            owner_name=None,
-            owner_email=None,
+            owner_name=anonymous_user.name,
+            owner_email=anonymous_user.email,
             is_sample_data=True,
             connector_type="openrag_docs",
         )
@@ -730,8 +719,8 @@ async def _ingest_default_documents_url(
             owner_user_id=None,
             original_filename="openrag-url-default.txt",
             jwt_token=jwt_token,
-            owner_name=None,
-            owner_email=None,
+            owner_name=anonymous_user.name,
+            owner_email=anonymous_user.email,
             file_size=os.path.getsize(temp_file_path),
             connector_type="openrag_docs",
             is_sample_data=True,
@@ -826,16 +815,6 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
                             ]
                         }
                     },
-                    # Legacy file-based default docs were ingested as local and
-                    # marked with is_sample_data=true.
-                    {
-                        "bool": {
-                            "must": [
-                                {"term": {"connector_type": "local"}},
-                                {"term": {"is_sample_data": "true"}},
-                            ]
-                        }
-                    },
                 ],
                 "minimum_should_match": 1,
             }
@@ -854,6 +833,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
 
 async def _reingest_default_docs_on_upgrade_if_needed(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -882,6 +862,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
     await ingest_openrag_docs_when_ready(
         document_service,
+        models_service,
         task_service,
         langflow_file_service,
         session_manager,
@@ -951,6 +932,7 @@ async def _get_remote_docs_signature(docs_url: str):
 
 async def refresh_default_openrag_docs(
     document_service,
+    models_service,
     task_service,
     langflow_file_service,
     session_manager,
@@ -1042,6 +1024,7 @@ async def refresh_default_openrag_docs(
         )
         await ingest_openrag_docs_when_ready(
             document_service,
+            models_service,
             task_service,
             langflow_file_service,
             session_manager,
@@ -1146,6 +1129,7 @@ async def opensearch_health_ready(request):
 
 async def _ingest_default_documents_openrag(
     document_service,
+    models_service,
     task_service,
     file_paths,
     connector_type: str = "openrag_docs",
@@ -1160,12 +1144,16 @@ async def _ingest_default_documents_openrag(
 
     from models.processors import DocumentFileProcessor
 
+    from session_manager import AnonymousUser
+    anonymous_user = AnonymousUser()
+
     processor = DocumentFileProcessor(
         document_service,
+        models_service=models_service,
         owner_user_id=None,
         jwt_token=jwt_token,
-        owner_name=None,
-        owner_email=None,
+        owner_name=anonymous_user.name,
+        owner_email=anonymous_user.email,
         is_sample_data=True,
         connector_type=connector_type,
     )
@@ -1255,6 +1243,19 @@ async def startup_tasks(services):
         Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT
     )
 
+    # Update model registry to allow further search calls to be instant
+    try:
+        models_service = services["models_service"]
+        await models_service.update_model_registry()
+    except Exception as e:
+        logger.error(
+            "Failed to update model registry at startup — "
+            "models may be missing until the next restart",
+            error=str(e),
+        )
+
+
+
     if IBM_AUTH_ENABLED:
         logger.info(
             "IBM auth mode: skipping startup OpenSearch checks. "
@@ -1314,6 +1315,7 @@ async def startup_tasks(services):
     try:
         upgrade_reingested = await _reingest_default_docs_on_upgrade_if_needed(
             services["document_service"],
+            services["models_service"],
             services["task_service"],
             services["langflow_file_service"],
             services["session_manager"],
@@ -1325,6 +1327,7 @@ async def startup_tasks(services):
         try:
             await refresh_default_openrag_docs(
                 services["document_service"],
+                services["models_service"],
                 services["task_service"],
                 services["langflow_file_service"],
                 services["session_manager"],
@@ -1397,8 +1400,9 @@ async def initialize_services():
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
     )
-    # Generate JWT keys if they don't exist
-    generate_jwt_keys()
+    # Generate JWT keys if they don't exist and a JWT signing key isn't specified
+    if not os.getenv("JWT_SIGNING_KEY"):
+        generate_jwt_keys()
 
     from config.settings import IBM_AUTH_ENABLED
 
@@ -1419,13 +1423,14 @@ async def initialize_services():
     session_manager = SessionManager(SESSION_SECRET)
 
     # Initialize services
-    document_service = DocumentService(session_manager=session_manager)
-    search_service = SearchService(session_manager)
-    task_service = TaskService(document_service, ingestion_timeout=INGESTION_TIMEOUT)
+    models_service = ModelsService()
+    document_service = DocumentService(session_manager=session_manager, models_service=models_service)
+    search_service = SearchService(session_manager, models_service)
+    register_search_service(search_service)
+    task_service = TaskService(document_service, models_service, ingestion_timeout=INGESTION_TIMEOUT)
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
-    models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(flows_service=flows_service)
 
@@ -1440,6 +1445,8 @@ async def initialize_services():
         index_name=get_index_name(),
         task_service=task_service,
         session_manager=session_manager,
+        models_service=models_service,
+        document_service=document_service,
     )
 
     # Create connector router that chooses based on configuration
@@ -1509,7 +1516,7 @@ async def create_app():
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
-    
+
     try:
         Instrumentator().instrument(app).expose(app)
     except Exception as e:
@@ -2069,14 +2076,14 @@ async def create_app():
             Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
         )
         logger.info("Application shutdown initiated")
-        
+
         # Gracefully shutdown OpenSearch connection first
         try:
             from utils.opensearch_utils import graceful_opensearch_shutdown
             await graceful_opensearch_shutdown(clients.opensearch)
         except Exception as e:
             logger.error("Error during graceful OpenSearch shutdown", error=str(e))
-        
+
         await cleanup_subscriptions_proper(services)
         # Cleanup task service (cancels background tasks and process pool)
         await services["task_service"].shutdown()

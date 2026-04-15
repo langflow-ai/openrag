@@ -1,6 +1,6 @@
 [project]
 name = "openrag-mcp"
-version = "0.3.0rc1"
+version = "0.3.0rc4"
 description = "MCP server for OpenRAG"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0",
-    "httpx>=0.27.0",
+    "httpx>=0.28.0",  
     "openrag-sdk==0.3.0rc1",
 ]
 
@@ -32,6 +32,9 @@ openrag-mcp = "openrag_mcp:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.envs.default]
+pip-args = ["--pre"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openrag_mcp"]

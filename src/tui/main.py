@@ -562,7 +562,7 @@ def migrate_legacy_data_directories():
     """Migrate data from CWD-based directories to ~/.openrag/.
 
     This is a one-time migration for users upgrading from the old layout.
-    Migrates: documents, flows, keys, config, opensearch-data, langflow-data
+    Migrates: documents, flows, keys, config, langflow-data
 
     Prompts user for confirmation before migrating. If user declines,
     exits with a message to downgrade to v1.52 or earlier.
@@ -584,7 +584,8 @@ def migrate_legacy_data_directories():
         (cwd / "flows", target_base / "flows", "flows"),
         (cwd / "keys", target_base / "keys", "keys"),
         (cwd / "config", target_base / "config", "config"),
-        (cwd / "opensearch-data", target_base / "data" / "opensearch-data", "OpenSearch data"),
+        # opensearch-data intentionally omitted: OpenSearch now uses a Docker named
+        # volume; old index data is not portable and must be re-ingested.
         (cwd / "langflow-data", target_base / "data" / "langflow-data", "Langflow data"),
     ]
 
@@ -608,7 +609,6 @@ def migrate_legacy_data_directories():
             env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
             env_manager.config.openrag_config_path = f"{home}/.openrag/config"
             env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-            env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
             env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
             env_manager.save_env_file()
             logger.info("Updated .env file with centralized paths")
@@ -688,7 +688,6 @@ def migrate_legacy_data_directories():
         env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
         env_manager.config.openrag_config_path = f"{home}/.openrag/config"
         env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-        env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
         env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
         env_manager.save_env_file()
         print("  Updated .env with centralized paths")
@@ -804,7 +803,6 @@ def setup_host_directories():
     - ~/.openrag/keys/ (for JWT keys)
     - ~/.openrag/config/ (for configuration)
     - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
-    - ~/.openrag/data/opensearch-data/ (for OpenSearch index)
     - LANGFLOW_DATA_PATH (for Langflow database and state)
     """
     base_dir = Path.home() / ".openrag"
@@ -814,7 +812,6 @@ def setup_host_directories():
         base_dir / "keys",
         base_dir / "config",
         base_dir / "data",
-        base_dir / "data" / "opensearch-data",
     ]
 
     for directory in directories:

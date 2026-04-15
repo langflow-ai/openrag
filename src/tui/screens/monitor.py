@@ -551,23 +551,6 @@ class MonitorScreen(Screen):
         env_manager = EnvManager()
         env_manager.load_existing_env()
 
-        # Clear opensearch-data using container
-        yield False, "Clearing OpenSearch data..."
-        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser()
-        if opensearch_data_path.exists():
-            async for success, message in self.container_manager.clear_opensearch_data_volume():
-                yield success, message
-                if not success and "failed" in message.lower():
-                    return
-
-            # Recreate empty opensearch-data directory
-            try:
-                opensearch_data_path.mkdir(parents=True, exist_ok=True)
-                yield True, "OpenSearch data directory recreated"
-            except Exception as e:
-                yield False, f"Error recreating opensearch-data directory: {e}"
-                return
-
         # Delete langflow-data directory (mirrors Makefile factory-reset behaviour)
         yield False, "Clearing Langflow data..."
         from tui.main import _resolve_langflow_data_path
