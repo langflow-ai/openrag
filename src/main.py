@@ -1345,14 +1345,15 @@ async def initialize_services():
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
     )
-    # Generate JWT keys if they don't exist and a JWT signing key isn't specified
-    if not os.getenv("JWT_SIGNING_KEY"):
-        generate_jwt_keys()
-
     from config.settings import IBM_AUTH_ENABLED
 
     if IBM_AUTH_ENABLED:
         logger.info("IBM auth mode enabled — JWT validation delegated to Traefik")
+
+    # Generate JWT keys if they don't exist, a JWT signing key isn't specified,
+    # and IBM auth is not enabled (IBM mode delegates all auth to Traefik)
+    if not os.getenv("JWT_SIGNING_KEY") and not IBM_AUTH_ENABLED:
+        generate_jwt_keys()
 
     # Initialize clients (now async to generate Langflow API key)
     try:
