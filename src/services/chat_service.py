@@ -652,3 +652,21 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error deleting session {session_id} from Langflow: {e}")
             return False
+
+    async def delete_all_user_sessions(self, user_id: str):
+        """Delete all sessions for a user from both local storage and Langflow"""
+        from agent import get_user_conversations
+        
+        conversations = get_user_conversations(user_id)
+        session_ids = list(conversations.keys())
+        
+        results = []
+        for session_id in session_ids:
+            result = await self.delete_session(user_id, session_id)
+            results.append(result)
+            
+        return {
+            "success": True,
+            "deleted_count": len([r for r in results if r.get("success")]),
+            "total_count": len(session_ids)
+        }

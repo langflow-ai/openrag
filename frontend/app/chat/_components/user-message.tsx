@@ -71,6 +71,7 @@ export function UserMessage({
             "text-foreground text-sm py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors duration-300",
             isCompleted ? "text-placeholder-foreground" : "text-foreground",
           )}
+          data-testid="user-message"
         >
           {content}
         </p>
