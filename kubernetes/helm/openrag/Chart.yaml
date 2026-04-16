@@ -3,7 +3,7 @@ name: openrag
 description: A Helm chart for deploying OpenRAG - an open-source agentic RAG platform
 type: application
 version: 0.2.1
-appVersion: "0.1.52"
+appVersion: "0.4.1"
 keywords:
   - openrag
   - rag
