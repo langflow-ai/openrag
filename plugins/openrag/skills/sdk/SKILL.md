@@ -313,9 +313,7 @@ async function searchKnowledge() {
   const client = new OpenRAGClient();
   
   // Basic search
-  const results = await client.search.query({
-    query: "document processing"
-  });
+  const results = await client.search.query("document processing");
   
   for (const result of results.results) {
     console.log(`${result.filename} (score: ${result.score})`);
@@ -323,11 +321,10 @@ async function searchKnowledge() {
   }
   
   // Search with filters
-  const filtered = await client.search.query({
-    query: "API documentation",
+  const filtered = await client.search.query("API documentation", {
     filters: {
-      dataSources: ["api-docs.pdf"],
-      documentTypes: ["application/pdf"]
+      data_sources: ["api-docs.pdf"],
+      document_types: ["application/pdf"]
     },
     limit: 5,
     scoreThreshold: 0.5
