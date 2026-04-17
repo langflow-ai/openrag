@@ -397,14 +397,10 @@ async def manage_settings():
         
         # Update settings
         await client.settings.update({
-            "agent": {
-                "llm_provider": "openai",
-                "llm_model": "gpt-4o"
-            },
-            "knowledge": {
-                "embedding_provider": "openai",
-                "embedding_model": "text-embedding-3-small"
-            }
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o",
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small"
         })
 
 asyncio.run(manage_settings())
@@ -422,14 +418,10 @@ async function manageSettings() {
   
   // Update settings
   await client.settings.update({
-    agent: {
-      llmProvider: "openai",
-      llmModel: "gpt-4o"
-    },
-    knowledge: {
-      embeddingProvider: "openai",
-      embeddingModel: "text-embedding-3-small"
-    }
+    llmProvider: "openai",
+    llmModel: "gpt-4o",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
   });
 }
 ```
