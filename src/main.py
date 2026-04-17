@@ -1,4 +1,5 @@
 import bootstrap  # noqa: F401
+from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
@@ -1482,11 +1483,29 @@ async def initialize_services():
     }
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan handler for startup and shutdown tasks"""
+    # Load environment variables in the start span
+    bootstrap.load_env()
+    logger.info("Application startup span: environment variables loaded")
+    
+    yield
+    
+    # Shutdown tasks (if any)
+    logger.info("Application shutdown span")
+
+
 async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
+    app = FastAPI(
+        title="OpenRAG API",
+        version=OPENRAG_VERSION,
+        debug=True,
+        lifespan=lifespan
+    )
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
 
