@@ -24,6 +24,7 @@ wheels/
 !src/tui/_assets/flows/*.json
 !src/tui/_assets/flows/components/*.json
 !frontend/*.json
+!**/.claude-plugin/*.json
 .DS_Store
 
 /config/
@@ -38,12 +39,13 @@ langflow-data/
 node_modules
 
 # AI Tools
-/.claude
-/CLAUDE.md
+# Per-contributor Claude Code state is ignored, but shared skills and
+# plugin manifests (.claude/skills, .claude-plugin) are tracked.
+/.claude/*
+!/.claude/skills/
 /.gemini
 /GEMINI.md
 /.bob
-/AGENTS.md
 documents/warmup_ocr.pdf
 documents/openrag-documentation.pdf
 documents/ibm_anthropic.pdf

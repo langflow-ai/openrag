@@ -67,17 +67,17 @@ After `requirements.md` is stable:
 6. If troubleshooting partially started OpenRAG services, stop all services before attempting to start them again
 
 ## CRITICAL: Interactive Terminal Limitation
-**Bob Shell CANNOT handle interactive terminal applications that require user input.**
+**Most agent shell tools cannot drive interactive terminal applications that require user input.** This includes any command that renders a TUI, prompts for passwords, or expects arrow-key navigation.
 
 When the installation reaches the point where `uvx openrag` needs to be run:
 
 ### What NOT to do:
-- Do NOT attempt to run `uvx openrag` using `execute_command` with user interaction expected
+- Do NOT attempt to run `uvx openrag` through the agent's shell tool expecting to interact with it
 - Do NOT try to use background processes for interactive commands
 - Do NOT assume you can send input to an already-running interactive terminal
 
 ### What TO do:
-1. **Explicitly instruct the user** to open a NEW terminal window/tab OUTSIDE of Bob Shell
+1. **Explicitly instruct the user** to open a NEW terminal window/tab outside the agent's shell
 2. Provide the exact command to run: `uvx --python 3.13 openrag`
 3. Give step-by-step instructions for what they will see and how to respond:
    - First run: Select "Reconfigure" (option 2)
@@ -96,7 +96,7 @@ When the installation reaches the point where `uvx openrag` needs to be run:
 ```
 The next step requires running an interactive command that I cannot control directly.
 
-Please open a NEW terminal window (separate from Bob Shell) and run:
+Please open a NEW terminal window (separate from this agent session) and run:
 
     uvx --python 3.13 openrag
 
@@ -117,7 +117,7 @@ When a task requires user input, secret values, or interactive terminal control:
 - Explain how you will verify completion
 - Wait for confirmation before proceeding
 - Explicitly instruct the user that the OpenSearch password must be strong, defaults can be used for all other values to get started quickly
-- **ALWAYS instruct users to run `uvx openrag` in a separate terminal outside Bob Shell**
+- **ALWAYS instruct users to run `uvx openrag` in a separate terminal outside the agent's shell**
 - Provide explicit step-by-step guidance for what they will see and how to respond
 - After user confirms completion, verify using non-interactive commands
 
@@ -127,8 +127,8 @@ When a task requires user input, secret values, or interactive terminal control:
 - Keep installation steps as simple and minimal as possible
 - Use secure defaults and align with OWASP-style handling of secrets and credentials
 - Call out platform-specific limitations when they affect installation or verification
-- **Be explicit that Bob Shell cannot control interactive terminal applications**
-- **Never attempt to run `uvx openrag` interactively within Bob Shell**
+- **Be explicit that the agent's shell cannot drive interactive TUI applications**
+- **Never attempt to run `uvx openrag` interactively through the agent's shell**
 - Do not treat delayed startup alone as a failure condition when output is still progressing normally
 
 ## Verification and completion

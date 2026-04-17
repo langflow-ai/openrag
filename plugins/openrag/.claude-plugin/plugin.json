@@ -1,0 +1,6 @@
+{
+  "name": "openrag",
+  "version": "0.1.0",
+  "description": "OpenRAG agent skills: guided installation and SDK integration helpers.",
+  "repository": "https://github.com/langflow-ai/openrag"
+}
