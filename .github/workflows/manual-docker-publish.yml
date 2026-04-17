@@ -96,6 +96,6 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ github.event.inputs.platforms }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE }}/openrag-opensearch:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/openrag-opensearch:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=opensearch
           cache-to: type=gha,mode=max,scope=opensearch
