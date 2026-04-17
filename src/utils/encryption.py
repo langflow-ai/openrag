@@ -9,6 +9,10 @@ import aiofiles
 import json
 from utils.logging_config import get_logger
 
+from dotenv import load_dotenv
+
+load_dotenv(override=False)
+load_dotenv("../", override=False)
 logger = get_logger(__name__)
 
 # KDF Constants
