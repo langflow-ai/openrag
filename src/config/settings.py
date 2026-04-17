@@ -449,7 +449,11 @@ class AppClients:
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
-                elif not os.environ.get("OPENAI_API_KEY"):
+                openai_endpoint = config.providers.openai.endpoint or None
+                if openai_endpoint:
+                    os.environ["OPENAI_API_BASE"] = openai_endpoint  # LiteLLM expects this name
+                    logger.debug("Loaded OpenAI endpoint from config: %s", openai_endpoint)
+                if not os.environ.get("OPENAI_API_KEY"):
                     # Provide dummy key to satisfy AsyncOpenAI constructor; 
                     # LiteLLM/MCP will handle routing to other providers if needed.
                     os.environ["OPENAI_API_KEY"] = "no-key-required"
@@ -485,6 +489,7 @@ class AppClients:
                 # Provide fallbacks if config loading failed
                 model_name = OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = "openai"
+                openai_endpoint = None
                 # Ensure a dummy key is available to satisfy the AsyncOpenAI constructor
                 # and avoid AuthenticationError if config loading failed.
                 if not os.environ.get("OPENAI_API_KEY"):
@@ -492,8 +497,9 @@ class AppClients:
                     logger.debug("Using dummy OpenAI API key fallback (config load failed)")
 
 
-            # API key for AsyncOpenAI constructor
+            # API key and base_url for AsyncOpenAI constructor
             api_key = os.environ.get("OPENAI_API_KEY")
+            base_url = openai_endpoint if openai_endpoint else None
 
             async def probe_http2():
                 """Returns True if HTTP/2 works, False to fall back to HTTP/1.1.
@@ -504,7 +510,7 @@ class AppClients:
                 caller's event loop, avoiding cross-loop SSL transport errors.
                 """
                 # Use a standard OpenAI client for the probe (only runs for OpenAI provider)
-                client = AsyncOpenAI(api_key=api_key)
+                client = AsyncOpenAI(api_key=api_key, base_url=base_url) if base_url else AsyncOpenAI(api_key=api_key)
                 logger.info(f"Probing client with HTTP/2 using model {model_name}...")
                 try:
                     await asyncio.wait_for(
@@ -537,9 +543,9 @@ class AppClients:
                     loop.close()
 
             try:
-                # Run the probe only for OpenAI provider; local and other providers
-                # (Ollama, WatsonX) typically use HTTP/1.1 for reliability.
-                if provider.lower() == "openai":
+                # Run the probe only for OpenAI provider without custom endpoint;
+                # local and other providers (Ollama, WatsonX) typically use HTTP/1.1 for reliability.
+                if provider.lower() == "openai" and not openai_endpoint:
                     # Run the probe in a separate thread with its own event loop.
                     # Only the probe result (bool) crosses the thread boundary;
                     # the production client is created here so its connections are
@@ -552,17 +558,23 @@ class AppClients:
                     logger.debug(f"Skipping HTTP/2 probe for provider: {provider}")
 
                 if use_http2:
-                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name})")
+                    client_kwargs = {"api_key": api_key}
+                    if base_url:
+                        client_kwargs["base_url"] = base_url
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(**client_kwargs))
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name}, base_url: {base_url or 'default'})")
                 else:
                     http_client = httpx.AsyncClient(
                         http2=False,
                         timeout=httpx.Timeout(60.0, connect=10.0)
                     )
+                    client_kwargs = {"api_key": api_key, "http_client": http_client}
+                    if base_url:
+                        client_kwargs["base_url"] = base_url
                     self._patched_async_client = patch_openai_with_mcp(
-                        AsyncOpenAI(api_key=api_key, http_client=http_client)
+                        AsyncOpenAI(**client_kwargs)
                     )
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name})")
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name}, base_url: {base_url or 'default'})")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")

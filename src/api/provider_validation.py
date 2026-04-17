@@ -182,7 +182,7 @@ async def test_lightweight_health(
     """Test provider health with lightweight check (no credits consumed)."""
 
     if provider == "openai":
-        await _test_openai_lightweight_health(api_key)
+        await _test_openai_lightweight_health(api_key, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
     elif provider == "ollama":
@@ -203,7 +203,7 @@ async def test_completion_with_tools(
     """Test completion with tool calling for the provider."""
 
     if provider == "openai":
-        await _test_openai_completion_with_tools(api_key, llm_model)
+        await _test_openai_completion_with_tools(api_key, llm_model, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_completion_with_tools(api_key, llm_model, endpoint, project_id)
     elif provider == "ollama":
@@ -224,7 +224,7 @@ async def test_embedding(
     """Test embedding generation for the provider."""
 
     if provider == "openai":
-        await _test_openai_embedding(api_key, embedding_model)
+        await _test_openai_embedding(api_key, embedding_model, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
@@ -234,11 +234,15 @@ async def test_embedding(
 
 
 # OpenAI validation functions
-async def _test_openai_lightweight_health(api_key: str) -> None:
+async def _test_openai_lightweight_health(api_key: str, endpoint: str = None) -> None:
     """Test OpenAI API key validity with lightweight check.
     
     Only checks if the API key is valid without consuming credits.
     Uses the /v1/models endpoint which doesn't consume credits.
+    
+    Args:
+        api_key: OpenAI API key.
+        endpoint: Custom base URL for OpenAI-compatible APIs.
     """
     try:
         headers = {
@@ -246,10 +250,13 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
+        base_url = endpoint.rstrip("/") if endpoint else "https://api.openai.com"
+        models_url = f"{base_url}/v1/models"
+
         async with httpx.AsyncClient() as client:
             # Use /v1/models endpoint which validates the key without consuming credits
             response = await client.get(
-                "https://api.openai.com/v1/models",
+                models_url,
                 headers=headers,
                 timeout=10.0,  # Short timeout for lightweight check
             )
@@ -269,13 +276,22 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
         raise
 
 
-async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:
-    """Test OpenAI completion with tool calling."""
+async def _test_openai_completion_with_tools(api_key: str, llm_model: str, endpoint: str = None) -> None:
+    """Test OpenAI completion with tool calling.
+    
+    Args:
+        api_key: OpenAI API key.
+        llm_model: Model name to test.
+        endpoint: Custom base URL for OpenAI-compatible APIs.
+    """
     try:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+
+        base_url = endpoint.rstrip("/") if endpoint else "https://api.openai.com"
+        completions_url = f"{base_url}/v1/chat/completions"
 
         # Simple tool calling test
         base_payload = {
@@ -308,7 +324,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             # Try with max_tokens first
             payload = {**base_payload, "max_tokens": 50}
             response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
+                completions_url,
                 headers=headers,
                 json=payload,
                 timeout=30.0,
@@ -319,7 +335,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                 logger.info("max_tokens parameter failed, trying max_completion_tokens instead")
                 payload = {**base_payload, "max_completion_tokens": 50}
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    completions_url,
                     headers=headers,
                     json=payload,
                     timeout=30.0,
@@ -340,13 +356,22 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         raise
 
 
-async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
-    """Test OpenAI embedding generation."""
+async def _test_openai_embedding(api_key: str, embedding_model: str, endpoint: str = None) -> None:
+    """Test OpenAI embedding generation.
+    
+    Args:
+        api_key: OpenAI API key.
+        embedding_model: Embedding model name to test.
+        endpoint: Custom base URL for OpenAI-compatible APIs.
+    """
     try:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+
+        base_url = endpoint.rstrip("/") if endpoint else "https://api.openai.com"
+        embeddings_url = f"{base_url}/v1/embeddings"
 
         payload = {
             "model": embedding_model,
@@ -355,7 +380,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.openai.com/v1/embeddings",
+                embeddings_url,
                 headers=headers,
                 json=payload,
                 timeout=30.0,

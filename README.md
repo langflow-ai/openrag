@@ -1,4 +1,4 @@
-<div align="center">
+span
 
 <img src="./docs/static/img/openrag-logo-dog.svg" alt="" width="120"/>
 
@@ -30,7 +30,7 @@ Users can upload, process, and query documents through a chat interface backed b
 
 Check out the [documentation](https://docs.openr.ag/) or get started with the [quickstart](https://docs.openr.ag/quickstart).
 
-Built with [FastAPI](https://fastapi.tiangolo.com/) and [Next.js](https://github.com/vercel/next.js). 
+Built with [FastAPI](https://fastapi.tiangolo.com/) and [Next.js](https://github.com/vercel/next.js).
 Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
 
 ---
@@ -91,11 +91,13 @@ To get started with OpenRAG, see the installation guides in the OpenRAG document
 Integrate OpenRAG into your applications with our official SDKs:
 
 ### Python SDK
+
 ```bash
 pip install openrag-sdk
 ```
 
 **Quick Example:**
+
 ```python
 import asyncio
 from openrag_sdk import OpenRAGClient
@@ -114,11 +116,13 @@ if __name__ == "__main__":
 📖 [Full Python SDK Documentation](https://pypi.org/project/openrag-sdk/)
 
 ### TypeScript/JavaScript SDK
+
 ```bash
 npm install openrag-sdk
 ```
 
 **Quick Example:**
+
 ```typescript
 import { OpenRAGClient } from "openrag-sdk";
 
@@ -138,6 +142,7 @@ pip install openrag-mcp
 ```
 
 **Quick Example (Cursor/Claude Desktop config):**
+
 ```json
 {
   "mcpServers": {

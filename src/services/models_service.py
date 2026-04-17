@@ -62,7 +62,11 @@ class ModelsService:
                 # OpenAI
                 if config.providers.openai.api_key:
                     try:
-                        res = await self.get_openai_models(config.providers.openai.api_key, update_index=False)
+                        res = await self.get_openai_models(
+                            config.providers.openai.api_key,
+                            endpoint=config.providers.openai.endpoint or None,
+                            update_index=False,
+                        )
                         self.add_models(res, "openai", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch OpenAI models for registry: {str(e)}")
@@ -135,19 +139,29 @@ class ModelsService:
             
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
-    async def get_openai_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
-        """Fetch available models from OpenAI API with lightweight validation"""
+    async def get_openai_models(self, api_key: str, endpoint: str = None, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
+        """Fetch available models from OpenAI API with lightweight validation.
+        
+        Args:
+            api_key: OpenAI API key.
+            endpoint: Custom base URL for OpenAI-compatible APIs (e.g. local vLLM, LMStudio).
+                      When None, uses the default OpenAI API.
+            update_index: Whether to update the model registry.
+        """
         try:
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
 
+            base_url = endpoint.rstrip("/") if endpoint else "https://api.openai.com"
+            models_url = f"{base_url}/v1/models"
+
             async with httpx.AsyncClient() as client:
                 # Lightweight validation: just check if API key is valid
                 # This doesn't consume credits, only validates the key
                 response = await client.get(
-                    "https://api.openai.com/v1/models", headers=headers, timeout=10.0
+                    models_url, headers=headers, timeout=10.0
                 )
 
             if response.status_code == 200:

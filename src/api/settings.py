@@ -54,6 +54,7 @@ class SettingsUpdateBody(BaseModel):
     embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: Optional[str] = Field(None, min_length=1)
     openai_api_key: Optional[str] = Field(None, min_length=1)
+    openai_endpoint: Optional[str] = Field(None, min_length=1)
     anthropic_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_endpoint: Optional[str] = Field(None, min_length=1)
@@ -71,6 +72,7 @@ class OnboardingBody(BaseModel):
     embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
     embedding_model: Optional[str] = Field(None, min_length=1)
     openai_api_key: Optional[str] = Field(None, min_length=1)
+    openai_endpoint: Optional[str] = Field(None, min_length=1)
     anthropic_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_api_key: Optional[str] = Field(None, min_length=1)
     watsonx_endpoint: Optional[str] = Field(None, min_length=1)
@@ -116,6 +118,7 @@ class OnboardingStateConfig(BaseModel):
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
+    endpoint: Optional[str]
     configured: bool
 
 class AnthropicProviderConfig(BaseModel):
@@ -340,6 +343,7 @@ async def get_settings(
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
                     has_api_key=bool(openrag_config.providers.openai.api_key),
+                    endpoint=openrag_config.providers.openai.endpoint or None,
                     configured=openrag_config.providers.openai.configured,
                 ),
                 anthropic=AnthropicProviderConfig(
@@ -428,6 +432,7 @@ async def update_settings(
             "llm_model",
             "embedding_model",
             "openai_api_key",
+            "openai_endpoint",
             "anthropic_api_key",
             "watsonx_api_key",
             "watsonx_endpoint",
@@ -695,6 +700,12 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.openai_endpoint is not None:
+            current_config.providers.openai.endpoint = body.openai_endpoint.strip()
+            current_config.providers.openai.configured = True
+            config_updated = True
+            provider_updated = True
+
         if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
             current_config.providers.anthropic.api_key = body.anthropic_api_key
             current_config.providers.anthropic.configured = True
@@ -759,6 +770,7 @@ async def update_settings(
                     status_code=400,
                 )
             current_config.providers.openai.api_key = ""
+            current_config.providers.openai.endpoint = ""
             current_config.providers.openai.configured = False
             if current_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(current_config, "openai")
@@ -965,6 +977,11 @@ async def onboarding(
         # Update provider-specific credentials
         if body.openai_api_key:
             current_config.providers.openai.api_key = body.openai_api_key.strip()
+            current_config.providers.openai.configured = True
+            config_updated = True
+
+        if body.openai_endpoint:
+            current_config.providers.openai.endpoint = body.openai_endpoint.strip()
             current_config.providers.openai.configured = True
             config_updated = True
 
