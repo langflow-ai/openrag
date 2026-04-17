@@ -1,3 +1,4 @@
+import bootstrap  # noqa: F401
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
@@ -9,6 +10,7 @@ import re
 import subprocess
 import tempfile
 from html.parser import HTMLParser
+
 
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
@@ -224,6 +226,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
 
         # Initialize OpenSearch security configuration (roles and mapping)
         from utils.opensearch_utils import setup_opensearch_security
+
         await setup_opensearch_security(os_client, admin_username=admin_username)
 
         # Get the configured embedding model from user configuration
@@ -327,9 +330,11 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             ) from e
         raise e
 
+
 def generate_jwt_keys():
     """Generate RSA keys for JWT signing if they don't exist"""
     from config.paths import get_keys_path
+
     keys_dir = get_keys_path()
     private_key_path = os.path.join(keys_dir, "private_key.pem")
     public_key_path = os.path.join(keys_dir, "public_key.pem")
@@ -382,6 +387,7 @@ def generate_jwt_keys():
 def _get_documents_dir():
     """Get the documents directory path, handling both Docker and local environments."""
     from config.paths import get_documents_path
+
     path = get_documents_path()
     logger.debug(f"Using documents path: {path}")
     return path
@@ -1052,7 +1058,9 @@ async def opensearch_health_ready(request):
     from config.settings import IBM_AUTH_ENABLED, OPENSEARCH_URL
 
     if IBM_AUTH_ENABLED:
-        logger.debug("[OpenSearch Security] OpenSearch auth mode enabled, health check per-request")
+        logger.debug(
+            "[OpenSearch Security] OpenSearch auth mode enabled, health check per-request"
+        )
         # In IBM auth mode we cannot rely on the global OpenSearch client
         # (auth is established per-request), so perform a lightweight,
         # unauthenticated connectivity check against the OpenSearch endpoint.
@@ -1082,7 +1090,9 @@ async def opensearch_health_ready(request):
                     status_code=503,
                 )
         except Exception as e:
-            logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+            logger.error(
+                "[OpenSearch Security] OpenSearch health check failed", error=str(e)
+            )
             return JSONResponse(
                 {
                     "status": "not_ready",
@@ -1099,7 +1109,9 @@ async def opensearch_health_ready(request):
             status_code=200,
         )
     except Exception as e:
-        logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+        logger.error(
+            "[OpenSearch Security] OpenSearch health check failed", error=str(e)
+        )
         return JSONResponse(
             {
                 "status": "not_ready",
@@ -1234,12 +1246,13 @@ async def startup_tasks(services):
         # Setup OpenSearch security (roles and mappings) after connection is established
         try:
             from utils.opensearch_utils import setup_opensearch_security
+
             await setup_opensearch_security(clients.opensearch)
             logger.info("OpenSearch security configuration completed successfully")
         except Exception as e:
             logger.warning(
                 "Failed to setup OpenSearch security configuration - continuing anyway",
-                error=str(e)
+                error=str(e),
             )
 
         if DISABLE_INGEST_WITH_LANGFLOW:
@@ -2066,6 +2079,7 @@ async def create_app():
         # Gracefully shutdown OpenSearch connection first
         try:
             from utils.opensearch_utils import graceful_opensearch_shutdown
+
             await graceful_opensearch_shutdown(clients.opensearch)
         except Exception as e:
             logger.error("Error during graceful OpenSearch shutdown", error=str(e))
