@@ -10,7 +10,7 @@ Before starting installation, check for an existing OpenRAG installation:
 1. Check if `~/.openrag/tui/.env` exists
 2. If it exists:
    - Read the configuration to understand what's already set up
-   - Check if services are currently running with `docker ps --filter "name=openrag"`
+   - Check if services are currently running with `docker compose ps` for the generated OpenRAG compose file, or by filtering on the compose project/labels instead of `docker ps --filter "name=openrag"`
    - Inform the user about the existing installation
    - Ask if they want to:
      - Start existing services (if stopped)

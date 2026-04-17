@@ -246,6 +246,12 @@ async def manage_conversations():
         for conv in conversations.conversations:
             print(f"{conv.chat_id}: {conv.title}")
         
+        if not conversations.conversations:
+            print("No conversations found")
+            return
+        
+        chat_id = conversations.conversations[0].chat_id
+        
         # Get specific conversation with messages
         conversation = await client.chat.get(chat_id)
         for msg in conversation.messages:
@@ -267,6 +273,13 @@ async function manageConversations() {
   for (const conv of conversations.conversations) {
     console.log(`${conv.chatId}: ${conv.title}`);
   }
+  
+  if (!conversations.conversations.length) {
+    console.log("No conversations found");
+    return;
+  }
+  
+  const chatId = conversations.conversations[0].chatId;
   
   // Get specific conversation
   const conversation = await client.chat.get(chatId);
@@ -370,9 +383,9 @@ async function manageDocuments() {
   console.log(`Status: ${result.status}`);
   
   // Poll for completion
-  const finalStatus = await client.documents.waitForTask(result.taskId);
+  const finalStatus = await client.documents.waitForTask(result.task_id);
   console.log(`Status: ${finalStatus.status}`);
-  console.log(`Successful files: ${finalStatus.successfulFiles}`);
+  console.log(`Successful files: ${finalStatus.successful_files}`);
   
   // Delete a document
   const deleteResult = await client.documents.delete("report.pdf");
@@ -415,10 +428,10 @@ async function manageSettings() {
   
   // Update settings
   await client.settings.update({
-    llmProvider: "openai",
-    llmModel: "gpt-4o",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small"
+    llm_provider: "openai",
+    llm_model: "gpt-4o",
+    embedding_provider: "openai",
+    embedding_model: "text-embedding-3-small"
   });
 }
 ```
@@ -540,6 +553,7 @@ async def handle_errors():
 ### TypeScript Error Handling
 ```typescript
 import {
+  OpenRAGClient,
   OpenRAGError,
   AuthenticationError,
   NotFoundError,
