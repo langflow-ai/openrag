@@ -1,3 +1,4 @@
+from agentd.patch import patch_openai_with_mcp
 import asyncio
 import os
 
