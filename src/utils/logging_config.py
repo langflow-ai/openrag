@@ -18,6 +18,97 @@ LEVEL_COLORS = {
 DIM = "\033[38;5;244m"  # Medium grey
 RESET = "\033[0m"
 
+_SENSITIVE_HEADER_RE = re.compile(
+    r"(key|token|secret|password|apikey|credential|jwt|auth)", re.IGNORECASE
+)
+
+# Shared processors stored at module level so configure_stdlib_logging() can
+# reference the same chain that configure_logging() assembled.
+_shared_processors: list = []
+
+
+# ---------------------------------------------------------------------------
+# Standalone processors (module-level so they can be reused in stdlib bridge)
+# ---------------------------------------------------------------------------
+
+def drop_color_message_key(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove uvicorn's duplicate color_message field when bridging via stdlib."""
+    event_dict.pop("color_message", None)
+    return event_dict
+
+
+def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop only the access-log entry for high-frequency health/metrics endpoints.
+
+    Errors and warnings on these paths still surface — only the routine
+    [API] Request INFO line is suppressed to avoid log noise.
+    """
+    path = event_dict.get("path", "")
+    if path not in ("/health", "/metrics", "/healthz", "/docs", "/openapi.json"):
+        return event_dict
+    event = event_dict.get("event", "")
+    level = str(event_dict.get("level", "info")).lower()
+    if event == "[API] Request" and level in ("debug", "info"):
+        raise structlog.DropEvent()
+    return event_dict
+
+
+def suppress_third_party_noise(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop WARNING/INFO/DEBUG log lines that originate from installed packages.
+
+    Third-party libraries (opensearch-py, httpx, boto3 …) log every HTTP
+    request at WARNING level during normal operation.  These are pure noise in
+    production — only ERROR and above from library code is actionable.
+    """
+    pathname = event_dict.get("pathname", "")
+    level = event_dict.get("level", "info")
+    if (
+        (".venv" in pathname or "site-packages" in pathname)
+        and level not in ("error", "critical")
+    ):
+        raise structlog.DropEvent()
+    return event_dict
+
+
+def clean_log_location(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Shorten pathname to a package-relative form for readability.
+
+    Strips the leading venv/site-packages prefix so logs show
+    ``opensearchpy/connection/base.py`` instead of the full absolute path.
+    """
+    pathname = event_dict.get("pathname", "")
+    marker = "site-packages/"
+    idx = pathname.find(marker)
+    if idx != -1:
+        event_dict["pathname"] = pathname[idx + len(marker):]
+    return event_dict
+
+
+def add_global_fields_factory(service: str, env: str, version: str):
+    """Return a processor that stamps every event with service metadata."""
+    def processor(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+        event_dict.setdefault("service", service)
+        event_dict.setdefault("env", env)
+        event_dict.setdefault("version", version)
+        return event_dict
+    return processor
+
+
+# ---------------------------------------------------------------------------
+# Security helper
+# ---------------------------------------------------------------------------
+
+def sanitize_headers(headers: dict) -> dict:
+    """Return a copy of *headers* with values of sensitive keys masked."""
+    return {
+        k: "***" if _SENSITIVE_HEADER_RE.search(k) else v
+        for k, v in headers.items()
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main configuration
+# ---------------------------------------------------------------------------
 
 def configure_logging(
     log_level: str = "INFO",
