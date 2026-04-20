@@ -47,7 +47,7 @@ export const PickerHeader = ({
   return (
     <Card>
       <CardContent className="flex flex-col items-center text-center py-8">
-        <p className="text-sm text-primary mb-4">
+        <p className="text-sm text-foreground mb-4">
           Select files or folders from {getProviderName(provider)} to ingest.
         </p>
         <Button

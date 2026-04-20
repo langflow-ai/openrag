@@ -2,6 +2,7 @@ import { FileText, User } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { cn } from "@/lib/utils";
 import { Message } from "./message";
 
@@ -19,6 +20,7 @@ export function UserMessage({
   files,
 }: UserMessageProps) {
   const { user } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
 
   return (
     <motion.div
@@ -41,7 +43,11 @@ export function UserMessage({
             />
             <AvatarFallback
               className={cn(
-                isCompleted ? "text-placeholder-foreground" : "text-primary",
+                isCompleted
+                  ? "text-placeholder-foreground"
+                  : isCloudBrand
+                    ? "text-foreground"
+                    : "text-primary",
                 "text-sm bg-accent/20 rounded-lg transition-colors duration-300",
               )}
             >

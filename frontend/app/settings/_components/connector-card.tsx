@@ -165,7 +165,7 @@ export default function ConnectorCard({
                 className={cn(
                   "w-full cursor-pointer",
                   isCloudBrand
-                    ? "rounded-none border-primary bg-layer-contextual text-layer-contextual-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                    ? "rounded-none border-layer-contextual-foreground bg-layer-contextual text-layer-contextual-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
                     : "group-hover:bg-background group-hover:border-zinc-700 group-hover:text-primary",
                 )}
                 size="sm"

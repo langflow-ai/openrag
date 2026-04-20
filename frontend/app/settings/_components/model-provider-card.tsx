@@ -76,7 +76,7 @@ export default function ModelProviderCard({
             isConfigured && !isCloudBrand && "border-primary",
             isCloudBrand &&
               isEditSetup &&
-              "rounded-none border border-button-tertiary bg-layer-contextual text-layer-contextual-foreground shadow-none hover:bg-layer-contextual hover:text-layer-contextual-foreground",
+              "rounded-none border border-layer-contextual-foreground bg-layer-contextual text-layer-contextual-foreground shadow-none hover:bg-layer-contextual hover:text-layer-contextual-foreground",
             isCloudBrand && !isEditSetup && !isUnhealthy && "rounded-none",
             isUnhealthy && isCloudBrand && "rounded-none",
           )}
