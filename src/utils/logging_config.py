@@ -257,7 +257,6 @@ def configure_stdlib_logging(log_level: str = "INFO", json_logs: bool = False) -
                 "processors": [
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     drop_color_message_key,
-                    structlog.processors.dict_tracebacks if json_logs else structlog.processors.format_exc_info,
                     renderer,
                 ],
                 "foreign_pre_chain": list(_shared_processors),
@@ -316,3 +315,4 @@ def configure_from_env() -> None:
     configure_logging(
         log_level=log_level, json_logs=json_logs, service_name=service_name
     )
+    configure_stdlib_logging(log_level=log_level, json_logs=json_logs)
