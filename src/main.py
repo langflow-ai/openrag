@@ -1521,8 +1521,6 @@ async def _periodic_backup(services):
 async def lifespan(app: FastAPI):
     """FastAPI lifespan handler for startup and shutdown tasks"""
     # STARTUP
-    bootstrap.load_env()
-    logger.info("Application startup span: environment variables loaded")
 
     services = app.state.services
 
