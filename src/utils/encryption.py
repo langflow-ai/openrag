@@ -2,6 +2,7 @@ import os
 import secrets
 import base64
 import hashlib
+from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -64,14 +65,15 @@ def _record_key_checksum(key: str) -> None:
         if os.path.exists(checksum_file):
             with open(checksum_file, "r") as f:
                 for line in f:
-                    if line.strip() == checksum:
+                    if line.strip().split(',')[0] == checksum:
                         exists = True
                         break
 
-        # Append new checksum if it doesn't exist
+        # Append new checksum with timestamp if it doesn't exist
         if not exists:
+            timestamp = datetime.now(timezone.utc).isoformat()
             with open(checksum_file, "a") as f:
-                f.write(f"{checksum}\n")
+                f.write(f"{checksum},{timestamp}\n")
             logger.info(f"New encryption key detected; checksum recorded in {checksum_file}")
 
     except Exception as e:
