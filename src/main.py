@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+import uuid
 from html.parser import HTMLParser
 
 
@@ -24,6 +26,7 @@ from utils.telemetry import TelemetryClient, Category, MessageId
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 # API endpoints
@@ -190,7 +193,7 @@ async def _ensure_opensearch_index():
         index_name = get_index_name()
         # Check if index already exists
         if await clients.opensearch.indices.exists(index=index_name):
-            logger.debug("OpenSearch index already exists", index_name=index_name)
+            logger.info("[OPENSEARCH] Index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
@@ -1049,7 +1052,7 @@ async def opensearch_health_ready(request):
 
     if IBM_AUTH_ENABLED:
         logger.debug(
-            "[OpenSearch Security] OpenSearch auth mode enabled, health check per-request"
+            "[OPENSEARCH] OpenSearch auth mode enabled, health check per-request"
         )
         # In IBM auth mode we cannot rely on the global OpenSearch client
         # (auth is established per-request), so perform a lightweight,
@@ -1060,7 +1063,7 @@ async def opensearch_health_ready(request):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(f"{opensearch_url}/")
             if resp.status_code < 500:
-                logger.debug("[OpenSearch Security] OpenSearch health check successful")
+                logger.debug("[OPENSEARCH] OpenSearch health check successful")
                 return JSONResponse(
                     {
                         "status": "ready",
@@ -1070,7 +1073,7 @@ async def opensearch_health_ready(request):
                     status_code=200,
                 )
             else:
-                logger.debug("[OpenSearch Security] OpenSearch health check failed")
+                logger.debug("[OPENSEARCH] OpenSearch health check failed")
                 return JSONResponse(
                     {
                         "status": "not_ready",
@@ -1081,7 +1084,7 @@ async def opensearch_health_ready(request):
                 )
         except Exception as e:
             logger.error(
-                "[OpenSearch Security] OpenSearch health check failed", error=str(e)
+                "[OPENSEARCH] OpenSearch health check failed", error=str(e)
             )
             return JSONResponse(
                 {
@@ -1100,7 +1103,7 @@ async def opensearch_health_ready(request):
         )
     except Exception as e:
         logger.error(
-            "[OpenSearch Security] OpenSearch health check failed", error=str(e)
+            "[OPENSEARCH] OpenSearch health check failed", error=str(e)
         )
         return JSONResponse(
             {
@@ -1504,7 +1507,7 @@ async def _periodic_backup(services):
             # Check if onboarding has been completed
             config = get_openrag_config()
             if not config.edited:
-                logger.debug("Onboarding not completed yet, skipping periodic backup")
+                logger.info("[CONFIG] Onboarding not completed yet, skipping periodic backup")
                 continue
 
             flows_service = services.get("flows_service")
@@ -1595,6 +1598,66 @@ async def lifespan(app: FastAPI):
 
 
 
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware that assigns a correlation ID to every request and
+    emits a single structured [API] log line with method, path, status code,
+    and duration after the response is sent.
+
+    Using pure ASGI (not BaseHTTPMiddleware) so structlog contextvars bound
+    inside endpoint handlers propagate back correctly to this middleware.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        import structlog as _structlog
+
+        _structlog.contextvars.clear_contextvars()
+
+        headers_dict = dict(scope.get("headers", []))
+        request_id = (
+            headers_dict.get(b"x-request-id", b"").decode() or str(uuid.uuid4())
+        )
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+
+        _structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=method,
+            path=path,
+        )
+
+        status_code = 500
+        start = time.perf_counter()
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                # Inject correlation ID into response headers
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode()))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            level = "warning" if status_code >= 500 else "info"
+            getattr(logger, level)(
+                "[API] Request",
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+            _structlog.contextvars.clear_contextvars()
+
+
 async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
@@ -1607,6 +1670,9 @@ async def create_app():
     )
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
+
+    # Wire up ASGI request logging middleware (pure ASGI, not BaseHTTPMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
 
     try:
         Instrumentator().instrument(app).expose(app)

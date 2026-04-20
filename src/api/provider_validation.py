@@ -316,7 +316,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
             # If max_tokens doesn't work, try with max_completion_tokens
             if response.status_code != 200:
-                logger.info("max_tokens parameter failed, trying max_completion_tokens instead")
+                logger.warning("[API] max_tokens parameter failed, trying max_completion_tokens instead")
                 payload = {**base_payload, "max_completion_tokens": 50}
                 response = await client.post(
                     "https://api.openai.com/v1/chat/completions",

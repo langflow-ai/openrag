@@ -213,7 +213,7 @@ async def get_langflow_api_key(force_regenerate: bool = False):
 
     # If forcing regeneration, clear the cached key
     if force_regenerate and LANGFLOW_KEY:
-        logger.info("Forcing Langflow API key regeneration due to auth failure")
+        logger.warning("[LF] Forcing Langflow API key regeneration due to auth failure")
         LANGFLOW_KEY = None
 
     # Use default langflow/langflow credentials if auto-login is enabled and credentials not set

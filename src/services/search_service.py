@@ -68,7 +68,7 @@ class SearchService:
                 os.environ.setdefault("OLLAMA_API_BASE", fixed)
                 os.environ.setdefault("OLLAMA_BASE_URL", fixed)
         except Exception as e:
-            logger.debug("Could not configure Ollama endpoint from config", error=str(e))
+            logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
     async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
@@ -92,7 +92,7 @@ class SearchService:
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
-            "Search with embedding model",
+            "[SEARCH] Query started",
             embedding_model=embedding_model,
             embedding_field=embedding_field_name,
             query_preview=query[:50] if query else None,
@@ -434,7 +434,7 @@ class SearchService:
             has_jwt_token=jwt_token is not None,
         )
         if not user_id:
-            logger.debug("search_service: user_id is None/empty, returning auth error")
+            logger.warning("[SEARCH] user_id missing, rejecting search request")
             return {"results": [], "error": "Authentication required"}
 
         # Get user's OpenSearch client with JWT for OIDC auth through session manager

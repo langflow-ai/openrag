@@ -184,16 +184,15 @@ class LangflowFileService:
         
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
-        logger.info(f"[LF] Headers {headers}")
-        logger.info(f"[LF] Payload {payload}")
+        logger.info("[INGEST] Run started", flow_id=self.flow_id_ingest, filename=filename, mimetype=mimetype)
         resp = await clients.langflow_request(
             "POST",
             f"/api/v1/run/{self.flow_id_ingest}",
             json=payload,
             headers=headers,
         )
-        logger.debug(
-            "[LF] Run response", status_code=resp.status_code, reason=resp.reason_phrase
+        logger.info(
+            "[INGEST] Run complete", status_code=resp.status_code, reason=resp.reason_phrase
         )
         if resp.status_code >= 400:
             logger.error(

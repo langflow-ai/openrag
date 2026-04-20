@@ -10,6 +10,9 @@ import json
 import asyncio
 from typing import Dict, List, Tuple, Optional
 from src.connectors.base import DocumentACL
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def compute_acl_hash(acl: DocumentACL) -> str:
@@ -86,7 +89,7 @@ async def should_update_acl(
 
     except Exception as e:
         # On error, assume update needed to be safe
-        print(f"Error checking ACL for {document_id}: {e}")
+        logger.error("[OPENSEARCH] ACL check failed", document_id=document_id, error=str(e))
         return True
 
 
@@ -142,7 +145,7 @@ async def update_document_acl(
         }
 
     except Exception as e:
-        print(f"Error updating ACL for {document_id}: {e}")
+        logger.error("[OPENSEARCH] ACL update failed", document_id=document_id, error=str(e))
         return {"status": "error", "chunks_updated": 0, "error": str(e)}
 
 

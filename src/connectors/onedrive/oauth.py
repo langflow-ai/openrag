@@ -135,9 +135,7 @@ class OneDriveOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"Failed to load OneDrive credentials: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] OneDrive credential load failed")
             return False
 
     async def _refresh_from_json_token(self, token_data: dict) -> bool:
@@ -185,9 +183,7 @@ class OneDriveOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"Exception during refresh from JSON token: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] OneDrive JSON token refresh failed")
             return False
 
     async def save_cache(self):
@@ -299,9 +295,7 @@ class OneDriveOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"OneDrive is_authenticated: Exception: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] OneDrive is_authenticated failed")
             return False
 
     def get_access_token(self) -> str:
@@ -331,9 +325,7 @@ class OneDriveOAuth:
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
         except Exception as e:
-            logger.error(f"OneDrive get_access_token: Exception: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] OneDrive get_access_token failed")
             raise
 
     async def revoke_credentials(self):

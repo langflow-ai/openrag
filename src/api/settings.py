@@ -1609,7 +1609,7 @@ async def update_onboarding_state(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update onboarding state")
 
-        logger.info(f"Onboarding state updated: {body}")
+        logger.info("[CONFIG] Onboarding state updated", fields=list(body.model_fields_set))
 
         return OnboardingStateResponse(
             message="Onboarding state updated successfully",
@@ -1705,7 +1705,7 @@ async def rollback_onboarding(
                 {"error": "No onboarding configuration to rollback"}, status_code=400
             )
 
-        logger.info("Rolling back onboarding configuration due to file failures")
+        logger.warning("[CONFIG] Rolling back onboarding configuration due to file failures")
 
         # Get all tasks for the user
         all_tasks = task_service.get_all_tasks(user.user_id)

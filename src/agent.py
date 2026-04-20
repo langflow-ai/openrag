@@ -258,10 +258,7 @@ async def async_response_stream(
         logger.info("Response generated", log_prefix=log_prefix, response=full_response)
 
     except Exception as e:
-        logger.error("Exception in streaming", error=str(e))
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("[AGENT] Streaming failed")
         raise
 
 
@@ -316,10 +313,7 @@ async def async_response(
                     msg = error_msg
             raise ValueError(msg)
     except Exception as e:
-        logger.error("Exception in non-streaming response", error=str(e))
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("[AGENT] Non-streaming response failed")
         raise
 
 
@@ -387,10 +381,7 @@ async def async_langflow_stream(
             yield chunk
         logger.debug("Langflow stream completed")
     except Exception as e:
-        logger.error("Exception in langflow stream", error=str(e))
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("[AGENT] Langflow stream failed")
         raise
 
 
