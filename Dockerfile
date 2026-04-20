@@ -99,7 +99,8 @@ RUN echo "#!/bin/bash" > /usr/share/opensearch/profile.sh && \
 
 # Copy OIDC and DLS security configuration (as root, like before)
 COPY securityconfig/ /usr/share/opensearch/securityconfig/
-RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
+COPY cloud_securityconfig/ /usr/share/opensearch/cloud_securityconfig/
+RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/ /usr/share/opensearch/cloud_securityconfig/
 
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \

@@ -43,12 +43,15 @@ body {
 [data-theme="ibm"] .ag-root-wrapper,
 [data-theme="ibm"] .ag-root-wrapper-body,
 [data-theme="ibm"] .ag-header {
-  border-radius: 0 !important;
+  border-radius: 1px !important;
   overflow: hidden;
 }
 
 /* IBM Theme specific AG Grid styles - Light Mode */
+[data-theme="ibm"] body,
 [data-theme="ibm"] {
+  --ag-background-color: #f4f4f4;
+  --ag-text-color: #525252;
   --ag-row-border: hsl(var(--border));
   --ag-borders: solid 1px hsl(var(--border));
   --ag-border-color: hsl(var(--border));
@@ -97,12 +100,12 @@ body {
 
   /* Square checkboxes for IBM theme - Light mode */
   .ag-checkbox-input-wrapper {
-    border-radius: 0 !important;
+    border-radius: 1px !important;
     border-color: #161616 !important;
   }
 
   .ag-checkbox-input-wrapper.ag-checked {
-    border-radius: 0 !important;
+    border-radius: 1px !important;
     background-color: #161616 !important;
     border-color: #161616 !important;
   }
@@ -111,10 +114,18 @@ body {
     border-color: #161616 !important;
     background-color: #e0e0e0 !important;
   }
+
+  .ag-paging-panel {
+    color: #525252;
+  }
 }
 
 /* IBM Theme Dark mode */
+[data-theme="ibm"].dark body,
 [data-theme="ibm"].dark {
+  --ag-background-color: #262626;
+  --ag-text-color: #525252;
+
   .ag-header {
     background-color: #393939 !important;
   }
@@ -144,5 +155,9 @@ body {
   .ag-checkbox-input-wrapper.ag-checked {
     background-color: #f4f4f4 !important;
     border-color: #f4f4f4 !important;
+  }
+
+  .ag-paging-panel {
+    color: #c6c6c6;
   }
 }

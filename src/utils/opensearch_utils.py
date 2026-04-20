@@ -1,5 +1,7 @@
 import asyncio
+import os
 import random
+import yaml
 from opensearchpy import AsyncOpenSearch
 from utils.logging_config import get_logger
 
@@ -121,3 +123,265 @@ async def wait_for_opensearch(
     message: str = "Failed to verify whether OpenSearch is ready."
     logger.error(message)
     raise OpenSearchNotReadyError(message)
+
+
+async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> None:
+    """Gracefully shutdown OpenSearch client connection.
+    
+    This ensures that all pending operations are completed and connections
+    are properly closed before the application exits.
+    
+    Args:
+        opensearch_client: The OpenSearch client to shutdown.
+    """
+    if opensearch_client is None:
+        logger.debug("OpenSearch client is None, skipping graceful shutdown")
+        return
+    
+    try:
+        logger.info("Initiating graceful OpenSearch shutdown...")
+        
+        # Flush any pending operations by checking cluster health one last time
+        try:
+            await asyncio.wait_for(
+                opensearch_client.cluster.health(),
+                timeout=10.0
+            )
+            logger.debug("Final cluster health check completed")
+        except asyncio.TimeoutError:
+            logger.warning("Timeout during final cluster health check")
+        except Exception as e:
+            logger.warning("Error during final cluster health check", error=str(e))
+        
+        # Close the client connection
+        await opensearch_client.close()
+        logger.info("OpenSearch client connection closed gracefully")
+        
+    except Exception as e:
+        logger.error("Error during graceful OpenSearch shutdown", error=str(e))
+
+
+async def setup_opensearch_security(
+    opensearch_client: AsyncOpenSearch,
+    admin_username: str | None = None,
+) -> None:
+    """Setup OpenSearch roles and roles mapping.
+
+    The setup involves:
+    1. GET /_plugins/_security/api/rolesmapping (check existing)
+    2. GET /_cluster/health
+    3. PUT /_plugins/_security/api/roles/openrag_user_role (create role)
+    4. PUT /_plugins/_security/api/rolesmapping/openrag_user_role (create mapping)
+    5. PUT /_plugins/_security/api/rolesmapping/all_access (merge admin mapping)
+    6. Verify with final GETs.
+
+    Args:
+        opensearch_client: Authenticated OpenSearch client.
+        admin_username: OpenSearch username of the onboarding user (IBM mode).
+            When provided, this user is pinned into the all_access role mapping's
+            ``users`` list so they retain admin access after ``backend_roles``
+            are modified for DLS.
+
+    This should be called during initial setup after OpenSearch is ready.
+    """
+    from config.settings import IBM_AUTH_ENABLED
+
+    logger.info("Initializing OpenSearch security configuration...", ibm_auth=IBM_AUTH_ENABLED)
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if IBM_AUTH_ENABLED:
+        security_config_dir = os.path.join(base_dir, "cloud_securityconfig")
+    else:
+        security_config_dir = os.path.join(base_dir, "securityconfig")
+
+    logger.info("[OpenSearch Security] Using config directory", config_dir=security_config_dir)
+
+    roles_file = os.path.join(security_config_dir, "roles.yml")
+    roles_mapping_file = os.path.join(security_config_dir, "roles_mapping.yml")
+
+    logger.info(
+        "[OpenSearch Security] Configuration paths",
+        base_dir=base_dir,
+        security_config_dir=security_config_dir,
+        roles_file=roles_file,
+        roles_mapping_file=roles_mapping_file,
+    )
+
+    try:
+        # 1. & 2. Readiness checks
+        logger.info("[OpenSearch Security] Performing readiness checks...")
+        
+        try:
+            rolesmapping_response = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/rolesmapping")
+            logger.info("[OpenSearch Security] Current rolesmapping retrieved", count=len(rolesmapping_response) if isinstance(rolesmapping_response, dict) else "unknown")
+        except Exception as e:
+            logger.warning("[OpenSearch Security] Failed to get current rolesmapping", error=str(e))
+        
+        cluster_health = await opensearch_client.cluster.health()
+        logger.info("[OpenSearch Security] Cluster health check passed", status=cluster_health.get("status"))
+
+        # Load role definitions from YAML
+        if not os.path.exists(roles_file):
+            logger.error(f"[OpenSearch Security] Roles configuration file not found: {roles_file}")
+            raise FileNotFoundError(f"Roles configuration file not found: {roles_file}")
+
+        with open(roles_file, "r") as f:
+            roles_config = yaml.safe_load(f)
+        
+        logger.info("[OpenSearch Security] Loaded roles configuration", roles=list(roles_config.keys()) if roles_config else [])
+
+        # 3. Create openrag_user_role
+        if "openrag_user_role" in roles_config:
+            role_body = roles_config["openrag_user_role"]
+
+            logger.info(
+                "[OpenSearch Security] Creating 'openrag_user_role' role",
+                patterns=role_body['index_permissions'][0]['index_patterns'] if 'index_permissions' in role_body else 'default',
+                allowed_actions=role_body['index_permissions'][0].get('allowed_actions', []) if 'index_permissions' in role_body else []
+            )
+            
+            resp = await opensearch_client.transport.perform_request(
+                "PUT",
+                "/_plugins/_security/api/roles/openrag_user_role",
+                body=role_body,
+                headers={"Content-Type": "application/json"}
+            )
+            logger.info("[OpenSearch Security] Role creation response", response=resp)
+        else:
+            logger.warning("[OpenSearch Security] 'openrag_user_role' not found in roles.yml")
+
+        # Load roles mapping from YAML
+        if not os.path.exists(roles_mapping_file):
+            logger.error(f"[OpenSearch Security] Roles mapping file not found: {roles_mapping_file}")
+            raise FileNotFoundError(f"Roles mapping file not found: {roles_mapping_file}")
+
+        with open(roles_mapping_file, "r") as f:
+            mapping_config = yaml.safe_load(f)
+        
+        logger.info("[OpenSearch Security] Loaded roles mapping configuration", mappings=list(mapping_config.keys()) if mapping_config else [])
+
+        # 4. Create openrag_user_role mapping
+        if "openrag_user_role" in mapping_config:
+            mapping_body = mapping_config["openrag_user_role"]
+            logger.info(
+                "[OpenSearch Security] Creating 'openrag_user_role' mapping",
+                backend_roles=mapping_body.get("backend_roles", []),
+                users=mapping_body.get("users", [])
+            )
+            resp = await opensearch_client.transport.perform_request(
+                "PUT",
+                "/_plugins/_security/api/rolesmapping/openrag_user_role",
+                body=mapping_body,
+                headers={"Content-Type": "application/json"}
+            )
+            logger.info("[OpenSearch Security] Role mapping update response", response=resp)
+
+        # 5. Update all_access mapping — merge with existing to preserve
+        # IBM-managed entries, but ensure backend_roles never contains
+        # "all_access" (which would give IBM API key users the super-admin
+        # role and bypass DLS).
+        if "all_access" in mapping_config:
+            all_access_body = mapping_config["all_access"]
+
+            if "backend_roles" not in all_access_body:
+                all_access_body["backend_roles"] = ["admin"]
+            if "description" not in all_access_body:
+                all_access_body["description"] = "Maps admin to all_access"
+
+            # Always fetch existing mapping first so we never lose previous admins
+            # in multi-tenant deployments where each tenant onboards independently.
+            existing_users: list = []
+            existing_hosts: list = []
+            existing_backend_roles: list = []
+            try:
+                existing = await opensearch_client.transport.perform_request(
+                    "GET", "/_plugins/_security/api/rolesmapping/all_access"
+                )
+                existing_mapping = existing.get("all_access", {})
+                existing_users = existing_mapping.get("users", []) or []
+                existing_hosts = existing_mapping.get("hosts", []) or []
+                existing_backend_roles = existing_mapping.get("backend_roles", []) or []
+            except Exception:
+                logger.debug("[OpenSearch Security] No existing all_access mapping found, creating fresh")
+
+            # Build merged users: source file + cluster + new admin (bare + ibmlhapikey_ variant).
+            # Adding both variants ensures the user can authenticate via JWT *and* via IBM
+            # Basic-Auth (ibmlhapikey_<username>), which are treated as separate principals
+            # by OpenSearch's security plugin.
+            new_admin_users: list = []
+            if IBM_AUTH_ENABLED and admin_username:
+                new_admin_users = [admin_username, f"ibmlhapikey_{admin_username}"]
+                logger.info(
+                    "[OpenSearch Security] Pinning onboarding user as admin (both variants)",
+                    users=new_admin_users,
+                )
+
+            merged_users = list(set(
+                all_access_body.get("users", []) + existing_users + new_admin_users
+            ))
+            all_access_body["users"] = merged_users
+            logger.debug("[OpenSearch Security] Merged all_access users", users=merged_users)
+
+            if existing_hosts:
+                merged_hosts = list(set(all_access_body.get("hosts", []) + existing_hosts))
+                all_access_body["hosts"] = merged_hosts
+                logger.debug(
+                    "[OpenSearch Security] Preserved existing all_access hosts",
+                    hosts=merged_hosts,
+                )
+
+            if existing_backend_roles:
+                safe_existing_backend_roles = [
+                    r for r in existing_backend_roles if r != "all_access"
+                ]
+                merged_backend_roles = list(
+                    set(all_access_body.get("backend_roles", []) + safe_existing_backend_roles)
+                )
+                all_access_body["backend_roles"] = merged_backend_roles
+                logger.debug(
+                    "[OpenSearch Security] Preserved existing all_access backend_roles",
+                    backend_roles=merged_backend_roles,
+                )
+
+            if "all_access" in all_access_body.get("backend_roles", []):
+                all_access_body["backend_roles"] = [
+                    r for r in all_access_body["backend_roles"] if r != "all_access"
+                ]
+                logger.info(
+                    "[OpenSearch Security] Removed 'all_access' from all_access backend_roles to preserve DLS",
+                    final_backend_roles=all_access_body["backend_roles"],
+                )
+
+            logger.info("[OpenSearch Security] Updating 'all_access' mapping...", body=all_access_body)
+            resp = await opensearch_client.transport.perform_request(
+                "PUT",
+                "/_plugins/_security/api/rolesmapping/all_access",
+                body=all_access_body,
+                headers={"Content-Type": "application/json"}
+            )
+            logger.info("[OpenSearch Security] All access mapping update response", response=resp)
+
+        # 6. Final verification
+        logger.info("[OpenSearch Security] Verifying security configuration...")
+        role_verify = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/roles/openrag_user_role")
+        logger.info("[OpenSearch Security] Role verification", role=role_verify)
+        
+        mapping_verify = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/rolesmapping/openrag_user_role")
+        logger.info("[OpenSearch Security] Role mapping verification", mapping=mapping_verify)
+
+        logger.info("Successfully completed OpenSearch security configuration.")
+
+    except Exception as e:
+        # Check for authentication errors or if the security plugin is missing
+        error_str = str(e).lower()
+        if any(code in error_str for code in ["401", "403", "404", "security_exception", "not_found"]):
+            logger.warning(
+                "Skipping OpenSearch security configuration: "
+                "The cluster may not have the security plugin enabled or "
+                "the provided credentials do not have administrative permissions."
+            )
+            return
+
+        logger.error("Failed to setup OpenSearch security configuration", error=str(e))
+        # Re-raise for non-auth/non-security errors to ensure visibility
+        raise

@@ -353,7 +353,8 @@ class LangflowFileService:
         max_attempts = 2
         last_error: Exception | None = None
 
-        flow_file = Path(__file__).resolve().parents[2] / "flows" / "openrag_url_mcp.json"
+        from config.paths import get_flows_path
+        flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
         if not flow_file.exists():
             raise ValueError(
                 "LANGFLOW_URL_INGEST_FLOW_ID is invalid and "

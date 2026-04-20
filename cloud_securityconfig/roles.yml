@@ -1,0 +1,57 @@
+_meta:
+  type: "roles"
+  config_version: 2
+
+openrag_user_role:
+  description: "DLS: user can read/write docs they own or are allowed on"
+  cluster_permissions:
+    - "indices:data/write/bulk"
+    - "indices:data/write/index"
+    - "indices:data/read/scroll"
+    - "indices:data/read/scroll/clear"
+    - "cluster:monitor/*"
+    - "cluster:admin/opensearch/notifications/configs/create"
+    - "cluster:admin/opensearch/notifications/configs/list"
+    - "cluster:admin/opensearch/notifications/configs/get"
+    - "cluster:admin/opensearch/notifications/configs/update"
+    - "cluster:admin/opensearch/notifications/configs/delete"
+    - "cluster:admin/opensearch/alerting/*"
+
+  index_permissions:
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*",orag*]
+      allowed_actions:
+        - crud
+        - create_index
+        - indices:admin/mappings/get
+        - indices:admin/mappings/put
+        - indices:admin/exists
+        - indices:admin/get
+        - indices:admin/refresh
+        - indices:data/write/delete/byquery
+        - indices:data/write/update/byquery
+      dls: >
+        {"bool":{"should":[
+          {"term":{"owner":"${user.name}"}},
+          {"term":{"allowed_users":"${user.name}"}},
+          {"bool":{"must_not":{"exists":{"field":"owner"}}}}
+        ],"minimum_should_match":1}}
+    - index_patterns: ["api_keys", "api_keys*"]
+      allowed_actions:
+        - crud
+        - create_index
+        - indices:admin/mappings/get
+        - indices:admin/mappings/put
+        - indices:admin/exists
+        - indices:admin/get
+        - indices:admin/refresh
+        - indices:data/write/delete/byquery
+        - indices:data/write/update/byquery
+      dls: >
+        {"bool":{"should":[
+          {"term":{"user_id":"${user.name}"}},
+          {"bool":{"must_not":{"exists":{"field":"user_id"}}}}
+        ],"minimum_should_match":1}}
+    - index_patterns: [".opendistro-alerting-config"]
+      allowed_actions:
+        - crud
+        - indices:admin/get

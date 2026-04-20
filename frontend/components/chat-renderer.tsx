@@ -320,6 +320,7 @@ export function ChatRenderer({
                 delay: ANIMATION_DURATION,
               }}
               className={cn("w-full h-full")}
+              data-testid={showLayout ? "onboarding-completed" : undefined}
             >
               {showLayout && (
                 <div className={cn("w-full h-full", !showLayout && "hidden")}>

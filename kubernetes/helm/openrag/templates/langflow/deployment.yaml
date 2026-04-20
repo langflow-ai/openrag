@@ -34,78 +34,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 
-      {{- if and .Values.langflow.flows.loadDefaults .Values.langflow.flows.git.enabled }}
-      initContainers:
-        - name: load-default-flows
-          image: curlimages/curl:8.5.0
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              set -eu
-
-              FLOWS_DIR="{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}"
-
-              OWNER="{{ .Values.langflow.flows.git.owner }}"
-              REPO="{{ .Values.langflow.flows.git.repo }}"
-              BRANCH="{{ .Values.langflow.flows.git.branch }}"
-              {{- if .Values.langflow.flows.git.hash }}
-              GIT_REF="{{ .Values.langflow.flows.git.hash }}"
-              {{- else }}
-              GIT_REF="${BRANCH}"
-              {{- end }}
-              REPO_PATH="{{ .Values.langflow.flows.git.path }}"
-
-              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
-              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
-
-              mkdir -p "$FLOWS_DIR"
-
-              if [ -z "$(ls -A "$FLOWS_DIR" 2>/dev/null)" ]; then
-                echo "Loading default flows from ${OWNER}/${REPO}@${GIT_REF}/${REPO_PATH} ..."
-
-                download_with_retry() {
-                  file="$1"
-                  url="${GITHUB_RAW_URL}/${file}"
-                  dest="${FLOWS_DIR}/${file}"
-                  max_retries=3
-                  timeout=60
-                  retry=0
-
-                  while [ "$retry" -lt "$max_retries" ]; do
-                    echo "Downloading ${file} (attempt $((retry + 1))/${max_retries})..."
-                    if curl -f -L -m "$timeout" -o "$dest" "$url"; then
-                      echo "OK: ${file}"
-                      return 0
-                    fi
-                    retry=$((retry + 1))
-                    if [ "$retry" -lt "$max_retries" ]; then
-                      echo "Retrying ${file}..."
-                      sleep 2
-                    fi
-                  done
-
-                  echo "ERROR: Failed to download ${file} from ${url}"
-                  return 1
-                }
-
-                failed=0
-{{- range .Values.langflow.flows.git.files }}
-                if ! download_with_retry "{{ . }}"; then failed=1; fi
-{{- end }}
-
-                if [ "$failed" -eq 1 ]; then
-                  echo "ERROR: One or more flows failed to download"
-                  exit 1
-                fi
-
-                echo "Flows loaded: $(ls "$FLOWS_DIR")"
-              else
-                echo "Flows already exist in $FLOWS_DIR, skipping download."
-              fi
-          volumeMounts:
-            - name: langflow-data
-              mountPath: {{ .Values.langflow.persistence.mountPath }}
-      {{- end }}
 
       containers:
         - name: langflow
@@ -131,6 +59,9 @@ spec:
               readOnly: true
             - name: langflow-data
               mountPath: {{ .Values.langflow.persistence.mountPath }}
+            - name: shared
+              mountPath: {{ .Values.backend.persistence.shared.mountPath | quote }}
+              readOnly: true
 
           resources:
             {{- toYaml .Values.langflow.resources | nindent 12 }}
@@ -172,6 +103,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.backend.persistence.shared.enabled }}
+        - name: shared
+          persistentVolumeClaim:
+            claimName: {{ include "openrag.fullname" . }}-shared
+        {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:

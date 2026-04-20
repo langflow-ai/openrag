@@ -562,7 +562,7 @@ def migrate_legacy_data_directories():
     """Migrate data from CWD-based directories to ~/.openrag/.
 
     This is a one-time migration for users upgrading from the old layout.
-    Migrates: documents, flows, keys, config, opensearch-data, langflow-data
+    Migrates: documents, flows, keys, config, langflow-data
 
     Prompts user for confirmation before migrating. If user declines,
     exits with a message to downgrade to v1.52 or earlier.
@@ -584,7 +584,8 @@ def migrate_legacy_data_directories():
         (cwd / "flows", target_base / "flows", "flows"),
         (cwd / "keys", target_base / "keys", "keys"),
         (cwd / "config", target_base / "config", "config"),
-        (cwd / "opensearch-data", target_base / "data" / "opensearch-data", "OpenSearch data"),
+        # opensearch-data intentionally omitted: OpenSearch now uses a Docker named
+        # volume; old index data is not portable and must be re-ingested.
         (cwd / "langflow-data", target_base / "data" / "langflow-data", "Langflow data"),
     ]
 
@@ -608,7 +609,6 @@ def migrate_legacy_data_directories():
             env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
             env_manager.config.openrag_config_path = f"{home}/.openrag/config"
             env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-            env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
             env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
             env_manager.save_env_file()
             logger.info("Updated .env file with centralized paths")
@@ -688,7 +688,6 @@ def migrate_legacy_data_directories():
         env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
         env_manager.config.openrag_config_path = f"{home}/.openrag/config"
         env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-        env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
         env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
         env_manager.save_env_file()
         print("  Updated .env with centralized paths")
@@ -699,6 +698,55 @@ def migrate_legacy_data_directories():
 
     print("\nMigration complete!\n")
     logger.info("Data migration completed successfully")
+
+
+def _reclaim_host_ownership(directories: list[Path]) -> None:
+    """Re-own directories to the current host user via a container running as root.
+
+    On Linux with rootful Docker the backend entrypoint.sh calls
+    ``chown -R appuser:appuser`` on volume-mounted directories, changing their
+    *host-side* ownership to UID 1000.  Subsequent TUI startups then cannot
+    chmod or write into those directories (e.g. to regenerate JWT keys after a
+    reset), causing a silent crash.
+
+    This mirrors the ``fix_backend_volume_ownership`` Makefile define: an Alpine
+    container is launched as root and asked to chown the directories back to the
+    host user.  Silently skips directories that are already owned by the current
+    user, or when no container runtime is available.
+    """
+    import shutil as _shutil
+
+    host_uid = os.getuid()
+    host_gid = os.getgid()
+
+    needs_reclaim = [d for d in directories if d.exists() and d.stat().st_uid != host_uid]
+    if not needs_reclaim:
+        return
+
+    runtime = (
+        "docker" if _shutil.which("docker")
+        else "podman" if _shutil.which("podman")
+        else None
+    )
+    if not runtime:
+        logger.error("No container runtime found; cannot reclaim directory ownership")
+        return
+
+    for directory in needs_reclaim:
+        try:
+            subprocess.run(
+                [
+                    runtime, "run", "--rm",
+                    "-v", f"{directory}:/mnt/target",
+                    "alpine", "chown", "-R", f"{host_uid}:{host_gid}", "/mnt/target",
+                ],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            logger.info(f"Reclaimed ownership of {directory} → {host_uid}:{host_gid}")
+        except Exception as e:
+            logger.error(f"Could not reclaim ownership of {directory}: {e}")
 
 
 def generate_jwt_keys(keys_dir: Path):
@@ -755,7 +803,6 @@ def setup_host_directories():
     - ~/.openrag/keys/ (for JWT keys)
     - ~/.openrag/config/ (for configuration)
     - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
-    - ~/.openrag/data/opensearch-data/ (for OpenSearch index)
     - LANGFLOW_DATA_PATH (for Langflow database and state)
     """
     base_dir = Path.home() / ".openrag"
@@ -765,12 +812,39 @@ def setup_host_directories():
         base_dir / "keys",
         base_dir / "config",
         base_dir / "data",
-        base_dir / "data" / "opensearch-data",
     ]
 
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Ensured directory exists: {directory}")
+
+    # Backend volume-mounted directories must be writable by the container user
+    # (appuser, UID 1000). Podman handles this via :U in docker-compose.yml, but
+    # Docker ignores :U. Applying 0o775 means any process in the directory's group
+    # can write; the entrypoint.sh in the image also re-chowns these at startup as
+    # a belt-and-suspenders fallback.
+    backend_writable = [
+        base_dir / "documents",
+        base_dir / "flows",
+        base_dir / "keys",
+        base_dir / "config",
+        base_dir / "data",
+    ]
+
+    # On Linux + rootful Docker the backend container's entrypoint.sh chowns these
+    # directories to UID 1000 (appuser).  Reclaim ownership before chmod so that
+    # subsequent TUI startups can chmod and write into them (e.g. key regeneration
+    # after a factory reset).
+    _reclaim_host_ownership(backend_writable)
+
+    for directory in backend_writable:
+        try:
+            os.chmod(directory, 0o775)
+            logger.debug(f"Set permissions 775 on: {directory}")
+        except PermissionError:
+            # Reclaim may have been skipped (no runtime available); the mode was
+            # already set on first run so this is non-fatal.
+            logger.error(f"Cannot chmod {directory} (not owner), skipping")
 
     # Resolve the configured LANGFLOW_DATA_PATH so we pre-create the exact
     # directory that Docker/Podman will mount, regardless of user customisation.
@@ -781,7 +855,10 @@ def setup_host_directories():
     # langflow-data must be world-writable so the Langflow container user (uid 1000)
     # can write into it on macOS where Podman's :U uid-remapping does not reliably
     # update host directory ownership through the VM layer.
-    os.chmod(langflow_data_dir, 0o777)
+    try:
+        os.chmod(langflow_data_dir, 0o777)
+    except PermissionError:
+        logger.error(f"Cannot chmod {langflow_data_dir} (not owner), skipping")
 
     # Generate JWT keys on host to avoid container permission issues
     generate_jwt_keys(base_dir / "keys")

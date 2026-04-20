@@ -21,7 +21,7 @@ export function LabelInput({
       required={required}
       disabled={props.disabled}
     >
-      <Input id={id} {...props} />
+      <Input id={id} data-testid={id} {...props} />
     </LabelWrapper>
   );
 }

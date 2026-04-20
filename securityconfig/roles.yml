@@ -9,6 +9,7 @@ openrag_user_role:
     - "indices:data/write/index"
     - "indices:data/read/scroll"
     - "indices:data/read/scroll/clear"
+    - "cluster:monitor/*"
     - "cluster:admin/opensearch/notifications/configs/create"
     - "cluster:admin/opensearch/notifications/configs/list"
     - "cluster:admin/opensearch/notifications/configs/get"
@@ -25,9 +26,32 @@ openrag_user_role:
         - indices:admin/mappings/put
         - indices:admin/exists
         - indices:admin/get
+        - indices:admin/refresh
+        - indices:data/write/delete/byquery
+        - indices:data/write/update/byquery
       dls: >
         {"bool":{"should":[
           {"term":{"owner":"${user.name}"}},
           {"term":{"allowed_users":"${user.name}"}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
         ],"minimum_should_match":1}}
+    - index_patterns: ["api_keys", "api_keys*"]
+      allowed_actions:
+        - crud
+        - create_index
+        - indices:admin/mappings/get
+        - indices:admin/mappings/put
+        - indices:admin/exists
+        - indices:admin/get
+        - indices:admin/refresh
+        - indices:data/write/delete/byquery
+        - indices:data/write/update/byquery
+      dls: >
+        {"bool":{"should":[
+          {"term":{"user_id":"${user.name}"}},
+          {"bool":{"must_not":{"exists":{"field":"user_id"}}}}
+        ],"minimum_should_match":1}}
+    - index_patterns: [".opendistro-alerting-config"]
+      allowed_actions:
+        - crud
+        - indices:admin/get

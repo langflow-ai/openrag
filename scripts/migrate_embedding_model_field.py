@@ -55,8 +55,6 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from config.settings import (
-    KNN_EF_CONSTRUCTION,
-    KNN_M,
     OPENSEARCH_HOST,
     OPENSEARCH_PORT,
     OPENSEARCH_USERNAME,
@@ -64,7 +62,7 @@ from config.settings import (
     get_index_name,
 )
 from utils.logging_config import get_logger
-from utils.embedding_fields import get_embedding_field_name
+from utils.embedding_fields import build_knn_vector_field, get_embedding_field_name
 
 logger = get_logger(__name__)
 
@@ -78,16 +76,7 @@ async def ensure_new_field_exists(
     """Ensure the new embedding field exists in the index."""
     mapping = {
         "properties": {
-            field_name: {
-                "type": "knn_vector",
-                "dimension": dimensions,
-                "method": {
-                    "name": "disk_ann",
-                    "engine": "jvector",
-                    "space_type": "l2",
-                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
-                },
-            },
+            field_name: build_knn_vector_field(dimensions),
             "embedding_model": {
                 "type": "keyword"
             }

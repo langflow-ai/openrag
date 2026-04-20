@@ -1,14 +1,20 @@
+from config.paths import get_flows_path
 import asyncio
 import os
+import threading
+import concurrent.futures
 from utils.env_utils import get_env_int, get_env_float
 
 import httpx
+from agentd.patch import patch_openai_with_mcp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
 from utils.container_utils import get_container_host
+from utils.embedding_fields import build_knn_vector_field
 from utils.logging_config import get_logger
 # Import configuration manager
 from .config_manager import config_manager
@@ -101,7 +107,6 @@ LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30
 # Default: 3600 seconds (60 minutes)
 INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
 
-
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     if IBM_AUTH_ENABLED:
@@ -124,26 +129,6 @@ OAUTH_BROKER_URL = os.getenv("OAUTH_BROKER_URL")
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
-EMBED_MODEL = "text-embedding-3-small"
-
-OPENAI_EMBEDDING_DIMENSIONS = {
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        "text-embedding-ada-002": 1536,
-    }
-
-WATSONX_EMBEDDING_DIMENSIONS = {
-# IBM Models
-"ibm/granite-embedding-107m-multilingual": 384,
-"ibm/granite-embedding-278m-multilingual": 1024,
-"ibm/slate-125m-english-rtrvr": 768,
-"ibm/slate-125m-english-rtrvr-v2": 768,
-"ibm/slate-30m-english-rtrvr": 384,
-"ibm/slate-30m-english-rtrvr-v2": 384,
-# Third Party Models
-"intfloat/multilingual-e5-large": 1024,
-"sentence-transformers/all-minilm-l6-v2": 384,
-}
 
 INDEX_BODY = {
     "settings": {
@@ -160,16 +145,7 @@ INDEX_BODY = {
             "text": {"type": "text"},
             # Legacy field - kept for backward compatibility
             # New documents will use chunk_embedding_{model_name} fields
-            "chunk_embedding": {
-                "type": "knn_vector",
-                "dimension": VECTOR_DIM,
-                "method": {
-                    "name": "disk_ann",
-                    "engine": "jvector",
-                    "space_type": "l2",
-                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
-                },
-            },
+            "chunk_embedding": build_knn_vector_field(VECTOR_DIM),
             # Track which embedding model was used for this chunk
             "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
@@ -337,7 +313,7 @@ class AppClients:
         self.langflow_client = None
         self.langflow_http_client = None
         self._patched_async_client = None  # Private attribute - single client for all providers
-        self._client_init_lock = __import__('threading').Lock()  # Lock for thread-safe initialization
+        self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
 
     async def initialize(self):
@@ -473,6 +449,11 @@ class AppClients:
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
+                elif not os.environ.get("OPENAI_API_KEY"):
+                    # Provide dummy key to satisfy AsyncOpenAI constructor; 
+                    # LiteLLM/MCP will handle routing to other providers if needed.
+                    os.environ["OPENAI_API_KEY"] = "no-key-required"
+                    logger.debug("Using dummy OpenAI API key to satisfy client constructor")
 
                 # Set Anthropic credentials
                 if config.providers.anthropic.api_key:
@@ -496,14 +477,23 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Determine model and provider for both probe and production client
+                model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
+                provider = config.knowledge.embedding_provider or "openai"
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
+                # Provide fallbacks if config loading failed
+                model_name = OPENAI_DEFAULT_EMBEDDING_MODEL
+                provider = "openai"
+                # Ensure a dummy key is available to satisfy the AsyncOpenAI constructor
+                # and avoid AuthenticationError if config loading failed.
+                if not os.environ.get("OPENAI_API_KEY"):
+                    os.environ["OPENAI_API_KEY"] = "no-key-required"
+                    logger.debug("Using dummy OpenAI API key fallback (config load failed)")
 
-            # Try to initialize the client - AsyncOpenAI() will read from environment
-            # We'll try HTTP/2 first with a probe, then fall back to HTTP/1.1 if it times out
-            import asyncio
-            import concurrent.futures
-            import threading
+
+            # API key for AsyncOpenAI constructor
+            api_key = os.environ.get("OPENAI_API_KEY")
 
             async def probe_http2():
                 """Returns True if HTTP/2 works, False to fall back to HTTP/1.1.
@@ -513,20 +503,21 @@ class AppClients:
                 production client is created after this thread exits, in the
                 caller's event loop, avoiding cross-loop SSL transport errors.
                 """
-                client = AsyncOpenAI()
-                logger.info("Probing OpenAI client with HTTP/2...")
+                # Use a standard OpenAI client for the probe (only runs for OpenAI provider)
+                client = AsyncOpenAI(api_key=api_key)
+                logger.info(f"Probing client with HTTP/2 using model {model_name}...")
                 try:
                     await asyncio.wait_for(
                         client.embeddings.create(
-                            model='text-embedding-3-small',
+                            model=model_name,
                             input=['test']
                         ),
                         timeout=5.0
                     )
-                    logger.info("HTTP/2 probe successful")
+                    logger.info(f"HTTP/2 probe successful with {model_name}")
                     return True
                 except (asyncio.TimeoutError, Exception) as probe_error:
-                    logger.warning("HTTP/2 probe failed, falling back to HTTP/1.1", error=str(probe_error))
+                    logger.warning(f"HTTP/2 probe failed with {model_name}, falling back to HTTP/1.1", error=str(probe_error))
                     return False
                 finally:
                     # Always close the probe client so its connections are fully
@@ -546,24 +537,32 @@ class AppClients:
                     loop.close()
 
             try:
-                # Run the probe in a separate thread with its own event loop.
-                # Only the probe result (bool) crosses the thread boundary;
-                # the production client is created here so its connections are
-                # bound to the caller's event loop, not the (now closed) probe loop.
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_probe_in_thread)
-                    use_http2 = future.result(timeout=15)
+                # Run the probe only for OpenAI provider; local and other providers
+                # (Ollama, WatsonX) typically use HTTP/1.1 for reliability.
+                if provider.lower() == "openai":
+                    # Run the probe in a separate thread with its own event loop.
+                    # Only the probe result (bool) crosses the thread boundary;
+                    # the production client is created here so its connections are
+                    # bound to the caller's event loop, not the (now closed) probe loop.
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(run_probe_in_thread)
+                        use_http2 = future.result(timeout=15)
+                else:
+                    use_http2 = False
+                    logger.debug(f"Skipping HTTP/2 probe for provider: {provider}")
 
                 if use_http2:
-                    self._patched_async_client = AsyncOpenAI()
-                    logger.info("OpenAI client initialized with HTTP/2")
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name})")
                 else:
                     http_client = httpx.AsyncClient(
                         http2=False,
                         timeout=httpx.Timeout(60.0, connect=10.0)
                     )
-                    self._patched_async_client = AsyncOpenAI(http_client=http_client)
-                    logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
+                    self._patched_async_client = patch_openai_with_mcp(
+                        AsyncOpenAI(api_key=api_key, http_client=http_client)
+                    )
+                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name})")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
@@ -830,24 +829,32 @@ class AppClients:
         )
 
 
-# Component template paths
-WATSONX_LLM_COMPONENT_PATH = os.getenv(
-    "WATSONX_LLM_COMPONENT_PATH", "flows/components/watsonx_llm.json"
+# Component template paths — derived from the centralized flows directory
+def _component_path(env_var: str, filename: str) -> str:
+    """Return a component path, using the env var override or the centralized flows dir."""
+    env_val = os.getenv(env_var)
+    if env_val:
+        return env_val
+    flows_dir = get_flows_path()
+    return os.path.join(flows_dir, "components", filename)
+
+WATSONX_LLM_COMPONENT_PATH = _component_path(
+    "WATSONX_LLM_COMPONENT_PATH", "watsonx_llm.json"
 )
-WATSONX_LLM_TEXT_COMPONENT_PATH = os.getenv(
-    "WATSONX_LLM_TEXT_COMPONENT_PATH", "flows/components/watsonx_llm_text.json"
+WATSONX_LLM_TEXT_COMPONENT_PATH = _component_path(
+    "WATSONX_LLM_TEXT_COMPONENT_PATH", "watsonx_llm_text.json"
 )
-WATSONX_EMBEDDING_COMPONENT_PATH = os.getenv(
-    "WATSONX_EMBEDDING_COMPONENT_PATH", "flows/components/watsonx_embedding.json"
+WATSONX_EMBEDDING_COMPONENT_PATH = _component_path(
+    "WATSONX_EMBEDDING_COMPONENT_PATH", "watsonx_embedding.json"
 )
-OLLAMA_LLM_COMPONENT_PATH = os.getenv(
-    "OLLAMA_LLM_COMPONENT_PATH", "flows/components/ollama_llm.json"
+OLLAMA_LLM_COMPONENT_PATH = _component_path(
+    "OLLAMA_LLM_COMPONENT_PATH", "ollama_llm.json"
 )
-OLLAMA_LLM_TEXT_COMPONENT_PATH = os.getenv(
-    "OLLAMA_LLM_TEXT_COMPONENT_PATH", "flows/components/ollama_llm_text.json"
+OLLAMA_LLM_TEXT_COMPONENT_PATH = _component_path(
+    "OLLAMA_LLM_TEXT_COMPONENT_PATH", "ollama_llm_text.json"
 )
-OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv(
-    "OLLAMA_EMBEDDING_COMPONENT_PATH", "flows/components/ollama_embedding.json"
+OLLAMA_EMBEDDING_COMPONENT_PATH = _component_path(
+    "OLLAMA_EMBEDDING_COMPONENT_PATH", "ollama_embedding.json"
 )
 
 # Component IDs in flows
@@ -894,7 +901,7 @@ def get_openrag_config():
 # Expose configuration settings for backward compatibility and easy access
 def get_provider_config():
     """Get provider configuration."""
-    return get_openrag_config().provider
+    return get_openrag_config().providers
 
 
 def get_knowledge_config():
@@ -909,7 +916,7 @@ def get_agent_config():
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+    return get_openrag_config().knowledge.embedding_model or (OPENAI_DEFAULT_EMBEDDING_MODEL if DISABLE_INGEST_WITH_LANGFLOW else "")
 
 
 def get_index_name() -> str:

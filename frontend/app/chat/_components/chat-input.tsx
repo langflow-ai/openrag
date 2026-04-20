@@ -459,6 +459,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     autoComplete="off"
                     minRows={1}
                     placeholder="Ask a question..."
+                    data-testid="chat-input"
                     disabled={loading}
                     className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
                     rows={1}
@@ -521,7 +522,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     type="submit"
                     size="iconSm"
                     disabled={(!input.trim() && !uploadedFile) || loading}
-                    className="!rounded-md h-8 w-8 p-0"
+                    className="chat-submit !rounded-md h-8 w-8 p-0"
+                    data-testid="send-button"
                   >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

@@ -15,7 +15,8 @@ class SessionOwnershipService:
     """Simple service to track which user owns which session"""
 
     def __init__(self):
-        self.ownership_file = "data/session_ownership.json"
+        from config.paths import get_data_file
+        self.ownership_file = get_data_file("session_ownership.json")
         # Ensure data directory exists
         os.makedirs(os.path.dirname(self.ownership_file), exist_ok=True)
         self.ownership_data = self._load_ownership_data()

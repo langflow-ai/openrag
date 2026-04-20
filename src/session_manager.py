@@ -50,17 +50,19 @@ class SessionManager:
     def __init__(
         self,
         secret_key: str = None,
-        private_key_path: str = "keys/private_key.pem",
-        public_key_path: str = "keys/public_key.pem",
+        private_key_path: str = None,
+        public_key_path: str = None,
     ):
+        from config.paths import get_keys_path
+        keys_dir = get_keys_path()
         self.secret_key = secret_key  # Keep for backward compatibility
         self.users: Dict[str, User] = {}  # user_id -> User
         self.user_opensearch_clients: Dict[
             str, Any
         ] = {}  # user_id -> OpenSearch client
 
-        self.private_key_path = private_key_path
-        self.public_key_path = public_key_path
+        self.private_key_path = private_key_path or os.path.join(keys_dir, "private_key.pem")
+        self.public_key_path = public_key_path or os.path.join(keys_dir, "public_key.pem")
 
         # Configure JWT signing (checks env var first, falls back to key files)
         self._configure_jwt_signing()
@@ -210,6 +212,8 @@ class SessionManager:
 
         # Check for token from environment variable first
         token = os.getenv("OPENSEARCH_JWT_TOKEN")
+        if token and (token.startswith("Bearer ") or token.startswith("Basic ")):
+            return token
         if not token:
             token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return f"Bearer {token}"
@@ -232,6 +236,8 @@ class SessionManager:
 
     def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID"""
+        if user_id == "anonymous":
+            return AnonymousUser()
         return self.users.get(user_id)
 
     def get_user_from_token(self, token: str) -> Optional[User]:

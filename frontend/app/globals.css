@@ -59,6 +59,9 @@
     --component-icon: #d8598a;
     --flow-icon: #2f67d0;
 
+    --badge: 0 0% 0%; /* #000000 */
+    --badge-foreground: 0 0% 100%; /* #FFFFFF */
+
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
@@ -142,6 +145,9 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
 
+    --badge: 0 0% 25%; /* #404040 */
+    --badge-foreground: 0 0% 100%; /* #FFFFFF */
+
     /* Failure Colors */
     --failure-soft: #46080933;
     --failure-pill: #fb2c361a;
@@ -156,7 +162,7 @@
   [data-theme="ibm"] {
     --background: 0 0% 100%; /* same as OSS light #ffffff */
     --foreground: 0 0% 15%; /* IBM Gray 100 #262626 */
-    --card: 0 0% 100%;
+    --card: 0 0% 96%; /* IBM Gray 10 #f4f4f4 */
     --card-foreground: 0 0% 15%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 15%;
@@ -167,10 +173,10 @@
     --secondary-foreground: 0 0% 15%;
     --secondary-hover: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
     --muted: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
-    --muted-foreground: 0 0% 78%; /* IBM Gray 30 #C6C6C6 - Secondary text IBM */
+    --muted-foreground: 0 0% 32%; /* IBM Gray 70 #525252 - Secondary text IBM light */
     --accent: 0 0% 90%;
     --accent-foreground: 0 0% 15%;
-    --border: 240 5% 96%; /* same as --muted from :root (240 5% 96%) */
+    --border: 0 0% 78%; /* same as --muted from :root (240 5% 96%) */
     --input: 0 0% 82%;
     --ring: 217 100% 45%;
     --placeholder-foreground: var(
@@ -228,25 +234,27 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+
+    --badge: 0 0% 22.4%; /* #393939 */
+    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
   }
 
   /* IBM Dark */
   [data-theme="ibm"].dark {
     --background: 0 0% 8.6%; /* IBM Gray 100 #161616 */
     --foreground: 0 0% 97%; /* IBM Gray 10 #f4f4f4 */
-    --card: 0 0% 12%; /* IBM Gray 90 #1c1c1c → ~#262626 */
+    --card: 0 0% 15%; /* IBM Gray 90 #262626 */
     --card-foreground: 0 0% 97%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 97%;
-    /* Dark UI: lighter blue (Blue 40 ~#78A9FF), not Blue 60 */
-    --primary: 217 100% 74%;
-    --primary-foreground: 0 0% 9%;
+    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary-foreground: 0 0% 100%;
     --primary-hover: 217 100% 82%;
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 97%;
     --secondary-hover: 0 0% 18%; /* IBM Gray 80 #393939 */
     --muted: 0 0% 18%; /* IBM Gray 80 */
-    --muted-foreground: 0 0% 32%; /* IBM Gray 70 #525252 - Secondary text IBM */
+    --muted-foreground: 0 0% 78%; /* IBM Gray 30 #C6C6C6 - Secondary text IBM dark */
     --accent: 0 0% 18%;
     --accent-foreground: 0 0% 97%;
     --border: 0 0% 22.4%; /* IBM Gray 80 #393939 - Ui-border 3 */
@@ -306,11 +314,9 @@
     --text-text-01: 0 0% 95.7%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
-  }
 
-  /* IBM Settings: Override muted-foreground for settings page */
-  [data-theme="ibm"] .ibm-settings-page {
-    --muted-foreground: 0 0% 78%; /* #C6C6C6 - IBM Gray 30 */
+    --badge: 0 0% 32%; /* #525252 */
+    --badge-foreground: 0 0% 95.7%; /* #F4F4F4 */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
@@ -359,7 +365,7 @@
     border: none;
     border-radius: 0;
     border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--card));
+    background-color: hsl(var(--muted));
   }
 
   [data-theme="ibm"] .primary-input:hover {
@@ -451,6 +457,58 @@
 
   [data-theme="ibm"] .ibm-chat-page .markdown.prose a {
     color: hsl(var(--primary));
+  }
+
+  [data-theme="ibm"] .fc-card {
+    background-color: #eaeff6;
+  }
+
+  [data-theme="ibm"] .fc-card pre,
+  [data-theme="ibm"] .fc-card .fc-value {
+    background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
+  }
+
+  [data-theme="ibm"]:not(.dark) .fc-card .fc-id {
+    color: #0f62fe;
+  }
+
+  [data-theme="ibm"].dark .fc-card {
+    background-color: #1d2431;
+  }
+
+  [data-theme="ibm"]:not(.dark) .chat-submit {
+    background-color: transparent;
+    color: #161616;
+  }
+
+  [data-theme="ibm"]:not(.dark) .chat-submit:hover:not(:disabled) {
+    background-color: #e8e8e8;
+  }
+
+  [data-theme="ibm"].dark .chat-submit {
+    background-color: transparent;
+    color: #f4f4f4;
+  }
+
+  [data-theme="ibm"].dark .chat-submit:hover:not(:disabled) {
+    background-color: rgba(141, 141, 141, 0.4);
+  }
+
+  [data-theme="ibm"]:not(.dark) .fc-status-completed {
+    background-color: #a7f0ba;
+    color: #0e6027;
+    border-color: #a7f0ba;
+  }
+
+  [data-theme="ibm"].dark .fc-status-completed {
+    background-color: #0e6027;
+    color: #a7f0ba;
+    border-color: #0e6027;
+  }
+
+  [data-theme="ibm"].dark .fc-card pre,
+  [data-theme="ibm"].dark .fc-card .fc-value {
+    background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
   }
 
   * {
