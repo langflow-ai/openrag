@@ -168,9 +168,7 @@ class OneDriveConnector(BaseConnector):
             self._authenticated = authenticated
             return authenticated
         except Exception as e:
-            logger.error(f"OneDrive authentication failed: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] OneDrive authentication failed")
             self._authenticated = False
             return False
 
@@ -238,13 +236,11 @@ class OneDriveConnector(BaseConnector):
                     else:
                         logger.warning("_detect_onedrive_url: webUrl is empty in response")
                 else:
-                    logger.warning(f"_detect_onedrive_url: Failed to get drive info: {response.status_code}, response: {response.text[:500]}")
+                    logger.warning("[CONNECTOR] OneDrive detect URL failed", status_code=response.status_code)
                     
         except Exception as e:
-            logger.error(f"_detect_onedrive_url: Exception during detection: {e}")
-            import traceback
-            traceback.print_exc()
-        
+            logger.exception("[CONNECTOR] OneDrive URL detection failed")
+
         return None
 
     def sync_once(self) -> None:

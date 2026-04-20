@@ -8,6 +8,8 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+import uuid
 from html.parser import HTMLParser
 
 # Configure structured logging early
@@ -21,6 +23,7 @@ from utils.telemetry import TelemetryClient, Category, MessageId
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 # API endpoints
@@ -186,7 +189,7 @@ async def _ensure_opensearch_index():
         index_name = get_index_name()
         # Check if index already exists
         if await clients.opensearch.indices.exists(index=index_name):
-            logger.debug("OpenSearch index already exists", index_name=index_name)
+            logger.info("[OPENSEARCH] Index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
@@ -1069,7 +1072,9 @@ async def opensearch_health_ready(request):
     from config.settings import IBM_AUTH_ENABLED, OPENSEARCH_URL
 
     if IBM_AUTH_ENABLED:
-        logger.debug("[OpenSearch Security] OpenSearch auth mode enabled, health check per-request")
+        logger.debug(
+            "[OPENSEARCH] OpenSearch auth mode enabled, health check per-request"
+        )
         # In IBM auth mode we cannot rely on the global OpenSearch client
         # (auth is established per-request), so perform a lightweight,
         # unauthenticated connectivity check against the OpenSearch endpoint.
@@ -1079,7 +1084,7 @@ async def opensearch_health_ready(request):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(f"{opensearch_url}/")
             if resp.status_code < 500:
-                logger.debug("[OpenSearch Security] OpenSearch health check successful")
+                logger.debug("[OPENSEARCH] OpenSearch health check successful")
                 return JSONResponse(
                     {
                         "status": "ready",
@@ -1089,7 +1094,7 @@ async def opensearch_health_ready(request):
                     status_code=200,
                 )
             else:
-                logger.debug("[OpenSearch Security] OpenSearch health check failed")
+                logger.debug("[OPENSEARCH] OpenSearch health check failed")
                 return JSONResponse(
                     {
                         "status": "not_ready",
@@ -1099,7 +1104,9 @@ async def opensearch_health_ready(request):
                     status_code=503,
                 )
         except Exception as e:
-            logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+            logger.error(
+                "[OPENSEARCH] OpenSearch health check failed", error=str(e)
+            )
             return JSONResponse(
                 {
                     "status": "not_ready",
@@ -1116,7 +1123,9 @@ async def opensearch_health_ready(request):
             status_code=200,
         )
     except Exception as e:
-        logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+        logger.error(
+            "[OPENSEARCH] OpenSearch health check failed", error=str(e)
+        )
         return JSONResponse(
             {
                 "status": "not_ready",
@@ -1650,12 +1659,8 @@ class RequestLoggingMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
-                # Inject correlation ID — replace any upstream value to ensure single header
-                headers = [
-                    (name, value)
-                    for name, value in message.get("headers", [])
-                    if name.lower() != b"x-request-id"
-                ]
+                # Inject correlation ID into response headers
+                headers = list(message.get("headers", []))
                 headers.append((b"x-request-id", request_id.encode()))
                 message = {**message, "headers": headers}
             await send(message)
@@ -1680,6 +1685,9 @@ async def create_app():
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
+
+    # Wire up ASGI request logging middleware (pure ASGI, not BaseHTTPMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
 
     try:
         Instrumentator().instrument(app).expose(app)

@@ -175,9 +175,7 @@ class SharePointConnector(BaseConnector):
             self._authenticated = authenticated
             return authenticated
         except Exception as e:
-            logger.error(f"SharePoint authentication failed: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint authentication failed")
             self._authenticated = False
             return False
     
@@ -252,13 +250,11 @@ class SharePointConnector(BaseConnector):
                     else:
                         logger.warning("_detect_sharepoint_url: webUrl is empty in response")
                 else:
-                    logger.warning(f"_detect_sharepoint_url: Failed to get drive info: {response.status_code}, response: {response.text[:500]}")
+                    logger.warning("[CONNECTOR] SharePoint detect URL failed", status_code=response.status_code)
                     
         except Exception as e:
-            logger.error(f"_detect_sharepoint_url: Exception during detection: {e}")
-            import traceback
-            traceback.print_exc()
-        
+            logger.exception("[CONNECTOR] SharePoint URL detection failed")
+
         return None
     
     def sync_once(self) -> None:

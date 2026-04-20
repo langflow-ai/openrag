@@ -240,7 +240,7 @@ class ConfigManager:
             logger.info("Upgrading unencrypted secrets in config.yaml to AES-256-GCM")
             self.save_config_file(self._config, preserve_edited=True)
 
-        logger.debug("Configuration loaded", config=self._config.to_dict())
+        logger.debug("[CONFIG] Configuration loaded successfully")
         return self._config
 
     def _load_env_overrides(
