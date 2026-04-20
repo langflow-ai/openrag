@@ -1,6 +1,8 @@
 import os
 import secrets
 import base64
+import hashlib
+from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -35,8 +37,48 @@ def get_master_secret() -> str | None:
             )
         return None
 
+    _record_key_checksum(secret_str)
     _cached_master_secret = secret_str
     return secret_str
+
+
+def _record_key_checksum(key: str) -> None:
+    """Store a SHA-256 checksum of the encryption key in the config directory history file."""
+    if not key:
+        return
+
+    try:
+        from config.paths import get_config_path
+        config_dir = get_config_path()
+
+        # Ensure the config directory exists
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir, exist_ok=True)
+
+        checksum_file = os.path.join(config_dir, "encryption_key_checksums.txt")
+
+        # Calculate SHA-256 checksum
+        checksum = hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+        # Check if checksum already exists in history
+        exists = False
+        if os.path.exists(checksum_file):
+            with open(checksum_file, "r") as f:
+                for line in f:
+                    if line.strip().split(',')[0] == checksum:
+                        exists = True
+                        break
+
+        # Append new checksum with timestamp if it doesn't exist
+        if not exists:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            with open(checksum_file, "a") as f:
+                f.write(f"{checksum},{timestamp}\n")
+            logger.info(f"New encryption key detected; checksum recorded in {checksum_file}")
+
+    except Exception as e:
+        # Don't fail the application if we can't write the checksum history
+        logger.error(f"Failed to record encryption key checksum: {e}")
 
 
 def enforce_startup_prerequisites():
