@@ -606,7 +606,10 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
         """
-        if user_id:
+        # Set auth context if provided (for direct API calls)
+        from config.settings import is_no_auth_mode
+
+        if user_id and (jwt_token or is_no_auth_mode()):
             from auth_context import set_auth_context
 
             set_auth_context(user_id, jwt_token)
