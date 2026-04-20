@@ -112,7 +112,6 @@ from services.search_service import SearchService, register_search_service
 from services.task_service import TaskService
 from session_manager import SessionManager
 
-configure_from_env()
 enforce_startup_prerequisites()
 logger = get_logger(__name__)
 
@@ -2261,6 +2260,7 @@ if __name__ == "__main__":
         workers=1,
         host="0.0.0.0",
         port=8000,
-        reload=False,  # Disable reload since we're running from main
+        reload=False,      # Disable reload since we're running from main
         access_log=access_log,
+        log_config=None,   # Prevent uvicorn from overriding our structlog setup
     )

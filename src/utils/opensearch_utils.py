@@ -151,7 +151,7 @@ async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> No
         except asyncio.TimeoutError:
             logger.warning("Timeout during final cluster health check")
         except Exception as e:
-            logger.warning("Error during final cluster health check", error=str(e))
+            logger.debug("[OPENSEARCH] Final cluster health check skipped", reason=str(e))
         
         # Close the client connection
         await opensearch_client.close()
