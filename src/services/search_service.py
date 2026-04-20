@@ -1,8 +1,13 @@
+import asyncio
 import copy
+import os
 import json
 from collections import Counter
 from typing import Any, Dict
-from config.settings import EMBED_MODEL, clients, get_embedding_model, get_index_name, WATSONX_EMBEDDING_DIMENSIONS
+from agentd.tool_decorator import tool
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from utils.container_utils import transform_localhost_url
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -13,9 +18,57 @@ EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 
 
+# Variable used to store the active instance for the tool wrapper
+_global_search_service = None
+
+
+def register_search_service(service: "SearchService") -> None:
+    """
+    Explicitly register the active search service for the @tool wrapper.
+    This prevents stale instance risks and test interference.
+    """
+    global _global_search_service
+    _global_search_service = service
+
+
+@tool
+async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]:
+    """
+    Use this tool to search for documents relevant to the query.
+
+    Args:
+        query (str): query string to search the corpus
+        embedding_model (str): Optional override for embedding model.
+                              If not provided, uses the current embedding
+                              model from configuration.
+
+    Returns:
+        dict (str, Any): {"results": [chunks]} on success
+    """
+    if not _global_search_service:
+        logger.error("SearchService tool called before initialization")
+        return {"results": [], "error": "Search service not available"}
+    return await _global_search_service.search_tool(query, embedding_model=embedding_model)
+
+
 class SearchService:
-    def __init__(self, session_manager=None):
+    def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
+        self.models_service = models_service
+        self._configure_provider_env()
+
+    def _configure_provider_env(self):
+        """Set provider env vars once at init time."""
+        try:
+            config = get_openrag_config()
+            if config.providers.ollama.endpoint:
+                fixed = transform_localhost_url(config.providers.ollama.endpoint)
+                # Use setdefault to avoid clobbering existing env vars if they were
+                # set explicitly via shell, but ensures we have a working default.
+                os.environ.setdefault("OLLAMA_API_BASE", fixed)
+                os.environ.setdefault("OLLAMA_BASE_URL", fixed)
+        except Exception as e:
+            logger.debug("Could not configure Ollama endpoint from config", error=str(e))
 
     async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
@@ -35,7 +88,7 @@ class SearchService:
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
-        embedding_model = embedding_model or get_embedding_model() or EMBED_MODEL
+        embedding_model = embedding_model or get_embedding_model() or OPENAI_DEFAULT_EMBEDDING_MODEL
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
@@ -140,33 +193,17 @@ class SearchService:
                 available_models = [embedding_model]
 
             # Parallelize embedding generation for all models
-            import asyncio
-
             async def embed_with_model(model_name):
                 delay = EMBED_RETRY_INITIAL_DELAY
                 attempts = 0
                 last_exception = None
 
-                # Format model name for LiteLLM compatibility
-                # The patched client routes through LiteLLM for non-OpenAI providers
-                formatted_model = model_name
-
-                # Skip if already has a provider prefix
-                if not any(model_name.startswith(prefix + "/") for prefix in ["openai", "ollama", "watsonx", "anthropic"]):
-                    # Detect provider from model name characteristics:
-                    # - Ollama: contains ":" (e.g., "nomic-embed-text:latest")
-                    # - WatsonX: check against known IBM embedding models
-                    # - OpenAI: everything else (no prefix needed)
-
-                    if ":" in model_name:
-                        # Ollama models use tags with colons
-                        formatted_model = f"ollama/{model_name}"
-                        logger.debug(f"Formatted Ollama model: {model_name} -> {formatted_model}")
-                    elif model_name in WATSONX_EMBEDDING_DIMENSIONS:
-                        # WatsonX embedding models - use hardcoded list from settings
-                        formatted_model = f"watsonx/{model_name}"
-                        logger.debug(f"Formatted WatsonX model: {model_name} -> {formatted_model}")
-                    # else: OpenAI models don't need a prefix
+                # Use centralized utility for LiteLLM model formatting
+                if self.models_service:
+                    formatted_model = await self.models_service.get_litellm_model_name(model_name)
+                else:
+                    # Fallback if service not injected (tests/etc)
+                    formatted_model = model_name
 
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1

@@ -20,6 +20,8 @@ class ConnectorService:
         index_name: str,
         task_service=None,
         session_manager=None,
+        models_service=None,
+        document_service=None,
     ):
         self.clients = patched_async_client
         self.embed_model = embed_model
@@ -27,6 +29,8 @@ class ConnectorService:
         self.task_service = task_service
         self.session_manager = session_manager
         self.connection_manager = ConnectionManager()
+        self.models_service = models_service
+        self.document_service = document_service
 
     async def initialize(self):
         """Initialize the service by loading existing connections"""
@@ -57,18 +61,12 @@ class ConnectorService:
             with open(tmp_path, "wb") as f:
                 f.write(document.content)
 
-            # Use existing process_file_common function with connector document metadata
-            # We'll use the document service's process_file_common method
-            from services.document_service import DocumentService
-
-            doc_service = DocumentService(session_manager=self.session_manager)
-
             logger.debug("Processing connector document", document_id=document.id)
 
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
 
-            processor = TaskProcessor(document_service=doc_service)
+            processor = TaskProcessor(document_service=self.document_service, models_service=self.models_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=document.id,  # Use connector document ID as hash
@@ -284,6 +282,7 @@ class ConnectorService:
                 if self.task_service and self.task_service.document_service
                 else DocumentService(session_manager=self.session_manager)
             ),
+            models_service=self.models_service,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -415,6 +414,7 @@ class ConnectorService:
                 if self.task_service and self.task_service.document_service
                 else DocumentService(session_manager=self.session_manager)
             ),
+            models_service=self.models_service,
         )
 
         # Create custom task using TaskService

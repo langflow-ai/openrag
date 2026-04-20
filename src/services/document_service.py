@@ -1,11 +1,4 @@
-import datetime
-import hashlib
-import tempfile
-import os
-import aiofiles
-from io import BytesIO
 from typing import List
-import openai
 import tiktoken
 from utils.logging_config import get_logger
 
@@ -36,6 +29,12 @@ def chunk_texts_for_embeddings(
     If max_tokens is None, returns texts as single batch (no splitting).
     """
     model = model or get_embedding_model()
+
+    # Filter out empty or whitespace-only texts
+    texts = [t for t in texts if t and t.strip()]
+
+    if not texts:
+        return []
 
     if max_tokens is None:
         return [texts]
@@ -88,8 +87,9 @@ def chunk_texts_for_embeddings(
 
 
 class DocumentService:
-    def __init__(self, session_manager=None):
+    def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
+        self.models_service = models_service
         self._mapping_ensured = False
 
 
@@ -105,6 +105,12 @@ class DocumentService:
         from utils.hash_utils import hash_id
         from utils.file_utils import auto_cleanup_tempfile
         import os
+
+        # Default metadata for anonymous users if not provided
+        from session_manager import AnonymousUser
+        anonymous_user = AnonymousUser()
+        owner_name = owner_name or anonymous_user.name
+        owner_email = owner_email or anonymous_user.email
 
         # Preserve file extension for docling format detection
         filename = upload_file.filename or "uploaded"
@@ -139,7 +145,7 @@ class DocumentService:
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor
-            processor = TaskProcessor(document_service=self)
+            processor = TaskProcessor(document_service=self, models_service=self.models_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=file_hash,
