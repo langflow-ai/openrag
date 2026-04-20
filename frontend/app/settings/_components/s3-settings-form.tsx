@@ -10,10 +10,8 @@ import { Label } from "@/components/ui/label";
 export interface S3FormData {
   access_key: string;
   secret_key: string;
-  session_token: string;
   endpoint_url: string;
   region: string;
-  bucket_names_input: string;
 }
 
 interface S3SettingsFormProps {
@@ -26,7 +24,6 @@ interface S3SettingsFormProps {
   onTestConnection: () => void;
   accessKeySet?: boolean;
   secretKeySet?: boolean;
-  sessionTokenSet?: boolean;
   formError?: string | null;
 }
 
@@ -39,7 +36,6 @@ export function S3SettingsForm({
   onTestConnection,
   accessKeySet,
   secretKeySet,
-  sessionTokenSet,
   formError,
 }: S3SettingsFormProps) {
   const { register } = useFormContext<S3FormData>();
@@ -102,26 +98,6 @@ export function S3SettingsForm({
         </LabelWrapper>
       </div>
 
-      <div className="space-y-1">
-        <LabelWrapper
-          label="Session Token"
-          helperText="Optional for long-lived IAM keys. Required for temporary STS or AWS SSO credentials. Or set the AWS_SESSION_TOKEN env var."
-          id="s3-session-token"
-        >
-          <Input
-            {...register("session_token", { setValueAs: (v) => v?.trim() })}
-            id="s3-session-token"
-            type="password"
-            placeholder={
-              sessionTokenSet
-                ? "•••••••• (loaded from env)"
-                : "IQoJb3JpZ2luX2VjE..."
-            }
-            autoComplete="off"
-          />
-        </LabelWrapper>
-      </div>
-
       {/* Endpoint URL (optional) */}
       <div className="space-y-1">
         <LabelWrapper
@@ -133,23 +109,6 @@ export function S3SettingsForm({
             {...register("endpoint_url", { setValueAs: (v) => v?.trim() })}
             id="s3-endpoint"
             placeholder="https://your-minio.example.com"
-            autoComplete="off"
-          />
-        </LabelWrapper>
-      </div>
-
-      <div className="space-y-1">
-        <LabelWrapper
-          label="Bucket Names"
-          helperText="Optional. Enter comma-separated bucket names if this IAM policy cannot list all buckets. OpenRAG will validate those buckets directly."
-          id="s3-bucket-names"
-        >
-          <Input
-            {...register("bucket_names_input", {
-              setValueAs: (v) => v?.trim(),
-            })}
-            id="s3-bucket-names"
-            placeholder="knowledge-bucket, team-docs"
             autoComplete="off"
           />
         </LabelWrapper>

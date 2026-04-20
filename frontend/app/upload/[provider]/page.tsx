@@ -228,19 +228,19 @@ function BucketView({
                         </p>
                       )}
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBrowseDialogBucket(bucket.name);
+                      }}
+                    >
+                      <FileSearch size={14} className="mr-1.5" />
+                      Browse Files
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBrowseDialogBucket(bucket.name);
-                    }}
-                  >
-                    <FileSearch size={14} className="mr-1.5" />
-                    Browse Files
-                  </Button>
                 </div>
               );
             })}
@@ -279,15 +279,19 @@ function BucketView({
         </div>
       </div>
 
-      {connector.connectionId && browseDialogBucket && (
+      {connector.connectionId && (
         <FileBrowserDialog
-          open
+          open={browseDialogBucket !== null}
           onOpenChange={(open) => {
             if (!open) setBrowseDialogBucket(null);
           }}
           connectorType={connector.type}
           connectionId={connector.connectionId}
-          buckets={[browseDialogBucket]}
+          buckets={
+            browseDialogBucket
+              ? [browseDialogBucket]
+              : buckets?.map((b) => b.name)
+          }
         />
       )}
     </>

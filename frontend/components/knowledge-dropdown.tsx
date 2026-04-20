@@ -39,7 +39,6 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
-import { isDirectConnectorDevEnabled } from "@/lib/dev-flags";
 import {
   duplicateCheck,
   uploadFiles,
@@ -119,7 +118,6 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 
 export function KnowledgeDropdown() {
   const { isIbmAuthMode } = useAuth();
-  const directConnectorDevEnabled = isDirectConnectorDevEnabled();
   const isCloudBrand = useIsCloudBrand();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
@@ -658,7 +656,7 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
-    ...((isIbmAuthMode || directConnectorDevEnabled) && s3Configured
+    ...(isIbmAuthMode && s3Configured
       ? [
           {
             label: "Amazon S3",
@@ -667,7 +665,7 @@ export function KnowledgeDropdown() {
           },
         ]
       : []),
-    ...((isIbmAuthMode || directConnectorDevEnabled) && ibmCosConfigured
+    ...(isIbmAuthMode && ibmCosConfigured
       ? [
           {
             label: "IBM Cloud Object Storage",

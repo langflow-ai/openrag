@@ -457,7 +457,7 @@ class ConnectionManager:
                 "name": S3Connector.CONNECTOR_NAME,
                 "description": S3Connector.CONNECTOR_DESCRIPTION,
                 "icon": S3Connector.CONNECTOR_ICON,
-                "available": self._is_connector_available("aws_s3", user_id),
+                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
             },
         }
 

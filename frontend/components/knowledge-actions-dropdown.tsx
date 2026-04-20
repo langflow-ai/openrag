@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, EllipsisVertical, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, EllipsisVertical, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -22,14 +22,11 @@ import {
 import { useTask } from "@/contexts/task-context";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
-import { ShareDocumentDialog } from "./share-document-dialog";
 import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
   connectorType?: string;
-  owner?: string;
-  currentUserId?: string;
 }
 
 // Cloud connector types that support sync
@@ -42,12 +39,9 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 export const KnowledgeActionsDropdown = ({
   filename,
   connectorType,
-  owner,
-  currentUserId,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showShareDialog, setShowShareDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
   const syncConnectorMutation = useSyncConnector();
   const { data: connectors = [] } = useGetConnectorsQuery();
@@ -171,14 +165,6 @@ export const KnowledgeActionsDropdown = ({
               </Tooltip>
             </TooltipProvider>
           )}
-          {currentUserId && owner && currentUserId === owner && (
-            <DropdownMenuItem
-              className="text-primary focus:text-primary cursor-pointer"
-              onClick={() => setShowShareDialog(true)}
-            >
-              <Users className="h-4 w-4 mr-2" /> Share
-            </DropdownMenuItem>
-          )}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive cursor-pointer"
             onClick={() => setShowDeleteDialog(true)}
@@ -188,14 +174,6 @@ export const KnowledgeActionsDropdown = ({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {currentUserId && owner && currentUserId === owner && (
-        <ShareDocumentDialog
-          filename={filename}
-          currentUserId={currentUserId}
-          open={showShareDialog}
-          onOpenChange={setShowShareDialog}
-        />
-      )}
       <DeleteConfirmationDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}

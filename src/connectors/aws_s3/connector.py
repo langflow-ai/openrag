@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
-from .auth import create_s3_client, create_s3_resource, validate_s3_access
+from .auth import create_s3_client, create_s3_resource
 
 logger = get_logger(__name__)
 
@@ -98,9 +98,10 @@ class S3Connector(BaseConnector):
     # ------------------------------------------------------------------
 
     async def authenticate(self) -> bool:
-        """Validate credentials against configured buckets or accessible buckets."""
+        """Validate credentials by listing accessible buckets."""
         try:
-            validate_s3_access(self.config, self.bucket_names)
+            resource = self._get_resource()
+            list(resource.buckets.all())
             self._authenticated = True
             logger.debug(f"S3 authenticated for connection {self.connection_id}")
             return True
@@ -114,7 +115,8 @@ class S3Connector(BaseConnector):
         if self.bucket_names:
             return self.bucket_names
         try:
-            buckets = validate_s3_access(self.config)
+            resource = self._get_resource()
+            buckets = [b.name for b in resource.buckets.all()]
             logger.debug("S3 auto-discovered %d bucket(s)", len(buckets))
             return buckets
         except Exception as exc:
