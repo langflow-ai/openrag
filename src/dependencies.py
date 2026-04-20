@@ -360,11 +360,6 @@ async def get_api_key_user_async(
     if IBM_AUTH_ENABLED:
         ibm_username = request.headers.get("X-Username")
         ibm_api_key = request.headers.get("X-Api-Key")
-        #TODO: removed later
-        logger.debug(
-            "[AUTH] IBM username and API key found in request headers",
-            headers=request.headers,
-        )
         if ibm_username and ibm_api_key:
             # check if ibm api key is base 64 encoded
             userpass = f"{ibm_username}:{ibm_api_key}"

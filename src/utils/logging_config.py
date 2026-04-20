@@ -45,9 +45,17 @@ def drop_color_message_key(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """Drop log events for high-frequency health/metrics endpoints."""
+    """Drop only the access-log entry for high-frequency health/metrics endpoints.
+
+    Errors and warnings on these paths still surface — only the routine
+    [API] Request INFO line is suppressed to avoid log noise.
+    """
     path = event_dict.get("path", "")
-    if path in ("/health", "/metrics", "/healthz", "/docs", "/openapi.json"):
+    if path not in ("/health", "/metrics", "/healthz", "/docs", "/openapi.json"):
+        return event_dict
+    event = event_dict.get("event", "")
+    level = str(event_dict.get("level", "info")).lower()
+    if event == "[API] Request" and level in ("debug", "info"):
         raise structlog.DropEvent()
     return event_dict
 
@@ -271,6 +279,7 @@ def configure_stdlib_logging(log_level: str = "INFO", json_logs: bool = False) -
                 "processors": [
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     drop_color_message_key,
+                    structlog.processors.dict_tracebacks if json_logs else structlog.processors.format_exc_info,
                     renderer,
                 ],
                 "foreign_pre_chain": list(_shared_processors),

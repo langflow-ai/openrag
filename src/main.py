@@ -20,7 +20,7 @@ from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
 from utils.embeddings import create_index_body
-from utils.logging_config import configure_from_env, get_logger
+from utils.logging_config import get_logger
 from utils.encryption import enforce_startup_prerequisites
 from utils.telemetry import TelemetryClient, Category, MessageId
 from fastapi import FastAPI, Request
@@ -1638,8 +1638,12 @@ class RequestLoggingMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
-                # Inject correlation ID into response headers
-                headers = list(message.get("headers", []))
+                # Inject correlation ID — replace any upstream value to ensure single header
+                headers = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != b"x-request-id"
+                ]
                 headers.append((b"x-request-id", request_id.encode()))
                 message = {**message, "headers": headers}
             await send(message)

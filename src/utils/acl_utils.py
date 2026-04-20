@@ -89,7 +89,7 @@ async def should_update_acl(
 
     except Exception as e:
         # On error, assume update needed to be safe
-        logger.error("[OPENSEARCH] ACL check failed", document_id=document_id, error=str(e))
+        logger.exception("[OPENSEARCH] ACL check failed", document_id=document_id)
         return True
 
 
@@ -145,7 +145,7 @@ async def update_document_acl(
         }
 
     except Exception as e:
-        logger.error("[OPENSEARCH] ACL update failed", document_id=document_id, error=str(e))
+        logger.exception("[OPENSEARCH] ACL update failed", document_id=document_id)
         return {"status": "error", "chunks_updated": 0, "error": str(e)}
 
 
