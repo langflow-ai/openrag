@@ -131,7 +131,10 @@ export function UserNav() {
         <DropdownMenuSeparator className="m-0" />
         <button
           type="button"
-          onClick={logout}
+          onClick={async () => {
+            await logout();
+            if (isCloudBrand) window.location.href = "/lhlogin";
+          }}
           className="flex items-center hover:bg-muted w-full h-9 px-3"
         >
           <LogOut
