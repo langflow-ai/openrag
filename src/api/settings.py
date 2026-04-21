@@ -1962,7 +1962,12 @@ async def refresh_openrag_docs(
 ) -> RefreshOpenRAGDocsResponse:
     """Manually refresh OpenRAG docs ingestion on demand."""
     try:
+        from config.settings import IBM_AUTH_ENABLED
         from main import refresh_default_openrag_docs
+
+        ingestion_jwt = (
+            user.jwt_token if IBM_AUTH_ENABLED and user and user.jwt_token else None
+        )
 
         refreshed = await refresh_default_openrag_docs(
             document_service=document_service,
@@ -1972,6 +1977,7 @@ async def refresh_openrag_docs(
             session_manager=session_manager,
             force=True,
             reason="manual",
+            jwt_token=ingestion_jwt,
         )
         return RefreshOpenRAGDocsResponse(
             message=(

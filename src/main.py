@@ -919,6 +919,7 @@ async def refresh_default_openrag_docs(
     session_manager,
     force: bool = False,
     reason: str = "startup",
+    jwt_token=None,
 ):
     """Refresh OpenRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
@@ -1009,6 +1010,7 @@ async def refresh_default_openrag_docs(
             task_service,
             langflow_file_service,
             session_manager,
+            jwt_token=jwt_token,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
         # Keep docs version/signature metadata consistent after a refresh.
