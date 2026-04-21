@@ -132,6 +132,82 @@ def configure_logging(
     structlog.contextvars.bind_contextvars(service=service_name)
 
 
+def configure_stdlib_logging(log_level: str = "INFO", json_logs: bool = False) -> None:
+    """Bridge Python stdlib logging (uvicorn, httpx, etc.) through structlog.
+
+    Must be called after configure_logging() so _shared_processors is populated.
+
+    Key behaviours:
+    - Uses the same renderer (JSON vs console) as the main structlog config.
+    - Takes over uvicorn's loggers so its raw "INFO:     Started server…" lines
+      disappear and are replaced by our structured request logs from the ASGI middleware.
+    - Captures Python warnings (warnings.warn) through logging.
+    - Suppresses noisy third-party libs at ERROR+ only.
+    """
+    renderer = (
+        structlog.processors.JSONRenderer()
+        if json_logs
+        else structlog.dev.ConsoleRenderer(sort_keys=False)
+    )
+
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "structlog": {
+                "class": "logging.StreamHandler",
+                "formatter": "structlog",
+                "stream": "ext://sys.stderr",
+            }
+        },
+        "formatters": {
+            "structlog": {
+                "()": structlog.stdlib.ProcessorFormatter,
+                "processors": [
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    drop_color_message_key,
+                    structlog.processors.dict_tracebacks if json_logs else structlog.processors.format_exc_info,
+                    renderer,
+                ],
+                "foreign_pre_chain": list(_shared_processors),
+            }
+        },
+        "root": {"handlers": ["structlog"], "level": log_level},
+        "loggers": {
+            # Uvicorn — override its self-configured handlers so our formatter
+            # is used instead of uvicorn's default "INFO:     …" format.
+            # uvicorn.access is entirely replaced by RequestLoggingMiddleware.
+            "uvicorn":         {"handlers": ["structlog"], "level": "INFO",     "propagate": False},
+            "uvicorn.error":   {"handlers": ["structlog"], "level": "WARNING",  "propagate": False},
+            "uvicorn.access":  {"handlers": ["structlog"], "level": "CRITICAL", "propagate": False},
+            # Third-party libs: ERROR+ only — suppress HTTP-request-level noise.
+            "httpcore":        {"level": "ERROR", "propagate": True},
+            "httpx":           {"level": "ERROR", "propagate": True},
+            "urllib3":         {"level": "ERROR", "propagate": True},
+            # openai SDK logs full request payloads (URL, headers, body) at DEBUG.
+            # Headers include forwarded X-LANGFLOW-GLOBAL-VAR-* JWTs/API keys — suppress below WARNING.
+            "openai":          {"level": "WARNING", "propagate": True},
+            "boto3":           {"level": "ERROR", "propagate": True},
+            "botocore":        {"level": "ERROR", "propagate": True},
+            # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
+            # ERROR-only keeps the pipeline clean; true failures still surface.
+            "opensearch":         {"level": "ERROR", "propagate": True},
+            "opensearchpy":       {"level": "ERROR", "propagate": True},
+            "opensearchpy.trace": {"level": "CRITICAL", "propagate": False},
+            "elastic_transport":  {"level": "ERROR",    "propagate": True},
+            # Suppress mcp/fastmcp library chatter
+            "mcp":             {"level": "WARNING", "propagate": True},
+            # Python warnings.warn() from libraries — these are startup noise
+            # (duplicate operation IDs, insecure SSL, deprecations) that are not
+            # actionable. Our code uses logger.warning() directly, not warnings.warn().
+            "py.warnings":     {"level": "CRITICAL", "propagate": False},
+        },
+    })
+
+    # Route Python warnings.warn() through the logging system (suppressed above for libs)
+    logging.captureWarnings(True)
+
+
 def get_logger(name: str = None) -> structlog.BoundLogger:
     """Get a configured logger instance."""
     if name:

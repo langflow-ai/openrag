@@ -33,7 +33,6 @@ async def search(
 
         logger.debug(
             "Search API request",
-            user=str(user),
             user_id=user.user_id,
             has_jwt_token=jwt_token is not None,
             query=body.query,
