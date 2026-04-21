@@ -138,9 +138,6 @@ async def async_response_stream(
         detected_tool_call = False
         async for chunk in response:
             chunk_count += 1
-            logger.debug(
-                "Stream chunk received", chunk_count=chunk_count, chunk=str(chunk)
-            )
 
             import json
 

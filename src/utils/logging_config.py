@@ -297,6 +297,9 @@ def configure_stdlib_logging(log_level: str = "INFO", json_logs: bool = False) -
             "httpcore":        {"level": "ERROR", "propagate": True},
             "httpx":           {"level": "ERROR", "propagate": True},
             "urllib3":         {"level": "ERROR", "propagate": True},
+            # openai SDK logs full request payloads (URL, headers, body) at DEBUG.
+            # Headers include forwarded X-LANGFLOW-GLOBAL-VAR-* JWTs/API keys — suppress below WARNING.
+            "openai":          {"level": "WARNING", "propagate": True},
             "boto3":           {"level": "ERROR", "propagate": True},
             "botocore":        {"level": "ERROR", "propagate": True},
             # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
