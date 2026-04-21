@@ -141,7 +141,7 @@ GOLANGCI_LINT        ?= $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION          ?= v5.4.3
 CONTROLLER_TOOLS_VERSION   ?= v0.16.4
 ENVTEST_VERSION            ?= release-0.19
-GOLANGCI_LINT_VERSION      ?= v1.64.6
+GOLANGCI_LINT_VERSION      ?= v2.11.4
 
 .PHONY: deps
 deps: controller-gen kustomize envtest golangci-lint ## Install all local tool dependencies into ./bin.
@@ -162,9 +162,8 @@ $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
 .PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+golangci-lint: $(LOCALBIN) ## Download golangci-lint locally if necessary.
+	GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 # go-install-tool installs a versioned binary into LOCALBIN, caching by version suffix.
 # Usage: $(call go-install-tool,<target-path>,<package-url>,<version>)
