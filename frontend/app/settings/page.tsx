@@ -48,7 +48,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { useTask } from "@/contexts/task-context";
 import {
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_KNOWLEDGE_SETTINGS,
@@ -67,7 +66,6 @@ const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 function KnowledgeSourcesPage() {
   const isCloudBrand = useIsCloudBrand();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -445,35 +443,6 @@ function KnowledgeSourcesPage() {
       window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams]);
-
-  // Track previous tasks to detect new completions
-  const [prevTasks, setPrevTasks] = useState<typeof tasks>([]);
-
-  // Watch for task completions and refresh stats
-  useEffect(() => {
-    // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter((task) => {
-      const wasCompleted =
-        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
-        "completed";
-      return task.status === "completed" && !wasCompleted;
-    });
-
-    if (newlyCompletedTasks.length > 0) {
-      // Task completed - could refresh data here if needed
-      const timeoutId = setTimeout(() => {
-        // Stats refresh removed
-      }, 1000);
-
-      // Update previous tasks state
-      setPrevTasks(tasks);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Always update previous tasks state
-      setPrevTasks(tasks);
-    }
-  }, [tasks, prevTasks]);
 
   const handleEditInLangflow = (
     flowType: "chat" | "ingest",

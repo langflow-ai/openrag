@@ -39,9 +39,8 @@ class ConnectionConfig:
 class ConnectionManager:
     """Manages multiple connector connections with persistence"""
 
-    def __init__(self, connections_file: str = None):
-        from config.paths import get_data_file
-        self.connections_file = Path(connections_file or get_data_file("connections.json"))
+    def __init__(self, connections_file: str = "data/connections.json"):
+        self.connections_file = Path(connections_file)
         # Ensure data directory exists
         self.connections_file.parent.mkdir(parents=True, exist_ok=True)
         self.connections: Dict[str, ConnectionConfig] = {}
