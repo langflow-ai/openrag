@@ -1,0 +1,61 @@
+name: Operator CI
+
+on:
+  pull_request:
+    paths:
+      - 'kubernetes/operator/**'
+      - '.github/workflows/operator-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'kubernetes/operator/**'
+
+jobs:
+  ci:
+    name: fmt / vet / lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kubernetes/operator
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: kubernetes/operator/go.mod
+          cache-dependency-path: kubernetes/operator/go.sum
+
+      - name: go fmt
+        run: |
+          unformatted=$(gofmt -l ./...)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Install controller-gen
+        run: GOBIN=$(pwd)/bin go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.4
+
+      - name: Check generated manifests are up to date
+        run: |
+          ./bin/controller-gen rbac:roleName=manager-role crd paths="./..." \
+            output:crd:artifacts:config=config/crd/bases \
+            output:rbac:artifacts:config=config/rbac
+          git diff --exit-code config/
+
+      - name: Check generated deepcopy is up to date
+        run: |
+          ./bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+          git diff --exit-code api/
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.6
+          working-directory: kubernetes/operator
