@@ -97,6 +97,7 @@ function SearchPage() {
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
   const hasInitializedFailedFilesRef = useRef(false);
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
@@ -589,6 +590,7 @@ function SearchPage() {
   const handleBulkDelete = async () => {
     if (selectedRows.length === 0) return;
 
+    setIsBulkDeleting(true);
     try {
       // Delete each file individually since the API expects one filename at a time
       const deletePromises = selectedRows.map((row) =>
@@ -628,7 +630,6 @@ function SearchPage() {
         );
       }
       setSelectedRows([]);
-      setShowBulkDeleteDialog(false);
 
       // Clear selection in the grid
       if (gridRef.current) {
@@ -640,6 +641,8 @@ function SearchPage() {
           ? error.message
           : "Failed to delete some documents",
       );
+    } finally {
+      setIsBulkDeleting(false);
       setShowBulkDeleteDialog(false);
     }
   };
@@ -859,7 +862,7 @@ function SearchPage() {
         description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
         confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={isBulkDeleting}
       >
         <p className="my-2">
           This will remove all chunks and data associated with these documents.
