@@ -10,21 +10,6 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
-        # Run security setup in background after OpenSearch starts
-    command: >
-      bash -c "
-        # Ensure data directory has correct permissions
-        sudo chown -R opensearch:opensearch /usr/share/opensearch/data || true
-
-        # Start OpenSearch in background
-        /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch &
-
-        # Wait a bit for OpenSearch to start, then apply security config
-        sleep 10 && /usr/share/opensearch/setup-security.sh &
-
-        # Wait for background processes
-        wait
-      "
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
       - "9200:9200"

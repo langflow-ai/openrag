@@ -133,7 +133,7 @@ export function FunctionCalls({
                           return items.map((result, idx: number) => (
                             <div
                               key={idx}
-                              className="p-2 bg-muted/30 rounded border border-muted/50"
+                              className="fc-result p-2 bg-muted/30 rounded"
                             >
                               {/* Handle tool_call format (file_path in data) */}
                               {result.data?.file_path && (
