@@ -165,8 +165,8 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG) *apps
 							Env: append([]corev1.EnvVar{
 								{Name: "OPENRAG_BACKEND_HOST", Value: resourceName(o.Name, "be")},
 							}, spec.Env...),
-							Resources: spec.Resources,
-							LivenessProbe: httpProbe("/", 3000, 30, 10),
+							Resources:      spec.Resources,
+							LivenessProbe:  httpProbe("/", 3000, 30, 10),
 							ReadinessProbe: httpProbe("/", 3000, 10, 5),
 						},
 					},
@@ -204,7 +204,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG) *appsv
 	var envVars []corev1.EnvVar
 	if spec.JWTSigningKeySecret != nil {
 		envVars = append(envVars, corev1.EnvVar{
-			Name: "JWT_SIGNING_KEY",
+			Name:      "JWT_SIGNING_KEY",
 			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: spec.JWTSigningKeySecret},
 		})
 	}
