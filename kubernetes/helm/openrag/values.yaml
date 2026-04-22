@@ -276,7 +276,6 @@ backend:
 
 
   # Logging
-  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
   noColor: false                          # Set true to disable ANSI color codes in log output
   accessLog: true                         # Set false to disable HTTP access log events
 
