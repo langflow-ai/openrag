@@ -59,3 +59,21 @@ jobs:
         with:
           version: v2.11.4
           working-directory: kubernetes/operator
+
+  docker:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: kubernetes/operator
+          file: kubernetes/operator/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=operator-amd64
+          cache-to: type=gha,mode=max,scope=operator-amd64
