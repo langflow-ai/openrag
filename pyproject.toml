@@ -50,6 +50,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=7.1.0",
     "fastmcp>=3.2.3",
     "openai>=2.30.0",
+    "tenacity>=9.1.4",
 ]
 
 [dependency-groups]

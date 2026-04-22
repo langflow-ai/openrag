@@ -458,7 +458,7 @@ class ModelsService:
             async with httpx.AsyncClient() as client:
                 # Fetch text chat models
                 text_params = {
-                    "version": "2024-09-16",
+                    "version": "2026-04-15",
                     "filters": "function_text_chat,!lifecycle_withdrawn",
                 }
                 if project_id:
@@ -477,6 +477,9 @@ class ModelsService:
                         model_id = model.get("model_id", "")
                         model_name = model.get("name", model_id)
 
+                        if model.get("input_tier") == "tech_preview":
+                            continue
+
                         language_models.append(
                             {
                                 "value": model_id,
@@ -492,7 +495,7 @@ class ModelsService:
 
                 # Fetch embedding models
                 embed_params = {
-                    "version": "2024-09-16",
+                    "version": "2026-04-15",
                     "filters": "function_embedding,!lifecycle_withdrawn",
                 }
                 if project_id:
@@ -510,6 +513,9 @@ class ModelsService:
                     for i, model in enumerate(embed_models):
                         model_id = model.get("model_id", "")
                         model_name = model.get("name", model_id)
+
+                        if model.get("input_tier") == "tech_preview":
+                            continue
 
                         embedding_models.append(
                             {

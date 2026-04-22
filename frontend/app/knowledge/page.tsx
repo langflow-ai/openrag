@@ -23,6 +23,7 @@ import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -666,7 +667,35 @@ function SearchPage() {
           </h2>
         </div>
         {isCloudBrand ? (
-          <KnowledgeSearchBar />
+          <div className="relative overflow-hidden h-12 shrink-0">
+            <div
+              className={cn(
+                "transition-transform duration-200 ease-in-out",
+                selectedRows.length > 0
+                  ? "-translate-y-full pointer-events-none select-none"
+                  : "translate-y-0",
+              )}
+            >
+              <KnowledgeSearchBar />
+            </div>
+            <div
+              className={cn(
+                "absolute top-0 left-0 right-0 h-12 transition-transform duration-200 ease-in-out",
+                selectedRows.length > 0
+                  ? "translate-y-0"
+                  : "translate-y-full pointer-events-none select-none",
+              )}
+            >
+              <KnowledgeBatchActionsBar
+                selectedCount={selectedRows.length}
+                onDelete={() => setShowBulkDeleteDialog(true)}
+                onCancel={() => {
+                  setSelectedRows([]);
+                  gridRef.current?.api.deselectAll();
+                }}
+              />
+            </div>
+          </div>
         ) : (
           /* Search Input Area */
           <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
