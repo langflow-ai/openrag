@@ -1,0 +1,17 @@
+# Patches the manager Deployment to add a namespace reference.
+# Extend this file to add sidecars, auth proxy, etc.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        env:
+        - name: OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace

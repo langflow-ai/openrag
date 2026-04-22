@@ -1,0 +1,13 @@
+namespace: openrag-operator-system
+
+namePrefix: openrag-operator-
+
+resources:
+- ../rbac
+- ../crd
+- ../manager
+
+patches:
+- path: manager_auth_proxy_patch.yaml
+  target:
+    kind: Deployment
