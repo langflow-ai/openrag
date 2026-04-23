@@ -760,7 +760,9 @@ async def _materialize_default_docs_url_as_text_file(
     return temp_file.name
 
 
-async def _delete_existing_default_docs(session_manager, connector_type: str):
+async def _delete_existing_default_docs(
+    session_manager, connector_type: str, jwt_token=None, user_id=None
+):
     """Delete previously ingested default OpenRAG docs before reingestion."""
     from session_manager import AnonymousUser
 
@@ -771,16 +773,18 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         return
 
     anonymous_user = AnonymousUser()
-    effective_jwt = None
-    if session_manager:
+    effective_jwt = jwt_token
+    effective_user_id = user_id or anonymous_user.user_id
+
+    if not effective_jwt:
         session_manager.get_user_opensearch_client(
-            anonymous_user.user_id, effective_jwt
+            anonymous_user.user_id, None
         )
         if hasattr(session_manager, "_anonymous_jwt"):
             effective_jwt = session_manager._anonymous_jwt
 
     opensearch_client = session_manager.get_user_opensearch_client(
-        anonymous_user.user_id, effective_jwt
+        effective_user_id, effective_jwt
     )
     delete_query = {
         "query": {
@@ -920,6 +924,7 @@ async def refresh_default_openrag_docs(
     force: bool = False,
     reason: str = "startup",
     jwt_token=None,
+    user_id=None,
 ):
     """Refresh OpenRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
@@ -1002,7 +1007,10 @@ async def refresh_default_openrag_docs(
             new_signature=signature,
         )
         await _delete_existing_default_docs(
-            session_manager, connector_type="openrag_docs"
+            session_manager,
+            connector_type="openrag_docs",
+            jwt_token=jwt_token,
+            user_id=user_id,
         )
         await ingest_openrag_docs_when_ready(
             document_service,
