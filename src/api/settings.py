@@ -1978,7 +1978,6 @@ async def refresh_openrag_docs(
             force=True,
             reason="manual",
             jwt_token=ingestion_jwt,
-            user_id=user.user_id if user else None,
         )
         return RefreshOpenRAGDocsResponse(
             message=(
