@@ -20,7 +20,14 @@ function LoginPageContent() {
     if (!isLoading && (isAuthenticated || isNoAuthMode || isIbmAuthMode)) {
       router.push(redirect);
     }
-  }, [isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, router, redirect]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    isIbmAuthMode,
+    router,
+    redirect,
+  ]);
 
   if (isLoading) {
     return (

@@ -39,7 +39,14 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
       router.push(redirectUrl);
     }
-  }, [isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, router, pathname]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    isIbmAuthMode,
+    router,
+    pathname,
+  ]);
 
   if (isLoading) {
     return (
