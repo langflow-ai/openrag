@@ -68,6 +68,11 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Show the "+" file upload button in the chat input
+OPENRAG_INGEST_VIA_CHAT = os.getenv(
+    "OPENRAG_INGEST_VIA_CHAT", "false"
+).lower() in ("true", "1", "yes")
+
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv(
     "INGEST_SAMPLE_DATA", "true"

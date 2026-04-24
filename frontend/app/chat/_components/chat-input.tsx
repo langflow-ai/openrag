@@ -39,6 +39,7 @@ interface ChatInputProps {
   input: string;
   loading: boolean;
   isUploading: boolean;
+  ingestViaChat: boolean;
   selectedFilter: KnowledgeFilterData | null;
   parsedFilterData: { color?: FilterColor } | null;
   uploadedFile: File | null;
@@ -60,6 +61,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       input,
       loading,
       isUploading,
+      ingestViaChat,
       selectedFilter,
       parsedFilterData,
       uploadedFile,
@@ -502,21 +504,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     </Button>
                   ))}
                 <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    onClick={onFilePickerClick}
-                    disabled={isUploading}
-                    className={cn(
-                      "h-8 w-8 p-0 !rounded-md",
-                      isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
-                        : "hover:bg-muted/50",
-                    )}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                  {ingestViaChat && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="iconSm"
+                      onClick={onFilePickerClick}
+                      disabled={isUploading}
+                      className={cn(
+                        "h-8 w-8 p-0 !rounded-md",
+                        isCloudBrand
+                          ? "hover:bg-[var(--layered-select-bg)]"
+                          : "hover:bg-muted/50",
+                      )}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="default"
                     type="submit"
