@@ -87,13 +87,34 @@ This is because the agent cannot access the model to generate a query embedding 
 
 You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
-* **Chunk size**: Set the number of characters for each text chunk when breaking down a file.
-Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
-The default value is 1000 characters, which is usually a good balance between context and precision.
+* **Chunk size**: Set the average number of characters for each text chunk when breaking down a file.
+
+   Larger chunks yield more context per chunk, but can include irrelevant information.
+   Smaller chunks yield more precise semantic search, but can lack context.
+
+   The default value is 1000 characters, which is usually a good balance between context and precision.
+
+   :::warning
+   The **Chunk size** must be less than the maximum token length supported by your embedding model.
+   To determine this value, see the documentation for your embedding model or provider.
+
+   Because **Chunk size** is an average, actual chunks can be larger or smaller than the specified value.
+   To account for variations in chunking and ensure that no chunks exceed the model's limits, **Chunk size** must _not_ be equal to the model's maximum token length.
+
+   If ingestion fails with errors like `ContextLengthExceeded` and `reduce the length of the input`, this indicates that some chunks exceed the model's maximum token length.
+   Decrease the **Chunk size**, and then retry ingestion.
+   Repeat this process until you find a value that works consistently for your documents and embedding model.
+   :::
 
 * **Chunk overlap**: Set the number of characters to overlap over chunk boundaries.
-Use larger overlap values for documents where context is most important. Use smaller overlap values for simpler documents or when optimization is most important.
-The default value is 200 characters, which represents an overlap of 20 percent with the default **Chunk size** of 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
+
+   Use larger overlap values for documents where context is most important.
+   Use smaller overlap values for simpler documents or when optimization is most important.
+
+   The default value is 200 characters, which represents an overlap of 20 percent with the default **Chunk size** of 1000.
+   This is suitable for general use.
+   For faster processing, decrease the overlap to approximately 10 percent.
+   For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
 
 ## Configure table parsing
 
