@@ -32,6 +32,16 @@ class User:
         if self.last_login is None:
             self.last_login = datetime.now()
 
+    def __repr__(self) -> str:
+        """Custom repr that redacts sensitive fields to prevent credential leaks in logs."""
+        return (
+            f"User(user_id='***', email='***', "
+            f"name={self.name!r}, provider={self.provider!r}, "
+            f"jwt_token={'***' if self.jwt_token else None!r}, "
+            f"opensearch_username={'***' if self.opensearch_username else None!r}, "
+            f"opensearch_credentials={'***' if self.opensearch_credentials else None!r})"
+        )
+
 @dataclass
 class AnonymousUser(User):
     """Anonymous user"""

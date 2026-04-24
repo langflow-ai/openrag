@@ -1,6 +1,6 @@
-FROM node:20.20.0-slim
+FROM node:25.9-slim
 
-# Set working directory and ensure it is owned by the non-root node user
+# Set working directory and ensure it is owned by the non-root node user 
 WORKDIR /app
 RUN chown node:node /app
 
@@ -9,7 +9,7 @@ USER node
 
 # Copy frontend dependencies
 COPY --chown=node:node frontend/package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy frontend source
 COPY --chown=node:node frontend/ ./
