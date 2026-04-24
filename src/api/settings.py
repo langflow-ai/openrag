@@ -601,7 +601,9 @@ async def update_settings(
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if body.picture_descriptions is not None:
-            current_config.knowledge.picture_descriptions = body.picture_descriptions
+            from config.settings import IBM_AUTH_ENABLED
+            effective_picture_descriptions = False if IBM_AUTH_ENABLED else body.picture_descriptions
+            current_config.knowledge.picture_descriptions = effective_picture_descriptions
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
