@@ -799,9 +799,9 @@ async def async_langflow_chat_stream(
                 "error": error_occurred,  # Mark if this was an error response
             }
             # Store usage data if available (from response.completed event)
-        if usage_data:
-            assistant_message["response_data"] = {"usage": usage_data}
-        conversation_state["messages"].append(assistant_message)
+            if usage_data:
+                assistant_message["response_data"] = {"usage": usage_data}
+            conversation_state["messages"].append(assistant_message)
 
         # Store the conversation thread with its response_id
         if response_id:
@@ -809,13 +809,13 @@ async def async_langflow_chat_stream(
             await store_conversation_thread(user_id, response_id, conversation_state)
 
             # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
+            try:
+                from services.session_ownership_service import session_ownership_service
 
-            session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
+                session_ownership_service.claim_session(user_id, response_id)
+                logger.debug(f"Claimed session {response_id} for user {user_id}")
+            except Exception as e:
+                logger.warning(f"Failed to claim session ownership: {e}")
 
             logger.debug(
                 f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"

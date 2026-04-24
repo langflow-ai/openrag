@@ -1093,6 +1093,19 @@ async def onboarding(
                 status_code=503,
             )
 
+        # Ensure all flows exist in Langflow before configuring them.
+        # On fresh deployments, the background startup_tasks may not have
+        # created the flows yet (race condition). This is idempotent —
+        # if startup_tasks already ran, it's a fast no-op.
+        try:
+            await flows_service.ensure_flows_exist()
+        except Exception as e:
+            logger.error("Failed to ensure Langflow flows exist during onboarding", error=str(e))
+            return JSONResponse(
+                {"error": "Failed to initialize Langflow flows. Please try again."},
+                status_code=503,
+            )
+
         # Set Langflow global variables and model values based on provider configuration
         try:
             # Check if any provider-related fields were provided
