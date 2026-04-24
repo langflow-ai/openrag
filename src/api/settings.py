@@ -1968,6 +1968,17 @@ async def refresh_openrag_docs(
         ingestion_jwt = (
             user.jwt_token if IBM_AUTH_ENABLED and user and user.jwt_token else None
         )
+        logger.debug(
+            "refresh_openrag_docs jwt source",
+            ibm_auth=IBM_AUTH_ENABLED,
+            has_user=bool(user),
+            has_token=bool(ingestion_jwt),
+            scheme=(
+                ingestion_jwt.split(" ", 1)[0]
+                if isinstance(ingestion_jwt, str) and " " in ingestion_jwt
+                else None
+            ),
+        )
 
         refreshed = await refresh_default_openrag_docs(
             document_service=document_service,
