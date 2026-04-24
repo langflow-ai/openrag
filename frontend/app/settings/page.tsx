@@ -291,10 +291,14 @@ function KnowledgeSourcesPage() {
   }, [settings.knowledge?.ocr]);
 
   useEffect(() => {
+    if (isCloudBrand) {
+      setPictureDescriptions(false);
+      return;
+    }
     if (settings.knowledge?.picture_descriptions !== undefined) {
       setPictureDescriptions(settings.knowledge.picture_descriptions);
     }
-  }, [settings.knowledge?.picture_descriptions]);
+  }, [settings.knowledge?.picture_descriptions, isCloudBrand]);
 
   const k = settings.knowledge;
   const knowledgeIngestDirty =
@@ -302,7 +306,8 @@ function KnowledgeSourcesPage() {
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
-    pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions);
+    (!isCloudBrand &&
+      pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions));
 
   // Handle auto-focus on LLM model selector when coming from provider setup
   useEffect(() => {
@@ -387,7 +392,7 @@ function KnowledgeSourcesPage() {
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
         ocr,
-        picture_descriptions: pictureDescriptions,
+        picture_descriptions: isCloudBrand ? false : pictureDescriptions,
       },
       {
         onSuccess: () => setChunkValidationError(null),
@@ -1100,24 +1105,26 @@ function KnowledgeSourcesPage() {
                   onCheckedChange={handleOcrChange}
                 />
               </div>
-              <div className="flex items-center justify-between py-3">
-                <div className="flex-1">
-                  <Label
-                    htmlFor="picture-descriptions"
-                    className="text-base font-medium cursor-pointer pb-3"
-                  >
-                    Picture Descriptions
-                  </Label>
-                  <div className="text-sm text-muted-foreground">
-                    Adds captions for images. Ingest is slower when enabled.
+              {!isCloudBrand && (
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="picture-descriptions"
+                      className="text-base font-medium cursor-pointer pb-3"
+                    >
+                      Picture Descriptions
+                    </Label>
+                    <div className="text-sm text-muted-foreground">
+                      Adds captions for images. Ingest is slower when enabled.
+                    </div>
                   </div>
+                  <Switch
+                    id="picture-descriptions"
+                    checked={pictureDescriptions}
+                    onCheckedChange={handlePictureDescriptionsChange}
+                  />
                 </div>
-                <Switch
-                  id="picture-descriptions"
-                  checked={pictureDescriptions}
-                  onCheckedChange={handlePictureDescriptionsChange}
-                />
-              </div>
+              )}
             </div>
             <div className="flex justify-end pt-2">
               <Button
