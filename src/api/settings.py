@@ -16,6 +16,7 @@ from config.settings import (
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
+    OPENRAG_INGEST_VIA_CHAT,
     clients,
     get_openrag_config,
     config_manager,
@@ -173,6 +174,7 @@ class SettingsResponse(BaseModel):
     langflow_edit_url: Optional[str] = None
     langflow_ingest_edit_url: Optional[str] = None
     ingestion_defaults: Optional[IngestionDefaultsConfig] = None
+    ingest_via_chat: bool = False
 
 
 class OnboardingResponse(BaseModel):
@@ -376,6 +378,7 @@ async def get_settings(
             langflow_edit_url=langflow_edit_url,
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
+            ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
         )
 
     except Exception as e:
@@ -1609,7 +1612,7 @@ async def update_onboarding_state(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update onboarding state")
 
-        logger.info(f"Onboarding state updated: {body}")
+        logger.info("[CONFIG] Onboarding state updated", fields=list(body.model_fields_set))
 
         return OnboardingStateResponse(
             message="Onboarding state updated successfully",
@@ -1705,7 +1708,7 @@ async def rollback_onboarding(
                 {"error": "No onboarding configuration to rollback"}, status_code=400
             )
 
-        logger.info("Rolling back onboarding configuration due to file failures")
+        logger.warning("[CONFIG] Rolling back onboarding configuration due to file failures")
 
         # Get all tasks for the user
         all_tasks = task_service.get_all_tasks(user.user_id)

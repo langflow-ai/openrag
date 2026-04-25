@@ -74,6 +74,7 @@ export interface Settings {
     embeddingModel?: string;
   };
   localhost_url?: string;
+  ingest_via_chat?: boolean;
 }
 
 export const useGetSettingsQuery = (

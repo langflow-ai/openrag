@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
@@ -8,6 +9,8 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+import uuid
 from html.parser import HTMLParser
 
 # Configure structured logging early
@@ -15,12 +18,13 @@ from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
 from utils.embeddings import create_index_body
-from utils.logging_config import configure_from_env, get_logger
+from utils.logging_config import get_logger
 from utils.encryption import enforce_startup_prerequisites
 from utils.telemetry import TelemetryClient, Category, MessageId
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 # API endpoints
@@ -106,7 +110,6 @@ from services.search_service import SearchService, register_search_service
 from services.task_service import TaskService
 from session_manager import SessionManager
 
-configure_from_env()
 enforce_startup_prerequisites()
 logger = get_logger(__name__)
 
@@ -187,7 +190,7 @@ async def _ensure_opensearch_index():
         index_name = get_index_name()
         # Check if index already exists
         if await clients.opensearch.indices.exists(index=index_name):
-            logger.debug("OpenSearch index already exists", index_name=index_name)
+            logger.info("[OPENSEARCH] Index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
@@ -1070,7 +1073,9 @@ async def opensearch_health_ready(request):
     from config.settings import IBM_AUTH_ENABLED, OPENSEARCH_URL
 
     if IBM_AUTH_ENABLED:
-        logger.debug("[OpenSearch Security] OpenSearch auth mode enabled, health check per-request")
+        logger.debug(
+            "[OPENSEARCH] OpenSearch auth mode enabled, health check per-request"
+        )
         # In IBM auth mode we cannot rely on the global OpenSearch client
         # (auth is established per-request), so perform a lightweight,
         # unauthenticated connectivity check against the OpenSearch endpoint.
@@ -1080,7 +1085,7 @@ async def opensearch_health_ready(request):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(f"{opensearch_url}/")
             if resp.status_code < 500:
-                logger.debug("[OpenSearch Security] OpenSearch health check successful")
+                logger.debug("[OPENSEARCH] OpenSearch health check successful")
                 return JSONResponse(
                     {
                         "status": "ready",
@@ -1090,7 +1095,7 @@ async def opensearch_health_ready(request):
                     status_code=200,
                 )
             else:
-                logger.debug("[OpenSearch Security] OpenSearch health check failed")
+                logger.debug("[OPENSEARCH] OpenSearch health check failed")
                 return JSONResponse(
                     {
                         "status": "not_ready",
@@ -1100,7 +1105,9 @@ async def opensearch_health_ready(request):
                     status_code=503,
                 )
         except Exception as e:
-            logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+            logger.error(
+                "[OPENSEARCH] OpenSearch health check failed", error=str(e)
+            )
             return JSONResponse(
                 {
                     "status": "not_ready",
@@ -1117,7 +1124,9 @@ async def opensearch_health_ready(request):
             status_code=200,
         )
     except Exception as e:
-        logger.error("[OpenSearch Security] OpenSearch health check failed", error=str(e))
+        logger.error(
+            "[OPENSEARCH] OpenSearch health check failed", error=str(e)
+        )
         return JSONResponse(
             {
                 "status": "not_ready",
@@ -1510,6 +1519,166 @@ async def initialize_services():
     }
 
 
+async def _periodic_backup(services):
+    """Periodic backup task that runs every 5 minutes"""
+    while True:
+        try:
+            await asyncio.sleep(5 * 60)  # Wait 5 minutes
+
+            # Check if onboarding has been completed
+            config = get_openrag_config()
+            if not config.edited:
+                logger.info("[CONFIG] Onboarding not completed yet, skipping periodic backup")
+                continue
+
+            flows_service = services.get("flows_service")
+            if flows_service:
+                logger.info("Running periodic flow backup")
+                backup_results = await flows_service.backup_all_flows(only_if_changed=True)
+                if backup_results["backed_up"]:
+                    logger.info(
+                        "Periodic backup completed",
+                        backed_up=len(backup_results["backed_up"]),
+                        skipped=len(backup_results["skipped"]),
+                    )
+                else:
+                    logger.debug(
+                        "Periodic backup: no flows changed",
+                        skipped=len(backup_results["skipped"]),
+                    )
+        except asyncio.CancelledError:
+            logger.info("Periodic backup task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in periodic backup task: {str(e)}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan handler for startup and shutdown tasks"""
+    # STARTUP
+
+    services = app.state.services
+
+    # 1. Start MCP lifespan (must happen first)
+    mcp_lifespan_ctx = getattr(app.state, "mcp_lifespan_ctx", None)
+    if mcp_lifespan_ctx:
+        await mcp_lifespan_ctx.__aenter__()
+        logger.info("FastMCP lifespan started")
+
+    # 2. Telemetry
+    await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED)
+
+    # 3. Startup tasks (background)
+    t1 = asyncio.create_task(startup_tasks(services))
+    app.state.background_tasks.add(t1)
+    t1.add_done_callback(app.state.background_tasks.discard)
+
+    # 4. Periodic tasks
+    services["task_service"].start_cleanup_scheduler()
+    backup_task = asyncio.create_task(_periodic_backup(services))
+    app.state.background_tasks.add(backup_task)
+    backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    yield
+
+    # SHUTDOWN
+    logger.info("Application shutdown span initiated")
+
+    # 1. Telemetry shutdown event
+    await TelemetryClient.send_event(Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN)
+
+    # 2. Stop MCP lifespan
+    if mcp_lifespan_ctx:
+        await mcp_lifespan_ctx.__aexit__(None, None, None)
+        logger.info("FastMCP lifespan stopped")
+
+    # 3. Graceful OpenSearch shutdown
+    try:
+        from utils.opensearch_utils import graceful_opensearch_shutdown
+
+        await graceful_opensearch_shutdown(clients.opensearch)
+    except Exception as e:
+        logger.error("Error during graceful OpenSearch shutdown", error=str(e))
+
+    # 4. Subscriptions cleanup
+    await cleanup_subscriptions_proper(services)
+
+    # 5. Task service shutdown
+    await services["task_service"].shutdown()
+
+    # 6. Global clients cleanup
+    await clients.cleanup()
+
+    # 7. Telemetry client cleanup
+    from utils.telemetry.client import cleanup_telemetry_client
+
+    await cleanup_telemetry_client()
+
+    logger.info("Application shutdown span completed")
+
+
+
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware that assigns a correlation ID to every request and
+    emits a single structured [API] log line with method, path, status code,
+    and duration after the response is sent.
+
+    Using pure ASGI (not BaseHTTPMiddleware) so structlog contextvars bound
+    inside endpoint handlers propagate back correctly to this middleware.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        import structlog as _structlog
+
+        _structlog.contextvars.clear_contextvars()
+
+        headers_dict = dict(scope.get("headers", []))
+        request_id = (
+            headers_dict.get(b"x-request-id", b"").decode() or str(uuid.uuid4())
+        )
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+
+        _structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=method,
+            path=path,
+        )
+
+        status_code = 500
+        start = time.perf_counter()
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                # Inject correlation ID into response headers
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode()))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            level = "warning" if status_code >= 500 else "info"
+            getattr(logger, level)(
+                "[API] Request",
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+            _structlog.contextvars.clear_contextvars()
+
+
 async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
@@ -1517,6 +1686,9 @@ async def create_app():
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
+
+    # Wire up ASGI request logging middleware (pure ASGI, not BaseHTTPMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
 
     try:
         Instrumentator().instrument(app).expose(app)
@@ -2198,6 +2370,7 @@ if __name__ == "__main__":
         workers=1,
         host="0.0.0.0",
         port=8000,
-        reload=False,  # Disable reload since we're running from main
+        reload=False,      # Disable reload since we're running from main
         access_log=access_log,
+        log_config=None,   # Prevent uvicorn from overriding our structlog setup
     )

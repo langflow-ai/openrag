@@ -135,9 +135,7 @@ class SharePointOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"Failed to load SharePoint credentials: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint credential load failed")
             return False
 
     async def _refresh_from_json_token(self, token_data: dict) -> bool:
@@ -188,9 +186,7 @@ class SharePointOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"Exception during refresh from JSON token: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint JSON token refresh failed")
             return False
 
     async def save_cache(self):
@@ -306,9 +302,7 @@ class SharePointOAuth:
             return False
 
         except Exception as e:
-            logger.error(f"SharePoint is_authenticated: Exception: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint is_authenticated failed")
             return False
 
     def get_access_token(self) -> str:
@@ -338,9 +332,7 @@ class SharePointOAuth:
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
         except Exception as e:
-            logger.error(f"SharePoint get_access_token: Exception: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint get_access_token failed")
             raise
 
     def get_access_token_for_resource(self, resource_url: str) -> str:
@@ -399,9 +391,7 @@ class SharePointOAuth:
         except ValueError:
             raise
         except Exception as e:
-            logger.error(f"SharePoint get_access_token_for_resource: Exception: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("[CONNECTOR] SharePoint get_access_token_for_resource failed")
             raise ValueError(f"Failed to acquire SharePoint token: {str(e)}")
 
     async def revoke_credentials(self):

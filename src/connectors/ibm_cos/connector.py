@@ -368,8 +368,3 @@ class IBMCOSConnector(BaseConnector):
 
 
 
-if __name__ == "__main__":
-    connector = IBMCOSConnector({})
-    print(connector.authenticate())
-    print(connector.list_files())
-    # print(connector.get_file_content("test_cos.py"))

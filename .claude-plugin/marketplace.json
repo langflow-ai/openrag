@@ -1,0 +1,12 @@
+{
+  "name": "openrag",
+  "description": "Agent plugins for working with OpenRAG.",
+  "owner": { "name": "langflow-ai" },
+  "plugins": [
+    {
+      "name": "openrag",
+      "source": "./plugins/openrag",
+      "description": "Guided installation and SDK integration skills for OpenRAG."
+    }
+  ]
+}

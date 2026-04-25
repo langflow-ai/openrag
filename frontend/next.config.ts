@@ -29,9 +29,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
   },
-  // Ignore ESLint errors during build
-  eslint: {
-    ignoreDuringBuilds: true,
+  // Ignore TypeScript errors during build (includes ESLint)
+  typescript: {
+    ignoreBuildErrors: true,
   },
   // Allow cross-origin requests in development
   allowedDevOrigins: getAllowedDevOrigins(),

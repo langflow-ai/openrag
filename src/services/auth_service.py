@@ -538,12 +538,7 @@ class AuthService:
                         connection_id
                     ]
             except Exception as e:
-                logger.error(
-                    f"_handle_data_source_auth: Failed to auto-detect base URL: {e}"
-                )
-                import traceback
-
-                traceback.print_exc()
+                logger.exception("[AUTH] Auto-detect base URL failed")
 
         return result
 

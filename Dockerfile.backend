@@ -52,7 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     openssl \
     gosu \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade "pip>=26.0"
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and

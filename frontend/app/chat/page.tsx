@@ -1216,6 +1216,7 @@ function ChatPage() {
               }
             }
           }}
+          ingestViaChat={settings?.ingest_via_chat ?? false}
           onFilterSelect={handleFilterSelect}
           onFilePickerClick={handleFilePickerClick}
           onFileSelected={setUploadedFile}

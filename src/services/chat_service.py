@@ -82,7 +82,6 @@ class ChatService:
         
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
-        logger.debug(f"[LF] Extra headers {extra_headers}")
         # Get context variables for filters, limit, and threshold
         from auth_context import (
             get_score_threshold,
@@ -136,7 +135,7 @@ class ChatService:
         extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
             filter_expression
         )
-        logger.info(f"[LF] Extra headers {extra_headers}")
+        logger.info("[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression))
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()
         if not langflow_client:
@@ -261,14 +260,10 @@ class ChatService:
             filter_expression["score_threshold"] = score_threshold
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
-        logger.info(
-            "Sending OpenRAG query filter to Langflow nudges",
-            filter_expression=filter_expression,
-        )
         extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
             filter_expression
         )
-        logger.info(f"[NUDGES] Extra headers {extra_headers}")
+        logger.info("[CHAT] Nudges request", filters_applied=bool(filter_expression))
 
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()
@@ -590,7 +585,9 @@ class ChatService:
         all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
 
         logger.debug(
-            f"[DEBUG] Returning {len(all_conversations)} conversations ({len(local_metadata)} from local metadata)"
+            "[CHAT] Returning conversations",
+            total=len(all_conversations),
+            from_local_metadata=len(local_metadata),
         )
 
         return {

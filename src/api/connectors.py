@@ -106,7 +106,7 @@ async def list_connectors(
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
-        logger.info("Error listing connectors", error=str(e))
+        logger.error("[CONNECTOR] Error listing connectors", error=str(e))
         return JSONResponse({"connectors": []})
 
 
@@ -549,15 +549,10 @@ async def connector_webhook(
             )
 
         except Exception as e:
-            logger.error(
-                "Failed to process webhook for connection",
+            logger.exception(
+                "[CONNECTOR] Failed to process webhook",
                 connection_id=connection.connection_id,
-                error=str(e),
             )
-            import traceback
-
-            traceback.print_exc()
-
             return JSONResponse(
                 {
                     "status": "error",

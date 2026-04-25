@@ -418,12 +418,9 @@ async def knowledge_filter_webhook(
         )
 
     except Exception as e:
-        logger.error(
-            "Failed to process knowledge filter webhook",
+        logger.exception(
+            "[API] Knowledge filter webhook failed",
             filter_id=filter_id,
             subscription_id=subscription_id,
-            error=str(e),
         )
-        import traceback
-        traceback.print_exc()
         return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)

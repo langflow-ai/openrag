@@ -16,6 +16,9 @@ from dependencies import (
     get_current_user,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class UploadPathBody(BaseModel):
@@ -55,8 +58,10 @@ async def upload(
             "AuthenticationException" in error_msg
             or "access denied" in error_msg.lower()
         ):
+            logger.warning("[INGEST] Upload rejected — access denied", error=error_msg)
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
+            logger.exception("[INGEST] Upload failed")
             return JSONResponse({"error": error_msg}, status_code=500)
 
 

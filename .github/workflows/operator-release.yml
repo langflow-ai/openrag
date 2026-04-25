@@ -1,0 +1,106 @@
+name: Operator Release
+
+on:
+  push:
+    tags:
+      - 'operator/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (e.g. v0.1.0)'
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository_owner }}/openrag-operator
+
+jobs:
+  build:
+    name: Build and push (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            # Strip the "operator/" prefix from the git tag
+            echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.arch }}
+        uses: docker/build-push-action@v6
+        with:
+          context: kubernetes/operator
+          file: kubernetes/operator/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=operator-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=operator-${{ matrix.arch }}
+
+  manifest:
+    name: Create multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push multi-arch manifest
+        run: |
+          TAG=${{ steps.tag.outputs.value }}
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:${TAG} \
+            -t ${{ env.IMAGE }}:latest \
+            ${{ env.IMAGE }}:${TAG}-amd64 \
+            ${{ env.IMAGE }}:${TAG}-arm64
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push'
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Operator ${{ steps.tag.outputs.value }}
+          generate_release_notes: true

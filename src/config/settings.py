@@ -74,6 +74,11 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Show the "+" file upload button in the chat input
+OPENRAG_INGEST_VIA_CHAT = os.getenv(
+    "OPENRAG_INGEST_VIA_CHAT", "false"
+).lower() in ("true", "1", "yes")
+
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv(
     "INGEST_SAMPLE_DATA", "true"
@@ -210,7 +215,7 @@ async def get_langflow_api_key(force_regenerate: bool = False):
 
     # If forcing regeneration, clear the cached key
     if force_regenerate and LANGFLOW_KEY:
-        logger.info("Forcing Langflow API key regeneration due to auth failure")
+        logger.warning("[LF] Forcing Langflow API key regeneration due to auth failure")
         LANGFLOW_KEY = None
 
     # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
