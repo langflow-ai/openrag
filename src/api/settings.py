@@ -64,6 +64,10 @@ class SettingsUpdateBody(BaseModel):
     remove_openai_config: Optional[bool] = None
     remove_anthropic_config: Optional[bool] = None
     remove_watsonx_config: Optional[bool] = None
+    # Explicit confirmation that the caller accepts removing a provider whose
+    # embedding models are still in use by indexed documents. Without this,
+    # the backend returns 409 and the frontend prompts the user.
+    force_remove: Optional[bool] = False
 
 
 class OnboardingBody(BaseModel):
@@ -404,10 +408,107 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     return "openai"
 
 
+async def _affected_embedding_models(
+    provider: str,
+    session_manager,
+    user,
+    models_service,
+) -> List[Dict[str, Any]]:
+    """Find embedding models present in the corpus that belong to ``provider``.
+
+    Used to warn users before they remove a provider whose embedding models
+    were used to index documents — otherwise semantic search silently breaks
+    for those docs. Returns a list of ``{"model": str, "doc_count": int}``.
+
+    Conservative on errors (returns empty list) so infra issues don't block
+    provider removal.
+    """
+    from services.models_service import ModelsService
+    from config.settings import get_index_name
+
+    provider_lower = provider.lower()
+    if provider_lower == "anthropic":
+        # Anthropic doesn't serve embedding models — nothing to warn about.
+        return []
+
+    try:
+        # Refresh so the registry reflects currently-configured providers
+        # before we use it to attribute models.
+        await models_service.update_model_registry()
+        registry = ModelsService._model_provider_registry
+
+        # Use the admin client so DLS does not scope the aggregation to the
+        # requesting user's documents. Provider removal is a global operation
+        # that affects all tenants, so we must see every document's embedding
+        # model regardless of ownership.
+        agg_result = await clients.opensearch.search(
+            index=get_index_name(),
+            body={
+                "size": 0,
+                "aggs": {
+                    "embedding_models": {
+                        "terms": {"field": "embedding_model", "size": 50}
+                    }
+                },
+            },
+            params={"terminate_after": 0},
+        )
+        buckets = (
+            agg_result.get("aggregations", {})
+            .get("embedding_models", {})
+            .get("buckets", [])
+        )
+
+        affected: List[Dict[str, Any]] = []
+        for bucket in buckets:
+            model = bucket.get("key")
+            if not model:
+                continue
+            mapped = registry.get(model)
+            # Narrow fallback: the watsonx registry bootstrap requires the
+            # provider still be configured, so models from an about-to-be-
+            # removed watsonx can still be attributed via the "ibm/" prefix.
+            if mapped is None and provider_lower == "watsonx" and model.startswith("ibm/"):
+                mapped = "watsonx"
+            if mapped == provider_lower:
+                affected.append({"model": model, "doc_count": bucket.get("doc_count", 0)})
+        return affected
+    except Exception as e:
+        logger.warning(
+            "Could not determine affected embedding models for provider removal",
+            provider=provider,
+            error=str(e),
+        )
+        return []
+
+
+def _embedding_conflict_response(
+    provider_label: str, provider_key: str, affected: List[Dict[str, Any]]
+) -> JSONResponse:
+    """Shared 409 response when removing a provider whose embedding models are
+    still referenced by indexed documents."""
+    model_names = [a["model"] for a in affected]
+    return JSONResponse(
+        {
+            "error": (
+                f"Removing {provider_label} will disable semantic search on "
+                f"documents indexed with: {', '.join(model_names)}. "
+                f"Re-ingest affected documents with another embedding model, "
+                f"or retry with force_remove=true to proceed anyway."
+            ),
+            "code": "embedding_provider_in_use",
+            "affected_provider": provider_key,
+            "affected_models": affected,
+        },
+        status_code=409,
+    )
+
+
 async def update_settings(
     body: SettingsUpdateBody,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    models_service=Depends(get_models_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -741,6 +842,12 @@ async def update_settings(
                     {"error": "Cannot remove Ollama configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "ollama", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("Ollama", "ollama", affected)
             current_config.providers.ollama.endpoint = ""
             current_config.providers.ollama.configured = False
             if current_config.agent.llm_provider == "ollama":
@@ -763,6 +870,12 @@ async def update_settings(
                     {"error": "Cannot remove OpenAI configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "openai", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("OpenAI", "openai", affected)
             current_config.providers.openai.api_key = ""
             current_config.providers.openai.configured = False
             if current_config.agent.llm_provider == "openai":
@@ -808,6 +921,14 @@ async def update_settings(
                     {"error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "watsonx", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response(
+                        "IBM watsonx.ai", "watsonx", affected
+                    )
             current_config.providers.watsonx.api_key = ""
             current_config.providers.watsonx.endpoint = ""
             current_config.providers.watsonx.project_id = ""
@@ -842,6 +963,12 @@ async def update_settings(
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
+
+        # Refresh model registry so get_litellm_model_name(strict=True) sees the
+        # updated provider list — force_remove skips _affected_embedding_models which
+        # is the usual registry refresh trigger.
+        if provider_updated:
+            await models_service.update_model_registry()
 
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:

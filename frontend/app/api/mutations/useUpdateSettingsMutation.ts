@@ -38,7 +38,48 @@ export interface UpdateSettingsRequest {
   remove_openai_config?: boolean;
   remove_anthropic_config?: boolean;
   remove_watsonx_config?: boolean;
+  // Bypass the "this provider's embedding models are still in use" guard.
+  force_remove?: boolean;
 }
+
+export interface AffectedEmbeddingModel {
+  model: string;
+  doc_count: number;
+}
+
+// Typed error that preserves the structured 409 payload returned by
+// POST /api/settings when removing a provider whose embedding models are
+// still referenced by indexed documents.
+export class UpdateSettingsError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly affectedProvider?: string;
+  readonly affectedModels?: AffectedEmbeddingModel[];
+
+  constructor(status: number, data: Record<string, unknown>) {
+    const message =
+      typeof data.error === "string" ? data.error : "Failed to update settings";
+    super(message);
+    this.name = "UpdateSettingsError";
+    this.status = status;
+    this.code = typeof data.code === "string" ? data.code : undefined;
+    this.affectedProvider =
+      typeof data.affected_provider === "string"
+        ? data.affected_provider
+        : undefined;
+    this.affectedModels = Array.isArray(data.affected_models)
+      ? (data.affected_models as AffectedEmbeddingModel[])
+      : undefined;
+  }
+}
+
+export const isEmbeddingProviderInUseError = (
+  err: unknown,
+): err is UpdateSettingsError =>
+  err instanceof UpdateSettingsError &&
+  err.code === "embedding_provider_in_use" &&
+  Array.isArray(err.affectedModels) &&
+  err.affectedModels.length > 0;
 
 export interface UpdateSettingsResponse {
   message: string;
@@ -67,7 +108,7 @@ export const useUpdateSettingsMutation = (
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to update settings");
+      throw new UpdateSettingsError(response.status, errorData);
     }
 
     return response.json();
