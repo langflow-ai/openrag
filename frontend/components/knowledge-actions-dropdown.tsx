@@ -42,6 +42,7 @@ export const KnowledgeActionsDropdown = ({
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
   const syncConnectorMutation = useSyncConnector();
   const { data: connectors = [] } = useGetConnectorsQuery();
@@ -58,6 +59,7 @@ export const KnowledgeActionsDropdown = ({
   }, [connectors, connectorType]);
 
   const handleDelete = async () => {
+    setIsDeleting(true);
     try {
       const result = await deleteDocumentMutation.mutateAsync({ filename });
       await refreshTasks();
@@ -70,11 +72,12 @@ export const KnowledgeActionsDropdown = ({
           "No document chunks were deleted. The file may be missing or not deletable in your current context.",
         );
       }
-      setShowDeleteDialog(false);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete document",
       );
+    } finally {
+      setIsDeleting(false);
       setShowDeleteDialog(false);
     }
   };
@@ -181,7 +184,7 @@ export const KnowledgeActionsDropdown = ({
         description="Are you sure you want to delete this document?"
         confirmText="Delete"
         onConfirm={handleDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={isDeleting}
       >
         <p className="my-2">
           This will remove all chunks and data associated with this document.
