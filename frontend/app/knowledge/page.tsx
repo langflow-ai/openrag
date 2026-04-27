@@ -629,12 +629,6 @@ function SearchPage() {
           } not deleted (0 chunks matched).`,
         );
       }
-      setSelectedRows([]);
-
-      // Clear selection in the grid
-      if (gridRef.current) {
-        gridRef.current.api.deselectAll();
-      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -644,6 +638,8 @@ function SearchPage() {
     } finally {
       setIsBulkDeleting(false);
       setShowBulkDeleteDialog(false);
+      setSelectedRows([]);
+      gridRef.current?.api.deselectAll();
     }
   };
 
