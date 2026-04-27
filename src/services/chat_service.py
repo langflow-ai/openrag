@@ -57,6 +57,9 @@ class ChatService:
         previous_response_id: str = None,
         stream: bool = False,
         filter_id: str = None,
+        owner: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
     ):
         """Handle Langflow chat requests"""
         if not prompt:
@@ -68,7 +71,11 @@ class ChatService:
             )
 
         # Prepare extra headers for JWT authentication and embedding model
-        extra_headers = {}
+        extra_headers = {
+            "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
+            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
+            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
+        }
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
@@ -312,13 +319,20 @@ class ChatService:
         jwt_token: str = None,
         previous_response_id: str = None,
         endpoint: str = "langflow",
+        owner: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
     ):
         """Send document content as user message to get proper response_id"""
         document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
 
         if endpoint == "langflow":
             # Prepare extra headers for JWT authentication and embedding model
-            extra_headers = {}
+            extra_headers = {
+                "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
+                "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
+                "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
+            }
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
