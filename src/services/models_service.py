@@ -7,6 +7,7 @@ from config.model_constants import (
     OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN,
     OPENAI_DEFAULT_LANGUAGE_MODEL,
     OPENAI_VALIDATION_MODELS,
+    WATSONX_DEFAULT_LANGUAGE_MODEL,
 )
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from utils.container_utils import transform_localhost_url
@@ -473,7 +474,7 @@ class ModelsService:
                     text_models = text_data.get("resources", [])
                     logger.info(f"Retrieved {len(text_models)} text chat models from Watson API")
 
-                    for i, model in enumerate(text_models):
+                    for model in text_models:
                         model_id = model.get("model_id", "")
                         model_name = model.get("name", model_id)
 
@@ -484,9 +485,11 @@ class ModelsService:
                             {
                                 "value": model_id,
                                 "label": model_name or model_id,
-                                "default": i == 0,  # First model is default
+                                "default": model_id == WATSONX_DEFAULT_LANGUAGE_MODEL,
                             }
                         )
+
+                    language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
                 else:
                     logger.warning(
                         f"Failed to retrieve text chat models. Status: {text_response.status_code}, "
@@ -510,7 +513,7 @@ class ModelsService:
                     embed_models = embed_data.get("resources", [])
                     logger.info(f"Retrieved {len(embed_models)} embedding models from Watson API")
 
-                    for i, model in enumerate(embed_models):
+                    for model in embed_models:
                         model_id = model.get("model_id", "")
                         model_name = model.get("name", model_id)
 
@@ -521,7 +524,7 @@ class ModelsService:
                             {
                                 "value": model_id,
                                 "label": model_name or model_id,
-                                "default": i == 0,  # First model is default
+                                "default": False,
                             }
                         )
                 else:
