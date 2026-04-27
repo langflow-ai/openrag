@@ -107,6 +107,7 @@ export interface GooglePicker {
 export interface IngestSettings {
   chunkSize: number;
   chunkOverlap: number;
+  tableStructure: boolean;
   ocr: boolean;
   pictureDescriptions: boolean;
   embeddingModel: string;

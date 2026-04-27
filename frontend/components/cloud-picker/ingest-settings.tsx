@@ -34,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import type { IngestSettings as IngestSettingsType } from "./types";
 
 interface IngestSettingsProps {
@@ -50,6 +51,7 @@ export const IngestSettings = ({
   onSettingsChange,
 }: IngestSettingsProps) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
 
   // Fetch settings from API to get current embedding model
   const { data: apiSettings = {} } = useGetSettingsQuery({
@@ -93,6 +95,7 @@ export const IngestSettings = ({
   const defaultSettings: IngestSettingsType = {
     chunkSize: 1000,
     chunkOverlap: 200,
+    tableStructure: true,
     ocr: false,
     pictureDescriptions: false,
     embeddingModel: apiEmbeddingModel,
@@ -213,7 +216,9 @@ export const IngestSettings = ({
             />
           </div> */}
 
-          <div className="flex items-center justify-between border-b pb-3 mb-3">
+          <div
+            className={`flex items-center justify-between ${!isCloudBrand ? "border-b pb-3 mb-3" : ""}`}
+          >
             <div>
               <div className="text-sm font-semibold pb-2">OCR</div>
               <div className="text-sm text-muted-foreground">
@@ -228,22 +233,25 @@ export const IngestSettings = ({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm pb-2 font-semibold">
-                Picture descriptions
+          {!isCloudBrand && (
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm pb-2 font-semibold">
+                  Picture descriptions
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Adds captions for images. Ingest is more expensive when
+                  enabled.
+                </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                Adds captions for images. Ingest is more expensive when enabled.
-              </div>
+              <Switch
+                checked={currentSettings.pictureDescriptions}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ pictureDescriptions: checked })
+                }
+              />
             </div>
-            <Switch
-              checked={currentSettings.pictureDescriptions}
-              onCheckedChange={(checked) =>
-                handleSettingsChange({ pictureDescriptions: checked })
-              }
-            />
-          </div>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>

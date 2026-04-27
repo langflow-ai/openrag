@@ -61,6 +61,7 @@ function BucketView({
   const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
     chunkSize: 1000,
     chunkOverlap: 200,
+    tableStructure: true,
     ocr: false,
     pictureDescriptions: false,
     embeddingModel: "text-embedding-3-small",
@@ -386,6 +387,7 @@ export default function UploadProviderPage() {
   const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
     chunkSize: 1000,
     chunkOverlap: 200,
+    tableStructure: true,
     ocr: false,
     pictureDescriptions: false,
     embeddingModel: "text-embedding-3-small",
