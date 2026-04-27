@@ -396,13 +396,13 @@ const OnboardingCard = ({
     const onboardingData: OnboardingVariables = {};
 
     // Set the provider field
-    if (isEmbedding) {  
-      onboardingData.embedding_provider = currentProvider;  
-      onboardingData.embedding_model = settings.embedding_model;  
-    } else {  
-      onboardingData.llm_provider = currentProvider;  
-      onboardingData.llm_model = settings.llm_model;  
-    }  
+    if (isEmbedding) {
+      onboardingData.embedding_provider = currentProvider;
+      onboardingData.embedding_model = settings.embedding_model;
+    } else {
+      onboardingData.llm_provider = currentProvider;
+      onboardingData.llm_model = settings.llm_model;
+    }
 
     // Add provider-specific credentials based on the selected provider
     if (currentProvider === "openai" && settings.openai_api_key) {
