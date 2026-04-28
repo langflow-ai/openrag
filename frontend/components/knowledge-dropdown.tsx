@@ -393,12 +393,24 @@ export function KnowledgeDropdown() {
 
     if (pendingFile) {
       // Remove the old file from all search query caches before overwriting
-      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: []) => {
+      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: any) => {
         if (!oldData) return oldData;
-        // Filter out the file that's being overwritten
-        return oldData.filter(
-          (file: SearchFile) => file.filename !== pendingFile.name,
-        );
+        // Handle SearchResult structure { files: [], warnings: [] }
+        if (oldData.files && Array.isArray(oldData.files)) {
+          return {
+            ...oldData,
+            files: oldData.files.filter(
+              (file: SearchFile) => file.filename !== pendingFile.name,
+            ),
+          };
+        }
+        // Fallback for legacy array format
+        if (Array.isArray(oldData)) {
+          return oldData.filter(
+            (file: SearchFile) => file.filename !== pendingFile.name,
+          );
+        }
+        return oldData;
       });
 
       await uploadFile(pendingFile, true);
