@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
+import {
+  type AffectedEmbeddingModel,
+  isEmbeddingProviderInUseError,
+  useUpdateSettingsMutation,
+} from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
@@ -35,6 +39,9 @@ const OllamaSettingsDialog = ({
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [affectedModels, setAffectedModels] = useState<
+    AffectedEmbeddingModel[] | undefined
+  >(undefined);
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -107,7 +114,13 @@ const OllamaSettingsDialog = ({
     onSuccess: () => {
       toast.success("Ollama configuration removed");
       setShowRemoveConfirm(false);
+      setAffectedModels(undefined);
       setOpen(false);
+    },
+    onError: (err) => {
+      if (isEmbeddingProviderInUseError(err)) {
+        setAffectedModels(err.affectedModels);
+      }
     },
   });
 
@@ -135,6 +148,7 @@ const OllamaSettingsDialog = ({
       open={open}
       onOpenChange={(o) => {
         setShowRemoveConfirm(false);
+        setAffectedModels(undefined);
         setOpen(o);
       }}
     >
@@ -168,25 +182,32 @@ const OllamaSettingsDialog = ({
                   </p>
                 </motion.div>
               )}
-              {removeMutation.isError && (
-                <motion.div
-                  key="remove-error"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                >
-                  <p className="rounded-lg border border-destructive p-4">
-                    {removeMutation.error?.message}
-                  </p>
-                </motion.div>
-              )}
+              {removeMutation.isError &&
+                !isEmbeddingProviderInUseError(removeMutation.error) && (
+                  <motion.div
+                    key="remove-error"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    <p className="rounded-lg border border-destructive p-4">
+                      {removeMutation.error?.message}
+                    </p>
+                  </motion.div>
+                )}
             </AnimatePresence>
 
             <ModelProviderDialogFooter
               showRemoveConfirm={showRemoveConfirm}
-              onCancelRemove={() => setShowRemoveConfirm(false)}
+              onCancelRemove={() => {
+                setShowRemoveConfirm(false);
+                setAffectedModels(undefined);
+              }}
               onConfirmRemove={() =>
-                removeMutation.mutate({ remove_ollama_config: true })
+                removeMutation.mutate({
+                  remove_ollama_config: true,
+                  force_remove: !!affectedModels,
+                })
               }
               isRemovePending={removeMutation.isPending}
               isConfigured={isOllamaConfigured}
@@ -196,6 +217,7 @@ const OllamaSettingsDialog = ({
               onCancel={() => setOpen(false)}
               isSavePending={settingsMutation.isPending}
               isValidating={isValidating}
+              affectedModels={affectedModels}
             />
           </form>
         </FormProvider>

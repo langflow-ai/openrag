@@ -382,9 +382,7 @@ const OnboardingCard = ({
 
     if (
       !currentProvider ||
-      (isEmbedding &&
-        !settings.embedding_model &&
-        !showProviderConfiguredMessage) ||
+      (isEmbedding && !settings.embedding_model) ||
       (!isEmbedding && !settings.llm_model)
     ) {
       toast.error("Please complete all required fields");
@@ -400,17 +398,7 @@ const OnboardingCard = ({
     // Set the provider field
     if (isEmbedding) {
       onboardingData.embedding_provider = currentProvider;
-      // If provider is already configured, use the existing embedding model from settings
-      // Otherwise, use the embedding model from the form
-      if (
-        showProviderConfiguredMessage &&
-        currentSettings?.knowledge?.embedding_model
-      ) {
-        onboardingData.embedding_model =
-          currentSettings.knowledge.embedding_model;
-      } else {
-        onboardingData.embedding_model = settings.embedding_model;
-      }
+      onboardingData.embedding_model = settings.embedding_model;
     } else {
       onboardingData.llm_provider = currentProvider;
       onboardingData.llm_model = settings.llm_model;
@@ -442,8 +430,7 @@ const OnboardingCard = ({
   };
 
   const isComplete =
-    (isEmbedding &&
-      (!!settings.embedding_model || showProviderConfiguredMessage)) ||
+    (isEmbedding && !!settings.embedding_model) ||
     (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
 
   return (
