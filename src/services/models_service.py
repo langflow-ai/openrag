@@ -133,8 +133,13 @@ class ModelsService:
         if not model_name:
             return ""
 
-        # Skip formatting if already has a known provider prefix
+        # If the model name already has a known provider prefix, trust the registry
+        # over the prefix — e.g. "openai/gpt-oss-120b" registered under "watsonx"
+        # must be routed as "watsonx/openai/gpt-oss-120b", not sent to OpenAI.
         if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
+            registered_provider = ModelsService._model_provider_registry.get(model_name)
+            if registered_provider and not model_name.startswith(registered_provider + "/"):
+                return f"{registered_provider}/{model_name}"
             return model_name
 
         # Check if provider is explicitly given and not "openai"
@@ -527,6 +532,14 @@ class ModelsService:
                         )
 
                     language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
+
+                    if language_models and not any(m.get("default") for m in language_models):
+                        logger.warning(
+                            "WATSONX_DEFAULT_LANGUAGE_MODEL '%s' not found in API response; "
+                            "falling back to first available model as default.",
+                            WATSONX_DEFAULT_LANGUAGE_MODEL,
+                        )
+                        language_models[0]["default"] = True
                 else:
                     logger.warning(
                         f"Failed to retrieve text chat models. Status: {text_response.status_code}, "
@@ -550,7 +563,7 @@ class ModelsService:
                     embed_models = embed_data.get("resources", [])
                     logger.info(f"Retrieved {len(embed_models)} embedding models from Watson API")
 
-                    for model in embed_models:
+                    for i, model in enumerate(embed_models):
                         model_id = model.get("model_id", "")
                         model_name = model.get("name", model_id)
 
@@ -561,7 +574,7 @@ class ModelsService:
                             {
                                 "value": model_id,
                                 "label": model_name or model_id,
-                                "default": False,
+                                "default": i == 0,
                             }
                         )
                 else:
