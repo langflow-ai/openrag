@@ -9,6 +9,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { cn } from "@/lib/utils";
@@ -98,6 +99,9 @@ function ChatPage() {
     }
   }, [selectedFilter]);
 
+  // Get settings for model info used in analytics
+  const { data: settings } = useGetSettingsQuery();
+
   // Use the chat streaming hook
   const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
   const {
@@ -108,6 +112,12 @@ function ChatPage() {
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
+      trackLLMCall({
+        mode: "chat",
+        model: settings?.agent?.llm_model,
+        inputTokens: message.usage?.input_tokens,
+        outputTokens: message.usage?.output_tokens,
+      });
       setMessages((prev) => [...prev, message]);
       setLoading(false);
       setWaitingTooLong(false);
@@ -657,8 +667,7 @@ function ChatPage() {
     };
   }, [endpoint, setPreviousResponseIds, setLoading]);
 
-  // Get settings to check onboarding completion
-  const { data: settings } = useGetSettingsQuery();
+  // Check onboarding completion
 
   // Check if onboarding is complete (current_step >= 4 means complete)
   const TOTAL_ONBOARDING_STEPS = 4;

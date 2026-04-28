@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { trackButton } from "@/lib/analytics";
 
 interface ProgressBarProps {
   currentStep: number;
@@ -38,7 +39,14 @@ export function ProgressBar({
             variant="link"
             data-testid="skip-overview-button"
             size="sm"
-            onClick={onSkip}
+            onClick={() => {
+              trackButton({
+                CTA: "Skip Overview",
+                elementId: "skip-overview-button",
+                namespace: "onboarding",
+              });
+              onSkip?.();
+            }}
             className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
           >
             Skip overview
