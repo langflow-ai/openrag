@@ -1,3 +1,4 @@
+from config.settings import MCP_URL_PATTERNS
 from typing import List, Dict, Any
 
 from tenacity import (
@@ -120,8 +121,8 @@ class LangflowMCPService:
             if not isinstance(arg, str):
                 continue
             if arg.startswith("http://") or arg.startswith("https://"):
-                # We convert any stdio server with a URL to streamable HTTP
-                return True
+                if any(arg.rstrip("/").endswith(pat) or pat in arg for pat in MCP_URL_PATTERNS):
+                    return True
 
         return False
 
