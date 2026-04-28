@@ -309,6 +309,7 @@ class ConnectorService:
         file_ids: List[str],
         jwt_token: str = None,
         file_infos: List[Dict[str, Any]] = None,
+        ingest_settings: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -321,6 +322,8 @@ class ConnectorService:
             jwt_token: Optional JWT token for authentication
             file_infos: Optional list of file info dicts with {id, name, mimeType, downloadUrl, size}
                        When provided, download URLs can be used directly without Graph API calls.
+            ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …) passed to
+                ``ConnectorFileProcessor`` when Langflow ingest is disabled.
         """
         if not self.task_service:
             raise ValueError(
@@ -415,6 +418,7 @@ class ConnectorService:
                 else DocumentService(session_manager=self.session_manager)
             ),
             models_service=self.models_service,
+            ingest_settings=ingest_settings,
         )
 
         # Create custom task using TaskService

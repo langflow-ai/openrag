@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, Request
 from pydantic import BaseModel
@@ -93,6 +93,8 @@ class ConnectorSyncBody(BaseModel):
     sync_all: bool = False
     # When set, only ingest files from these buckets (IBM COS specific).
     bucket_filter: Optional[List[str]] = None
+    # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
+    settings: Optional[Dict[str, Any]] = None
 
 
 async def list_connectors(
@@ -204,6 +206,7 @@ async def connector_sync(
                 selected_files,
                 jwt_token=jwt_token,
                 file_infos=file_infos,
+                ingest_settings=body.settings,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
@@ -241,6 +244,7 @@ async def connector_sync(
                     user.user_id,
                     all_file_ids,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
                 )
             else:
                 # sync_all: ingest everything the connector can see

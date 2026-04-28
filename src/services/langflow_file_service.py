@@ -33,6 +33,53 @@ class LangflowFileService:
             ),
         )
 
+    @staticmethod
+    def merge_ui_ingest_settings_into_tweaks(
+        tweaks: Optional[Dict[str, Any]],
+        settings: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Merge UI ingest dict (camelCase) into Langflow run ``tweaks``.
+
+        - ``chunkSize`` / ``chunkOverlap`` / ``separator`` update the flow's
+          ``SplitText-QIKhg`` node when any of those keys are present.
+        - ``embeddingModel`` maps to ``OpenAIEmbeddings-joRJ6`` ``model`` for
+          flows that use that OpenAI embeddings component id.
+
+        **Connector ingest:** callers should remove ``embeddingModel`` from
+        ``settings`` before merging and pass the user's model via
+        ``run_ingestion_flow(..., selected_embedding_model=...)`` instead, so
+        the global Langflow header override does not fight a conflicting
+        embedding tweak.
+        """
+        final_tweaks = dict(tweaks) if tweaks else {}
+        if not settings:
+            return final_tweaks
+
+        if (
+            settings.get("chunkSize")
+            or settings.get("chunkOverlap")
+            or settings.get("separator")
+        ):
+            if "SplitText-QIKhg" not in final_tweaks:
+                final_tweaks["SplitText-QIKhg"] = {}
+            if settings.get("chunkSize"):
+                final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+            if settings.get("chunkOverlap"):
+                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
+                    "chunkOverlap"
+                ]
+            if settings.get("separator"):
+                final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+
+        if settings.get("embeddingModel"):
+            if "OpenAIEmbeddings-joRJ6" not in final_tweaks:
+                final_tweaks["OpenAIEmbeddings-joRJ6"] = {}
+            final_tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings[
+                "embeddingModel"
+            ]
+
+        return final_tweaks
+
     async def upload_user_file(
         self, file_tuple, jwt_token: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -95,6 +142,7 @@ class LangflowFileService:
         source_url: Optional[str] = None,
         allowed_users: Optional[List[str]] = None,
         allowed_groups: Optional[List[str]] = None,
+        selected_embedding_model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -156,6 +204,12 @@ class LangflowFileService:
         
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
+        if selected_embedding_model:
+            embedding_model = selected_embedding_model
+        else:
+            openai_tweak = tweaks.get("OpenAIEmbeddings-joRJ6") if isinstance(tweaks, dict) else None
+            if isinstance(openai_tweak, dict) and openai_tweak.get("model"):
+                embedding_model = openai_tweak["model"]
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token),
@@ -514,44 +568,13 @@ class LangflowFileService:
         if not file_path:
             raise ValueError("Upload successful but no file path returned")
 
-        # Convert UI settings to component tweaks if provided
-        final_tweaks = tweaks.copy() if tweaks else {}
-
+        final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
+            tweaks, settings
+        )
         if settings:
             logger.debug(
-                "[LF] Applying ingestion settings", extra={"settings": settings}
-            )
-
-            # Split Text component tweaks (SplitText-QIKhg)
-            if (
-                settings.get("chunkSize")
-                or settings.get("chunkOverlap")
-                or settings.get("separator")
-            ):
-                if "SplitText-QIKhg" not in final_tweaks:
-                    final_tweaks["SplitText-QIKhg"] = {}
-                if settings.get("chunkSize"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings[
-                        "chunkSize"
-                    ]
-                if settings.get("chunkOverlap"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
-                        "chunkOverlap"
-                    ]
-                if settings.get("separator"):
-                    final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
-
-            # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
-            if settings.get("embeddingModel"):
-                if "OpenAIEmbeddings-joRJ6" not in final_tweaks:
-                    final_tweaks["OpenAIEmbeddings-joRJ6"] = {}
-                final_tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings[
-                    "embeddingModel"
-                ]
-
-            logger.debug(
-                "[LF] Final tweaks with settings applied",
-                extra={"tweaks": final_tweaks},
+                "[LF] Applying ingestion settings",
+                extra={"settings": settings, "tweaks": final_tweaks},
             )
 
         # Step 3: Run ingestion
