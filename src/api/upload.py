@@ -124,6 +124,12 @@ async def upload_context(
 
     doc_result = await document_service.process_upload_context(file, filename)
 
+    from config.settings import is_no_auth_mode
+    is_no_auth = is_no_auth_mode()
+    owner_user_id = user.user_id if (user and not is_no_auth) else None
+    owner_name = user.name if user else None
+    owner_email = user.email if user else None
+
     response_text, response_id = await chat_service.upload_context_chat(
         doc_result["content"],
         filename,
@@ -131,6 +137,9 @@ async def upload_context(
         jwt_token=jwt_token,
         previous_response_id=previous_response_id,
         endpoint=endpoint,
+        owner=owner_user_id,
+        owner_name=owner_name,
+        owner_email=owner_email,
     )
 
     response_data = {

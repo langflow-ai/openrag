@@ -1244,7 +1244,7 @@ async def onboarding(
                 await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
             if body.embedding_provider or body.embedding_model:
-                await _update_mcp_servers_with_provider_credentials(current_config, session_manager=session_manager, flows_service=flows_service)
+                await _update_mcp_server_urls(current_config, session_manager=session_manager, flows_service=flows_service)
 
             if body.llm_provider or body.llm_model or body.embedding_provider or body.embedding_model:
                 await _update_langflow_model_values(current_config, flows_service, embedding_model=body.embedding_model, embedding_provider=body.embedding_provider, llm_model=body.llm_model, llm_provider=body.llm_provider)
@@ -1571,7 +1571,7 @@ async def _run_async_post_save_langflow_updates(
 
         # Update LLM client credentials when embedding selection changes
         if update_mcp_servers:
-            await _update_mcp_servers_with_provider_credentials(
+            await _update_mcp_server_urls(
                 current_config, session_manager, flows_service=flows_service
             )
 
@@ -1592,40 +1592,17 @@ async def _run_async_post_save_langflow_updates(
         logger.error(f"Failed to update Langflow settings asynchronously: {str(e)}")
 
 
-async def _update_mcp_servers_with_provider_credentials(config, session_manager = None, flows_service=None):
-    # Update MCP servers with provider credentials
+async def _update_mcp_server_urls(config, session_manager=None, flows_service=None):
+    """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
         from services.langflow_mcp_service import LangflowMCPService
-        from utils.langflow_headers import build_mcp_global_vars_from_config
 
         mcp_service = LangflowMCPService()
-
-        # Build global vars using utility function
-        mcp_global_vars = await build_mcp_global_vars_from_config(config, flows_service=flows_service)
-
-        # In no-auth mode, add the anonymous JWT token and user details
-        if is_no_auth_mode() and session_manager:
-            from session_manager import AnonymousUser
-
-            # Create/get anonymous JWT for no-auth mode
-            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-            if anonymous_jwt:
-                mcp_global_vars["JWT"] = anonymous_jwt
-
-            # Add anonymous user details
-            anonymous_user = AnonymousUser()
-            mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
-            mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-
-            logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
-
-        if mcp_global_vars:
-            result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
-            logger.info("Updated MCP servers with provider credentials after settings change", **result)
+        result = await mcp_service.update_all_mcp_server_urls()
+        logger.info("Updated MCP server URLs after settings change", **result)
 
     except Exception as mcp_error:
-        logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
+        logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
 
 
@@ -1786,10 +1763,8 @@ async def reapply_all_settings(session_manager = None):
 
         logger.info("Reapplying all settings to Langflow flows and global variables")
 
-        if config.knowledge.embedding_model or config.knowledge.embedding_provider:
-            await _update_mcp_servers_with_provider_credentials(config, session_manager, flows_service=flows_service)
-        else:
-            logger.info("No embedding model or provider configured, skipping MCP server update")
+        # Update MCP server URLs (patch localhost and convert to streamable HTTP)
+        await _update_mcp_server_urls(config, session_manager, flows_service=flows_service)
 
         # Update all Langflow settings using helper functions
         try:
