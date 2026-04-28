@@ -48,7 +48,6 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} ${chivo.variable} ${ibmPlexSans.variable} antialiased overflow-hidden bg-white dark:bg-black`}
       >
-        <Analytics />
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -56,6 +55,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
+            <Analytics />
             <TooltipProvider>
               <AuthProvider>
                 <BrandProvider>
