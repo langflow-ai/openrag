@@ -139,7 +139,7 @@ class ChatService:
             "Sending OpenRAG query filter to Langflow",
             filter_expression=filter_expression,
         )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_QUERY_FILTER"] = json.dumps(
             filter_expression
         )
         logger.info("[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression))
@@ -267,7 +267,7 @@ class ChatService:
             filter_expression["score_threshold"] = score_threshold
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_QUERY_FILTER"] = json.dumps(
             filter_expression
         )
         logger.info("[CHAT] Nudges request", filters_applied=bool(filter_expression))

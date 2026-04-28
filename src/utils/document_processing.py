@@ -141,3 +141,42 @@ def extract_relevant(doc_dict: dict) -> dict:
         "mimetype": origin.get("mimetype"),
         "chunks": chunks,
     }
+
+
+def resplit_chunks_character_windows(
+    chunks: list,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> list:
+    """Split long chunk texts into fixed-size character windows with overlap.
+
+    Used by the non-Langflow ingestion path when the UI supplies ``chunkSize`` /
+    ``chunkOverlap``. Invalid combinations (non-positive size or overlap >= size)
+    return ``chunks`` unchanged.
+    """
+    if chunk_size <= 0 or chunk_overlap >= chunk_size:
+        return chunks
+    stride = chunk_size - chunk_overlap
+    if stride <= 0:
+        return chunks
+
+    out: list = []
+    for ch in chunks:
+        text = ch.get("text") if isinstance(ch, dict) else None
+        if not isinstance(text, str):
+            out.append(dict(ch) if isinstance(ch, dict) else ch)
+            continue
+        if len(text) <= chunk_size:
+            out.append(dict(ch))
+            continue
+        start = 0
+        while start < len(text):
+            end = min(start + chunk_size, len(text))
+            piece = text[start:end]
+            new_ch = dict(ch)
+            new_ch["text"] = piece
+            out.append(new_ch)
+            if end >= len(text):
+                break
+            start += stride
+    return out

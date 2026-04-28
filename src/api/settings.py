@@ -1602,7 +1602,7 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
         logger.info("Updated MCP server URLs after settings change", **result)
 
     except Exception as mcp_error:
-        logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
+        logger.error(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
 
 

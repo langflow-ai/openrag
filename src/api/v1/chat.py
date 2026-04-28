@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
 from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
-from config.settings import is_no_auth_mode
 from dependencies import get_chat_service, get_session_manager, get_api_key_user_async
 from session_manager import User
 
@@ -129,7 +128,7 @@ async def chat_create_endpoint(
             previous_response_id=body.chat_id,
             stream=True,
             filter_id=body.filter_id,
-            owner=user.user_id if not is_no_auth_mode() else None,
+            owner=user.user_id,
             owner_name=user.name,
             owner_email=user.email,
         )
@@ -147,7 +146,7 @@ async def chat_create_endpoint(
             previous_response_id=body.chat_id,
             stream=False,
             filter_id=body.filter_id,
-            owner=user.user_id if not is_no_auth_mode() else None,
+            owner=user.user_id,
             owner_name=user.name,
             owner_email=user.email,
         )

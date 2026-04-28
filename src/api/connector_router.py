@@ -50,11 +50,22 @@ class ConnectorRouter:
         return await self.get_active_service().get_connector(connection_id)
 
     async def sync_specific_files(
-        self, connection_id: str, user_id: str, file_list: list, jwt_token: str = None, file_infos: list = None
+        self,
+        connection_id: str,
+        user_id: str,
+        file_list: list,
+        jwt_token: str = None,
+        file_infos: list = None,
+        ingest_settings: dict = None,
     ):
         """Sync specific files using the active service."""
         return await self.get_active_service().sync_specific_files(
-            connection_id, user_id, file_list, jwt_token, file_infos=file_infos
+            connection_id,
+            user_id,
+            file_list,
+            jwt_token,
+            file_infos=file_infos,
+            ingest_settings=ingest_settings,
         )
 
     def __getattr__(self, name):
