@@ -245,6 +245,7 @@ export const useGetSearchQuery = (
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
+      staleTime: 0,
       queryFn: getFiles,
       retry: false, // Don't retry on errors - show them immediately
       ...options,
