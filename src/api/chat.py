@@ -1,5 +1,4 @@
 from typing import Optional, Any, Dict
-from config.settings import is_no_auth_mode
 
 from fastapi import Depends
 from pydantic import BaseModel
@@ -102,7 +101,7 @@ async def langflow_endpoint(
                     previous_response_id=body.previous_response_id,
                     stream=True,
                     filter_id=body.filter_id,
-                    owner=user.user_id if not is_no_auth_mode() else None,
+                    owner=user.user_id,
                     owner_name=user.name,
                     owner_email=user.email,
                 ),
@@ -122,7 +121,7 @@ async def langflow_endpoint(
                 previous_response_id=body.previous_response_id,
                 stream=False,
                 filter_id=body.filter_id,
-                owner=user.user_id if not is_no_auth_mode() else None,
+                owner=user.user_id,
                 owner_name=user.name,
                 owner_email=user.email,
             )

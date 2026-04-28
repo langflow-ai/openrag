@@ -43,6 +43,7 @@ class LangflowConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        ingest_settings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Process a document from a connector using LangflowFileService pattern"""
 
@@ -107,8 +108,16 @@ class LangflowConnectorService:
                     "Running Langflow ingestion flow", file_path=langflow_file_path
                 )
 
-                # Use the same tweaks pattern as LangflowFileService
-                tweaks = {}  # Let Langflow handle the ingestion with default settings
+                connector_tweak_settings = None
+                if isinstance(ingest_settings, dict):
+                    connector_tweak_settings = dict(ingest_settings)
+                    # Model selection is injected via selected_embedding_model header override.
+                    # Avoid hard-coding provider-specific embedding component tweak IDs here.
+                    connector_tweak_settings.pop("embeddingModel", None)
+
+                tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
+                    {}, connector_tweak_settings
+                )
 
                 # Extract ACL information from the connector document, if available
                 allowed_users: list[str] = []
@@ -135,6 +144,11 @@ class LangflowConnectorService:
                     source_url=document.source_url,
                     allowed_users=allowed_users,
                     allowed_groups=allowed_groups,
+                    selected_embedding_model=(
+                        ingest_settings.get("embeddingModel")
+                        if isinstance(ingest_settings, dict)
+                        else None
+                    ),
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)
@@ -279,6 +293,7 @@ class LangflowConnectorService:
         file_ids: List[str],
         jwt_token: str = None,
         file_infos: List[Dict[str, Any]] = None,
+        ingest_settings: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
@@ -376,6 +391,7 @@ class LangflowConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            ingest_settings=ingest_settings,
         )
 
         # Create custom task using TaskService

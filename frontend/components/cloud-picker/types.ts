@@ -23,7 +23,10 @@ export interface UnifiedCloudPickerProps {
   // OneDrive/SharePoint specific props
   clientId?: string;
   baseUrl?: string;
-  // Ingest settings
+  /** Controlled ingest state from the upload page (single source of truth). */
+  ingestSettings?: IngestSettings;
+  onIngestSettingsChange?: (settings: IngestSettings) => void;
+  /** @deprecated Prefer ingestSettings + onIngestSettingsChange from the page. */
   onSettingsChange?: (settings: IngestSettings) => void;
   isIngesting: boolean;
 }

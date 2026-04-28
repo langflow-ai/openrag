@@ -1169,31 +1169,13 @@ async def _ingest_default_documents_openrag(
     )
     return task_id
 
-
-async def _update_mcp_server_urls(services):
-    """Update MCP server URLs at startup.
-
-    Patches localhost references with the configured LANGFLOW_URL and converts
-    eligible stdio servers to streamable HTTP mode.
-    """
+async def _update_mcp_server_urls(langflow_mcp_service):
+    """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
-        auth_service = services.get("auth_service")
-
-        if not auth_service or not auth_service.langflow_mcp_service:
-            logger.debug("MCP service not available, skipping URL update")
-            return
-
-        result = await auth_service.langflow_mcp_service.update_all_mcp_server_urls()
-        logger.info(
-            "Updated MCP server URLs at startup", **result
-        )
-
-    except Exception as e:
-        logger.error(
-            "Failed to update MCP server URLs at startup",
-            error=str(e),
-        )
-        # Don't fail startup if MCP update fails
+        result = await langflow_mcp_service.update_all_mcp_server_urls()
+        logger.info("Updated MCP server URLs after settings change", **result)
+    except Exception as mcp_error:
+        logger.error(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
 async def startup_tasks(services):
@@ -1301,7 +1283,7 @@ async def startup_tasks(services):
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
-    await _update_mcp_server_urls(services)
+    await _update_mcp_server_urls(services["langflow_mcp_service"])
 
     # Ensure all configured flows exist in Langflow (create-only, never overwrites).
     # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
@@ -1396,6 +1378,7 @@ async def initialize_services():
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(flows_service=flows_service)
+    langflow_mcp_service = LangflowMCPService()
 
     # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
@@ -1423,7 +1406,7 @@ async def initialize_services():
         session_manager,
         connector_service,
         flows_service,
-        langflow_mcp_service=LangflowMCPService(),
+        langflow_mcp_service=langflow_mcp_service,
     )
 
     # Load persisted connector connections at startup so webhooks and syncs
@@ -1469,6 +1452,7 @@ async def initialize_services():
         "monitor_service": monitor_service,
         "session_manager": session_manager,
         "api_key_service": api_key_service,
+        "langflow_mcp_service": langflow_mcp_service,
     }
 
 

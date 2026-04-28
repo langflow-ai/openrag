@@ -1,3 +1,4 @@
+from config.settings import MCP_URL_PATTERNS
 from typing import List, Dict, Any
 
 from tenacity import (
@@ -120,8 +121,8 @@ class LangflowMCPService:
             if not isinstance(arg, str):
                 continue
             if arg.startswith("http://") or arg.startswith("https://"):
-                # We convert any stdio server with a URL to streamable HTTP
-                return True
+                if any(arg.rstrip("/").endswith(pat) or pat in arg for pat in MCP_URL_PATTERNS):
+                    return True
 
         return False
 
@@ -158,6 +159,8 @@ class LangflowMCPService:
         Only updates the URL (replacing localhost references with the configured LANGFLOW_URL).
         If the server is in stdio mode and eligible, converts it to streamable HTTP mode.
         Headers are never modified.
+
+        Returns 'patched', 'skipped', or 'failed'.
         """
         try:
             current = await self.get_mcp_server(server_name)
@@ -211,7 +214,7 @@ class LangflowMCPService:
                         "No URL to patch in stdio args, skipping",
                         server_name=server_name,
                     )
-                    return True
+                    return "skipped"
                 command = current.get("command")
                 payload = {"command": command, "args": patched_args}
                 mode = "stdio"
@@ -227,7 +230,7 @@ class LangflowMCPService:
                     server_name=server_name,
                     mode=mode,
                 )
-                return True
+                return "patched"
             else:
                 logger.warning(
                     "Failed to patch MCP server URL",
@@ -236,14 +239,14 @@ class LangflowMCPService:
                     status_code=response.status_code,
                     body=response.text,
                 )
-                return False
+                return "failed"
         except Exception as e:
             logger.error(
                 "Exception while patching MCP server URL",
                 server_name=server_name,
                 error=str(e),
             )
-            return False
+            return "failed"
 
     async def update_all_mcp_server_urls(self) -> Dict[str, Any]:
         """Fetch all MCP servers and update their URLs (replacing localhost with LANGFLOW_URL).
@@ -253,22 +256,25 @@ class LangflowMCPService:
         """
         servers = await self.list_mcp_servers()
         if not servers:
-            return {"updated": 0, "failed": 0, "total": 0}
+            return {"patched": 0, "skipped": 0, "failed": 0, "total": 0}
 
-        updated = 0
-        failed = 0
+        patched_count = 0
+        skipped_count = 0
+        failed_count = 0
         for server in servers:
             name = server.get("name") or server.get("server") or server.get("id")
             if not name:
                 continue
             ok = await self.patch_mcp_server_url(name)
-            if ok:
-                updated += 1
+            if ok == "patched":
+                patched_count += 1
+            elif ok == "skipped":
+                skipped_count += 1
             else:
-                failed += 1
+                failed_count += 1
 
-        summary = {"updated": updated, "failed": failed, "total": len(servers)}
-        if failed == 0:
+        summary = {"patched": patched_count, "skipped": skipped_count, "failed": failed_count, "total": len(servers)}
+        if failed_count == 0:
             logger.info("MCP servers URL update completed", **summary)
         else:
             logger.warning("MCP servers URL update had failures", **summary)

@@ -195,6 +195,8 @@ API_KEYS_INDEX_BODY = {
     },
 }
 
+MCP_URL_PATTERNS = ("/mcp", "/streamable", "/api/v2/mcp")
+
 # Convenience base URL for Langflow REST API
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
 
