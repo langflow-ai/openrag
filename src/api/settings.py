@@ -17,6 +17,8 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
+    SEGMENT_WRITE_KEY,
+    ENVIRONMENT,
     clients,
     get_openrag_config,
     config_manager,
@@ -179,6 +181,8 @@ class SettingsResponse(BaseModel):
     langflow_ingest_edit_url: Optional[str] = None
     ingestion_defaults: Optional[IngestionDefaultsConfig] = None
     ingest_via_chat: bool = False
+    segment_write_key: Optional[str] = None
+    environment: Optional[str] = None
 
 
 class OnboardingResponse(BaseModel):
@@ -383,6 +387,8 @@ async def get_settings(
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
+            segment_write_key=SEGMENT_WRITE_KEY or None,
+            environment=ENVIRONMENT or None,
         )
 
     except Exception as e:
