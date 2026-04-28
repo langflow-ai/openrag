@@ -47,35 +47,22 @@ def test_merge_preserves_and_extends_existing_split_text():
     }
 
 
-def test_merge_embedding_model_sets_openai_embeddings_tweak():
+def test_merge_embedding_model_is_ignored_in_tweaks():
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
         None,
         {"embeddingModel": "text-embedding-3-large"},
     )
-    assert out["OpenAIEmbeddings-joRJ6"] == {"model": "text-embedding-3-large"}
-
-
-def test_merge_embedding_extends_existing_openai_tweak():
-    out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
-        {"OpenAIEmbeddings-joRJ6": {"api_key": "masked"}},
-        {"embeddingModel": "text-embedding-3-small"},
-    )
-    assert out["OpenAIEmbeddings-joRJ6"] == {
-        "api_key": "masked",
-        "model": "text-embedding-3-small",
-    }
+    assert out == {}
 
 
 def test_connector_style_settings_without_embedding_only_split_text():
-    """Simulate langflow_connector_service: pop embeddingModel, then merge."""
+    """Embedding model is not mapped to tweaks; split settings still apply."""
     settings = {
         "chunkSize": 800,
         "chunkOverlap": 100,
         "ocr": True,
-        "embeddingModel": "should-be-stripped",
+        "embeddingModel": "ignored",
     }
-    connector = dict(settings)
-    connector.pop("embeddingModel", None)
-    out = LangflowFileService.merge_ui_ingest_settings_into_tweaks({}, connector)
+    out = LangflowFileService.merge_ui_ingest_settings_into_tweaks({}, settings)
     assert "OpenAIEmbeddings-joRJ6" not in out
     assert out["SplitText-QIKhg"]["chunk_size"] == 800
