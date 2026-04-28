@@ -16,6 +16,18 @@ logger = get_logger(__name__)
 
 KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
 
+
+class UnknownEmbeddingProvider(Exception):
+    """Raised when a model's provider can't be resolved and the caller asked
+    for strict routing. Lets callers fail fast instead of dispatching an
+    unroutable request into LiteLLM's retry loop."""
+
+    def __init__(self, model_name: str):
+        super().__init__(
+            f"No configured provider can serve embedding model '{model_name}'"
+        )
+        self.model_name = model_name
+
 class ModelsService:
     """Service for fetching available models from different AI providers and managing a model registry."""
 
@@ -102,23 +114,31 @@ class ModelsService:
             except Exception as e:
                 logger.error(f"Error updating model registry: {str(e)}")
 
-    async def get_litellm_model_name(self, model_name: str, provider: Optional[str] = None) -> str:
-        """Synchronous version of model formatting for when provider is already known.
-        
-        This is useful for synchronous contexts (like properties) where the provider
-        information is already available and doesn't need to be looked up in the registry.
+    async def get_litellm_model_name(
+        self,
+        model_name: str,
+        provider: Optional[str] = None,
+        strict: bool = False,
+    ) -> str:
+        """Resolve ``model_name`` to a LiteLLM-routable string.
+
+        When ``strict`` is True and the provider can't be resolved, raise
+        ``UnknownEmbeddingProvider`` so the caller can short-circuit instead of
+        letting LiteLLM burn a retry loop on an unroutable name. Non-strict
+        callers (e.g. ingestion) keep the original best-effort behavior of
+        returning the raw name.
         """
 
         if not model_name:
             return ""
-            
+
         # Skip formatting if already has a known provider prefix
         if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
             return model_name
-            
+
         # Check if provider is explicitly given and not "openai"
         provider_lower = provider.lower() if provider else None
-        
+
         if provider_lower is None:
             # Try looking in registry
             provider_lower = ModelsService._model_provider_registry.get(model_name)
@@ -127,12 +147,17 @@ class ModelsService:
                 provider_lower = ModelsService._model_provider_registry.get(model_name)
 
         if provider_lower is None:
+            if strict:
+                # Caller wants fail-fast: the model isn't claimed by any
+                # currently-configured provider. Typical trigger: corpus was
+                # embedded with a model whose provider has since been removed.
+                raise UnknownEmbeddingProvider(model_name)
             logger.warning(
                 "Could not determine provider for model; using model name as-is",
                 model_name=model_name,
             )
             return model_name  # OpenAI-compatible models work without a prefix
-            
+
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
     async def get_openai_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
@@ -368,6 +393,18 @@ class ModelsService:
                                     "label": model_name,
                                     "default": OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN
                                     in model_name.lower(),
+                                }
+                            )
+                        if not capabilities and not has_embedding:
+                            # Older Ollama versions don't return a capabilities field.
+                            # Register the model as a potential embedding model so
+                            # search can route it through Ollama. If it can't actually
+                            # embed, the LiteLLM call will fail and be caught gracefully.
+                            embedding_models.append(
+                                {
+                                    "value": model_name,
+                                    "label": model_name,
+                                    "default": "nomic-embed-text" in model_name.lower(),
                                 }
                             )
                     except Exception as e:
