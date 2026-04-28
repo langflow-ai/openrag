@@ -138,6 +138,9 @@ class ModelsService:
         # must be routed as "watsonx/openai/gpt-oss-120b", not sent to OpenAI.
         if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
             registered_provider = ModelsService._model_provider_registry.get(model_name)
+            if registered_provider is None:
+                await self.update_model_registry()
+                registered_provider = ModelsService._model_provider_registry.get(model_name)
             if registered_provider and not model_name.startswith(registered_provider + "/"):
                 return f"{registered_provider}/{model_name}"
             return model_name
