@@ -395,6 +395,18 @@ class ModelsService:
                                     in model_name.lower(),
                                 }
                             )
+                        if not capabilities and not has_embedding:
+                            # Older Ollama versions don't return a capabilities field.
+                            # Register the model as a potential embedding model so
+                            # search can route it through Ollama. If it can't actually
+                            # embed, the LiteLLM call will fail and be caught gracefully.
+                            embedding_models.append(
+                                {
+                                    "value": model_name,
+                                    "label": model_name,
+                                    "default": "nomic-embed-text" in model_name.lower(),
+                                }
+                            )
                     except Exception as e:
                         logger.warning(
                             f"Failed to check capabilities for model {model_name}: {str(e)}"

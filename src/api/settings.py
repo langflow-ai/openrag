@@ -964,17 +964,12 @@ async def update_settings(
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
 
-        # Refresh model registry so get_litellm_model_name(strict=True) sees the
-        # updated provider list — force_remove skips _affected_embedding_models which
-        # is the usual registry refresh trigger.
-        if provider_updated:
-            await models_service.update_model_registry()
-
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:
             task = asyncio.create_task(
                 _run_async_post_save_langflow_updates(
                     session_manager=session_manager,
+                    models_service=models_service if provider_updated else None,
                     update_mcp_servers=(
                         body.embedding_provider is not None
                         or body.embedding_model is not None
@@ -1550,11 +1545,18 @@ async def _run_async_post_save_langflow_updates(
     session_manager,
     update_mcp_servers: bool,
     update_model_values: bool,
+    models_service=None,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
         current_config = get_openrag_config()
         flows_service = _get_flows_service()
+
+        # Refresh model registry so get_litellm_model_name(strict=True) sees the
+        # updated provider list — force_remove skips _affected_embedding_models which
+        # is the usual registry refresh trigger.
+        if models_service is not None:
+            await models_service.update_model_registry()
 
         # Update global variables
         await _update_langflow_global_variables(
