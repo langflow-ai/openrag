@@ -31,7 +31,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { trackButton } from "@/lib/analytics";
+import {
+  trackButton,
+  trackProcessFailure,
+  trackProcessSuccess,
+} from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -233,15 +237,33 @@ const OnboardingCard = ({
       queryClient.setQueryData(["provider", "health"], healthData);
       setError(null);
       if (!isEmbedding) {
+        trackProcessSuccess({
+          processType: "Onboarding",
+          process: "LLM Setup",
+          resultValue: provider,
+          category: "Setup",
+        });
         setCurrentStep(totalSteps);
         setTimeout(() => {
           onComplete();
         }, 1000);
       } else {
+        trackProcessSuccess({
+          processType: "Onboarding",
+          process: "Embedding Setup",
+          resultValue: provider,
+          category: "Setup",
+        });
         setCurrentStep(0);
       }
     },
     onError: (error) => {
+      trackProcessFailure({
+        processType: "Onboarding",
+        process: isEmbedding ? "Embedding Setup" : "LLM Setup",
+        resultValue: error.message,
+        category: "Setup",
+      });
       setError(error.message);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -337,6 +359,17 @@ const OnboardingCard = ({
           : "Sample data ingestion failed. Please try again.";
 
       // Set error message and jump back one step (exactly like onboardingMutation.onError)
+      trackProcessFailure({
+        processType: "Onboarding",
+        process: "Sample Data Ingest",
+        resultValue: errorMessage,
+        category: "Setup",
+        task_id: taskWithFailure.task_id,
+        duration_seconds: taskWithFailure.duration_seconds,
+        total_files: taskWithFailure.total_files,
+        failed_files: taskWithFailure.failed_files,
+      });
+
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -357,6 +390,17 @@ const OnboardingCard = ({
       !taskWithFailure &&
       currentStep === totalSteps - 1
     ) {
+      const completedTask = relevantTasks.find((t) => t.status === "completed");
+      trackProcessSuccess({
+        processType: "Onboarding",
+        process: "Sample Data Ingest",
+        category: "Setup",
+        task_id: completedTask?.task_id,
+        duration_seconds: completedTask?.duration_seconds,
+        total_files: completedTask?.total_files,
+        successful_files: completedTask?.successful_files,
+      });
+
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
       // Wait a bit before completing
@@ -428,7 +472,12 @@ const OnboardingCard = ({
       CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
       elementId: "onboarding-complete-button",
       namespace: "onboarding",
-      payload: { provider: currentProvider },
+      payload: isEmbedding
+        ? {
+            embedding_provider: currentProvider,
+            embedding_model: settings.embedding_model,
+          }
+        : { llm_provider: currentProvider, llm_model: settings.llm_model },
     });
 
     // Record the start time when user clicks Complete

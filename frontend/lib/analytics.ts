@@ -67,4 +67,40 @@ interface ButtonEventParams {
 export const trackButton = <T = Record<string, unknown>>({
   action = "clicked",
   ...rest
-}: T & ButtonEventParams): void => track("Button Clicked", { action, ...rest });
+}: T & ButtonEventParams): void =>
+  track("Button Clicked", { action, ...rest } as Record<string, unknown>);
+
+interface EndProcessParams {
+  processType: string;
+  process?: string;
+  successFlag?: boolean;
+  resultValue?: string;
+  category?: string;
+}
+
+export const trackEndProcess = <T = Record<string, unknown>>(
+  props: T & EndProcessParams,
+): void => track("Ended Process", props as Record<string, unknown>);
+
+export const trackProcessSuccess = <T = Record<string, unknown>>(
+  props: T & Omit<EndProcessParams, "successFlag">,
+): void =>
+  trackEndProcess({ ...props, successFlag: true } as T & EndProcessParams);
+
+export const trackProcessFailure = <T = Record<string, unknown>>(
+  props: T & Omit<EndProcessParams, "successFlag">,
+): void =>
+  trackEndProcess({ ...props, successFlag: false } as T & EndProcessParams);
+
+interface LLMCallParams {
+  model?: string;
+  objectType?: string;
+  taskId?: string;
+  mode?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export const trackLLMCall = <T = Record<string, unknown>>(
+  props: T & LLMCallParams,
+): void => track("LLM Call", props as Record<string, unknown>);
