@@ -1,0 +1,27 @@
+FROM python:3.13-slim
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+# Copy dependency files and install deps only (no project build yet)
+COPY sdks/mcp/pyproject.toml sdks/mcp/uv.lock ./
+RUN uv sync --no-install-project
+
+# Copy source and README, then install the project
+COPY sdks/mcp/src/ ./src/
+COPY sdks/mcp/README.md ./
+RUN uv sync
+
+ENV PYTHONUNBUFFERED=1
+ENV MCP_TRANSPORT=sse
+
+EXPOSE 8080
+
+CMD ["uv", "run", "openrag-mcp"]
