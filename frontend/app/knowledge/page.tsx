@@ -102,6 +102,7 @@ function SearchPage() {
   } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [rowsToDelete, setRowsToDelete] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
@@ -596,12 +597,12 @@ function SearchPage() {
   }, []);
 
   const handleBulkDelete = async () => {
-    if (selectedRows.length === 0) return;
+    if (rowsToDelete.length === 0) return;
 
     setIsBulkDeleting(true);
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
+      const deletePromises = rowsToDelete.map((row) =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename }),
       );
 
@@ -620,8 +621,8 @@ function SearchPage() {
 
       if (totalDeletedChunks > 0) {
         toast.success(
-          `Successfully deleted ${selectedRows.length} document${
-            selectedRows.length > 1 ? "s" : ""
+          `Successfully deleted ${rowsToDelete.length} document${
+            rowsToDelete.length > 1 ? "s" : ""
           }`,
         );
       } else {
@@ -695,7 +696,10 @@ function SearchPage() {
             >
               <KnowledgeBatchActionsBar
                 selectedCount={selectedRows.length}
-                onDelete={() => setShowBulkDeleteDialog(true)}
+                onDelete={() => {
+                  setRowsToDelete(selectedRows);
+                  setShowBulkDeleteDialog(true);
+                }}
                 onCancel={() => {
                   setSelectedRows([]);
                   gridRef.current?.api.deselectAll();
@@ -783,7 +787,10 @@ function SearchPage() {
                 type="button"
                 variant="destructive"
                 className="rounded-lg flex-shrink-0"
-                onClick={() => setShowBulkDeleteDialog(true)}
+                onClick={() => {
+                  setRowsToDelete(selectedRows);
+                  setShowBulkDeleteDialog(true);
+                }}
               >
                 Delete
               </Button>
@@ -899,9 +906,9 @@ function SearchPage() {
       <DeleteConfirmationDialog
         open={showBulkDeleteDialog}
         onOpenChange={setShowBulkDeleteDialog}
-        title={selectedRows.length > 1 ? "Delete documents" : "Delete document"}
-        description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
-        confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
+        title={rowsToDelete.length > 1 ? "Delete documents" : "Delete document"}
+        description={`Are you sure you want to delete ${rowsToDelete.length} document${rowsToDelete.length > 1 ? "s" : ""}?`}
+        confirmText={rowsToDelete.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
         isLoading={isBulkDeleting}
       >
@@ -910,7 +917,7 @@ function SearchPage() {
           This action cannot be undone.
         </p>
         <p className="my-2">Documents to be deleted:</p>
-        {formatFilesToDelete(selectedRows)}
+        {formatFilesToDelete(rowsToDelete)}
       </DeleteConfirmationDialog>
     </>
   );
