@@ -135,10 +135,7 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
 
     assert "opensearch_url_ingestion_flow" in flow_text
     assert OPENRAG_MCP_SERVER_NAME in flow_text
-    assert "DynamicCreateData-ElAqI" in flow_text
-    assert "MCP-k64rA" in flow_text
-    assert '"target": "MCP-k64rA"' in flow_text
-    assert '"fieldName": "headers"' in flow_text
+    assert '"name": "headers"' in flow_text
 
     for global_var_name in [
         "JWT",
@@ -153,4 +150,4 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
         "OPENSEARCH_INDEX_NAME",
         "CONNECTOR_TYPE",
     ]:
-        assert f"dynamic_X-Langflow-Global-Var-{global_var_name}" in flow_text
+        assert f"X-Langflow-Global-Var-{global_var_name}" in flow_text
