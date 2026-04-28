@@ -12,10 +12,10 @@ import PartialEditAgentFlow from '@site/docs/_partial-edit-agent-flow.mdx';
 After you [upload documents to your knowledge base](/ingestion), you can use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
 
 The OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** uses an LLM-powered agent to understand your queries, retrieve relevant information from your knowledge base, and generate context-aware responses.
-The agent can also fetch information from URLs and new documents that you provide during the chat session.
+The agent can also use documents that you provide during the chat session.
 To limit the knowledge available to the agent, use [filters](/knowledge-filters).
 
-The agent can call specialized Model Context Protocol (MCP) tools to extend its capabilities.
+The agent can call specialized tools to extend its capabilities.
 To add or change the available tools, you must edit the [**OpenRAG OpenSearch Agent** flow](#flow).
 
 :::tip
@@ -26,7 +26,7 @@ Try chatting, uploading documents, and modifying chat settings in the [quickstar
 
 When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
 
-If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of eight components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
+If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
 When you inspect this flow, you can edit the components to customize the agent's behavior.
 
 ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
@@ -36,7 +36,7 @@ When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat*
 
 * [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
 The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
-One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **MCP Tools** and **OpenSearch**.
+One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **Calculator** and **OpenSearch**.
 
    The **Agent** component is the star of this flow because it powers decision making, tool calling, and an LLM-driven conversational experience.
 
@@ -57,8 +57,7 @@ One or more specialized tools can be attached to the **Tools** port to extend th
 
    Different models can change the style and content of the agent's responses, and some models might be better suited for certain tasks than others. If the agent doesn't seem to be handling requests well, try changing the model to see how the responses change. For example, fast models might be good for simple queries, but they might not have the depth of reasoning for complex, multi-faceted queries.
 
-* [**MCP Tools** component](https://docs.langflow.org/mcp-client): Connected to the **Agent** component's **Tools** port, this component can be used to [access any MCP server](https://docs.langflow.org/mcp-server) and the MCP tools provided by that server. In this case, your OpenRAG Langflow instance's [**Starter Project**](https://docs.langflow.org/concepts-flows#projects) is the MCP server, and the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow) is the MCP tool.
-This flow fetches content from URLs, and then stores the content in your OpenRAG OpenSearch knowledge base. By serving this flow as an MCP tool, the agent can selectively call this tool if a URL is detected in the chat input.
+* **Calculator** component: Connected to the **Agent** component's **Tools** port, this component lets the agent evaluate arithmetic and quantitative requests with a tool call.
 
 * [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Connected to the **Agent** component's **Tools** port, this component lets the agent search your [OpenRAG OpenSearch knowledge base](/knowledge). The agent might not use this database for every request; the agent uses this connection only if it decides that documents in your knowledge base are relevant to your query.
 

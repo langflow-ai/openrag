@@ -9,7 +9,6 @@ from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 from utils.version_utils import OPENRAG_VERSION
 from config.settings import (
-    DEFAULT_DOCS_URL,
     INGEST_SAMPLE_DATA,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
@@ -848,11 +847,6 @@ async def update_settings(
             task = asyncio.create_task(
                 _run_async_post_save_langflow_updates(
                     session_manager=session_manager,
-                    update_mcp_servers=(
-                        body.embedding_provider is not None
-                        or body.embedding_model is not None
-                        or provider_updated
-                    ),
                     update_model_values=(
                         body.llm_provider is not None
                         or body.llm_model is not None
@@ -1115,9 +1109,6 @@ async def onboarding(
                 current_config.providers.any_configured()):
                 await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
-            if body.embedding_provider or body.embedding_model:
-                await _update_mcp_servers_with_provider_credentials(current_config, session_manager=session_manager, flows_service=flows_service)
-
             if body.llm_provider or body.llm_model or body.embedding_provider or body.embedding_model:
                 await _update_langflow_model_values(current_config, flows_service, embedding_model=body.embedding_model, embedding_provider=body.embedding_provider, llm_model=body.llm_model, llm_provider=body.llm_provider)
 
@@ -1179,17 +1170,7 @@ async def onboarding(
                         jwt_token=ingestion_jwt,
                     )
                     current_config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
-                    from main import (
-                        _get_remote_docs_signature,
-                        _should_use_url_default_docs_ingest,
-                    )
-
-                    if _should_use_url_default_docs_ingest():
-                        current_config.onboarding.openrag_docs_remote_signature = (
-                            await _get_remote_docs_signature(DEFAULT_DOCS_URL)
-                        )
-                    else:
-                        current_config.onboarding.openrag_docs_remote_signature = None
+                    current_config.onboarding.openrag_docs_remote_signature = None
                     logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
@@ -1316,8 +1297,6 @@ async def _create_openrag_docs_filter(
     query_data = json.dumps({
         "query": "",
         "filters": {
-            # URL-based docs ingestion produces many source URLs.
-            # Filter by connector type to target OpenRAG docs only.
             "data_sources": ["*"],
             "document_types": ["*"],
             "owners": ["*"],
@@ -1421,7 +1400,6 @@ async def _update_langflow_global_variables(config, flows_service=None):
 
 async def _run_async_post_save_langflow_updates(
     session_manager,
-    update_mcp_servers: bool,
     update_model_values: bool,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
@@ -1433,12 +1411,6 @@ async def _run_async_post_save_langflow_updates(
         await _update_langflow_global_variables(
             current_config, flows_service=flows_service
         )
-
-        # Update LLM client credentials when embedding selection changes
-        if update_mcp_servers:
-            await _update_mcp_servers_with_provider_credentials(
-                current_config, session_manager, flows_service=flows_service
-            )
 
         # Update model values if provider/model changed (including removals/fallbacks)
         if update_model_values:
@@ -1455,43 +1427,6 @@ async def _run_async_post_save_langflow_updates(
     except Exception as e:
         # Do not fail user request if async sync fails; keep parity with existing behavior.
         logger.error(f"Failed to update Langflow settings asynchronously: {str(e)}")
-
-
-async def _update_mcp_servers_with_provider_credentials(config, session_manager = None, flows_service=None):
-    # Update MCP servers with provider credentials
-    try:
-        from services.langflow_mcp_service import LangflowMCPService
-        from utils.langflow_headers import build_mcp_global_vars_from_config
-
-        mcp_service = LangflowMCPService()
-
-        # Build global vars using utility function
-        mcp_global_vars = await build_mcp_global_vars_from_config(config, flows_service=flows_service)
-
-        # In no-auth mode, add the anonymous JWT token and user details
-        if is_no_auth_mode() and session_manager:
-            from session_manager import AnonymousUser
-
-            # Create/get anonymous JWT for no-auth mode
-            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-            if anonymous_jwt:
-                mcp_global_vars["JWT"] = anonymous_jwt
-
-            # Add anonymous user details
-            anonymous_user = AnonymousUser()
-            mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
-            mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-
-            logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
-
-        if mcp_global_vars:
-            result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
-            logger.info("Updated MCP servers with provider credentials after settings change", **result)
-
-    except Exception as mcp_error:
-        logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
-        # Don't fail the entire settings update if MCP update fails
 
 
 async def _update_langflow_model_values(config, flows_service, llm_model=None, llm_provider=None, embedding_model=None, embedding_provider=None):
@@ -1650,11 +1585,6 @@ async def reapply_all_settings(session_manager = None):
         flows_service = _get_flows_service()
 
         logger.info("Reapplying all settings to Langflow flows and global variables")
-
-        if config.knowledge.embedding_model or config.knowledge.embedding_provider:
-            await _update_mcp_servers_with_provider_credentials(config, session_manager, flows_service=flows_service)
-        else:
-            logger.info("No embedding model or provider configured, skipping MCP server update")
 
         # Update all Langflow settings using helper functions
         try:

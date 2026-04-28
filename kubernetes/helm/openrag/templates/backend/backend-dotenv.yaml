@@ -59,9 +59,6 @@ stringData:
     {{- if .Values.langflow.flows.ingestFlowId }}
     LANGFLOW_INGEST_FLOW_ID={{ .Values.langflow.flows.ingestFlowId | quote }}
     {{- end }}
-    {{- if .Values.langflow.flows.urlIngestFlowId }}
-    LANGFLOW_URL_INGEST_FLOW_ID={{ .Values.langflow.flows.urlIngestFlowId | quote }}
-    {{- end }}
     {{- if .Values.langflow.flows.nudgesFlowId }}
     NUDGES_FLOW_ID={{ .Values.langflow.flows.nudgesFlowId | quote }}
     {{- end }}

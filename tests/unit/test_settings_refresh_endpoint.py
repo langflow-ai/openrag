@@ -24,6 +24,7 @@ async def test_refresh_openrag_docs_returns_refreshed_shape(monkeypatch):
     result = await settings_api.refresh_openrag_docs(
         document_service=object(),
         task_service=object(),
+        models_service=object(),
         langflow_file_service=object(),
         session_manager=object(),
         user=User(user_id="u1", email="u1@example.com", name="User One"),
@@ -50,6 +51,7 @@ async def test_refresh_openrag_docs_returns_skipped_shape(monkeypatch):
     result = await settings_api.refresh_openrag_docs(
         document_service=object(),
         task_service=object(),
+        models_service=object(),
         langflow_file_service=object(),
         session_manager=object(),
         user=User(user_id="u2", email="u2@example.com", name="User Two"),
@@ -77,6 +79,7 @@ async def test_refresh_openrag_docs_wraps_exceptions(monkeypatch):
         await settings_api.refresh_openrag_docs(
             document_service=object(),
             task_service=object(),
+            models_service=object(),
             langflow_file_service=object(),
             session_manager=object(),
             user=User(user_id="u3", email="u3@example.com", name="User Three"),
@@ -102,6 +105,7 @@ def test_refresh_endpoint_requires_auth_in_auth_mode(monkeypatch):
     # Satisfy service dependencies for route construction/execution.
     app.dependency_overrides[settings_api.get_document_service] = lambda: object()
     app.dependency_overrides[settings_api.get_task_service] = lambda: object()
+    app.dependency_overrides[settings_api.get_models_service] = lambda: object()
     app.dependency_overrides[settings_api.get_langflow_file_service] = lambda: object()
     app.dependency_overrides[settings_api.get_session_manager] = lambda: object()
 
@@ -136,6 +140,7 @@ def test_refresh_endpoint_returns_expected_http_response_shape(monkeypatch):
     # Route-level dependency overrides for successful request execution.
     app.dependency_overrides[settings_api.get_document_service] = lambda: object()
     app.dependency_overrides[settings_api.get_task_service] = lambda: object()
+    app.dependency_overrides[settings_api.get_models_service] = lambda: object()
     app.dependency_overrides[settings_api.get_langflow_file_service] = lambda: object()
     app.dependency_overrides[settings_api.get_session_manager] = lambda: object()
     app.dependency_overrides[settings_api.get_current_user] = lambda: User(

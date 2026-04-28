@@ -9,9 +9,9 @@ import TabItem from '@theme/TabItem';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
-Upload documents to your [OpenRAG OpenSearch knowledge base](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
+Upload documents to your [OpenRAG OpenSearch knowledge base](/knowledge) to populate your knowledge base with unique content, such as your own company documents or research papers.
 
-OpenRAG can ingest knowledge from direct file uploads, URLs, and cloud storage connectors.
+OpenRAG can ingest knowledge from direct file uploads and cloud storage connectors.
 
 Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch knowledge base.
 
@@ -87,23 +87,11 @@ For more information, see [Troubleshoot document ingestion or similarity search 
 
 On the <Icon name="Library" aria-hidden="true"/> **Knowledge** or <Icon name="Settings2" aria-hidden="true"/> **Settings** page, click <Icon name="Settings2" aria-hidden="true"/> **Sync** to synchronize your cloud storage and your OpenRAG knowledge base.
 
-## Ingest knowledge from URLs {#url-flow}
+## URL ingestion {#url-flow}
 
-When using the OpenRAG chat, you can enter URLs into the chat to be ingested in real-time during your conversation.
+URL ingestion is disabled. OpenRAG does not fetch, crawl, or ingest web URLs from chat.
 
-OpenRAG runs the **OpenSearch URL Ingestion** flow to ingest web content from URLs.
-This flow isn't directly accessible from the OpenRAG user interface, and it doesn't use Docling.
-Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a [Model Context Protocol (MCP) tool in Langflow](https://docs.langflow.org/mcp-tutorial).
-The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
-
-:::tip
-Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
-
-To ingest URLs recursively, edit the **Depth** parameter in the **OpenSearch URL Ingestion** flow.
-:::
-
-The OpenRAG chat cannot ingest URLs that end in static document file extensions like `.pdf`.
-To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with cloud storage connectors](#oauth-ingestion).
+To add web content to your knowledge base, save or export the content as a supported file type, and then use [Ingest local files and folders](#ingest-local-files-and-folders) or [Ingest files from cloud storage](#oauth-ingestion).
 
 ## Monitor ingestion {#monitor-ingestion}
 

@@ -3,16 +3,11 @@ from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
-import hashlib
-import html
 import httpx
 import os
-import re
 import subprocess
-import tempfile
 import time
 import uuid
-from html.parser import HTMLParser
 
 
 # Configure structured logging early
@@ -77,16 +72,12 @@ from mcp_http.server import create_mcp_server
 
 # Configuration and setup
 from config.settings import (
-    DEFAULT_DOCS_CRAWL_DEPTH,
     DEFAULT_DOCS_INGEST_SOURCE,
-    DEFAULT_DOCS_URL,
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
-    FETCH_OPENRAG_DOCS_AT_STARTUP,
     INGESTION_TIMEOUT,
     INDEX_BODY,
-    LANGFLOW_URL_INGEST_FLOW_ID,
     SESSION_SECRET,
     clients,
     config_manager,
@@ -96,7 +87,6 @@ from config.settings import (
     get_openrag_config,
 )
 from services.auth_service import AuthService
-from services.langflow_mcp_service import LangflowMCPService
 from services.chat_service import ChatService
 
 # Services
@@ -117,31 +107,6 @@ logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion
 EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
-URL_INGEST_EXCLUDED_INGESTION_FILES = {"openrag-documentation.pdf"}
-
-
-class _VisibleTextHTMLParser(HTMLParser):
-    """Extract visible text while skipping script/style content."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._ignored_depth = 0
-        self._chunks: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() in {"script", "style"}:
-            self._ignored_depth += 1
-
-    def handle_endtag(self, tag):
-        if tag.lower() in {"script", "style"} and self._ignored_depth > 0:
-            self._ignored_depth -= 1
-
-    def handle_data(self, data):
-        if self._ignored_depth == 0 and data and not data.isspace():
-            self._chunks.append(data)
-
-    def get_text(self) -> str:
-        return " ".join(self._chunks)
 
 
 async def wait_for_opensearch(opensearch_client=None):
@@ -389,59 +354,6 @@ def _get_documents_dir():
     return path
 
 
-def _should_use_url_default_docs_ingest() -> bool:
-    """Return whether default docs ingestion should use URL crawling."""
-    return DEFAULT_DOCS_INGEST_SOURCE == "url" and bool(DEFAULT_DOCS_URL)
-
-
-async def ingest_openrag_docs_when_ready(
-    document_service,
-    models_service,
-    task_service,
-    langflow_file_service,
-    session_manager,
-    jwt_token=None,
-):
-    """Ingest OpenRAG docs during onboarding."""
-    use_url_ingest = _should_use_url_default_docs_ingest()
-    task_id = None
-    if use_url_ingest:
-        try:
-            await TelemetryClient.send_event(
-                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
-            )
-            if DISABLE_INGEST_WITH_LANGFLOW:
-                task_id = await _ingest_default_documents_url(
-                    document_service=document_service,
-                    models_service=models_service,
-                    docs_url=DEFAULT_DOCS_URL,
-                    crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
-                    jwt_token=jwt_token,
-                )
-            else:
-                logger.info(
-                    "Ingesting default documents using Langflow",
-                    docs_url=DEFAULT_DOCS_URL,
-                )
-                task_id = await _ingest_default_documents_url_langflow(
-                    langflow_file_service=langflow_file_service,
-                    session_manager=session_manager,
-                    task_service=task_service,
-                    docs_url=DEFAULT_DOCS_URL,
-                    crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
-                    jwt_token=jwt_token,
-                )
-            await TelemetryClient.send_event(
-                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_COMPLETE
-            )
-        except Exception as e:
-            logger.error("Default URL documents ingestion failed", error=str(e))
-            await TelemetryClient.send_event(
-                Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_FAILED
-            )
-    return task_id
-
-
 async def ingest_default_documents_when_ready(
     document_service,
     models_service,
@@ -460,14 +372,7 @@ async def ingest_default_documents_when_ready(
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
-        task_id = await ingest_openrag_docs_when_ready(
-            document_service,
-            models_service,
-            task_service,
-            langflow_file_service,
-            session_manager,
-            jwt_token=jwt_token,
-        )
+        task_id = None
 
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
@@ -476,8 +381,6 @@ async def ingest_default_documents_when_ready(
             )
 
         excluded_files = set(EXCLUDED_INGESTION_FILES)
-        if _should_use_url_default_docs_ingest():
-            excluded_files.update(URL_INGEST_EXCLUDED_INGESTION_FILES)
 
         file_paths = [
             os.path.join(root, fn)
@@ -496,7 +399,7 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -507,7 +410,7 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -592,174 +495,6 @@ async def _ingest_default_documents_langflow(
     )
     return task_id
 
-
-async def _ingest_default_documents_url_langflow(
-    langflow_file_service,
-    session_manager,
-    task_service,
-    docs_url: str,
-    crawl_depth: int,
-    jwt_token=None,
-):
-    """Ingest default URL docs using the Langflow URL ingestion pipeline."""
-    if not docs_url:
-        raise ValueError("DEFAULT_DOCS_URL is not configured")
-
-    logger.info(
-        "Using Langflow URL ingestion pipeline for default documents",
-        docs_url=docs_url,
-        crawl_depth=crawl_depth,
-    )
-
-    from session_manager import AnonymousUser
-
-    anonymous_user = AnonymousUser()
-    effective_jwt = jwt_token
-
-    if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(
-            anonymous_user.user_id, effective_jwt
-        )
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
-
-    default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
-            "docs_metadata": [
-                {"key": "owner", "value": None},
-                {"key": "owner_name", "value": anonymous_user.name},
-                {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "openrag_docs"},
-                {"key": "is_sample_data", "value": "true"},
-            ]
-        }
-    }
-
-    task_id = await task_service.create_langflow_url_upload_task(
-        owner_user_id=None,
-        docs_url=docs_url,
-        crawl_depth=crawl_depth,
-        langflow_file_service=langflow_file_service,
-        session_manager=session_manager,
-        jwt_token=effective_jwt,
-        owner_name=anonymous_user.name,
-        owner_email=anonymous_user.email,
-        connector_type="openrag_docs",
-        tweaks=default_tweaks,
-    )
-
-    logger.info(
-        "Started Langflow URL ingestion task for default documents",
-        task_id=task_id,
-        docs_url=docs_url,
-    )
-    return task_id
-
-
-async def _ingest_default_documents_url(
-    document_service,
-    models_service,
-    docs_url: str,
-    crawl_depth: int,
-    jwt_token=None,
-):
-    """Ingest default docs from URL using OpenRAG ingestion logic (no Langflow)."""
-    if not docs_url:
-        raise ValueError("DEFAULT_DOCS_URL is not configured")
-
-    logger.info(
-        "Running default URL docs ingestion with OpenRAG processor",
-        docs_url=docs_url,
-        crawl_depth=crawl_depth,
-    )
-    temp_file_path = await _materialize_default_docs_url_as_text_file(
-        docs_url=docs_url,
-        crawl_depth=crawl_depth,
-    )
-    try:
-        from models.processors import DocumentFileProcessor
-        from utils.hash_utils import hash_id
-
-        from session_manager import AnonymousUser
-
-        anonymous_user = AnonymousUser()
-
-        processor = DocumentFileProcessor(
-            document_service,
-            models_service=models_service,
-            owner_user_id=None,
-            jwt_token=jwt_token,
-            owner_name=anonymous_user.name,
-            owner_email=anonymous_user.email,
-            is_sample_data=True,
-            connector_type="openrag_docs",
-        )
-        await processor.process_document_standard(
-            file_path=temp_file_path,
-            file_hash=hash_id(temp_file_path),
-            owner_user_id=None,
-            original_filename="openrag-url-default.txt",
-            jwt_token=jwt_token,
-            owner_name=anonymous_user.name,
-            owner_email=anonymous_user.email,
-            file_size=os.path.getsize(temp_file_path),
-            connector_type="openrag_docs",
-            is_sample_data=True,
-        )
-    finally:
-        try:
-            os.unlink(temp_file_path)
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            logger.error(
-                "Failed to clean temporary default URL docs file",
-                path=temp_file_path,
-                error=str(e),
-            )
-
-
-async def _materialize_default_docs_url_as_text_file(
-    docs_url: str,
-    crawl_depth: int,
-) -> str:
-    """Fetch URL content and write a temporary text file for OpenRAG ingestion."""
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        response = await client.get(docs_url)
-        response.raise_for_status()
-        raw_html = response.text
-
-    title_match = re.search(
-        r"<title[^>]*>(.*?)</title\s*>",
-        raw_html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
-
-    text_parser = _VisibleTextHTMLParser()
-    text_parser.feed(raw_html)
-    text_parser.close()
-    normalized_text = re.sub(r"\s+", " ", text_parser.get_text()).strip()
-
-    content = (
-        f"{title}\n\n"
-        f"Source URL: {docs_url}\n"
-        f"Crawl depth: {crawl_depth}\n\n"
-        f"{normalized_text}\n"
-    )
-
-    temp_file = tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".txt",
-        prefix="openrag-url-default-",
-        delete=False,
-        encoding="utf-8",
-    )
-    with temp_file:
-        temp_file.write(content)
-    return temp_file.name
-
-
 async def _delete_existing_default_docs(
     session_manager, connector_type: str, jwt_token=None
 ):
@@ -796,8 +531,7 @@ async def _delete_existing_default_docs(
         "query": {
             "bool": {
                 "should": [
-                    # URL-based default docs are ingested as system_default and
-                    # owned by the anonymous onboarding user.
+                    # Default docs may be owned by the anonymous onboarding user.
                     {
                         "bool": {
                             "must": [
@@ -851,7 +585,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         current_version=current_version,
     )
     await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
-    await ingest_openrag_docs_when_ready(
+    await ingest_default_documents_when_ready(
         document_service,
         models_service,
         task_service,
@@ -859,14 +593,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         session_manager,
     )
     config.onboarding.openrag_docs_ingested_version = current_version
-    if _should_use_url_default_docs_ingest():
-        # Refresh signature metadata after upgrade reingestion so startup
-        # signature checks don't trigger an immediate duplicate ingest.
-        config.onboarding.openrag_docs_remote_signature = (
-            await _get_remote_docs_signature(DEFAULT_DOCS_URL)
-        )
-    else:
-        config.onboarding.openrag_docs_remote_signature = None
+    config.onboarding.openrag_docs_remote_signature = None
     if not config_manager.save_config_file(config):
         logger.warning(
             "Default docs were reingested but failed to persist metadata",
@@ -874,51 +601,6 @@ async def _reingest_default_docs_on_upgrade_if_needed(
             signature=config.onboarding.openrag_docs_remote_signature,
         )
     return True
-
-
-async def _get_remote_docs_signature(docs_url: str):
-    """Get a signature for remote docs to detect content updates."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            head_response = await client.head(docs_url)
-            if head_response.status_code >= 400:
-                get_response = await client.get(docs_url)
-                if get_response.status_code >= 400:
-                    logger.warning(
-                        "Failed to fetch remote docs signature",
-                        docs_url=docs_url,
-                        status_code=get_response.status_code,
-                    )
-                    return None
-                return hashlib.sha256(get_response.text.encode("utf-8")).hexdigest()
-
-            etag = (head_response.headers.get("etag") or "").strip()
-            last_modified = (head_response.headers.get("last-modified") or "").strip()
-            if etag:
-                # Prefer ETag when available: it is typically the strongest
-                # cache validator and stays stable if extra cache headers
-                # appear/disappear without content changes.
-                return f"etag={etag}"
-            if last_modified:
-                return f"last_modified={last_modified}"
-
-            # HEAD has no body. If cache headers are missing, fetch the page body.
-            get_response = await client.get(docs_url)
-            if get_response.status_code >= 400:
-                logger.warning(
-                    "Failed to fetch remote docs signature body fallback",
-                    docs_url=docs_url,
-                    status_code=get_response.status_code,
-                )
-                return None
-            return hashlib.sha256(get_response.text.encode("utf-8")).hexdigest()
-    except Exception as e:
-        logger.error(
-            "Unable to retrieve remote docs signature",
-            docs_url=docs_url,
-            error=str(e),
-        )
-        return None
 
 
 async def refresh_default_openrag_docs(
@@ -931,20 +613,18 @@ async def refresh_default_openrag_docs(
     reason: str = "startup",
     jwt_token=None,
 ):
-    """Refresh OpenRAG docs if remote content changed or when forced."""
+    """Refresh packaged OpenRAG docs when explicitly forced."""
     await TelemetryClient.send_event(
         Category.DOCUMENT_INGESTION,
         MessageId.ORB_DOC_REFRESH_START,
         metadata={"reason": reason, "force": force},
     )
     try:
-        if not _should_use_url_default_docs_ingest():
+        if not force:
             logger.info(
-                "Skipping OpenRAG docs refresh: URL ingestion is not active",
+                "Skipping OpenRAG docs refresh: URL ingestion is disabled",
                 ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
                 disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
-                has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
-                has_docs_url=bool(DEFAULT_DOCS_URL),
             )
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION,
@@ -952,7 +632,7 @@ async def refresh_default_openrag_docs(
                 metadata={
                     "reason": reason,
                     "force": force,
-                    "skip_reason": "url_ingestion_inactive",
+                    "skip_reason": "url_ingestion_disabled",
                 },
             )
             return False
@@ -971,52 +651,17 @@ async def refresh_default_openrag_docs(
             )
             return False
 
-        signature = await _get_remote_docs_signature(DEFAULT_DOCS_URL)
-        if not signature and not force:
-            await TelemetryClient.send_event(
-                Category.DOCUMENT_INGESTION,
-                MessageId.ORB_DOC_REFRESH_SKIPPED,
-                metadata={
-                    "reason": reason,
-                    "force": force,
-                    "skip_reason": "signature_unavailable",
-                },
-            )
-            return False
-
-        previous_signature = config.onboarding.openrag_docs_remote_signature
-        should_refresh = force or (
-            signature is not None and signature != previous_signature
-        )
-        if not should_refresh:
-            logger.info(
-                "OpenRAG docs refresh skipped: remote signature unchanged",
-                signature=signature,
-            )
-            await TelemetryClient.send_event(
-                Category.DOCUMENT_INGESTION,
-                MessageId.ORB_DOC_REFRESH_SKIPPED,
-                metadata={
-                    "reason": reason,
-                    "force": force,
-                    "skip_reason": "signature_unchanged",
-                },
-            )
-            return False
-
         logger.info(
-            "Refreshing default OpenRAG docs",
+            "Refreshing packaged OpenRAG docs",
             reason=reason,
             force=force,
-            previous_signature=previous_signature,
-            new_signature=signature,
         )
         await _delete_existing_default_docs(
             session_manager,
             connector_type="openrag_docs",
             jwt_token=jwt_token,
         )
-        await ingest_openrag_docs_when_ready(
+        await ingest_default_documents_when_ready(
             document_service,
             models_service,
             task_service,
@@ -1025,15 +670,11 @@ async def refresh_default_openrag_docs(
             jwt_token=jwt_token,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
-        # Keep docs version/signature metadata consistent after a refresh.
-        # If signature retrieval failed, persist None explicitly instead of
-        # leaving a stale previous signature value.
-        config.onboarding.openrag_docs_remote_signature = signature
+        config.onboarding.openrag_docs_remote_signature = None
         if not config_manager.save_config_file(config):
             logger.warning(
                 "OpenRAG docs refreshed but failed to persist metadata",
                 version=config.onboarding.openrag_docs_ingested_version,
-                signature=config.onboarding.openrag_docs_remote_signature,
             )
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION,
@@ -1170,71 +811,6 @@ async def _ingest_default_documents_openrag(
     return task_id
 
 
-async def _update_mcp_servers_with_provider_credentials(services):
-    """Update MCP servers with provider credentials at startup.
-
-    This is especially important for no-auth mode where users don't go through
-    the OAuth login flow that would normally set these credentials.
-    """
-    try:
-        auth_service = services.get("auth_service")
-        session_manager = services.get("session_manager")
-
-        if not auth_service or not auth_service.langflow_mcp_service:
-            logger.debug("MCP service not available, skipping credential update")
-            return
-
-        config = get_openrag_config()
-
-        # Build global vars with provider credentials using utility function
-        from utils.langflow_headers import build_mcp_global_vars_from_config
-
-        flows_service = services.get("flows_service")
-        global_vars = await build_mcp_global_vars_from_config(
-            config, flows_service=flows_service
-        )
-
-        # In no-auth mode, add the anonymous JWT token and user details
-        if is_no_auth_mode() and session_manager:
-            from session_manager import AnonymousUser
-
-            # Create/get anonymous JWT for no-auth mode
-            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-            if anonymous_jwt:
-                global_vars["JWT"] = anonymous_jwt
-
-            # Add anonymous user details
-            anonymous_user = AnonymousUser()
-            global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            global_vars["OWNER_NAME"] = (
-                f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
-            )
-            global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-
-            logger.info(
-                "Added anonymous JWT and user details to MCP servers for no-auth mode"
-            )
-
-        if global_vars:
-            result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(
-                global_vars
-            )
-            logger.info(
-                "Updated MCP servers with provider credentials at startup", **result
-            )
-        else:
-            logger.debug(
-                "No provider credentials configured, skipping MCP server update"
-            )
-
-    except Exception as e:
-        logger.error(
-            "Failed to update MCP servers with provider credentials at startup",
-            error=str(e),
-        )
-        # Don't fail startup if MCP update fails
-
-
 async def startup_tasks(services):
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
@@ -1313,9 +889,8 @@ async def startup_tasks(services):
         await configure_alerting_security()
 
     # Reingest bundled OpenRAG docs once after application upgrade.
-    upgrade_reingested = False
     try:
-        upgrade_reingested = await _reingest_default_docs_on_upgrade_if_needed(
+        await _reingest_default_docs_on_upgrade_if_needed(
             services["document_service"],
             services["models_service"],
             services["task_service"],
@@ -1324,23 +899,6 @@ async def startup_tasks(services):
         )
     except Exception as e:
         logger.error("Default docs reingestion on upgrade failed", error=str(e))
-
-    if FETCH_OPENRAG_DOCS_AT_STARTUP and not upgrade_reingested:
-        try:
-            await refresh_default_openrag_docs(
-                services["document_service"],
-                services["models_service"],
-                services["task_service"],
-                services["langflow_file_service"],
-                services["session_manager"],
-                force=False,
-                reason="startup",
-            )
-        except Exception as e:
-            logger.error("OpenRAG docs startup refresh failed", error=str(e))
-
-    # Update MCP servers with provider credentials (especially important for no-auth mode)
-    await _update_mcp_servers_with_provider_credentials(services)
 
     # Ensure all configured flows exist in Langflow (create-only, never overwrites).
     # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
@@ -1462,7 +1020,6 @@ async def initialize_services():
         session_manager,
         connector_service,
         flows_service,
-        langflow_mcp_service=LangflowMCPService(),
     )
 
     # Load persisted connector connections at startup so webhooks and syncs

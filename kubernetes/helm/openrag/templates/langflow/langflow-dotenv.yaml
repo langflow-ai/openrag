@@ -144,7 +144,6 @@ stringData:
     OWNER_NAME={{ .Values.langflow.flowDefaults.ownerName | quote }}
     OWNER_EMAIL={{ .Values.langflow.flowDefaults.ownerEmail | quote }}
     CONNECTOR_TYPE={{ .Values.langflow.flowDefaults.connectorType | quote }}
-    CONNECTOR_TYPE_URL={{ .Values.langflow.flowDefaults.connectorTypeUrl | quote }}
     DOCUMENT_ID={{ .Values.langflow.flowDefaults.documentId | quote }}
     SOURCE_URL={{ .Values.langflow.flowDefaults.sourceUrl | quote }}
     ALLOWED_USERS={{ .Values.langflow.flowDefaults.allowedUsers | quote }}

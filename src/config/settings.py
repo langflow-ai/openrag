@@ -36,7 +36,6 @@ _legacy_flow_id = os.getenv("FLOW_ID")
 
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
 LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
-LANGFLOW_URL_INGEST_FLOW_ID = os.getenv("LANGFLOW_URL_INGEST_FLOW_ID")
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
 
 if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
@@ -78,19 +77,21 @@ INGEST_SAMPLE_DATA = os.getenv(
     "INGEST_SAMPLE_DATA", "true"
 ).lower() in ("true", "1", "yes")
 
-# Default OpenRAG docs sample ingestion source
-# - "url": crawl DEFAULT_DOCS_URL with URL ingestion flow
-# - "files": ingest files from the openrag-documents directory
+# Default OpenRAG docs sample ingestion source.
+# URL ingestion is disabled; use packaged files from the openrag-documents directory.
+def _resolve_default_docs_ingest_source() -> str:
+    configured_source = (
+        os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "files").strip().lower() or "files"
+    )
+    if configured_source != "files":
+        logger.warning(
+            "DEFAULT_DOCS_INGEST_SOURCE only supports files; ignoring unsupported value",
+            configured_source=configured_source,
+        )
+    return "files"
 
-DEFAULT_DOCS_INGEST_SOURCE = os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "url").lower()
-DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.openr.ag/")
-#TODO: Enable this when the flow is updated to use the new variables
 
-DEFAULT_DOCS_CRAWL_DEPTH = get_env_int("DEFAULT_DOCS_CRAWL_DEPTH", 2)
-
-FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv(
-    "FETCH_OPENRAG_DOCS_AT_STARTUP", "false"
-).lower() in ("true", "1", "yes")
+DEFAULT_DOCS_INGEST_SOURCE = _resolve_default_docs_ingest_source()
 
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)

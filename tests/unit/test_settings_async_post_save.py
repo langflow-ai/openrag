@@ -88,7 +88,7 @@ async def test_update_settings_retains_background_task_reference(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
+async def test_provider_removal_triggers_langflow_model_sync(monkeypatch):
     settings_api._background_tasks.clear()
     config = _make_config_for_ollama_removal()
     post_save_mock = AsyncMock()
@@ -131,6 +131,5 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
 
     assert post_save_mock.call_count == 1
     kwargs = post_save_mock.call_args.kwargs
-    assert kwargs["update_mcp_servers"] is True
+    assert "update_mcp_servers" not in kwargs
     assert kwargs["update_model_values"] is True
-

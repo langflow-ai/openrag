@@ -1,7 +1,6 @@
 from config.settings import (
     AGENT_COMPONENT_DISPLAY_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
-    LANGFLOW_URL_INGEST_FLOW_ID,
     NUDGES_FLOW_ID,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
@@ -185,7 +184,6 @@ class FlowsService:
             ("nudges", NUDGES_FLOW_ID),
             ("retrieval", LANGFLOW_CHAT_FLOW_ID),
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
 
         logger.info("Starting periodic backup of Langflow flows")
@@ -319,7 +317,7 @@ class FlowsService:
 
         Args:
             flow_id: The flow ID to backup
-            flow_type: The flow type name (nudges, retrieval, ingest, url_ingest)
+            flow_type: The flow type name (nudges, retrieval, ingest)
             flow_data: The flow data to backup (if None, fetches from API)
 
         Returns:
@@ -439,11 +437,9 @@ class FlowsService:
             flow_id = LANGFLOW_CHAT_FLOW_ID
         elif flow_type == "ingest":
             flow_id = LANGFLOW_INGEST_FLOW_ID
-        elif flow_type == "url_ingest":
-            flow_id = LANGFLOW_URL_INGEST_FLOW_ID
         else:
             raise ValueError(
-                "flow_type must be either 'nudges', 'retrieval', 'ingest', or 'url_ingest'"
+                "flow_type must be either 'nudges', 'retrieval', or 'ingest'"
             )
 
         if not flow_id:
@@ -853,7 +849,6 @@ class FlowsService:
             ("nudges", NUDGES_FLOW_ID),
             ("retrieval", LANGFLOW_CHAT_FLOW_ID),
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
         created_flow_types: set[str] = set()
 
@@ -923,7 +918,6 @@ class FlowsService:
             ("nudges", NUDGES_FLOW_ID),
             ("retrieval", LANGFLOW_CHAT_FLOW_ID),
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
 
         async def check_single_flow_reset(flow_type, flow_id):
@@ -973,7 +967,6 @@ class FlowsService:
                     {"name": "nudges", "flow_id": NUDGES_FLOW_ID},
                     {"name": "retrieval", "flow_id": LANGFLOW_CHAT_FLOW_ID},
                     {"name": "ingest", "flow_id": LANGFLOW_INGEST_FLOW_ID},
-                    {"name": "url_ingest", "flow_id": LANGFLOW_URL_INGEST_FLOW_ID},
                 ]
 
             tasks = []
