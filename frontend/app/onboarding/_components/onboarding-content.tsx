@@ -12,7 +12,7 @@ import type { Message } from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
 import { useChat } from "@/contexts/chat-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
-import { trackButton } from "@/lib/analytics";
+import { trackButton, trackLLMCall } from "@/lib/analytics";
 import type { FilterInput } from "@/lib/filter-normalization";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
@@ -86,6 +86,12 @@ export function OnboardingContent({
 
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
     onComplete: async (message, newResponseId) => {
+      trackLLMCall({
+        mode: "onboarding",
+        model: settings?.agent?.llm_model,
+        inputTokens: message.usage?.input_tokens,
+        outputTokens: message.usage?.output_tokens,
+      });
       setAssistantMessage(message);
       // Save assistant message to backend
       await updateOnboardingMutation.mutateAsync({
