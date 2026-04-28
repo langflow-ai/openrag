@@ -12,6 +12,7 @@ import type { Message } from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
 import { useChat } from "@/contexts/chat-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+import { trackButton } from "@/lib/analytics";
 import type { FilterInput } from "@/lib/filter-normalization";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
@@ -142,6 +143,11 @@ export function OnboardingContent({
   const NUDGES = ["What is OpenRAG?"];
 
   const handleNudgeClick = async (nudge: string) => {
+    trackButton({
+      CTA: `Learn Basics - ${nudge}`,
+      elementId: "onboarding-nudge",
+      namespace: "onboarding",
+    });
     setSelectedNudge(nudge);
     setAssistantMessage(null);
 

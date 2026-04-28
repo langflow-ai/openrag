@@ -9,6 +9,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
+import { trackButton } from "@/lib/analytics";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -158,6 +159,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   };
 
   const handleUploadClick = () => {
+    trackButton({
+      CTA: "Add Data - Add a document",
+      elementId: "upload-button",
+      namespace: "onboarding",
+    });
     fileInputRef.current?.click();
   };
 

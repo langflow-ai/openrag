@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -422,6 +423,13 @@ const OnboardingCard = ({
     } else if (currentProvider === "ollama" && settings.ollama_endpoint) {
       onboardingData.ollama_endpoint = settings.ollama_endpoint;
     }
+
+    trackButton({
+      CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
+      elementId: "onboarding-complete-button",
+      namespace: "onboarding",
+      payload: { provider: currentProvider },
+    });
 
     // Record the start time when user clicks Complete
     setProcessingStartTime(Date.now());

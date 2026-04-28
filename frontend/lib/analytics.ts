@@ -27,5 +27,38 @@ export const page = (
   properties: Record<string, unknown> = {},
 ) => {
   if (!writeKey) return;
-  analytics.page(undefined, pageTitle, properties);
+  analytics.page(undefined, pageTitle, {
+    ...REQUIRED_STATIC_PROPERTIES,
+    ...properties,
+  });
 };
+
+export const track = (
+  eventName: string,
+  properties: Record<string, unknown> = {},
+) => {
+  if (!writeKey) return;
+  try {
+    analytics.track(eventName, {
+      ...REQUIRED_STATIC_PROPERTIES,
+      ...properties,
+    });
+  } catch (e) {
+    console.error("Analytics tracking error:", e);
+  }
+};
+
+interface ButtonEventParams {
+  action?: string;
+  channel?: string;
+  CTA?: string;
+  elementId?: string;
+  namespace?: string;
+  payload?: string | Record<string, unknown>;
+  platformTitle?: string;
+}
+
+export const trackButton = <T = Record<string, unknown>>({
+  action = "clicked",
+  ...rest
+}: T & ButtonEventParams): void => track("Button Clicked", { action, ...rest });
