@@ -1175,7 +1175,7 @@ async def _update_mcp_server_urls(langflow_mcp_service):
         result = await langflow_mcp_service.update_all_mcp_server_urls()
         logger.info("Updated MCP server URLs after settings change", **result)
     except Exception as mcp_error:
-        logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
+        logger.error(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
 async def startup_tasks(services):

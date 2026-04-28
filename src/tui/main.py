@@ -613,7 +613,7 @@ def migrate_legacy_data_directories():
             env_manager.save_env_file()
             logger.info("Updated .env file with centralized paths")
         except Exception as e:
-            logger.warning(f"Failed to update .env paths: {e}")
+            logger.error(f"Failed to update .env paths: {e}")
         return
 
     # Prompt user for confirmation
@@ -694,7 +694,7 @@ def migrate_legacy_data_directories():
         print("  Updated .env with centralized paths")
         logger.info("Updated .env file with centralized paths")
     except Exception as e:
-        logger.warning(f"Failed to update .env paths: {e}")
+        logger.error(f"Failed to update .env paths: {e}")
         print(f"  Warning: Failed to update .env paths: {e}")
 
     print("\nMigration complete!\n")
