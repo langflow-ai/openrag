@@ -42,14 +42,11 @@ class LangflowFileService:
 
         - ``chunkSize`` / ``chunkOverlap`` / ``separator`` update the flow's
           ``SplitText-QIKhg`` node when any of those keys are present.
-        - ``embeddingModel`` maps to ``OpenAIEmbeddings-joRJ6`` ``model`` for
-          flows that use that OpenAI embeddings component id.
-
-        **Connector ingest:** callers should remove ``embeddingModel`` from
-        ``settings`` before merging and pass the user's model via
-        ``run_ingestion_flow(..., selected_embedding_model=...)`` instead, so
-        the global Langflow header override does not fight a conflicting
-        embedding tweak.
+        - ``embeddingModel`` is intentionally not mapped to a component tweak.
+          The embedding model should be supplied via
+          ``run_ingestion_flow(..., selected_embedding_model=...)`` so Langflow
+          resolves it through the global variable override, without relying on
+          provider-specific component ids.
         """
         final_tweaks = dict(tweaks) if tweaks else {}
         if not settings:
@@ -70,13 +67,6 @@ class LangflowFileService:
                 ]
             if settings.get("separator"):
                 final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
-
-        if settings.get("embeddingModel"):
-            if "OpenAIEmbeddings-joRJ6" not in final_tweaks:
-                final_tweaks["OpenAIEmbeddings-joRJ6"] = {}
-            final_tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings[
-                "embeddingModel"
-            ]
 
         return final_tweaks
 
@@ -206,10 +196,6 @@ class LangflowFileService:
         embedding_model = config.knowledge.embedding_model
         if selected_embedding_model:
             embedding_model = selected_embedding_model
-        else:
-            openai_tweak = tweaks.get("OpenAIEmbeddings-joRJ6") if isinstance(tweaks, dict) else None
-            if isinstance(openai_tweak, dict) and openai_tweak.get("model"):
-                embedding_model = openai_tweak["model"]
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token),
