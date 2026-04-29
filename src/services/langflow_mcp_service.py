@@ -153,7 +153,7 @@ class LangflowMCPService:
             logger.debug(f"Patched URL: {url}")
         return url
 
-    async def patch_mcp_server_url(self, server_name: str) -> bool:
+    async def patch_mcp_server_url(self, server_name: str) -> str:
         """Patch a single MCP server to update the Langflow URL and convert to streamable HTTP if applicable.
 
         Only updates the URL (replacing localhost references with the configured LANGFLOW_URL).
@@ -182,7 +182,7 @@ class LangflowMCPService:
                         "Could not extract URL from stdio args, skipping",
                         server_name=server_name,
                     )
-                    return True
+                    return "skipped"
             elif self._is_streamable_http_mode(current):
                 # Already streamable HTTP: only patch the URL, keep headers untouched
                 url = current.get("url")
@@ -193,7 +193,7 @@ class LangflowMCPService:
                         "MCP server URL unchanged, skipping patch",
                         server_name=server_name,
                     )
-                    return True
+                    return "skipped"
                 payload = {"url": patched_url}
                 mode = "streamable_http"
             else:
