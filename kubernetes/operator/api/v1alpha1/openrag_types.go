@@ -149,6 +149,14 @@ type NetworkPolicySpec struct {
 
 // OpenRAGSpec defines the desired state of an OpenRAG instance.
 type OpenRAGSpec struct {
+	// TargetNamespace is the namespace where all OpenRAG resources (deployments,
+	// services, service accounts) are created. The operator creates this namespace
+	// if it does not exist and deletes it when the CR is deleted.
+	// Defaults to the namespace of the CR itself. Cannot be "default".
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self != 'default'",message="targetNamespace must not be 'default'"
+	TargetNamespace string `json:"targetNamespace,omitempty"`
+
 	// ImagePullSecrets for private registries, applied to all component pods.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
