@@ -54,6 +54,9 @@ jobs:
           ./bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
           git diff --exit-code api/
 
+      - name: go test
+        run: go test ./... -race -coverprofile=cover.out
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
