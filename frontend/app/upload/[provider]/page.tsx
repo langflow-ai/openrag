@@ -279,19 +279,15 @@ function BucketView({
         </div>
       </div>
 
-      {connector.connectionId && (
+      {connector.connectionId && browseDialogBucket && (
         <FileBrowserDialog
-          open={browseDialogBucket !== null}
+          open
           onOpenChange={(open) => {
             if (!open) setBrowseDialogBucket(null);
           }}
           connectorType={connector.type}
           connectionId={connector.connectionId}
-          buckets={
-            browseDialogBucket
-              ? [browseDialogBucket]
-              : buckets?.map((b) => b.name)
-          }
+          buckets={[browseDialogBucket]}
         />
       )}
     </>
