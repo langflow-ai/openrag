@@ -9,6 +9,50 @@ External dependencies (OpenSearch, Docling) are referenced by connection config 
 - Go 1.26.0 (`gvm use go1.26.0`)
 - kubectl pointed at a cluster
 
+## Local development cluster (kind + podman)
+
+### 1. Start the podman machine
+
+```bash
+podman machine start
+```
+
+### 2. Configure kind to use podman
+
+```bash
+export KIND_EXPERIMENTAL_PROVIDER=podman
+```
+
+Add this to your shell profile (`~/.zshrc` or `~/.bashrc`) to make it permanent.
+
+### 3. Create the cluster
+
+```bash
+kind create cluster --name openrag
+```
+
+Verify it is running:
+
+```bash
+kubectl cluster-info --context kind-openrag
+kubectl get nodes
+```
+
+### 4. Load a locally built operator image (optional)
+
+If you built the image locally instead of pulling from GHCR:
+
+```bash
+make docker-build IMG=openrag-operator:dev
+podman save openrag-operator:dev | kind load image-archive /dev/stdin --name openrag
+```
+
+### 5. Tear down
+
+```bash
+kind delete cluster --name openrag
+```
+
 ## Quick start
 
 ```bash
@@ -30,7 +74,7 @@ kubectl get openrag
 ## CR overview
 
 ```yaml
-apiVersion: openrag.io/v1alpha1
+apiVersion: openr.ag/v1alpha1
 kind: OpenRAG
 metadata:
   name: my-openrag

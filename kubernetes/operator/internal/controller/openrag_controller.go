@@ -13,10 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
 )
+
+const finalizer = "openr.ag/namespace-cleanup"
 
 // OpenRAGReconciler reconciles an OpenRAG object.
 type OpenRAGReconciler struct {
@@ -24,10 +27,15 @@ type OpenRAGReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags/finalizers,verbs=update
+func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler {
+	return &OpenRAGReconciler{Client: c, Scheme: s}
+}
+
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -45,35 +53,104 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	if err := r.reconcileServiceAccounts(ctx, instance); err != nil {
+	// Handle deletion when a TargetNamespace was managed by the operator.
+	if !instance.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, r.handleDeletion(ctx, instance)
+	}
+
+	// Add finalizer when we own a target namespace distinct from the CR namespace.
+	if instance.Spec.TargetNamespace != "" && instance.Spec.TargetNamespace != instance.Namespace {
+		if !controllerutil.ContainsFinalizer(instance, finalizer) {
+			controllerutil.AddFinalizer(instance, finalizer)
+			if err := r.Update(ctx, instance); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	targetNS := targetNamespace(instance)
+
+	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
+		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
+	}
+	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
 	}
-	if err := r.reconcileServices(ctx, instance); err != nil {
+	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("services: %w", err)
 	}
-	if err := r.reconcileDeployments(ctx, instance); err != nil {
+	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("deployments: %w", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
-		if err := r.reconcileNetworkPolicy(ctx, instance); err != nil {
+		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
 			return ctrl.Result{}, fmt.Errorf("network policy: %w", err)
 		}
 	}
 
-	logger.Info("reconciled OpenRAG instance", "name", instance.Name)
+	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
 	return ctrl.Result{}, nil
 }
 
-func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+// handleDeletion removes the target namespace (and all resources within it) when
+// the CR is deleted, then strips the finalizer so the CR itself can be removed.
+func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+	if !controllerutil.ContainsFinalizer(o, finalizer) {
+		return nil
+	}
+
+	ns := &corev1.Namespace{}
+	err := r.Get(ctx, client.ObjectKey{Name: o.Spec.TargetNamespace}, ns)
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		// Only delete if the namespace was created by this operator for this CR.
+		if ns.Labels[managedByLabel] == o.Name {
+			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
+		}
+	}
+
+	controllerutil.RemoveFinalizer(o, finalizer)
+	return r.Update(ctx, o)
+}
+
+// reconcileNamespace ensures the target namespace exists, labelled as managed by
+// this CR. It is a no-op when targetNS equals the CR's own namespace.
+func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+	if targetNS == o.Namespace {
+		return nil
+	}
+
+	ns := &corev1.Namespace{}
+	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
+	if errors.IsNotFound(err) {
+		ns = &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: targetNS,
+				Labels: map[string]string{
+					managedByLabel:                 o.Name,
+					"app.kubernetes.io/managed-by": "openrag-operator",
+				},
+			},
+		}
+		return r.Create(ctx, ns)
+	}
+	return err
+}
+
+func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	for _, role := range []string{"fe", "be", "lf"} {
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      saName(o.Name, role),
-				Namespace: o.Namespace,
+				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, role),
 			},
 		}
-		if err := ctrl.SetControllerReference(o, sa, r.Scheme); err != nil {
+		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
 			return err
 		}
 		if err := r.createOrUpdate(ctx, sa); err != nil {
@@ -83,7 +160,7 @@ func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *ope
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	type svcDef struct {
 		role string
 		port int32
@@ -97,7 +174,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName(o.Name, d.role),
-				Namespace: o.Namespace,
+				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, d.role),
 			},
 			Spec: corev1.ServiceSpec{
@@ -108,7 +185,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 				},
 			},
 		}
-		if err := ctrl.SetControllerReference(o, svc, r.Scheme); err != nil {
+		if err := r.setOwnerOrLabel(o, svc, targetNS); err != nil {
 			return err
 		}
 		if err := r.createOrUpdate(ctx, svc); err != nil {
@@ -118,14 +195,14 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	deploys := []client.Object{
-		r.frontendDeployment(o),
-		r.backendDeployment(o),
-		r.langflowDeployment(o),
+		r.frontendDeployment(o, targetNS),
+		r.backendDeployment(o, targetNS),
+		r.langflowDeployment(o, targetNS),
 	}
 	for _, d := range deploys {
-		if err := ctrl.SetControllerReference(o, d, r.Scheme); err != nil {
+		if err := r.setOwnerOrLabel(o, d, targetNS); err != nil {
 			return err
 		}
 		if err := r.createOrUpdate(ctx, d); err != nil {
@@ -135,13 +212,13 @@ func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openrag
 	return nil
 }
 
-func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG) *appsv1.Deployment {
+func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.Frontend
 	replicas := replicasOrDefault(spec.Replicas)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName(o.Name, "fe"),
-			Namespace: o.Namespace,
+			Namespace: targetNS,
 			Labels:    componentLabels(o.Name, "fe"),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -176,7 +253,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG) *apps
 	}
 }
 
-func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG) *appsv1.Deployment {
+func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.Backend
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -213,7 +290,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG) *appsv
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName(o.Name, "be"),
-			Namespace: o.Namespace,
+			Namespace: targetNS,
 			Labels:    componentLabels(o.Name, "be"),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -248,7 +325,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG) *appsv
 	}
 }
 
-func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG) *appsv1.Deployment {
+func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.Langflow
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -290,7 +367,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG) *apps
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName(o.Name, "lf"),
-			Namespace: o.Namespace,
+			Namespace: targetNS,
 			Labels:    componentLabels(o.Name, "lf"),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -327,18 +404,15 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG) *apps
 	}
 }
 
-func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	labels := componentLabels(o.Name, "lf")
 
 	egress := []networkingv1.NetworkPolicyEgressRule{
-		// langflow -> itself
 		{
 			Ports: []networkingv1.NetworkPolicyPort{tcpPort(7860)},
 			To:    []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: labels}}},
 		},
-		// DNS
 		{Ports: []networkingv1.NetworkPolicyPort{udpPort(53), tcpPort(53)}},
-		// OpenSearch + external HTTPS
 		{Ports: []networkingv1.NetworkPolicyPort{tcpPort(9200), tcpPort(443)}},
 	}
 
@@ -351,7 +425,7 @@ func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openr
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName(o.Name, "lf-netpol"),
-			Namespace: o.Namespace,
+			Namespace: targetNS,
 			Labels:    labels,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
@@ -367,10 +441,26 @@ func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openr
 			Egress: egress,
 		},
 	}
-	if err := ctrl.SetControllerReference(o, np, r.Scheme); err != nil {
+	if err := r.setOwnerOrLabel(o, np, targetNS); err != nil {
 		return err
 	}
 	return r.createOrUpdate(ctx, np)
+}
+
+// setOwnerOrLabel sets a controller owner reference when the resource lives in the
+// same namespace as the CR. For cross-namespace resources it falls back to a label
+// since Kubernetes forbids cross-namespace owner references.
+func (r *OpenRAGReconciler) setOwnerOrLabel(o *openragv1alpha1.OpenRAG, obj client.Object, targetNS string) error {
+	if targetNS == o.Namespace {
+		return ctrl.SetControllerReference(o, obj, r.Scheme)
+	}
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[managedByLabel] = o.Name
+	obj.SetLabels(labels)
+	return nil
 }
 
 func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Object) error {
@@ -398,6 +488,15 @@ func (r *OpenRAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // helpers
+
+const managedByLabel = "openr.ag/managed-by"
+
+func targetNamespace(o *openragv1alpha1.OpenRAG) string {
+	if o.Spec.TargetNamespace != "" {
+		return o.Spec.TargetNamespace
+	}
+	return o.Namespace
+}
 
 func resourceName(crName, role string) string {
 	return crName + "-openrag-" + role

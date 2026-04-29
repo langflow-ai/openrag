@@ -7,6 +7,16 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   - secrets
   - serviceaccounts
@@ -44,7 +54,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags
   verbs:
@@ -56,13 +66,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags/finalizers
   verbs:
   - update
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags/status
   verbs:

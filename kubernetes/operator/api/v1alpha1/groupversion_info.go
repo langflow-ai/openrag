@@ -1,6 +1,6 @@
-// Package v1alpha1 contains API Schema definitions for the openrag.io v1alpha1 API group.
+// Package v1alpha1 contains API Schema definitions for the openr.ag v1alpha1 API group.
 // +kubebuilder:object:generate=true
-// +groupName=openrag.io
+// +groupName=openr.ag
 package v1alpha1
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	GroupVersion  = schema.GroupVersion{Group: "openrag.io", Version: "v1alpha1"}
+	GroupVersion  = schema.GroupVersion{Group: "openr.ag", Version: "v1alpha1"}
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 	AddToScheme   = SchemeBuilder.AddToScheme
 )
