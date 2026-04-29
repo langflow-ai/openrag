@@ -27,6 +27,10 @@ type OpenRAGReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler {
+	return &OpenRAGReconciler{Client: c, Scheme: s}
+}
+
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags/finalizers,verbs=update
