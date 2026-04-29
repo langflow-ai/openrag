@@ -1,5 +1,5 @@
 resources:
-- bases/openrag.io_openrags.yaml
+- bases/openr.ag_openrags.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

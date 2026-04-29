@@ -51,7 +51,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "openrag-operator.openrag.io",
+		LeaderElectionID:       "openrag-operator.openr.ag",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

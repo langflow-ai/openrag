@@ -30,7 +30,7 @@ kubectl get openrag
 ## CR overview
 
 ```yaml
-apiVersion: openrag.io/v1alpha1
+apiVersion: openr.ag/v1alpha1
 kind: OpenRAG
 metadata:
   name: my-openrag

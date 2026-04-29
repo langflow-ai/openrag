@@ -24,9 +24,9 @@ type OpenRAGReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openrag.io,resources=openrags/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openr.ag,resources=openrags/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete

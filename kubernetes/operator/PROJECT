@@ -2,7 +2,7 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: openrag.io
+domain: openr.ag
 layout:
 - go.kubebuilder.io/v4
 projectName: openrag-operator
@@ -12,7 +12,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: openrag.io
+  domain: openr.ag
   group: openrag
   kind: OpenRAG
   path: github.com/langflow-ai/openrag-operator/api/v1alpha1
