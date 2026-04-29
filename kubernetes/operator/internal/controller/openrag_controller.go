@@ -131,7 +131,7 @@ func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1
 			ObjectMeta: metav1.ObjectMeta{
 				Name: targetNS,
 				Labels: map[string]string{
-					managedByLabel:               o.Name,
+					managedByLabel:                 o.Name,
 					"app.kubernetes.io/managed-by": "openrag-operator",
 				},
 			},
