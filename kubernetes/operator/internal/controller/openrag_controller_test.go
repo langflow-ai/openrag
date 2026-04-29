@@ -195,7 +195,7 @@ func TestReconcile_BackendMountsEnvSecret(t *testing.T) {
 	var found bool
 	for _, v := range d.Spec.Template.Spec.Volumes {
 		if v.Name == "backend-env" {
-			assert.Equal(t, "my-backend-secret", v.VolumeSource.Secret.SecretName)
+			assert.Equal(t, "my-backend-secret", v.Secret.SecretName)
 			found = true
 		}
 	}
@@ -218,7 +218,7 @@ func TestReconcile_LangflowMountsPVC(t *testing.T) {
 	var found bool
 	for _, v := range d.Spec.Template.Spec.Volumes {
 		if v.Name == "langflow-data" {
-			assert.Equal(t, resourceName(cr.Name, "lf-data"), v.VolumeSource.PersistentVolumeClaim.ClaimName)
+			assert.Equal(t, resourceName(cr.Name, "lf-data"), v.PersistentVolumeClaim.ClaimName)
 			found = true
 		}
 	}
