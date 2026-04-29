@@ -33,6 +33,12 @@ type OpenRAGReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+func NewOpenRAGReconciler(client client.Client, scheme *runtime.Scheme) *OpenRAGReconciler {
+	return &OpenRAGReconciler{
+		Client: client,
+		Scheme: scheme,
+	}
+}
 
 func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
