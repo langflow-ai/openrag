@@ -2,10 +2,9 @@ apiVersion: openr.ag/v1alpha1
 kind: OpenRAG
 metadata:
   name: my-openrag
-  namespace: default
+  namespace: my-tenant
 spec:
-  # imagePullSecrets:
-  # - name: my-registry-secret
+  targetNamespace: my-tenant
 
   frontend:
     image: langflowai/openrag-frontend:latest
@@ -26,14 +25,13 @@ spec:
       limits:
         cpu: "2"
         memory: "8Gi"
-    # envSecret: my-openrag-backend-env      # Secret with ".env" key
+    envSecret: my-openrag-backend-env
     # jwtSigningKeySecret:
     #   name: my-jwt-secret
     #   key: JWT_SIGNING_KEY
     storage:
       enabled: true
-      size: "10Gi"
-      # storageClassName: standard
+      size: "1Gi"
 
   langflow:
     image: langflowai/openrag-langflow:latest
@@ -42,21 +40,20 @@ spec:
         cpu: "500m"
         memory: "1Gi"
       limits:
-        cpu: "4"
-        memory: "8Gi"
-    # envSecret: my-openrag-langflow-env     # Secret with ".env" key
+        cpu: "1"
+        memory: "2Gi"
+    envSecret: my-openrag-langflow-env
     storage:
       enabled: true
-      size: "10Gi"
-      # storageClassName: standard
+      size: "1Gi"
 
   # External OpenSearch — required unless credentials are in backend envSecret
-  opensearch:
-    host: opensearch-coordinating.opensearch.svc.cluster.local
-    port: 9200
-    scheme: https
-    indexName: documents
-    credentialsSecret: opensearch-credentials   # keys: username, password
+  # opensearch:
+  #   host: opensearch-coordinating.opensearch.svc.cluster.local
+  #   port: 9200
+  #   scheme: https
+  #   indexName: documents
+  #   credentialsSecret: opensearch-credentials   # keys: username, password
 
   # External Docling — optional document conversion
   # docling:
@@ -64,6 +61,5 @@ spec:
   #   port: 5001
   #   scheme: http
 
-  # Create a NetworkPolicy restricting Langflow egress
   networkPolicy:
     enabled: false
