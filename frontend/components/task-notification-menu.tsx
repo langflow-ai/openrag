@@ -380,6 +380,16 @@ export function TaskNotificationMenu() {
                             </Button>
                           </div>
                         )}
+                        {hasFailedFileEntries(task) && (
+                          <div className="mt-3">
+                            <TaskErrorContent
+                              task={task}
+                              mode="recent"
+                              showHeader={false}
+                              defaultExpanded={true}
+                            />
+                          </div>
+                        )}
                       </CardContent>
                     )}
                   </Card>
