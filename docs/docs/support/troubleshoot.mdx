@@ -80,9 +80,10 @@ If the application onboarding process hangs for a long time or fails for an unsp
 Make sure your `docling-serve` version is compatible with your OpenRAG version.
 OpenRAG version 0.4.1 requires `docling-serve` version 1.5.0.
 
-If you installed a different version of `docling-serve` before starting or installing OpenRAG, you can do any of the following:
+If you started a `docling-serve` container before starting or installing OpenRAG, and the `docling-serve` version is incompatible with your OpenRAG version, you need to remove or restart the incompatible container.
+There are several ways to do this:
 
-* Remove the incompatible version of `docling-serve`, and then [reinstall OpenRAG](/reinstall) with `uv` or `uvx` to automatically install the compatible version.
+* Remove the `docling-serve` container that is running the incompatible version, and then [reinstall OpenRAG](/reinstall) with `uv` or `uvx` to automatically start a compatible `docling-serve` container.
 
 * After starting OpenRAG, restart the `docling-serve` container with the required version:
 
