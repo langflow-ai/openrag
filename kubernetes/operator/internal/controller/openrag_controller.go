@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,12 +31,17 @@ const (
 
 // OpenRAGReconciler reconciles an OpenRAG object.
 type OpenRAGReconciler struct {
+	EnvVarManager *EnvVarManager
 	client.Client
 	Scheme *runtime.Scheme
 }
 
 func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler {
-	return &OpenRAGReconciler{Client: c, Scheme: s}
+	return &OpenRAGReconciler{
+		EnvVarManager: NewEnvVarManager(),
+		Client:        c,
+		Scheme:        s,
+	}
 }
 
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags,verbs=get;list;watch;create;update;patch;delete
@@ -242,100 +246,87 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 }
 
 func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG) string {
-	var b strings.Builder
-	w := func(k, v string) { fmt.Fprintf(&b, "%s=%s\n", k, v) }
+	// Start with defaults, operator env, and CR env (three-level priority)
+	envVars := r.EnvVarManager.GetBackendEnvVars(o.Spec.Backend.Env)
 
-	// Operator-derived values
-	w("LANGFLOW_URL", "http://"+resourceName(o.Name, "lf")+":7860")
+	// Operator-derived values (always set)
+	envVars["LANGFLOW_URL"] = "http://" + resourceName(o.Name, "lf") + ":7860"
 
+	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
-		w("TENANT_ID", o.Spec.TenantID)
+		envVars["TENANT_ID"] = o.Spec.TenantID
 	}
 
-	// Flow IDs
-	if f := o.Spec.Backend.FlowIDs; f != nil {
-		if f.Chat != "" {
-			w("LANGFLOW_CHAT_FLOW_ID", f.Chat)
-		}
-		if f.Ingest != "" {
-			w("LANGFLOW_INGEST_FLOW_ID", f.Ingest)
-		}
-		if f.URLIngest != "" {
-			w("LANGFLOW_URL_INGEST_FLOW_ID", f.URLIngest)
-		}
-		if f.Nudges != "" {
-			w("NUDGES_FLOW_ID", f.Nudges)
-		}
-	}
-
-	// OpenSearch
+	// OpenSearch configuration from CR spec
 	if os := o.Spec.OpenSearch; os != nil {
-		w("OPENSEARCH_HOST", os.Host)
+		envVars["OPENSEARCH_HOST"] = os.Host
 		port := os.Port
 		if port == 0 {
 			port = 9200
 		}
-		w("OPENSEARCH_PORT", fmt.Sprintf("%d", port))
+		envVars["OPENSEARCH_PORT"] = fmt.Sprintf("%d", port)
 		scheme := os.Scheme
 		if scheme == "" {
 			scheme = "https"
 		}
-		w("OPENSEARCH_URL", fmt.Sprintf("%s://%s:%d", scheme, os.Host, port))
+		envVars["OPENSEARCH_URL"] = fmt.Sprintf("%s://%s:%d", scheme, os.Host, port)
 		if os.IndexName != "" {
-			w("OPENSEARCH_INDEX_NAME", os.IndexName)
+			envVars["OPENSEARCH_INDEX_NAME"] = os.IndexName
 		}
 		// Username injected as env var from credentials secret when set;
 		// fall back to the common default.
 		if os.CredentialsSecret == "" {
-			w("OPENSEARCH_USERNAME", "admin")
+			envVars["OPENSEARCH_USERNAME"] = "admin"
 		}
 	}
 
-	// WatsonX non-sensitive fields
+	// WatsonX configuration from CR spec
 	if wx := o.Spec.WatsonX; wx != nil {
 		if wx.Endpoint != "" {
-			w("WATSONX_ENDPOINT", wx.Endpoint)
+			envVars["WATSONX_ENDPOINT"] = wx.Endpoint
 		}
 		if wx.ProjectID != "" {
-			w("WATSONX_PROJECT_ID", wx.ProjectID)
+			envVars["WATSONX_PROJECT_ID"] = wx.ProjectID
 		}
 	}
 
-	// LLM / Embedding
+	// LLM configuration from CR spec
 	if l := o.Spec.LLM; l != nil {
 		if l.Provider != "" {
-			w("LLM_PROVIDER", l.Provider)
+			envVars["LLM_PROVIDER"] = l.Provider
 		}
 		if l.Model != "" {
-			w("LLM_MODEL", l.Model)
-		}
-	}
-	if e := o.Spec.Embedding; e != nil {
-		if e.Provider != "" {
-			w("EMBEDDING_PROVIDER", e.Provider)
-		}
-		if e.Model != "" {
-			w("EMBEDDING_MODEL", e.Model)
+			envVars["LLM_MODEL"] = l.Model
 		}
 	}
 
-	// OAuth non-sensitive fields
+	// Embedding configuration from CR spec
+	if e := o.Spec.Embedding; e != nil {
+		if e.Provider != "" {
+			envVars["EMBEDDING_PROVIDER"] = e.Provider
+		}
+		if e.Model != "" {
+			envVars["EMBEDDING_MODEL"] = e.Model
+		}
+	}
+
+	// OAuth configuration from CR spec
 	if o.Spec.Backend.IBMAuthEnabled {
-		w("IBM_AUTH_ENABLED", "true")
+		envVars["IBM_AUTH_ENABLED"] = "true"
 	}
 	if o.Spec.Backend.OAuthBrokerURL != "" {
-		w("OAUTH_BROKER_URL", o.Spec.Backend.OAuthBrokerURL)
+		envVars["OAUTH_BROKER_URL"] = o.Spec.Backend.OAuthBrokerURL
 	}
 	if oa := o.Spec.Backend.OAuth; oa != nil {
 		if oa.Google != nil && oa.Google.ClientID != "" {
-			w("GOOGLE_OAUTH_CLIENT_ID", oa.Google.ClientID)
+			envVars["GOOGLE_OAUTH_CLIENT_ID"] = oa.Google.ClientID
 		}
 		if oa.Microsoft != nil && oa.Microsoft.ClientID != "" {
-			w("MICROSOFT_GRAPH_OAUTH_CLIENT_ID", oa.Microsoft.ClientID)
+			envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_ID"] = oa.Microsoft.ClientID
 		}
 	}
 
-	// Docling
+	// Docling configuration from CR spec
 	if d := o.Spec.Docling; d != nil {
 		scheme := d.Scheme
 		if scheme == "" {
@@ -345,150 +336,72 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG) string {
 		if port == 0 {
 			port = 5001
 		}
-		w("DOCLING_SERVE_URL", fmt.Sprintf("%s://%s:%d", scheme, d.Host, port))
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
 	}
 
-	// Fixed runtime defaults
-	w("LANGFLOW_TIMEOUT", "2400")
-	w("LANGFLOW_CONNECT_TIMEOUT", "30")
-	w("INGESTION_TIMEOUT", "3600")
-	w("UPLOAD_BATCH_SIZE", "25")
-	w("LANGFLOW_KEY_RETRIES", "15")
-	w("LANGFLOW_KEY_RETRY_DELAY", "2")
-	w("LANGFLOW_KEY", "")
-	w("LANGFLOW_AUTO_LOGIN", "true")
-	w("OPENRAG_DATA_PATH", "/app/backend-data")
-	w("OPENRAG_DOCUMENTS_PATH", "/app/openrag-documents")
-	w("OPENRAG_DOCUMENT_PATH", "/app/openrag-documents")
-	w("OPENRAG_FLOWS_BACKUP_PATH", "/app/backend-data/flow-backups")
-	w("OPENRAG_KEYS_PATH", "/app/backend-data/keys")
-	w("OPENRAG_CONFIG_PATH", "/app/backend-data/config")
-	w("OPENRAG_VERSION", "latest")
-	w("OPENSEARCH_DATA_PATH", "./opensearch-data")
-	w("LOG_LEVEL", "DEBUG")
-	w("LOG_FORMAT", "json")
-	w("ACCESS_LOG", "true")
-	w("SERVICE_NAME", "openrag")
-	w("ENVIRONMENT", "development")
-	w("INGEST_SAMPLE_DATA", "true")
-	w("DISABLE_INGEST_WITH_LANGFLOW", "false")
-	w("MAX_WORKERS", "4")
-	w("SEGMENT_WRITE_KEY", "kUm1zOjl8CGbtMmEVOtmAaqyIpU7ExFb")
-
-	return b.String()
+	// Convert map to .env file format
+	return r.EnvVarManager.BuildEnvFileContent(envVars)
 }
 
 func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG) string {
-	var b strings.Builder
-	w := func(k, v string) { fmt.Fprintf(&b, "%s=%s\n", k, v) }
+	// Start with defaults, operator env, and CR env (three-level priority)
+	envVars := r.EnvVarManager.GetLangflowEnvVars(o.Spec.Langflow.Env)
 
+	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
-		w("TENANT_ID", o.Spec.TenantID)
+		envVars["TENANT_ID"] = o.Spec.TenantID
 	}
 
-	// OpenSearch
+	// OpenSearch configuration from CR spec
 	if os := o.Spec.OpenSearch; os != nil {
-		w("OPENSEARCH_HOST", os.Host)
+		envVars["OPENSEARCH_HOST"] = os.Host
 		port := os.Port
 		if port == 0 {
 			port = 9200
 		}
-		w("OPENSEARCH_PORT", fmt.Sprintf("%d", port))
+		envVars["OPENSEARCH_PORT"] = fmt.Sprintf("%d", port)
 		scheme := os.Scheme
 		if scheme == "" {
 			scheme = "https"
 		}
-		w("OPENSEARCH_URL", fmt.Sprintf("%s://%s:%d", scheme, os.Host, port))
+		envVars["OPENSEARCH_URL"] = fmt.Sprintf("%s://%s:%d", scheme, os.Host, port)
 		if os.IndexName != "" {
-			w("OPENSEARCH_INDEX_NAME", os.IndexName)
+			envVars["OPENSEARCH_INDEX_NAME"] = os.IndexName
 		}
 	}
 
-	// WatsonX non-sensitive fields
+	// WatsonX configuration from CR spec
 	if wx := o.Spec.WatsonX; wx != nil {
 		if wx.Endpoint != "" {
-			w("WATSONX_ENDPOINT", wx.Endpoint)
+			envVars["WATSONX_ENDPOINT"] = wx.Endpoint
 		}
 		if wx.ProjectID != "" {
-			w("WATSONX_PROJECT_ID", wx.ProjectID)
+			envVars["WATSONX_PROJECT_ID"] = wx.ProjectID
 		}
 	}
 
-	// LLM / Embedding
+	// LLM configuration from CR spec
 	if l := o.Spec.LLM; l != nil {
 		if l.Provider != "" {
-			w("LLM_PROVIDER", l.Provider)
+			envVars["LLM_PROVIDER"] = l.Provider
 		}
 		if l.Model != "" {
-			w("LLM_MODEL", l.Model)
+			envVars["LLM_MODEL"] = l.Model
 		}
 	}
+
+	// Embedding configuration from CR spec
 	if e := o.Spec.Embedding; e != nil {
 		if e.Provider != "" {
-			w("EMBEDDING_PROVIDER", e.Provider)
+			envVars["EMBEDDING_PROVIDER"] = e.Provider
 		}
 		if e.Model != "" {
-			w("EMBEDDING_MODEL", e.Model)
+			envVars["EMBEDDING_MODEL"] = e.Model
 		}
 	}
 
-	// Docling
-	if d := o.Spec.Docling; d != nil {
-		scheme := d.Scheme
-		if scheme == "" {
-			scheme = "http"
-		}
-		port := d.Port
-		if port == 0 {
-			port = 5001
-		}
-		w("DOCLING_SERVE_URL", fmt.Sprintf("%s://%s:%d", scheme, d.Host, port))
-	}
-
-	// Database URL
-	dbURL := o.Spec.Langflow.DatabaseURL
-	if dbURL == "" {
-		dbURL = "sqlite:////app/data/langflow.db"
-	}
-	w("LANGFLOW_DATABASE_URL", dbURL)
-
-	// Fixed runtime defaults
-	w("LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT", "JWT,OPENRAG_QUERY_FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL")
-	w("LANGFLOW_SKIP_AUTH_AUTO_LOGIN", "true")
-	w("LANGFLOW_NEW_USER_IS_ACTIVE", "false")
-	w("LANGFLOW_WORKERS", "4")
-	w("LANGFLOW_CONFIG_DIR", "/tmp")
-	w("LANGFLOW_LOG_LEVEL", "DEBUG")
-	w("HIDE_GETTING_STARTED_PROGRESS", "true")
-	w("LANGFLOW_AUTO_LOGIN", "true")
-	w("LANGFLOW_ENABLE_SUPERUSER_CLI", "false")
-	w("LANGFLOW_ALEMBIC_LOG_TO_STDOUT", "true")
-	w("LANGFLOW_DEACTIVATE_TRACING", "true")
-	w("LANGFLOW_LOAD_FLOWS_PATH", "/app/flows")
-	w("LANGFUSE_HOST", "https://cloud.langfuse.com")
-	w("LANGFLOW_KEY_RETRIES", "15")
-	w("LANGFLOW_KEY_RETRY_DELAY", "2")
-	// Flow context defaults
-	w("JWT", "None")
-	w("OWNER", "None")
-	w("OWNER_NAME", "None")
-	w("OWNER_EMAIL", "None")
-	w("CONNECTOR_TYPE", "system")
-	w("CONNECTOR_TYPE_URL", "url")
-	w("DOCUMENT_ID", "")
-	w("SOURCE_URL", "")
-	w("ALLOWED_USERS", "[]")
-	w("ALLOWED_GROUPS", "[]")
-	w("OPENRAG_QUERY_FILTER", "{}")
-	w("FILENAME", "None")
-	w("MIMETYPE", "None")
-	w("FILESIZE", "0")
-	w("SELECTED_EMBEDDING_MODEL", "")
-	w("OPENAI_API_KEY", "None")
-	w("ANTHROPIC_API_KEY", "None")
-	w("OLLAMA_BASE_URL", "None")
-
-	return b.String()
+	// Convert map to .env file format
+	return r.EnvVarManager.BuildEnvFileContent(envVars)
 }
 
 func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {

@@ -45,18 +45,6 @@ type FrontendSpec struct {
 	ComponentSpec `json:",inline"`
 }
 
-// FlowIDsSpec holds the Langflow flow UUIDs consumed by the backend.
-type FlowIDsSpec struct {
-	// +optional
-	Chat string `json:"chat,omitempty"`
-	// +optional
-	Ingest string `json:"ingest,omitempty"`
-	// +optional
-	URLIngest string `json:"urlIngest,omitempty"`
-	// +optional
-	Nudges string `json:"nudges,omitempty"`
-}
-
 // GoogleOAuthSpec holds Google OAuth2 client credentials.
 type GoogleOAuthSpec struct {
 	// +optional
@@ -100,10 +88,6 @@ type BackendSpec struct {
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`
 
-	// FlowIDs are the Langflow flow UUIDs the backend calls for chat, ingest, etc.
-	// +optional
-	FlowIDs *FlowIDsSpec `json:"flowIds,omitempty"`
-
 	// OAuthBrokerURL is the OAuth callback URL (OAUTH_BROKER_URL).
 	// +optional
 	OAuthBrokerURL string `json:"oauthBrokerUrl,omitempty"`
@@ -126,11 +110,6 @@ type LangflowSpec struct {
 	// a stable key stored in <cr-name>-openrag-gen-creds.
 	// +optional
 	SecretKeySecret *corev1.SecretKeySelector `json:"secretKeySecret,omitempty"`
-
-	// DatabaseURL overrides LANGFLOW_DATABASE_URL.
-	// Defaults to sqlite:////app/data/langflow.db when storage is enabled.
-	// +optional
-	DatabaseURL string `json:"databaseUrl,omitempty"`
 
 	// FlowsRef is the git branch name or commit SHA from which flow JSON files
 	// are downloaded at pod startup via an init container. When set, all *.json

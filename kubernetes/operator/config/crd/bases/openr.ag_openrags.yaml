@@ -1126,19 +1126,6 @@ spec:
                       - name
                       type: object
                     type: array
-                  flowIds:
-                    description: FlowIDs are the Langflow flow UUIDs the backend calls
-                      for chat, ingest, etc.
-                    properties:
-                      chat:
-                        type: string
-                      ingest:
-                        type: string
-                      nudges:
-                        type: string
-                      urlIngest:
-                        type: string
-                    type: object
                   ibmAuthEnabled:
                     description: IBMAuthEnabled enables IBM IAM authentication (IBM_AUTH_ENABLED).
                     type: boolean
@@ -3507,11 +3494,6 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
-                  databaseUrl:
-                    description: |-
-                      DatabaseURL overrides LANGFLOW_DATABASE_URL.
-                      Defaults to sqlite:////app/data/langflow.db when storage is enabled.
-                    type: string
                   env:
                     description: Additional environment variables injected into the
                       container.
