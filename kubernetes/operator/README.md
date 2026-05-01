@@ -38,6 +38,12 @@ kubectl cluster-info --context kind-openrag
 kubectl get nodes
 ```
 
+### 3a. Start the podman machine if it's not running after restart your laptop
+```bash
+podman start openrag-control-plane
+kubectl config use-context kind-openrag  
+```
+
 ### 4. Load a locally built operator image (optional)
 
 If you built the image locally instead of pulling from GHCR:
@@ -45,6 +51,18 @@ If you built the image locally instead of pulling from GHCR:
 ```bash
 make docker-build IMG=openrag-operator:dev
 podman save openrag-operator:dev | kind load image-archive /dev/stdin --name openrag
+```
+
+Install CRD
+
+```bash
+make install
+```
+
+Run the operator locally:
+
+```bash
+go run cmd/main.go
 ```
 
 ### 5. Tear down

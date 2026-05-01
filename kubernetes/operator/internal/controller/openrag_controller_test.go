@@ -180,10 +180,9 @@ func TestReconcile_FrontendEnvContainsBackendHost(t *testing.T) {
 	assert.Equal(t, resourceName(cr.Name, "be"), backendHost)
 }
 
-func TestReconcile_BackendMountsEnvSecret(t *testing.T) {
+func TestReconcile_BackendMountsOperatorManagedEnvSecret(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")
-	cr.Spec.Backend.EnvSecret = "my-backend-secret"
 	r, c := reconciler(s, cr)
 
 	reconcileOnce(t, r, cr)
@@ -192,14 +191,50 @@ func TestReconcile_BackendMountsEnvSecret(t *testing.T) {
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
 
+	expectedSecret := resourceName(cr.Name, "be-env")
 	var found bool
 	for _, v := range d.Spec.Template.Spec.Volumes {
 		if v.Name == "backend-env" {
-			assert.Equal(t, "my-backend-secret", v.Secret.SecretName)
+			assert.Equal(t, expectedSecret, v.Secret.SecretName)
 			found = true
 		}
 	}
-	assert.True(t, found, "backend-env volume should exist")
+	assert.True(t, found, "backend-env volume should exist with operator-managed secret")
+}
+
+func TestReconcile_CreatesEnvSecrets(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	for _, role := range []string{"be-env", "lf-env", "gen-creds"} {
+		sec := &corev1.Secret{}
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: resourceName(cr.Name, role), Namespace: "my-ns"}, sec),
+			"secret for role %s should exist", role)
+	}
+}
+
+func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	sec := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "be-env"), Namespace: "my-ns"}, sec))
+
+	// In the test environment, StringData is not converted to Data
+	// Use StringData if Data is empty (test env), otherwise use Data (real cluster)
+	envContent := string(sec.Data[".env"])
+	if envContent == "" && sec.StringData != nil {
+		envContent = sec.StringData[".env"]
+	}
+	assert.Contains(t, envContent, "LANGFLOW_URL=http://"+resourceName(cr.Name, "lf")+":7860")
 }
 
 func TestReconcile_LangflowMountsPVC(t *testing.T) {

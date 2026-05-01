@@ -1,0 +1,66 @@
+apiVersion: openr.ag/v1alpha1
+kind: OpenRAG
+metadata:
+  name: my-openrag
+  namespace: my-tenant
+spec:
+  targetNamespace: my-tenant
+
+  frontend:
+    image: edwinjosechittilappilly/orag-staging-frontend:release-saas-19a95c48
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+
+  backend:
+    image: edwinjosechittilappilly/orag-staging-backend:release-saas-19a95c48
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "8Gi"
+    # envSecret: my-openrag-backend-env      # Secret with ".env" key
+    # jwtSigningKeySecret:
+    #   name: my-jwt-secret
+    #   key: JWT_SIGNING_KEY
+    storage:
+      enabled: true
+      size: "1Gi"
+
+  langflow:
+    image: edwinjosechittilappilly/orag-staging-langflow:release-saas-19a95c48
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+    # envSecret: my-openrag-langflow-env     # Secret with ".env" key
+    flowsRef: release-saas-0.1   # Download flows from this branch
+    storage:
+      enabled: true
+      size: "1Gi"
+
+  # External OpenSearch — required unless credentials are in backend envSecret
+  # opensearch:
+  #   host: opensearch-coordinating.opensearch.svc.cluster.local
+  #   port: 9200
+  #   scheme: https
+  #   indexName: documents
+  #   credentialsSecret: opensearch-credentials   # keys: username, password
+
+  # External Docling — optional document conversion
+  # docling:
+  #   host: docling-serve.docling.svc.cluster.local
+  #   port: 5001
+  #   scheme: http
+
+  networkPolicy:
+    enabled: false
