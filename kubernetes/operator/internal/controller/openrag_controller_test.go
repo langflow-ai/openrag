@@ -228,7 +228,12 @@ func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName(cr.Name, "be-env"), Namespace: "my-ns"}, sec))
 
+	// In the test environment, StringData is not converted to Data
+	// Use StringData if Data is empty (test env), otherwise use Data (real cluster)
 	envContent := string(sec.Data[".env"])
+	if envContent == "" && sec.StringData != nil {
+		envContent = sec.StringData[".env"]
+	}
 	assert.Contains(t, envContent, "LANGFLOW_URL=http://"+resourceName(cr.Name, "lf")+":7860")
 }
 
