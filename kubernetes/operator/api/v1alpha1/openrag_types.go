@@ -132,6 +132,18 @@ type LangflowSpec struct {
 	// +optional
 	DatabaseURL string `json:"databaseUrl,omitempty"`
 
+	// FlowsRef is the git branch name or commit SHA from which flow JSON files
+	// are downloaded at pod startup via an init container. When set, all *.json
+	// files under flows/ in langflow-ai/openrag at that ref are fetched into
+	// /app/flows (LANGFLOW_LOAD_FLOWS_PATH). Use a commit SHA for reproducibility.
+	// +optional
+	FlowsRef string `json:"flowsRef,omitempty"`
+
+	// FlowsInitImage is the container image used by the flows-download init container.
+	// Defaults to python:3-alpine.
+	// +optional
+	FlowsInitImage string `json:"flowsInitImage,omitempty"`
+
 	// Storage configures a PVC mounted at /app/data (Langflow SQLite + flows).
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`

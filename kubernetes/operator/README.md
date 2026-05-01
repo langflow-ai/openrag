@@ -38,8 +38,9 @@ kubectl cluster-info --context kind-openrag
 kubectl get nodes
 ```
 
-If the cluster already exists, you can skip this step.
-```
+### 3a. Start the podman machine if it's not running after restart your laptop
+```bash
+podman start openrag-control-plane
 kubectl config use-context kind-openrag  
 ```
 

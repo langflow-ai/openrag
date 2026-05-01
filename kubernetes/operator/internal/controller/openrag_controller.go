@@ -805,6 +805,33 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
 	}
 
+	var initContainers []corev1.Container
+	if spec.FlowsRef != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name:         "langflow-flows",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-flows", MountPath: "/app/flows"})
+
+		initImage := spec.FlowsInitImage
+		if initImage == "" {
+			initImage = "python:3-alpine"
+		}
+		initContainers = []corev1.Container{
+			{
+				Name:    "download-flows",
+				Image:   initImage,
+				Command: []string{"python3", "-c", flowsDownloadScript},
+				Env: []corev1.EnvVar{
+					{Name: "FLOWS_REF", Value: spec.FlowsRef},
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: "langflow-flows", MountPath: "/app/flows"},
+				},
+			},
+		}
+	}
+
 	envVars := r.langflowSensitiveEnvVars(o)
 	envVars = append(envVars, spec.Env...)
 
@@ -826,6 +853,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
+					InitContainers:     initContainers,
 					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
@@ -992,6 +1020,31 @@ func setAnnotation(obj client.Object, key, value string) {
 	ann[key] = value
 	obj.SetAnnotations(ann)
 }
+
+// flowsDownloadScript is run by the init container to fetch all *.json flow
+// files from the langflow-ai/openrag GitHub repository at the given ref.
+// It uses only Python stdlib so that python:3-alpine suffices.
+const flowsDownloadScript = `
+import urllib.request, json, os
+ref = os.environ['FLOWS_REF']
+api = 'https://api.github.com/repos/langflow-ai/openrag/contents/flows?ref=' + ref
+req = urllib.request.Request(api, headers={
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'openrag-operator/1.0',
+})
+with urllib.request.urlopen(req) as r:
+    entries = json.load(r)
+os.makedirs('/app/flows', exist_ok=True)
+for e in entries:
+    if not e['name'].endswith('.json'):
+        continue
+    print('Downloading ' + e['name'] + '...', flush=True)
+    with urllib.request.urlopen(e['download_url']) as r:
+        data = r.read()
+    with open('/app/flows/' + e['name'], 'wb') as f:
+        f.write(data)
+print('All flows downloaded', flush=True)
+`
 
 // SetupWithManager registers the controller with the manager.
 func (r *OpenRAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
