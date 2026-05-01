@@ -21,6 +21,8 @@ export const UnifiedCloudPicker = ({
   onPickerStateChange,
   clientId,
   baseUrl,
+  ingestSettings: ingestSettingsProp,
+  onIngestSettingsChange,
   onSettingsChange,
 }: UnifiedCloudPickerProps) => {
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
@@ -29,18 +31,28 @@ export const UnifiedCloudPicker = ({
   const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false);
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | undefined>(undefined);
 
-  // Settings state with defaults
-  const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    ocr: false,
-    pictureDescriptions: false,
-    embeddingModel: "text-embedding-3-small",
-  });
+  const isControlled =
+    ingestSettingsProp !== undefined && onIngestSettingsChange !== undefined;
 
-  // Handle settings changes and notify parent
-  const handleSettingsChange = (newSettings: IngestSettingsType) => {
-    setIngestSettings(newSettings);
+  const [localIngestSettings, setLocalIngestSettings] =
+    useState<IngestSettingsType>({
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      ocr: false,
+      pictureDescriptions: false,
+      embeddingModel: "text-embedding-3-small",
+    });
+
+  const ingestSettings = isControlled
+    ? ingestSettingsProp!
+    : localIngestSettings;
+
+  const handleIngestSettingsChange = (newSettings: IngestSettingsType) => {
+    if (isControlled) {
+      onIngestSettingsChange!(newSettings);
+    } else {
+      setLocalIngestSettings(newSettings);
+    }
     onSettingsChange?.(newSettings);
   };
 
@@ -98,28 +110,11 @@ export const UnifiedCloudPicker = ({
   ]);
 
   const handleAddFiles = () => {
-    // === DIAGNOSTIC LOGGING ===
-    console.log("=== UnifiedCloudPicker handleAddFiles ===");
-    console.log("Provider:", provider);
-    console.log("Client ID:", clientId);
-    console.log("Base URL (from prop):", baseUrl);
-    console.log("Auto Base URL:", autoBaseUrl);
-    console.log("Effective Base URL:", effectiveBaseUrl);
-    console.log("Is Picker Loaded:", isPickerLoaded);
-    console.log("Has Access Token:", !!accessToken);
-
     if (!isPickerLoaded || !accessToken) {
-      console.error(
-        "Cannot open picker: isPickerLoaded=",
-        isPickerLoaded,
-        "hasAccessToken=",
-        !!accessToken,
-      );
       return;
     }
 
     if ((provider === "onedrive" || provider === "sharepoint") && !clientId) {
-      console.error("Client ID required for OneDrive/SharePoint");
       return;
     }
 
@@ -216,7 +211,7 @@ export const UnifiedCloudPicker = ({
         isOpen={isIngestSettingsOpen}
         onOpenChange={setIsIngestSettingsOpen}
         settings={ingestSettings}
-        onSettingsChange={handleSettingsChange}
+        onSettingsChange={handleIngestSettingsChange}
       />
     </div>
   );

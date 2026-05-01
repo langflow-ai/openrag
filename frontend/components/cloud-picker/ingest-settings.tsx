@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { useEffect } from "react";
+import { useMemo } from "react";
 import {
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
@@ -34,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/auth-context";
+import { knowledgeToIngestSettings } from "@/lib/ingest-settings-knowledge";
 import type { IngestSettings as IngestSettingsType } from "./types";
 
 interface IngestSettingsProps {
@@ -83,36 +84,54 @@ export const IngestSettings = ({
           ? ibmModelsData
           : openaiModelsData;
 
-  // Get embedding model from API settings
-  const apiEmbeddingModel =
-    apiSettings.knowledge?.embedding_model ||
-    modelsData?.embedding_models?.find((m) => m.default)?.value ||
-    "text-embedding-3-small";
+  const defaultEmbedding = modelsData?.embedding_models?.find(
+    (m) => m.default,
+  )?.value;
 
-  // Default settings - use API embedding model
   const defaultSettings: IngestSettingsType = {
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    ocr: false,
-    pictureDescriptions: false,
-    embeddingModel: apiEmbeddingModel,
+    ...knowledgeToIngestSettings(apiSettings.knowledge),
+    embeddingModel:
+      apiSettings.knowledge?.embedding_model?.trim() ||
+      defaultEmbedding ||
+      "text-embedding-3-small",
   };
 
-  // Use provided settings or defaults
-  const currentSettings = settings || defaultSettings;
+  const currentSettings = settings ?? defaultSettings;
 
-  // Update settings when API embedding model changes
-  useEffect(() => {
-    if (
-      apiEmbeddingModel &&
-      (!settings || settings.embeddingModel !== apiEmbeddingModel)
-    ) {
-      onSettingsChange?.({
-        ...currentSettings,
-        embeddingModel: apiEmbeddingModel,
-      });
+  /** Radix Select only shows a value that exists in <SelectItem>; always include the current model. */
+  const embeddingSelectOptions = useMemo(() => {
+    const fallbackList = (getFallbackModels(currentProvider).embedding ??
+      []) as ModelOption[];
+    const fromApi = modelsData?.embedding_models;
+    let base: ModelOption[] =
+      fromApi && fromApi.length > 0 ? [...fromApi] : [...fallbackList];
+    const v = currentSettings.embeddingModel?.trim();
+    if (!v) {
+      return base.length > 0
+        ? base
+        : [
+            {
+              value: "text-embedding-3-small",
+              label: "text-embedding-3-small",
+            },
+          ];
     }
-  }, [apiEmbeddingModel, settings, onSettingsChange, currentSettings]);
+    if (!base.some((m) => m.value === v)) {
+      base = [{ value: v, label: v }, ...base];
+    }
+    return base;
+  }, [
+    currentProvider,
+    modelsData?.embedding_models,
+    currentSettings.embeddingModel,
+  ]);
+
+  const selectEmbeddingValue =
+    embeddingSelectOptions.some(
+      (m) => m.value === currentSettings.embeddingModel,
+    ) && currentSettings.embeddingModel
+      ? currentSettings.embeddingModel
+      : (embeddingSelectOptions[0]?.value ?? "text-embedding-3-small");
 
   const handleSettingsChange = (newSettings: Partial<IngestSettingsType>) => {
     onSettingsChange?.({ ...currentSettings, ...newSettings });
@@ -145,7 +164,7 @@ export const IngestSettings = ({
           >
             <Select
               disabled={false}
-              value={currentSettings.embeddingModel}
+              value={selectEmbeddingValue}
               onValueChange={(value) =>
                 handleSettingsChange({ embeddingModel: value })
               }
@@ -162,11 +181,8 @@ export const IngestSettings = ({
               </Tooltip>
               <SelectContent>
                 <ModelSelectItems
-                  models={modelsData?.embedding_models}
-                  fallbackModels={
-                    getFallbackModels(currentProvider)
-                      .embedding as ModelOption[]
-                  }
+                  models={embeddingSelectOptions}
+                  fallbackModels={[]}
                   provider={currentProvider}
                 />
               </SelectContent>

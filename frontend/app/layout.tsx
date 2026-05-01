@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Chivo, IBM_Plex_Sans, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@/components/analytics-provider";
 import { LayoutWrapper } from "@/components/layout-wrapper";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -54,6 +55,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
+            <Analytics />
             <TooltipProvider>
               <AuthProvider>
                 <BrandProvider>

@@ -7,7 +7,7 @@ spec:
   targetNamespace: my-tenant
 
   frontend:
-    image: langflowai/openrag-frontend:latest
+    image: edwinjosechittilappilly/orag-staging-frontend:release-saas-19a95c48
     resources:
       requests:
         cpu: "500m"
@@ -17,7 +17,7 @@ spec:
         memory: "2Gi"
 
   backend:
-    image: langflowai/openrag-backend:latest
+    image: edwinjosechittilappilly/orag-staging-backend:release-saas-19a95c48
     resources:
       requests:
         cpu: "500m"
@@ -25,20 +25,16 @@ spec:
       limits:
         cpu: "2"
         memory: "8Gi"
+    # envSecret: my-openrag-backend-env      # Secret with ".env" key
     # jwtSigningKeySecret:
     #   name: my-jwt-secret
     #   key: JWT_SIGNING_KEY
     storage:
       enabled: true
       size: "1Gi"
-    # flowIds:
-    #   chat: ""
-    #   ingest: ""
-    #   urlIngest: ""
-    #   nudges: ""
 
   langflow:
-    image: langflowai/openrag-langflow:latest
+    image: edwinjosechittilappilly/orag-staging-langflow:release-saas-19a95c48
     resources:
       requests:
         cpu: "500m"
@@ -46,26 +42,11 @@ spec:
       limits:
         cpu: "1"
         memory: "2Gi"
+    # envSecret: my-openrag-langflow-env     # Secret with ".env" key
+    flowsRef: release-saas-0.1   # Download flows from this branch
     storage:
       enabled: true
       size: "1Gi"
-    flowsRef: release-saas-0.1   # branch name or commit SHA
-    # flowsInitImage: python:3-alpine
-
-  # llm:
-  #   provider: watsonx
-  #   model: ibm/granite-3-2-8b-instruct
-
-  # embedding:
-  #   provider: watsonx
-  #   model: ibm/granite-embedding-278m-multilingual
-
-  # watsonx:
-  #   endpoint: https://us-south.ml.cloud.ibm.com
-  #   projectId: ""
-  #   apiKeySecret:
-  #     name: my-watsonx-secret
-  #     key: WATSONX_API_KEY
 
   # External OpenSearch — required unless credentials are in backend envSecret
   # opensearch:

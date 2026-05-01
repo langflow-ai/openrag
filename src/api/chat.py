@@ -101,6 +101,9 @@ async def langflow_endpoint(
                     previous_response_id=body.previous_response_id,
                     stream=True,
                     filter_id=body.filter_id,
+                    owner=user.user_id,
+                    owner_name=user.name,
+                    owner_email=user.email,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -118,6 +121,9 @@ async def langflow_endpoint(
                 previous_response_id=body.previous_response_id,
                 stream=False,
                 filter_id=body.filter_id,
+                owner=user.user_id,
+                owner_name=user.name,
+                owner_email=user.email,
             )
             return JSONResponse(result)
 

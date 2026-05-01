@@ -19,7 +19,9 @@ import {
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import {
   type ChunkResult,
+  EMPTY_SEARCH_RESULT,
   type File,
+  type SearchResult,
   useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
 
@@ -55,10 +57,11 @@ function ChunksPageContent() {
   // const [selectAll, setSelectAll] = useState(false);
 
   // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = [], isFetching } = useGetSearchQuery(
+  const { data = EMPTY_SEARCH_RESULT, isFetching } = useGetSearchQuery(
     queryOverride,
     parsedFilterData,
   );
+  const searchFiles = (data as SearchResult).files;
 
   const handleCopy = useCallback((text: string, index: number) => {
     // Trim whitespace and remove new lines/tabs for cleaner copy
@@ -67,13 +70,11 @@ function ChunksPageContent() {
     setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
   }, []);
 
-  const fileData = (data as File[]).find(
-    (file: File) => file.filename === filename,
-  );
+  const fileData = searchFiles.find((file: File) => file.filename === filename);
 
   // Extract chunks for the specific file
   useEffect(() => {
-    if (!filename || !(data as File[]).length) {
+    if (!filename || !searchFiles.length) {
       setChunks([]);
       return;
     }
@@ -81,7 +82,7 @@ function ChunksPageContent() {
     setChunks(
       fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
     );
-  }, [data, filename]);
+  }, [searchFiles, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
   // useEffect(() => {

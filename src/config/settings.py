@@ -66,6 +66,8 @@ IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
+SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 
@@ -189,6 +191,8 @@ API_KEYS_INDEX_BODY = {
         }
     },
 }
+
+MCP_URL_PATTERNS = ("/mcp", "/streamable", "/api/v2/mcp")
 
 # Convenience base URL for Langflow REST API
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"

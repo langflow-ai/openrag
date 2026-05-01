@@ -17,6 +17,8 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
+    SEGMENT_WRITE_KEY,
+    ENVIRONMENT,
     clients,
     get_openrag_config,
     config_manager,
@@ -64,6 +66,10 @@ class SettingsUpdateBody(BaseModel):
     remove_openai_config: Optional[bool] = None
     remove_anthropic_config: Optional[bool] = None
     remove_watsonx_config: Optional[bool] = None
+    # Explicit confirmation that the caller accepts removing a provider whose
+    # embedding models are still in use by indexed documents. Without this,
+    # the backend returns 409 and the frontend prompts the user.
+    force_remove: Optional[bool] = False
 
 
 class OnboardingBody(BaseModel):
@@ -175,6 +181,8 @@ class SettingsResponse(BaseModel):
     langflow_ingest_edit_url: Optional[str] = None
     ingestion_defaults: Optional[IngestionDefaultsConfig] = None
     ingest_via_chat: bool = False
+    segment_write_key: Optional[str] = None
+    environment: Optional[str] = None
 
 
 class OnboardingResponse(BaseModel):
@@ -379,6 +387,8 @@ async def get_settings(
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
+            segment_write_key=SEGMENT_WRITE_KEY or None,
+            environment=ENVIRONMENT or None,
         )
 
     except Exception as e:
@@ -404,10 +414,107 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     return "openai"
 
 
+async def _affected_embedding_models(
+    provider: str,
+    session_manager,
+    user,
+    models_service,
+) -> List[Dict[str, Any]]:
+    """Find embedding models present in the corpus that belong to ``provider``.
+
+    Used to warn users before they remove a provider whose embedding models
+    were used to index documents — otherwise semantic search silently breaks
+    for those docs. Returns a list of ``{"model": str, "doc_count": int}``.
+
+    Conservative on errors (returns empty list) so infra issues don't block
+    provider removal.
+    """
+    from services.models_service import ModelsService
+    from config.settings import get_index_name
+
+    provider_lower = provider.lower()
+    if provider_lower == "anthropic":
+        # Anthropic doesn't serve embedding models — nothing to warn about.
+        return []
+
+    try:
+        # Refresh so the registry reflects currently-configured providers
+        # before we use it to attribute models.
+        await models_service.update_model_registry()
+        registry = ModelsService._model_provider_registry
+
+        # Use the admin client so DLS does not scope the aggregation to the
+        # requesting user's documents. Provider removal is a global operation
+        # that affects all tenants, so we must see every document's embedding
+        # model regardless of ownership.
+        agg_result = await clients.opensearch.search(
+            index=get_index_name(),
+            body={
+                "size": 0,
+                "aggs": {
+                    "embedding_models": {
+                        "terms": {"field": "embedding_model", "size": 50}
+                    }
+                },
+            },
+            params={"terminate_after": 0},
+        )
+        buckets = (
+            agg_result.get("aggregations", {})
+            .get("embedding_models", {})
+            .get("buckets", [])
+        )
+
+        affected: List[Dict[str, Any]] = []
+        for bucket in buckets:
+            model = bucket.get("key")
+            if not model:
+                continue
+            mapped = registry.get(model)
+            # Narrow fallback: the watsonx registry bootstrap requires the
+            # provider still be configured, so models from an about-to-be-
+            # removed watsonx can still be attributed via the "ibm/" prefix.
+            if mapped is None and provider_lower == "watsonx" and model.startswith("ibm/"):
+                mapped = "watsonx"
+            if mapped == provider_lower:
+                affected.append({"model": model, "doc_count": bucket.get("doc_count", 0)})
+        return affected
+    except Exception as e:
+        logger.warning(
+            "Could not determine affected embedding models for provider removal",
+            provider=provider,
+            error=str(e),
+        )
+        return []
+
+
+def _embedding_conflict_response(
+    provider_label: str, provider_key: str, affected: List[Dict[str, Any]]
+) -> JSONResponse:
+    """Shared 409 response when removing a provider whose embedding models are
+    still referenced by indexed documents."""
+    model_names = [a["model"] for a in affected]
+    return JSONResponse(
+        {
+            "error": (
+                f"Removing {provider_label} will disable semantic search on "
+                f"documents indexed with: {', '.join(model_names)}. "
+                f"Re-ingest affected documents with another embedding model, "
+                f"or retry with force_remove=true to proceed anyway."
+            ),
+            "code": "embedding_provider_in_use",
+            "affected_provider": provider_key,
+            "affected_models": affected,
+        },
+        status_code=409,
+    )
+
+
 async def update_settings(
     body: SettingsUpdateBody,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    models_service=Depends(get_models_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -739,6 +846,12 @@ async def update_settings(
                     {"error": "Cannot remove Ollama configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "ollama", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("Ollama", "ollama", affected)
             current_config.providers.ollama.endpoint = ""
             current_config.providers.ollama.configured = False
             if current_config.agent.llm_provider == "ollama":
@@ -761,6 +874,12 @@ async def update_settings(
                     {"error": "Cannot remove OpenAI configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "openai", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("OpenAI", "openai", affected)
             current_config.providers.openai.api_key = ""
             current_config.providers.openai.configured = False
             if current_config.agent.llm_provider == "openai":
@@ -806,6 +925,14 @@ async def update_settings(
                     {"error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."},
                     status_code=400,
                 )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "watsonx", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response(
+                        "IBM watsonx.ai", "watsonx", affected
+                    )
             current_config.providers.watsonx.api_key = ""
             current_config.providers.watsonx.endpoint = ""
             current_config.providers.watsonx.project_id = ""
@@ -846,6 +973,7 @@ async def update_settings(
             task = asyncio.create_task(
                 _run_async_post_save_langflow_updates(
                     session_manager=session_manager,
+                    models_service=models_service if provider_updated else None,
                     update_mcp_servers=(
                         body.embedding_provider is not None
                         or body.embedding_model is not None
@@ -1114,7 +1242,7 @@ async def onboarding(
                 await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
             if body.embedding_provider or body.embedding_model:
-                await _update_mcp_servers_with_provider_credentials(current_config, session_manager=session_manager, flows_service=flows_service)
+                await _update_mcp_server_urls(current_config, session_manager=session_manager, flows_service=flows_service)
 
             if body.llm_provider or body.llm_model or body.embedding_provider or body.embedding_model:
                 await _update_langflow_model_values(current_config, flows_service, embedding_model=body.embedding_model, embedding_provider=body.embedding_provider, llm_model=body.llm_model, llm_provider=body.llm_provider)
@@ -1421,11 +1549,18 @@ async def _run_async_post_save_langflow_updates(
     session_manager,
     update_mcp_servers: bool,
     update_model_values: bool,
+    models_service=None,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
         current_config = get_openrag_config()
         flows_service = _get_flows_service()
+
+        # Refresh model registry so get_litellm_model_name(strict=True) sees the
+        # updated provider list — force_remove skips _affected_embedding_models which
+        # is the usual registry refresh trigger.
+        if models_service is not None:
+            await models_service.update_model_registry()
 
         # Update global variables
         await _update_langflow_global_variables(
@@ -1434,13 +1569,20 @@ async def _run_async_post_save_langflow_updates(
 
         # Update LLM client credentials when embedding selection changes
         if update_mcp_servers:
-            await _update_mcp_servers_with_provider_credentials(
+            await _update_mcp_server_urls(
                 current_config, session_manager, flows_service=flows_service
             )
 
         # Update model values if provider/model changed (including removals/fallbacks)
         if update_model_values:
-            await _update_langflow_model_values(current_config, flows_service)
+            await _update_langflow_model_values(
+                current_config,
+                flows_service,
+                llm_model=current_config.agent.llm_model,
+                llm_provider=current_config.agent.llm_provider,
+                embedding_model=current_config.knowledge.embedding_model,
+                embedding_provider=current_config.knowledge.embedding_provider,
+            )
 
         logger.info("Completed asynchronous Langflow post-save sync")
     except Exception as e:
@@ -1448,40 +1590,17 @@ async def _run_async_post_save_langflow_updates(
         logger.error(f"Failed to update Langflow settings asynchronously: {str(e)}")
 
 
-async def _update_mcp_servers_with_provider_credentials(config, session_manager = None, flows_service=None):
-    # Update MCP servers with provider credentials
+async def _update_mcp_server_urls(config, session_manager=None, flows_service=None):
+    """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
         from services.langflow_mcp_service import LangflowMCPService
-        from utils.langflow_headers import build_mcp_global_vars_from_config
 
         mcp_service = LangflowMCPService()
-
-        # Build global vars using utility function
-        mcp_global_vars = await build_mcp_global_vars_from_config(config, flows_service=flows_service)
-
-        # In no-auth mode, add the anonymous JWT token and user details
-        if is_no_auth_mode() and session_manager:
-            from session_manager import AnonymousUser
-
-            # Create/get anonymous JWT for no-auth mode
-            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-            if anonymous_jwt:
-                mcp_global_vars["JWT"] = anonymous_jwt
-
-            # Add anonymous user details
-            anonymous_user = AnonymousUser()
-            mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
-            mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-
-            logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
-
-        if mcp_global_vars:
-            result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
-            logger.info("Updated MCP servers with provider credentials after settings change", **result)
+        result = await mcp_service.update_all_mcp_server_urls()
+        logger.info("Updated MCP server URLs after settings change", **result)
 
     except Exception as mcp_error:
-        logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
+        logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
 
 
@@ -1642,10 +1761,8 @@ async def reapply_all_settings(session_manager = None):
 
         logger.info("Reapplying all settings to Langflow flows and global variables")
 
-        if config.knowledge.embedding_model or config.knowledge.embedding_provider:
-            await _update_mcp_servers_with_provider_credentials(config, session_manager, flows_service=flows_service)
-        else:
-            logger.info("No embedding model or provider configured, skipping MCP server update")
+        # Update MCP server URLs (patch localhost and convert to streamable HTTP)
+        await _update_mcp_server_urls(config, session_manager, flows_service=flows_service)
 
         # Update all Langflow settings using helper functions
         try:

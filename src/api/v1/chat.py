@@ -128,6 +128,9 @@ async def chat_create_endpoint(
             previous_response_id=body.chat_id,
             stream=True,
             filter_id=body.filter_id,
+            owner=user.user_id,
+            owner_name=user.name,
+            owner_email=user.email,
         )
         chat_id_container = {}
         return StreamingResponse(
@@ -143,6 +146,9 @@ async def chat_create_endpoint(
             previous_response_id=body.chat_id,
             stream=False,
             filter_id=body.filter_id,
+            owner=user.user_id,
+            owner_name=user.name,
+            owner_email=user.email,
         )
         return JSONResponse({
             "response": result.get("response", ""),

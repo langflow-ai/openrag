@@ -19,6 +19,7 @@ import {
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
 import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
@@ -338,6 +339,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const successfulFiles = currentTask.successful_files || 0;
           const failedFiles = currentTask.failed_files || 0;
 
+          trackProcessSuccess({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            task_id: currentTask.task_id,
+            total_files: currentTask.total_files,
+            successful_files: successfulFiles,
+            failed_files: failedFiles,
+            duration_seconds: currentTask.duration_seconds,
+          });
+
           let description = "";
           if (failedFiles > 0) {
             description = `${successfulFiles} file${
@@ -391,6 +403,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             setIsRecentTasksExpanded(true);
           }
           // Task just failed - show error toast
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            task_id: currentTask.task_id,
+            total_files: currentTask.total_files,
+            failed_files: currentTask.failed_files,
+            duration_seconds: currentTask.duration_seconds,
+            resultValue: currentTask.error,
+          });
           toast.error("Task failed", {
             description: `Task ${currentTask.task_id} failed: ${
               currentTask.error || "Unknown error"

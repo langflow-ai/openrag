@@ -1178,70 +1178,13 @@ async def _ingest_default_documents_openrag(
     )
     return task_id
 
-
-async def _update_mcp_servers_with_provider_credentials(services):
-    """Update MCP servers with provider credentials at startup.
-
-    This is especially important for no-auth mode where users don't go through
-    the OAuth login flow that would normally set these credentials.
-    """
+async def _update_mcp_server_urls(langflow_mcp_service):
+    """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
-        auth_service = services.get("auth_service")
-        session_manager = services.get("session_manager")
-
-        if not auth_service or not auth_service.langflow_mcp_service:
-            logger.debug("MCP service not available, skipping credential update")
-            return
-
-        config = get_openrag_config()
-
-        # Build global vars with provider credentials using utility function
-        from utils.langflow_headers import build_mcp_global_vars_from_config
-
-        flows_service = services.get("flows_service")
-        global_vars = await build_mcp_global_vars_from_config(
-            config, flows_service=flows_service
-        )
-
-        # In no-auth mode, add the anonymous JWT token and user details
-        if is_no_auth_mode() and session_manager:
-            from session_manager import AnonymousUser
-
-            # Create/get anonymous JWT for no-auth mode
-            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-            if anonymous_jwt:
-                global_vars["JWT"] = anonymous_jwt
-
-            # Add anonymous user details
-            anonymous_user = AnonymousUser()
-            global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-            global_vars["OWNER_NAME"] = (
-                f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
-            )
-            global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-
-            logger.info(
-                "Added anonymous JWT and user details to MCP servers for no-auth mode"
-            )
-
-        if global_vars:
-            result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(
-                global_vars
-            )
-            logger.info(
-                "Updated MCP servers with provider credentials at startup", **result
-            )
-        else:
-            logger.debug(
-                "No provider credentials configured, skipping MCP server update"
-            )
-
-    except Exception as e:
-        logger.error(
-            "Failed to update MCP servers with provider credentials at startup",
-            error=str(e),
-        )
-        # Don't fail startup if MCP update fails
+        result = await langflow_mcp_service.update_all_mcp_server_urls()
+        logger.info("Updated MCP server URLs after settings change", **result)
+    except Exception as mcp_error:
+        logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
 async def startup_tasks(services):
@@ -1347,8 +1290,8 @@ async def startup_tasks(services):
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
-    # Update MCP servers with provider credentials (especially important for no-auth mode)
-    await _update_mcp_servers_with_provider_credentials(services)
+    # Update MCP server URLs (patch localhost and convert to streamable HTTP)
+    await _update_mcp_server_urls(services["langflow_mcp_service"])
 
     # Ensure all configured flows exist in Langflow (create-only, never overwrites).
     # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
@@ -1443,6 +1386,7 @@ async def initialize_services():
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(flows_service=flows_service)
+    langflow_mcp_service = LangflowMCPService()
 
     # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
@@ -1470,7 +1414,7 @@ async def initialize_services():
         session_manager,
         connector_service,
         flows_service,
-        langflow_mcp_service=LangflowMCPService(),
+        langflow_mcp_service=langflow_mcp_service,
     )
 
     # Load persisted connector connections at startup so webhooks and syncs
@@ -1516,6 +1460,7 @@ async def initialize_services():
         "monitor_service": monitor_service,
         "session_manager": session_manager,
         "api_key_service": api_key_service,
+        "langflow_mcp_service": langflow_mcp_service,
     }
 
 
