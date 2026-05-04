@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"strings"
 
@@ -191,4 +194,44 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// Generates a base64-encoded string of exactly 32 bytes for Fernet
+func generateBase64SecretKey() (string, error) {
+	randomBytes := make([]byte, 32)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	// Use URL-safe base64 encoding
+	password := base64.URLEncoding.EncodeToString(randomBytes)
+	return password, nil
+}
+
+func GenerateAESKey(size int) ([]byte, error) {
+	switch size {
+	case 16, 24, 32:
+	default:
+		return nil, fmt.Errorf("invalid AES key size %d: must be 16, 24, or 32 bytes", size)
+	}
+
+	key := make([]byte, size)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("failed to generate AES key: %w", err)
+	}
+
+	return key, nil
+}
+
+func GenerateAESKeyString(size int) (string, error) {
+	key, err := GenerateAESKey(size)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
+}
+
+func GenerateAESKeyString32() (string, error) {
+	return GenerateAESKeyString(32)
 }

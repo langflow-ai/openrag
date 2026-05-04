@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -215,16 +216,154 @@ func (r *OpenRAGReconciler) reconcileGeneratedCreds(ctx context.Context, o *open
 	return r.Create(ctx, secret)
 }
 
+// parseEnvValue extracts a value from .env file content for the given key
+func parseEnvValue(envContent, key string) string {
+	lines := strings.Split(envContent, "\n")
+	prefix := key + "="
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix)
+		}
+	}
+	return ""
+}
+
+// getOrCreateEncryptionKey retrieves the OPENRAG_ENCRYPTION_KEY from:
+// 1. Existing .env secret (highest priority - never regenerate)
+// 2. Dedicated kubernetes secret (secretName)
+// 3. Generate new key and store in dedicated secret
+func (r *OpenRAGReconciler) getOrCreateEncryptionKey(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS, secretName, keyName, envSecretName string) (string, error) {
+	// First check if key exists in the existing .env secret
+	existingEnvSecret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
+	if err == nil {
+		// Parse the .env file content
+		envContent := string(existingEnvSecret.Data[".env"])
+		if envContent == "" && existingEnvSecret.StringData != nil {
+			envContent = existingEnvSecret.StringData[".env"]
+		}
+		if value := parseEnvValue(envContent, keyName); value != "" {
+			return value, nil // Never regenerate existing key
+		}
+	}
+
+	// Check if key exists in dedicated kubernetes secret
+	dedicatedSecret := &corev1.Secret{}
+	err = r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, dedicatedSecret)
+	if err == nil {
+		if key, ok := dedicatedSecret.Data[keyName]; ok && len(key) > 0 {
+			return string(key), nil
+		}
+		if dedicatedSecret.StringData != nil {
+			if key, ok := dedicatedSecret.StringData[keyName]; ok && key != "" {
+				return key, nil
+			}
+		}
+	}
+
+	// Generate new key and store in dedicated secret
+	newKey, err := GenerateAESKeyString32()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate encryption key: %w", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: targetNS,
+			Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+		},
+		StringData: map[string]string{keyName: newKey},
+	}
+	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
+		return "", err
+	}
+	if err := r.createOrUpdate(ctx, secret); err != nil {
+		return "", err
+	}
+
+	return newKey, nil
+}
+
+// getOrCreateLangflowSecretKey retrieves the LANGFLOW_SECRET_KEY from:
+// 1. Existing .env secret (highest priority - never regenerate)
+// 2. Dedicated kubernetes secret (secretName)
+// 3. Generate new key and store in dedicated secret
+func (r *OpenRAGReconciler) getOrCreateLangflowSecretKey(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS, secretName, keyName, envSecretName string) (string, error) {
+	// First check if key exists in the existing .env secret
+	existingEnvSecret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
+	if err == nil {
+		// Parse the .env file content
+		envContent := string(existingEnvSecret.Data[".env"])
+		if envContent == "" && existingEnvSecret.StringData != nil {
+			envContent = existingEnvSecret.StringData[".env"]
+		}
+		if value := parseEnvValue(envContent, keyName); value != "" {
+			return value, nil // Never regenerate existing key
+		}
+	}
+
+	// Check if key exists in dedicated kubernetes secret
+	dedicatedSecret := &corev1.Secret{}
+	err = r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, dedicatedSecret)
+	if err == nil {
+		if key, ok := dedicatedSecret.Data[keyName]; ok && len(key) > 0 {
+			return string(key), nil
+		}
+		if dedicatedSecret.StringData != nil {
+			if key, ok := dedicatedSecret.StringData[keyName]; ok && key != "" {
+				return key, nil
+			}
+		}
+	}
+
+	// Generate new key and store in dedicated secret
+	newKey, err := generateBase64SecretKey()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate langflow secret key: %w", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: targetNS,
+			Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+		},
+		StringData: map[string]string{keyName: newKey},
+	}
+	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
+		return "", err
+	}
+	if err := r.createOrUpdate(ctx, secret); err != nil {
+		return "", err
+	}
+
+	return newKey, nil
+}
+
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
 func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+	// Get or create encryption keys
+	backendEncryptionKey, err := r.getOrCreateEncryptionKey(ctx, o, targetNS, "openrag-be-encryption-key", "OPENRAG_ENCRYPTION_KEY", resourceName(o.Name, "be-env"))
+	if err != nil {
+		return fmt.Errorf("failed to get backend encryption key: %w", err)
+	}
+
+	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-encryption-key", "LANGFLOW_SECRET_KEY", resourceName(o.Name, "lf-env"))
+	if err != nil {
+		return fmt.Errorf("failed to get langflow secret key: %w", err)
+	}
+
 	type envDef struct {
 		name    string
 		content string
 	}
 	defs := []envDef{
-		{resourceName(o.Name, "be-env"), r.buildBackendEnv(o)},
-		{resourceName(o.Name, "lf-env"), r.buildLangflowEnv(o)},
+		{resourceName(o.Name, "be-env"), r.buildBackendEnv(o, backendEncryptionKey)},
+		{resourceName(o.Name, "lf-env"), r.buildLangflowEnv(o, langflowSecretKey)},
 	}
 	for _, d := range defs {
 		secret := &corev1.Secret{
@@ -245,9 +384,12 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 	return nil
 }
 
-func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG) string {
+func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encryptionKey string) string {
 	// Start with defaults, operator env, and CR env (three-level priority)
 	envVars := r.EnvVarManager.GetBackendEnvVars(o.Spec.Backend.Env)
+
+	// Set encryption key (always preserved, never regenerated)
+	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + resourceName(o.Name, "lf") + ":7860"
@@ -343,9 +485,12 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG) string {
 	return r.EnvVarManager.BuildEnvFileContent(envVars)
 }
 
-func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG) string {
+func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG, secretKey string) string {
 	// Start with defaults, operator env, and CR env (three-level priority)
 	envVars := r.EnvVarManager.GetLangflowEnvVars(o.Spec.Langflow.Env)
+
+	// Set secret key (always preserved, never regenerated)
+	envVars["LANGFLOW_SECRET_KEY"] = secretKey
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
