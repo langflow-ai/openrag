@@ -1,7 +1,16 @@
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
+import dynamic from "next/dynamic";
 import DogIcon from "@/components/icons/dog-icon";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
+
+const MarkdownRenderer = dynamic(
+  () =>
+    import("@/components/markdown-renderer").then((m) => ({
+      default: m.MarkdownRenderer,
+    })),
+  { ssr: false },
+);
+
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
