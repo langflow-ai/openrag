@@ -58,15 +58,18 @@ import { deriveCloudLangflowUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../onboarding/_components/model-selector";
+import { RequirePermission } from "@/components/require-permission";
 import ConnectorCards from "./_components/connector-cards";
 import ModelProviders from "./_components/model-providers";
+import { UsersAndRolesSection } from "./_components/users-and-roles-section";
 import { getModelLogo, type ModelProvider } from "./_helpers/model-helpers";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
 function KnowledgeSourcesPage() {
   const isCloudBrand = useIsCloudBrand();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, rbacEnforced } =
+    useAuth();
   const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -690,20 +693,22 @@ function KnowledgeSourcesPage() {
         <ConnectorCards />
       </div>
 
-      {/* Model Providers Section */}
-      <div className="space-y-6">
-        <div>
-          <h2
-            className={cn(
-              "mb-2 text-lg font-semibold tracking-tight",
-              isCloudBrand && "ibm-settings-section-title",
-            )}
-          >
-            Model Providers
-          </h2>
+      {/* Model Providers Section — admin only (workspace-level provider keys) */}
+      <RequirePermission perm="providers:write">
+        <div className="space-y-6">
+          <div>
+            <h2
+              className={cn(
+                "mb-2 text-lg font-semibold tracking-tight",
+                isCloudBrand && "ibm-settings-section-title",
+              )}
+            >
+              Model Providers
+            </h2>
+          </div>
+          <ModelProviders />
         </div>
-        <ModelProviders />
-      </div>
+      </RequirePermission>
 
       {/* Agent Behavior Section */}
       <Card id="agent-card">
@@ -717,6 +722,7 @@ function KnowledgeSourcesPage() {
             >
               Agent
             </CardTitle>
+            <RequirePermission perm="flows:edit">
             <div className="flex gap-2">
               <ConfirmationDialog
                 trigger={
@@ -782,6 +788,7 @@ function KnowledgeSourcesPage() {
                 variant="warning"
               />
             </div>
+            </RequirePermission>
           </div>
           <CardDescription>
             This Agent retrieves from your knowledge and generates chat
@@ -872,6 +879,7 @@ function KnowledgeSourcesPage() {
             >
               Knowledge Ingest
             </CardTitle>
+            <RequirePermission perm="flows:edit">
             <div className="flex gap-2">
               <ConfirmationDialog
                 trigger={
@@ -937,6 +945,7 @@ function KnowledgeSourcesPage() {
                 }
               />
             </div>
+            </RequirePermission>
           </div>
           <CardDescription>
             Configure how files are ingested and stored for retrieval. The

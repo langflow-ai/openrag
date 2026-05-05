@@ -1,3 +1,4 @@
+import bootstrap  # noqa: F401  — must be first; loads .env + structured logging
 from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
@@ -1461,6 +1462,29 @@ async def initialize_services():
     # API Key service for public API authentication
     api_key_service = APIKeyService(session_manager)
 
+    # ===== RBAC service =====
+    # We do NOT open the SQL engine here. `create_app()` runs inside an
+    # `asyncio.run(...)` whose loop is closed BEFORE uvicorn starts its
+    # own loop — any AsyncEngine bound to this loop would be dead by
+    # then. Instead, RBACService takes a *lazy* session-factory getter
+    # that resolves `db.engine.SessionLocal` at call time — that
+    # attribute is filled in by the lifespan startup event running on
+    # uvicorn's loop. Alembic upgrade is run synchronously from __main__
+    # before `asyncio.run(create_app())` so the schema is in place by
+    # the time the lifespan opens the engine.
+    from db import engine as _db_engine_mod
+    from services.rbac_service import RBACService
+
+    def _lazy_session_factory():
+        sl = _db_engine_mod.SessionLocal
+        if sl is None:
+            raise RuntimeError(
+                "DB engine not yet initialized. RBACService called before lifespan startup."
+            )
+        return sl()
+
+    rbac_service = RBACService(_lazy_session_factory)
+
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -1477,6 +1501,7 @@ async def initialize_services():
         "api_key_service": api_key_service,
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
+        "rbac_service": rbac_service,
     }
 
 
@@ -1570,6 +1595,13 @@ async def lifespan(app: FastAPI):
 
     # 6. Global clients cleanup
     await clients.cleanup()
+
+    # 6b. SQL engine cleanup
+    try:
+        from db.engine import dispose_engine
+        await dispose_engine()
+    except Exception as e:
+        logger.error("Error disposing DB engine", error=str(e))
 
     # 7. Telemetry client cleanup
     from utils.telemetry.client import cleanup_telemetry_client
@@ -2032,6 +2064,12 @@ async def create_app():
         "/docling/health", docling.health, methods=["GET"], tags=["internal"]
     )
 
+    # ===== Users / RBAC Endpoints (JWT auth) =====
+    from api import users as users_api
+    from api.admin import rbac as admin_rbac
+    app.include_router(users_api.router)
+    app.include_router(admin_rbac.router)
+
     # ===== API Key Management Endpoints (JWT auth for UI) =====
     app.add_api_route(
         "/keys", api_keys.list_keys_endpoint, methods=["GET"], tags=["internal"]
@@ -2175,6 +2213,29 @@ async def create_app():
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
+        # Open the SQL engine on uvicorn's live loop (NOT the one used by
+        # asyncio.run(create_app()) which closed already). All RBAC code
+        # uses RBACService's lazy factory that reads db.engine.SessionLocal
+        # at call time, so it will pick up the binding we set here.
+        try:
+            from db.engine import init_engine
+            init_engine()
+        except Exception as e:
+            logger.error("DB engine init failed at startup", error=str(e))
+            raise
+
+        # One-shot JSON->DB migration + test-fixture cleanup. Runs once
+        # per install, idempotent via migration_status rows.
+        try:
+            from db.engine import SessionLocal as _SL
+            from db.migrations_runtime import run as run_runtime_migration
+            if _SL is not None:
+                async with _SL() as _session:
+                    await run_runtime_migration(_session)
+                    await _session.commit()
+        except Exception as e:
+            logger.error("Runtime DB migration failed", error=str(e))
+
         await TelemetryClient.send_event(
             Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
         )
@@ -2318,6 +2379,22 @@ if __name__ == "__main__":
     # TUI check already handled at top of file
     # Register cleanup function
     atexit.register(cleanup)
+
+    # Run Alembic upgrade SYNCHRONOUSLY before the app builds. This
+    # avoids two pitfalls:
+    #   1. Alembic's env.py uses asyncio.run() which collides with a
+    #      live event loop.
+    #   2. Anything done inside `asyncio.run(create_app())` binds to a
+    #      loop that is closed before uvicorn starts — including DB
+    #      engines. Putting the schema migration here keeps the runtime
+    #      `init_engine()` deferred to the lifespan startup, on the
+    #      live uvicorn loop.
+    try:
+        from db.migrations_runtime import run_alembic_upgrade
+        run_alembic_upgrade("head")
+    except Exception as _e:
+        logger.error("Alembic upgrade failed at startup", error=str(_e))
+        raise
 
     # Create app asynchronously
     app = asyncio.run(create_app())

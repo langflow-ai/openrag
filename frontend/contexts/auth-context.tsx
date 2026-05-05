@@ -17,6 +17,8 @@ interface User {
   picture?: string;
   provider: string;
   last_login?: string;
+  roles?: string[];
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -26,10 +28,14 @@ interface AuthContextType {
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
   version: string | null;
+  permissions: Set<string>;
+  roles: string[];
+  can: (perm: string) => boolean;
   login: () => void;
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -228,9 +234,54 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await checkAuth();
   };
 
+  const [permissions, setPermissions] = useState<Set<string>>(new Set());
+  const [roles, setRoles] = useState<string[]>([]);
+
+  const fetchPermissions = useCallback(async () => {
+    try {
+      const r = await fetch("/api/users/me");
+      if (!r.ok) {
+        setPermissions(new Set());
+        setRoles([]);
+        return;
+      }
+      const data = await r.json();
+      const perms: string[] = Array.isArray(data?.permissions)
+        ? data.permissions
+        : [];
+      const userRoles: string[] = Array.isArray(data?.roles) ? data.roles : [];
+      setPermissions(new Set(perms));
+      setRoles(userRoles);
+    } catch {
+      setPermissions(new Set());
+      setRoles([]);
+    }
+  }, []);
+
+  const refreshPermissions = useCallback(async () => {
+    await fetchPermissions();
+  }, [fetchPermissions]);
+
+  useEffect(() => {
+    if (user || isNoAuthMode || isIbmAuthMode) {
+      fetchPermissions();
+    } else {
+      setPermissions(new Set());
+      setRoles([]);
+    }
+  }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
+
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  const can = useCallback(
+    (perm: string): boolean => {
+      if (isNoAuthMode) return true;
+      return permissions.has(perm);
+    },
+    [permissions, isNoAuthMode],
+  );
 
   const value: AuthContextType = {
     user,
@@ -239,10 +290,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isNoAuthMode,
     isIbmAuthMode,
     version,
+    permissions,
+    roles,
+    can,
     login,
     loginWithIbm,
     logout,
     refreshAuth,
+    refreshPermissions,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

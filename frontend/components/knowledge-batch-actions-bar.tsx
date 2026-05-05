@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
 
+import { usePermissions } from "@/hooks/use-permissions";
+
 interface KnowledgeBatchActionsBarProps {
   selectedCount: number;
   onDelete: () => void;
@@ -11,6 +13,8 @@ export const KnowledgeBatchActionsBar = ({
   onDelete,
   onCancel,
 }: KnowledgeBatchActionsBarProps) => {
+  const { canAny } = usePermissions();
+  const canDelete = canAny(["knowledge:delete:own", "knowledge:delete:any"]);
   return (
     <div className="flex h-12 w-full items-stretch bg-primary text-primary-foreground">
       <span className="flex items-center px-4 text-sm font-medium">
@@ -20,7 +24,13 @@ export const KnowledgeBatchActionsBar = ({
         <button
           type="button"
           onClick={onDelete}
-          className="flex h-full items-center px-4 text-sm font-medium transition-colors hover:bg-primary-foreground/10"
+          disabled={!canDelete}
+          title={
+            canDelete
+              ? undefined
+              : "You do not have permission to delete documents"
+          }
+          className="flex h-full items-center px-4 text-sm font-medium transition-colors hover:bg-primary-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Delete
         </button>

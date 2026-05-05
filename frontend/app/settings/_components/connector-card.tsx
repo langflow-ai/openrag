@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 import CardIcon from "./card-icon";
 
@@ -45,6 +46,13 @@ export default function ConnectorCard({
   onConfigure,
 }: ConnectorCardProps) {
   const isCloudBrand = useIsCloudBrand();
+  const { can, canAny } = usePermissions();
+  const canCreate = can("connectors:create");
+  const canDisconnect = canAny([
+    "connectors:delete:own",
+    "connectors:delete:any",
+  ]);
+  const canUpload = can("knowledge:upload");
   const isConnected =
     connector.status === "connected" && connector.connectionId;
 
@@ -109,7 +117,12 @@ export default function ConnectorCard({
                 <Button
                   variant="default"
                   onClick={() => onNavigateToKnowledge(connector)}
-                  disabled={isDisconnecting || isConnecting}
+                  disabled={isDisconnecting || isConnecting || !canUpload}
+                  title={
+                    canUpload
+                      ? undefined
+                      : "You do not have permission to add knowledge"
+                  }
                   className={cn(
                     "cursor-pointer !text-sm truncate flex-1 text-primary-foreground [&_svg]:text-primary-foreground",
                     isCloudBrand ? "rounded-none" : "rounded-md",
@@ -119,48 +132,59 @@ export default function ConnectorCard({
                   <Plus className="h-4 w-4" />
                   <span className="text-mmd truncate">Add Knowledge</span>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    onConfigure ? onConfigure(connector) : onConnect(connector)
-                  }
-                  disabled={isConnecting || isDisconnecting}
-                  className={cn(
-                    "cursor-pointer",
-                    isCloudBrand &&
-                      "rounded-none border-button-tertiary text-layer-contextual-foreground hover:bg-black/5 hover:text-layer-contextual-foreground dark:hover:bg-white/5",
-                  )}
-                  size="iconMd"
-                >
-                  {isConnecting ? (
-                    <RefreshCcw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Settings2 className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => onDisconnect(connector)}
-                  disabled={isDisconnecting || isConnecting}
-                  className={cn(
-                    "cursor-pointer text-destructive hover:text-destructive",
-                    isCloudBrand && "rounded-none",
-                  )}
-                  size="iconMd"
-                >
-                  {isDisconnecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </Button>
+                {canCreate && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      onConfigure
+                        ? onConfigure(connector)
+                        : onConnect(connector)
+                    }
+                    disabled={isConnecting || isDisconnecting}
+                    className={cn(
+                      "cursor-pointer",
+                      isCloudBrand &&
+                        "rounded-none border-button-tertiary text-layer-contextual-foreground hover:bg-black/5 hover:text-layer-contextual-foreground dark:hover:bg-white/5",
+                    )}
+                    size="iconMd"
+                  >
+                    {isConnecting ? (
+                      <RefreshCcw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Settings2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                {canDisconnect && (
+                  <Button
+                    variant="outline"
+                    onClick={() => onDisconnect(connector)}
+                    disabled={isDisconnecting || isConnecting}
+                    className={cn(
+                      "cursor-pointer text-destructive hover:text-destructive",
+                      isCloudBrand && "rounded-none",
+                    )}
+                    size="iconMd"
+                  >
+                    {isDisconnecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
               </div>
             ) : (
               <Button
                 onClick={() =>
                   onConfigure ? onConfigure(connector) : onConnect(connector)
                 }
-                disabled={isConnecting}
+                disabled={isConnecting || !canCreate}
+                title={
+                  canCreate
+                    ? undefined
+                    : "You do not have permission to create connectors"
+                }
                 variant={isCloudBrand ? "outline" : "default"}
                 className={cn(
                   "w-full cursor-pointer",

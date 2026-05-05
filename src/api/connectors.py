@@ -7,7 +7,13 @@ from connectors.sharepoint.utils import is_valid_sharepoint_url
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
-from dependencies import get_connector_service, get_session_manager, get_current_user
+from dependencies import (
+    get_connector_service,
+    get_current_user,
+    get_rbac_service,
+    get_session_manager,
+    require_permission,
+)
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -117,7 +123,7 @@ async def connector_sync(
     body: ConnectorSyncBody,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("connectors:use")),
 ):
     """Sync files from all active connections of a connector type"""
     max_files = body.max_files
@@ -577,7 +583,7 @@ async def connector_webhook(
 async def connector_disconnect(
     connector_type: str,
     connector_service=Depends(get_connector_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("connectors:delete:own")),
 ):
     """Disconnect a connector by deleting its connection"""
 
@@ -656,7 +662,7 @@ async def connector_disconnect(
 async def sync_all_connectors(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("connectors:use")),
 ):
     """
     Sync files from all active cloud connector connections.

@@ -5,7 +5,12 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
 
-from dependencies import get_chat_service, get_session_manager, get_current_user
+from dependencies import (
+    get_chat_service,
+    get_session_manager,
+    get_current_user,
+    require_permission,
+)
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -25,7 +30,7 @@ async def chat_endpoint(
     body: ChatBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("chat:use")),
 ):
     """Handle chat requests"""
     if not body.prompt:
@@ -75,7 +80,7 @@ async def langflow_endpoint(
     body: ChatBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("chat:use")),
 ):
     """Handle Langflow chat requests"""
     if not body.prompt:
@@ -136,7 +141,7 @@ async def langflow_endpoint(
 
 async def chat_history_endpoint(
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("conversations:read:own")),
 ):
     """Get chat history for a user"""
     try:
@@ -151,7 +156,7 @@ async def chat_history_endpoint(
 
 async def langflow_history_endpoint(
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("conversations:read:own")),
 ):
     """Get langflow chat history for a user"""
     try:
@@ -167,7 +172,7 @@ async def langflow_history_endpoint(
 async def delete_session_endpoint(
     session_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("conversations:delete:own")),
 ):
     """Delete a chat session"""
     try:
