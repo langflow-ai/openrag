@@ -90,7 +90,7 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
 	}
-	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
+	if _, err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("env secrets: %w", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
@@ -302,18 +302,23 @@ func (r *OpenRAGReconciler) getOrCreateLangflowSecretKey(ctx context.Context, o 
 	return newKey, nil
 }
 
+type SecretValue struct {
+	LangflowSecretKey    string
+	BackendEncryptionKey string
+}
+
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
-func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (*SecretValue, error) {
 	// Get or create encryption keys
 	backendEncryptionKey, err := r.getOrCreateEncryptionKey(ctx, o, targetNS, "openrag-be-encryption-key", "OPENRAG_ENCRYPTION_KEY", resourceName(o.Name, "be-env"))
 	if err != nil {
-		return fmt.Errorf("failed to get backend encryption key: %w", err)
+		return nil, fmt.Errorf("failed to get backend encryption key: %w", err)
 	}
 
-	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-encryption-key", "LANGFLOW_SECRET_KEY", resourceName(o.Name, "lf-env"))
+	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-secret-key", "LANGFLOW_SECRET_KEY", resourceName(o.Name, "lf-env"))
 	if err != nil {
-		return fmt.Errorf("failed to get langflow secret key: %w", err)
+		return nil, fmt.Errorf("failed to get langflow secret key: %w", err)
 	}
 
 	type envDef struct {
@@ -334,13 +339,16 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 			StringData: map[string]string{".env": d.content},
 		}
 		if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-			return err
+			return nil, err
 		}
 		if err := r.createOrUpdate(ctx, secret); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return &SecretValue{
+		LangflowSecretKey:    langflowSecretKey,
+		BackendEncryptionKey: backendEncryptionKey,
+	}, nil
 }
 
 func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encryptionKey string) string {
@@ -733,25 +741,24 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 // backendSensitiveEnvVars returns env vars sourced from Secrets for the backend pod.
 // These override any matching keys in the mounted .env file.
 func (r *OpenRAGReconciler) backendSensitiveEnvVars(o *openragv1alpha1.OpenRAG) []corev1.EnvVar {
-	genCreds := resourceName(o.Name, "gen-creds")
 	var ev []corev1.EnvVar
 
-	// LANGFLOW_SECRET_KEY
+	// LANGFLOW_SECRET_KEY - reference the secret, don't embed the value
 	if o.Spec.Langflow.SecretKeySecret != nil {
 		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", o.Spec.Langflow.SecretKeySecret))
 	} else {
 		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: genCreds},
+			LocalObjectReference: corev1.LocalObjectReference{Name: "langflow-secret-key"},
 			Key:                  "LANGFLOW_SECRET_KEY",
 		}))
 	}
 
-	// OPENRAG_ENCRYPTION_KEY
+	// OPENRAG_ENCRYPTION_KEY - reference the secret, don't embed the value
 	if o.Spec.Backend.EncryptionKeySecret != nil {
 		ev = append(ev, secretEnvVar("OPENRAG_ENCRYPTION_KEY", o.Spec.Backend.EncryptionKeySecret))
 	} else {
 		ev = append(ev, secretEnvVar("OPENRAG_ENCRYPTION_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: genCreds},
+			LocalObjectReference: corev1.LocalObjectReference{Name: "openrag-be-encryption-key"},
 			Key:                  "OPENRAG_ENCRYPTION_KEY",
 		}))
 	}
@@ -895,15 +902,14 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 
 // langflowSensitiveEnvVars returns env vars sourced from Secrets for the Langflow pod.
 func (r *OpenRAGReconciler) langflowSensitiveEnvVars(o *openragv1alpha1.OpenRAG) []corev1.EnvVar {
-	genCreds := resourceName(o.Name, "gen-creds")
 	var ev []corev1.EnvVar
 
-	// LANGFLOW_SECRET_KEY
+	// LANGFLOW_SECRET_KEY - reference the secret, don't embed the value
 	if o.Spec.Langflow.SecretKeySecret != nil {
 		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", o.Spec.Langflow.SecretKeySecret))
 	} else {
 		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: genCreds},
+			LocalObjectReference: corev1.LocalObjectReference{Name: "langflow-secret-key"},
 			Key:                  "LANGFLOW_SECRET_KEY",
 		}))
 	}
