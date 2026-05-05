@@ -46,13 +46,20 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.arch }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push ${{ matrix.arch }} to GHCR
         uses: docker/build-push-action@v6
         with:
           context: kubernetes/operator
@@ -62,6 +69,16 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}-${{ matrix.arch }}
           cache-from: type=gha,scope=operator-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=operator-${{ matrix.arch }}
+
+      - name: Build and push ${{ matrix.arch }} to Docker Hub
+        uses: docker/build-push-action@v6
+        with:
+          context: kubernetes/operator
+          file: kubernetes/operator/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: langflowai/openrag-operator:${{ steps.tag.outputs.value }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=operator-${{ matrix.arch }}
 
   manifest:
     name: Create multi-arch manifest
@@ -82,13 +99,20 @@ jobs:
             echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
           fi
 
-      - uses: docker/login-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push multi-arch manifest
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push multi-arch manifest to GHCR
         run: |
           TAG=${{ steps.tag.outputs.value }}
           docker buildx imagetools create \
@@ -96,6 +120,15 @@ jobs:
             -t ${{ env.IMAGE }}:latest \
             ${{ env.IMAGE }}:${TAG}-amd64 \
             ${{ env.IMAGE }}:${TAG}-arm64
+
+      - name: Push multi-arch manifest to Docker Hub
+        run: |
+          TAG=${{ steps.tag.outputs.value }}
+          docker buildx imagetools create \
+            -t langflowai/openrag-operator:${TAG} \
+            -t langflowai/openrag-operator:latest \
+            langflowai/openrag-operator:${TAG}-amd64 \
+            langflowai/openrag-operator:${TAG}-arm64
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

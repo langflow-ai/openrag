@@ -268,17 +268,17 @@ git push origin operator/v0.1.0
 
 This triggers the `.github/workflows/operator-release.yml` workflow which:
 1. Builds multi-architecture images (linux/amd64, linux/arm64)
-2. Pushes to `ghcr.io/<owner>/openrag-operator:v0.1.0`
-3. Creates a multi-arch manifest with `:latest` tag
+2. Pushes to **both** GHCR and Docker Hub
+3. Creates multi-arch manifests with `:latest` tag
 4. Creates a GitHub release with release notes
 
 **Manual trigger:**
 You can also trigger the release workflow manually from the GitHub Actions UI with a custom tag.
 
-**Image location:**
-- Registry: `ghcr.io`
-- Repository: `ghcr.io/langflow-ai/openrag-operator`
-- Tags: `v0.1.0`, `v0.1.0-amd64`, `v0.1.0-arm64`, `latest`
+**Image locations:**
+- **GHCR**: `ghcr.io/langflow-ai/openrag-operator`
+- **Docker Hub**: `langflowai/openrag-operator`
+- **Tags**: `v0.1.0`, `v0.1.0-amd64`, `v0.1.0-arm64`, `latest`
 
 ### Helm Chart Publishing
 
