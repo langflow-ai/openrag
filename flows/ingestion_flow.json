@@ -10,7 +10,7 @@
             "id": "DoclingRemote-Dp3PX",
             "name": "dataframe",
             "output_types": [
-              "DataFrame"
+              "Table"
             ]
           },
           "targetHandle": {
@@ -25,10 +25,10 @@
             "type": "other"
           }
         },
-        "id": "reactflow__edge-DoclingRemote-Dp3PX{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "id": "reactflow__edge-DoclingRemote-Dp3PX{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
         "selected": false,
         "source": "DoclingRemote-Dp3PX",
-        "sourceHandle": "{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}",
+        "sourceHandle": "{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
         "target": "ExportDoclingDocument-zZdRg",
         "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       },
@@ -828,7 +828,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2026-04-15T17:08:23.611Z",
+            "last_updated": "2026-05-05T13:33:37.431Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {},
@@ -878,7 +878,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "e37c04f4-bd18-4083-8f6f-6ee172319d91"
+                "value": "48713154-dcea-4b42-b772-268029c455d7"
               },
               "_type": "Component",
               "code": {
@@ -1310,7 +1310,7 @@
           "id": "DoclingRemote-Dp3PX",
           "node": {
             "base_classes": [
-              "DataFrame"
+              "Table"
             ],
             "beta": false,
             "conditional_paths": [],
@@ -1318,7 +1318,7 @@
             "description": "Uses Docling to process input documents connecting to your instance of Docling Serve.",
             "display_name": "Docling Serve",
             "documentation": "https://docling-project.github.io/docling/",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "path",
               "file_path",
@@ -1328,6 +1328,7 @@
               "ignore_unsupported_extensions",
               "ignore_unspecified_files",
               "api_url",
+              "task_id",
               "max_concurrency",
               "max_poll_timeout",
               "api_headers",
@@ -1337,7 +1338,7 @@
             "icon": "Docling",
             "legacy": false,
             "metadata": {
-              "code_hash": "409d771a961e",
+              "code_hash": "72fcef05e057",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1346,15 +1347,15 @@
                   },
                   {
                     "name": "docling_core",
-                    "version": "2.60.1"
+                    "version": "2.73.0"
                   },
                   {
                     "name": "pydantic",
-                    "version": "2.11.10"
+                    "version": "2.12.5"
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.4.0"
                   }
                 ],
                 "total_dependencies": 4
@@ -1375,10 +1376,10 @@
                 "name": "dataframe",
                 "options": null,
                 "required_inputs": null,
-                "selected": "DataFrame",
+                "selected": "Table",
                 "tool_mode": true,
                 "types": [
-                  "DataFrame"
+                  "Table"
                 ],
                 "value": "__UNDEFINED__"
               }
@@ -1447,17 +1448,16 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\nfrom lfx.utils.util import transform_localhost_url\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"jpg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n            input_types=[\"Message\"],\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n            input_types=[\"Message\"],\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n            input_types=[\"Message\"],\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n            input_types=[\"Message\"],\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        # Transform localhost URLs to container-accessible hosts when running in a container\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
+                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\nfrom lfx.utils.util import transform_localhost_url\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"jpg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        StrInput(\n            name=\"task_id\",\n            display_name=\"Task ID\",\n            info=(\n                \"Optional task ID from a previous Docling Serve upload. \"\n                \"If provided, file input is ignored and the component polls for this task's results.\"\n            ),\n            required=False,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n            input_types=[\"Message\"],\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n            input_types=[\"Message\"],\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n            input_types=[\"Message\"],\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n            input_types=[\"Message\"],\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def _poll_and_fetch_result(\n        self, client: httpx.Client, base_url: str, task_id: str, file_path: str | None = None\n    ) -> Data | None:\n        \"\"\"Poll for task completion and fetch the result.\n\n        Args:\n            client: The HTTP client to use for requests.\n            base_url: The base URL of the Docling Serve API.\n            task_id: The task ID to poll for.\n            file_path: Optional file path to include in the result data.\n\n        Returns:\n            Data object with the DoclingDocument, or None if processing failed.\n        \"\"\"\n        http_failures = 0\n        retry_status_start = 500\n        retry_status_end = 600\n        start_wait_time = time.monotonic()\n\n        response = client.get(f\"{base_url}/status/poll/{task_id}\")\n        response.raise_for_status()\n        task = response.json()\n\n        while task[\"task_status\"] not in (\"success\", \"failure\"):\n            processing_time = time.monotonic() - start_wait_time\n            if processing_time >= self.max_poll_timeout:\n                msg = (\n                    f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                    \"Please increase the max_poll_timeout parameter or review why the processing \"\n                    \"takes long on the server.\"\n                )\n                self.log(msg)\n                raise RuntimeError(msg)\n\n            time.sleep(2)\n            response = client.get(f\"{base_url}/status/poll/{task_id}\")\n\n            if retry_status_start <= response.status_code < retry_status_end:\n                http_failures += 1\n                if http_failures > self.MAX_500_RETRIES:\n                    self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                    return None\n                continue\n\n            task = response.json()\n\n        result_resp = client.get(f\"{base_url}/result/{task_id}\")\n        result_resp.raise_for_status()\n        result = result_resp.json()\n\n        if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n            self.log(\"No JSON DoclingDocument found in the result.\")\n            return None\n\n        try:\n            doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n            data_dict: dict[str, Any] = {\"doc\": doc}\n            if file_path:\n                data_dict[\"file_path\"] = file_path\n            return Data(data=data_dict)\n        except ValidationError as e:\n            self.log(f\"Error validating the document. {e}\")\n            return None\n\n    def _process_task_id(self) -> list[Data]:\n        \"\"\"Process an existing task by polling for status and retrieving results.\n\n        Returns:\n            List containing the result Data object, or empty list if processing failed.\n        \"\"\"\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        with httpx.Client(headers=self.api_headers) as client:\n            result = self._poll_and_fetch_result(client, base_url, self.task_id)\n            return [result] if result else []\n\n    def load_files_base(self) -> list[Data]:\n        \"\"\"Load and process files, or poll an existing task if task_id is provided.\n\n        Returns:\n            list[Data]: Parsed data from the processed files or task.\n        \"\"\"\n        if self.task_id:\n            return self._process_task_id()\n        return super().load_files_base()\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            return self._poll_and_fetch_result(client, base_url, task[\"task_id\"], str(file_path))\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
               },
               "delete_server_file_after_processing": {
                 "_input_type": "BoolInput",
                 "advanced": true,
                 "display_name": "Delete Server File After Processing",
                 "dynamic": false,
-                "info": "If true, the File Path will be deleted after processing, if it is hosted on the Server.",
+                "info": "If true, the Server File Path will be deleted after processing.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
                 "name": "delete_server_file_after_processing",
                 "override_skip": false,
                 "placeholder": "",
@@ -1508,11 +1508,12 @@
               "file_path": {
                 "_input_type": "HandleInput",
                 "advanced": true,
-                "display_name": "File Path",
+                "display_name": "Server File Path",
                 "dynamic": false,
-                "info": "Data object (or list of Data objects) with a 'file_path' property pointing to a file or a Message object with a path to the file or list of paths to the file. The file can be hosted on the server or on Langflow's file system. Supercedes 'Path' but supports same file types.",
+                "info": "Data object with a 'file_path' property pointing to server file or a Message object with a path to the file. Supercedes 'Path' but supports same file types.",
                 "input_types": [
                   "Data",
+                  "JSON",
                   "Message"
                 ],
                 "list": true,
@@ -1713,6 +1714,27 @@
                 "track_in_telemetry": true,
                 "type": "bool",
                 "value": false
+              },
+              "task_id": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Task ID",
+                "dynamic": false,
+                "info": "Optional task ID from a previous Docling Serve upload. If provided, file input is ignored and the component polls for this task's results.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "task_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "DOCLING_TASK_ID"
               }
             },
             "tool_mode": false
@@ -1723,14 +1745,14 @@
         "dragging": false,
         "id": "DoclingRemote-Dp3PX",
         "measured": {
-          "height": 52,
-          "width": 192
+          "height": 397,
+          "width": 320
         },
         "position": {
-          "x": -18.22506037537059,
-          "y": 1767.7398128168159
+          "x": -158.35302959149863,
+          "y": 1766.5193585649456
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -4619,7 +4641,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "e37c04f4-bd18-4083-8f6f-6ee172319d91"
+                "value": "48713154-dcea-4b42-b772-268029c455d7"
               },
               "_type": "Component",
               "api_base": {
@@ -4888,6 +4910,96 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/granite-embedding-278m-multilingual",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-125m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-30m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "intfloat/multilingual-e5-large",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "sentence-transformers/all-minilm-l6-v2",
+                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -6371,7 +6483,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "e37c04f4-bd18-4083-8f6f-6ee172319d91"
+                "value": "48713154-dcea-4b42-b772-268029c455d7"
               },
               "_type": "Component",
               "api_base": {
@@ -6640,6 +6752,96 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/granite-embedding-278m-multilingual",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-125m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-30m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "intfloat/multilingual-e5-large",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "sentence-transformers/all-minilm-l6-v2",
+                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -6820,7 +7022,7 @@
           "x": 1313.5212863870001,
           "y": 1858.0159458799487
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -6899,7 +7101,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "e37c04f4-bd18-4083-8f6f-6ee172319d91"
+                "value": "48713154-dcea-4b42-b772-268029c455d7"
               },
               "_type": "Component",
               "api_base": {
@@ -7167,6 +7369,96 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/granite-embedding-278m-multilingual",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-125m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-30m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "intfloat/multilingual-e5-large",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "sentence-transformers/all-minilm-l6-v2",
+                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -7351,9 +7643,9 @@
       }
     ],
     "viewport": {
-      "x": -242.06812754438226,
-      "y": -952.9999906063429,
-      "zoom": 0.6625692775925841
+      "x": 267.6557208461858,
+      "y": -373.3174538705754,
+      "zoom": 0.475706358533402
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
