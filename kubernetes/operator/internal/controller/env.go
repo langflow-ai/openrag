@@ -87,14 +87,13 @@ func NewEnvVarManager() *EnvVarManager {
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
 			"OPENRAG_DOCUMENTS_PATH":    "/app/openrag-documents",
-			"OPENRAG_DOCUMENT_PATH":     "/app/openrag-documents", // omg which one?
 			"OPENRAG_FLOWS_BACKUP_PATH": "/app/backend-data/flow-backups",
 			"OPENRAG_KEYS_PATH":         "/app/backend-data/keys",
 			"OPENRAG_CONFIG_PATH":       "/app/backend-data/config",
 			"OPENRAG_VERSION":           "latest",
 
 			// OpenSearch configuration
-			"OPENSEARCH_DATA_PATH": "./opensearch-data",
+			"OPENSEARCH_DATA_PATH": "",
 
 			// Logging configuration
 			"LOG_LEVEL":    "DEBUG",
