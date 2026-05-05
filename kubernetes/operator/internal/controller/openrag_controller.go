@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -710,7 +711,13 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					Volumes:            volumes,
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup:      ptr.To[int64](1000),
+						RunAsUser:    ptr.To[int64](1000),
+						RunAsGroup:   ptr.To[int64](1000),
+						RunAsNonRoot: ptr.To(true),
+					},
+					Volumes: volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "backend",
@@ -869,8 +876,14 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					InitContainers:     initContainers,
-					Volumes:            volumes,
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup:      ptr.To[int64](1000), // Allow volume access for non-root users
+						RunAsUser:    ptr.To[int64](1000),
+						RunAsGroup:   ptr.To[int64](1000),
+						RunAsNonRoot: ptr.To(true),
+					},
+					InitContainers: initContainers,
+					Volumes:        volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "langflow",
