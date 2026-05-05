@@ -128,20 +128,6 @@ class DocumentService:
                     file_size += len(chunk)
 
             file_hash = hash_id(tmp_path)
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                owner_user_id, jwt_token
-            )
-
-            try:
-                exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
-            except Exception as e:
-                logger.error(
-                    "OpenSearch exists check failed", file_hash=file_hash, error=str(e)
-                )
-                raise
-            if exists:
-                return {"status": "unchanged", "id": file_hash}
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor

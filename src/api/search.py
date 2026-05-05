@@ -45,6 +45,7 @@ async def search(
             body.query,
             user_id=user.user_id,
             jwt_token=jwt_token,
+            user_email=user.email,
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.scoreThreshold,

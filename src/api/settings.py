@@ -12,8 +12,6 @@ from config.settings import (
     DEFAULT_DOCS_URL,
     INGEST_SAMPLE_DATA,
     LANGFLOW_URL,
-    LANGFLOW_CHAT_FLOW_ID,
-    LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
@@ -21,6 +19,8 @@ from config.settings import (
     ENVIRONMENT,
     clients,
     get_openrag_config,
+    get_active_chat_flow_id,
+    get_active_ingest_flow_id,
     config_manager,
     is_no_auth_mode,
 )
@@ -267,22 +267,24 @@ async def get_settings(
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
+        chat_flow_id = get_active_chat_flow_id()
+        ingest_flow_id = get_active_ingest_flow_id()
 
         # Only expose edit URLs when a public URL is configured
         langflow_edit_url = None
-        if LANGFLOW_PUBLIC_URL and LANGFLOW_CHAT_FLOW_ID:
-            langflow_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_CHAT_FLOW_ID}"
+        if LANGFLOW_PUBLIC_URL and chat_flow_id:
+            langflow_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{chat_flow_id}"
 
         langflow_ingest_edit_url = None
-        if LANGFLOW_PUBLIC_URL and LANGFLOW_INGEST_FLOW_ID:
-            langflow_ingest_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_INGEST_FLOW_ID}"
+        if LANGFLOW_PUBLIC_URL and ingest_flow_id:
+            langflow_ingest_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{ingest_flow_id}"
 
         ingestion_defaults_obj = None
         # Fetch ingestion flow configuration to get actual component defaults
-        if LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
+        if ingest_flow_id and openrag_config.edited:
             try:
                 response = await clients.langflow_request(
-                    "GET", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}"
+                    "GET", f"/api/v1/flows/{ingest_flow_id}"
                 )
                 if response.status_code == 200:
                     flow_data = response.json()
@@ -332,8 +334,8 @@ async def get_settings(
 
         return SettingsResponse(
             langflow_url=LANGFLOW_URL,
-            flow_id=LANGFLOW_CHAT_FLOW_ID,
-            ingest_flow_id=LANGFLOW_INGEST_FLOW_ID,
+            flow_id=chat_flow_id,
+            ingest_flow_id=ingest_flow_id,
             langflow_public_url=LANGFLOW_PUBLIC_URL,
             edited=openrag_config.edited,
             onboarding=OnboardingStateConfig(
@@ -367,6 +369,8 @@ async def get_settings(
                     configured=openrag_config.providers.ollama.configured,
                 ),
             ),
+            # TODO(openrag-api): Do not expose the active vector backend here
+            # until the upstream settings API explicitly adds that contract.
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
                 embedding_provider=knowledge_config.embedding_provider,
@@ -529,6 +533,10 @@ async def update_settings(
                 },
                 status_code=403,
             )
+
+        # TODO(openrag-api): If OpenRAG wants backend-aware embedding mutation
+        # safeguards, define that in the public API contract before enforcing
+        # Astra-specific settings errors here.
 
         # Validate provider setup if provider-related fields are being updated
         # Do this BEFORE modifying any config
@@ -1818,6 +1826,7 @@ async def rollback_onboarding(
     try:
         # Get current configuration
         current_config = get_openrag_config()
+        jwt_token = user.jwt_token
 
         # Only allow rollback if config was marked as edited (onboarding completed)
         if not current_config.edited:
@@ -1877,8 +1886,9 @@ async def rollback_onboarding(
                 except Exception as e:
                     logger.error(f"Failed to cancel task {task_id}: {str(e)}")
 
-            # Delete all files associated with any task, regardless of whether 
-            # the task failed or completed, to ensure no partial chunks remain in OpenSearch.
+            # Delete all files associated with any task, regardless of whether
+            # the task failed or completed, to ensure no partial chunks remain in the
+            # active knowledge backend.
             files = task_data.get("files", {})
             if isinstance(files, dict):
                 for file_path, file_info in files.items():
@@ -1886,19 +1896,22 @@ async def rollback_onboarding(
                         filename = file_info.get("filename") or file_path.split("/")[-1]
                         if filename:
                             try:
-                                opensearch_client = session_manager.get_user_opensearch_client(
-                                    user.user_id, user.jwt_token
-                                )
-                                from utils.opensearch_queries import build_filename_delete_body
-                                from config.settings import get_index_name
+                                from services.knowledge_access import build_access_context
+                                from services.knowledge_backend import get_knowledge_backend_service
 
-                                delete_query = build_filename_delete_body(filename)
-                                result = await opensearch_client.delete_by_query(
-                                    index=get_index_name(),
-                                    body=delete_query,
-                                    conflicts="proceed"
+                                access_context = build_access_context(
+                                    user_id=user.user_id,
+                                    user_email=user.email,
+                                    jwt_token=jwt_token,
+                                    session_manager=session_manager,
                                 )
-                                deleted_count = result.get("deleted", 0)
+                                knowledge_backend = get_knowledge_backend_service(
+                                    session_manager
+                                )
+                                deleted_count = await knowledge_backend.delete_by_filename(
+                                    filename,
+                                    access_context,
+                                )
                                 if deleted_count > 0:
                                     deleted_files.append(filename)
                                     logger.info(f"Deleted {deleted_count} chunks for filename {filename}")

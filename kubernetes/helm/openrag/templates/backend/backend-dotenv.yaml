@@ -135,6 +135,30 @@ stringData:
     {{- if .Values.appConfig.knowledge.embeddingModel }}
     EMBEDDING_MODEL={{ .Values.appConfig.knowledge.embeddingModel | quote }}
     {{- end }}
+    {{- if .Values.appConfig.knowledge.backend }}
+    VECTOR_BACKEND={{ .Values.appConfig.knowledge.backend | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.applicationToken }}
+    ASTRA_DB_APPLICATION_TOKEN={{ .Values.global.astra.applicationToken | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.apiEndpoint }}
+    ASTRA_DB_API_ENDPOINT={{ .Values.global.astra.apiEndpoint | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.keyspace }}
+    ASTRA_DB_KEYSPACE={{ .Values.global.astra.keyspace | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.chatFlowId }}
+    ASTRA_CHAT_FLOW_ID={{ .Values.global.astra.chatFlowId | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.ingestFlowId }}
+    ASTRA_INGEST_FLOW_ID={{ .Values.global.astra.ingestFlowId | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.urlIngestFlowId }}
+    ASTRA_URL_INGEST_FLOW_ID={{ .Values.global.astra.urlIngestFlowId | quote }}
+    {{- end }}
+    {{- if .Values.global.astra.nudgesFlowId }}
+    ASTRA_NUDGES_FLOW_ID={{ .Values.global.astra.nudgesFlowId | quote }}
+    {{- end }}
 
     # Port Configuration
     {{- if .Values.backend.langflowPublicUrl }}

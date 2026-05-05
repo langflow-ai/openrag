@@ -84,14 +84,16 @@ from config.settings import (
     FETCH_OPENRAG_DOCS_AT_STARTUP,
     INGESTION_TIMEOUT,
     INDEX_BODY,
-    LANGFLOW_URL_INGEST_FLOW_ID,
     SESSION_SECRET,
     clients,
     config_manager,
+    get_active_url_ingest_flow_id,
+    get_active_vector_store_node_id,
     get_embedding_model,
     get_index_name,
     is_no_auth_mode,
     get_openrag_config,
+    validate_knowledge_backend_config,
 )
 from services.auth_service import AuthService
 from services.langflow_mcp_service import LangflowMCPService
@@ -571,15 +573,18 @@ async def _ingest_default_documents_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(
-            anonymous_user.user_id, effective_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(
+            anonymous_user.user_id,
+            effective_jwt,
         )
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
 
     # Prepare tweaks for default documents with anonymous user metadata
+    vector_store_node_id = get_active_vector_store_node_id("ingest")
+    if not vector_store_node_id:
+        raise ValueError("The active ingest flow does not define a vector store node ID")
+
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        vector_store_node_id: {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -640,14 +645,17 @@ async def _ingest_default_documents_url_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(
-            anonymous_user.user_id, effective_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(
+            anonymous_user.user_id,
+            effective_jwt,
         )
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+
+    vector_store_node_id = get_active_vector_store_node_id("url_ingest")
+    if not vector_store_node_id:
+        raise ValueError("The active URL ingest flow does not define a vector store node ID")
 
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        vector_store_node_id: {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -786,6 +794,8 @@ async def _materialize_default_docs_url_as_text_file(
 async def _delete_existing_default_docs(session_manager, connector_type: str):
     """Delete previously ingested default OpenRAG docs before reingestion."""
     from session_manager import AnonymousUser
+    from services.knowledge_access import build_access_context
+    from services.knowledge_backend import get_knowledge_backend_service
 
     if session_manager is None:
         logger.warning(
@@ -794,44 +804,34 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         return
 
     anonymous_user = AnonymousUser()
-    effective_jwt = None
-    if session_manager:
-        session_manager.get_user_opensearch_client(
-            anonymous_user.user_id, effective_jwt
-        )
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
-
-    opensearch_client = session_manager.get_user_opensearch_client(
-        anonymous_user.user_id, effective_jwt
+    effective_jwt = session_manager.get_effective_jwt_token(
+        anonymous_user.user_id,
+        None,
     )
-    delete_query = {
-        "query": {
-            "bool": {
-                "should": [
-                    # URL-based default docs are ingested as system_default and
-                    # owned by the anonymous onboarding user.
-                    {
-                        "bool": {
-                            "must": [
-                                {"term": {"connector_type": connector_type}},
-                                {"term": {"owner_email": anonymous_user.email}},
-                            ]
-                        }
-                    },
-                ],
-                "minimum_should_match": 1,
-            }
-        }
-    }
-    result = await opensearch_client.delete_by_query(
-        index=get_index_name(),
-        body=delete_query,
-        conflicts="proceed",
+    access_context = build_access_context(
+        user_id=anonymous_user.user_id,
+        user_email=anonymous_user.email,
+        jwt_token=effective_jwt,
+        session_manager=session_manager,
+    )
+    knowledge_backend = get_knowledge_backend_service(session_manager)
+    deleted_count = await knowledge_backend.delete_by_filter_sets(
+        [
+            {
+                "connector_type": connector_type,
+                "owner_email": anonymous_user.email,
+            },
+            {
+                "connector_type": "local",
+                "is_sample_data": "true",
+            },
+        ],
+        access_context=access_context,
+        match_any=True,
     )
     logger.info(
         "Deleted existing default OpenRAG docs before reingestion",
-        deleted_chunks=result.get("deleted", 0),
+        deleted_chunks=deleted_count,
     )
 
 
@@ -955,7 +955,7 @@ async def refresh_default_openrag_docs(
                 "Skipping OpenRAG docs refresh: URL ingestion is not active",
                 ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
                 disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
-                has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
+                has_url_ingest_flow_id=bool(get_active_url_ingest_flow_id()),
                 has_docs_url=bool(DEFAULT_DOCS_URL),
             )
             await TelemetryClient.send_event(
@@ -1196,6 +1196,8 @@ async def startup_tasks(services):
         Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT
     )
 
+    from config.settings import is_astra_backend
+
     # Update model registry to allow further search calls to be instant
     try:
         models_service = services["models_service"]
@@ -1208,11 +1210,15 @@ async def startup_tasks(services):
         )
 
 
-
     if IBM_AUTH_ENABLED:
         logger.info(
             "IBM auth mode: skipping startup OpenSearch checks. "
             "OpenSearch will be initialized during onboarding with user credentials."
+        )
+    elif is_astra_backend():
+        logger.info(
+            "Astra DB backend: skipping startup OpenSearch checks. "
+            "Knowledge operations will use Astra DB instead of OpenSearch."
         )
     else:
         # Only initialize basic OpenSearch connection, not the index
@@ -1356,6 +1362,7 @@ async def initialize_services():
     # Generate JWT keys if they don't exist and a JWT signing key isn't specified
     if not os.getenv("JWT_SIGNING_KEY"):
         generate_jwt_keys()
+    validate_knowledge_backend_config()
 
     from config.settings import IBM_AUTH_ENABLED
 

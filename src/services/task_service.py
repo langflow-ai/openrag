@@ -420,8 +420,13 @@ class TaskService:
                 # the newly indexed chunks without hitting the near-real-time refresh window.
                 if upload_task.successful_files > 0:
                     try:
-                        from config.settings import clients, get_index_name
-                        await clients.opensearch.indices.refresh(index=get_index_name())
+                        from services.knowledge_backend import get_knowledge_backend_service
+
+                        await get_knowledge_backend_service(
+                            self.document_service.session_manager
+                            if self.document_service is not None
+                            else None
+                        ).refresh()
                     except Exception as e:
                         logger.debug("Index refresh after ingest failed (non-fatal)", error=str(e))
 
@@ -793,4 +798,3 @@ class TaskService:
             for i, result in enumerate(results):
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                     logger.warning("Background task raised exception during shutdown", error=str(result))
-

@@ -4,7 +4,12 @@ import httpx
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config.settings import LANGFLOW_INGEST_FLOW_ID, LANGFLOW_URL_INGEST_FLOW_ID, clients
+from config.settings import (
+    clients,
+    get_active_flow_file_path,
+    get_active_ingest_flow_id,
+    get_active_url_ingest_flow_id,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -12,11 +17,18 @@ logger = get_logger(__name__)
 
 class LangflowFileService:
     def __init__(self, flows_service=None):
-        self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
-        self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
+        self._runtime_url_ingest_flow_id: Optional[str] = None
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+    @property
+    def flow_id_ingest(self) -> Optional[str]:
+        return get_active_ingest_flow_id()
+
+    @property
+    def flow_id_url_ingest(self) -> Optional[str]:
+        return self._runtime_url_ingest_flow_id or get_active_url_ingest_flow_id()
 
     @classmethod
     def _is_transient_status(cls, status_code: int) -> bool:
@@ -139,8 +151,8 @@ class LangflowFileService:
         The flow must expose a File component path in input schema or accept files parameter.
         """
         if not self.flow_id_ingest:
-            logger.error("[LF] LANGFLOW_INGEST_FLOW_ID is not configured")
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+            logger.error("[LF] The active ingest flow ID is not configured")
+            raise ValueError("The active ingest flow ID is not configured")
 
         payload: Dict[str, Any] = {
             "input_value": "Ingest files",
@@ -392,11 +404,10 @@ class LangflowFileService:
         max_attempts = 2
         last_error: Exception | None = None
 
-        from config.paths import get_flows_path
-        flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
+        flow_file = Path(get_active_flow_file_path("url_ingest"))
         if not flow_file.exists():
             raise ValueError(
-                "LANGFLOW_URL_INGEST_FLOW_ID is invalid and "
+                "The active URL ingest flow ID is invalid and "
                 f"flow file was not found at {flow_file}"
             )
         with flow_file.open("r", encoding="utf-8") as f:
@@ -474,11 +485,11 @@ class LangflowFileService:
                         "Langflow flow import succeeded but no flow id was returned"
                     )
 
-                self.flow_id_url_ingest = imported_flow_id
+                self._runtime_url_ingest_flow_id = imported_flow_id
                 logger.warning(
                     "[LF] Imported URL ingest flow for current runtime",
                     imported_flow_id=imported_flow_id,
-                    note="Persist this in LANGFLOW_URL_INGEST_FLOW_ID to avoid re-importing on restart.",
+                    note="The checked-in flow ID remains the source of truth for future restarts.",
                 )
                 return imported_flow_id
 

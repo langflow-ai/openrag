@@ -47,6 +47,8 @@ async def get_settings_endpoint(
                 llm_model=config.agent.llm_model,
                 system_prompt=config.agent.system_prompt,
             ),
+            # TODO(openrag-api): Keep backend selection out of the public v1
+            # response unless OpenRAG adds it to the API contract upstream.
             knowledge=KnowledgeSettings(
                 embedding_provider=config.knowledge.embedding_provider,
                 embedding_model=config.knowledge.embedding_model,

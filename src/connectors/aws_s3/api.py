@@ -1,13 +1,15 @@
 """FastAPI route handlers for AWS S3-specific endpoints."""
 
 import os
+from collections import Counter
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
-from config.settings import get_index_name
 from dependencies import get_connector_service, get_session_manager, get_current_user
 from session_manager import User
+from services.knowledge_access import build_access_context
+from services.knowledge_backend import get_knowledge_backend_service
 from utils.logging_config import get_logger
 
 from .auth import create_s3_resource
@@ -140,29 +142,28 @@ async def s3_bucket_status(
         return JSONResponse({"error": "Failed to list buckets"}, status_code=500)
 
     # 2. Count indexed documents per bucket from OpenSearch
-    ingested_counts: dict = {}
+    ingested_counts: dict[str, int] = {}
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user.user_id, user.jwt_token
+        access_context = build_access_context(
+            user_id=user.user_id,
+            user_email=user.email,
+            jwt_token=user.jwt_token,
+            session_manager=session_manager,
         )
-        query_body = {
-            "size": 0,
-            "query": {"term": {"connector_type": "aws_s3"}},
-            "aggs": {
-                "doc_ids": {
-                    "terms": {"field": "document_id", "size": 50000}
-                }
-            },
-        }
-        index_name = get_index_name()
-        os_resp = opensearch_client.search(index=index_name, body=query_body)
-        for bucket_entry in os_resp.get("aggregations", {}).get("doc_ids", {}).get("buckets", []):
-            doc_id = bucket_entry["key"]
-            if "::" in doc_id:
-                bucket_name = doc_id.split("::")[0]
-                ingested_counts[bucket_name] = ingested_counts.get(bucket_name, 0) + 1
+        knowledge_backend = get_knowledge_backend_service(session_manager)
+        document_ids, _ = await knowledge_backend.list_connector_file_refs(
+            "aws_s3",
+            access_context,
+        )
+        ingested_counts = dict(
+            Counter(
+                document_id.split("::", 1)[0]
+                for document_id in document_ids
+                if isinstance(document_id, str) and "::" in document_id
+            )
+        )
     except Exception:
-        pass  # OpenSearch unavailable — show zero counts
+        pass  # Knowledge backend unavailable — show zero counts
 
     result = [
         {

@@ -80,12 +80,33 @@ class LangflowConnectorService:
             # This prevents duplicate chunks when syncing files
             if self.session_manager:
                 try:
-                    from config.settings import get_index_name
-                    opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
-                    delete_body = {"query": {"term": {"filename": processed_filename}}}
-                    delete_result = await opensearch_client.delete_by_query(index=get_index_name(), body=delete_body)
-                    deleted_count = delete_result.get("deleted", 0)
-                    logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
+                    from services.knowledge_access import build_access_context
+                    from services.knowledge_backend import get_knowledge_backend_service
+
+                    access_context = build_access_context(
+                        user_id=owner_user_id,
+                        user_email=owner_email,
+                        jwt_token=jwt_token,
+                        session_manager=self.session_manager,
+                    )
+                    knowledge_backend = get_knowledge_backend_service(
+                        self.session_manager
+                    )
+                    deleted_count = await knowledge_backend.delete_by_document_id(
+                        document.id,
+                        access_context,
+                    )
+                    if deleted_count == 0:
+                        deleted_count = await knowledge_backend.delete_by_filename(
+                            processed_filename,
+                            access_context,
+                        )
+                    logger.info(
+                        "Deleted existing chunks before re-ingestion",
+                        filename=processed_filename,
+                        document_id=document.id,
+                        deleted_count=deleted_count,
+                    )
                 except Exception as delete_err:
                     logger.warning("Failed to delete existing chunks before re-ingestion", filename=processed_filename, error=str(delete_err))
 

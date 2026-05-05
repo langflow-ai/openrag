@@ -1,4 +1,3 @@
-import asyncio
 import time
 from typing import Any, Dict, Optional
 
@@ -39,53 +38,6 @@ class LangflowUrlProcessor(TaskProcessor):
         self.prevent_outside = prevent_outside
         self.tweaks = tweaks
 
-    async def _count_system_default_docs(self, opensearch_client) -> int:
-        """Count indexed OpenRAG docs for the current owner/context."""
-        from config.settings import get_index_name
-
-        must_filters = [
-            {
-                "bool": {
-                    "should": [
-                        {"term": {"connector_type.keyword": self.connector_type}},
-                        {"term": {"connector_type": self.connector_type}},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            }
-        ]
-        if self.owner_email:
-            must_filters.append(
-                {
-                    "bool": {
-                        "should": [
-                            {"term": {"owner_email.keyword": self.owner_email}},
-                            {"match_phrase": {"owner_email": self.owner_email}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                }
-            )
-        if self.owner_user_id:
-            must_filters.append(
-                {
-                    "bool": {
-                        "should": [
-                            {"term": {"owner.keyword": self.owner_user_id}},
-                            {"match_phrase": {"owner": self.owner_user_id}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                }
-            )
-
-        count_query = {"query": {"bool": {"must": must_filters}}}
-        response = await opensearch_client.count(
-            index=get_index_name(),
-            body=count_query,
-        )
-        return int(response.get("count", 0))
-
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
     ) -> None:
@@ -96,20 +48,9 @@ class LangflowUrlProcessor(TaskProcessor):
         try:
             effective_jwt = self.jwt_token
             if self.session_manager and not effective_jwt:
-                self.session_manager.get_user_opensearch_client(
+                effective_jwt = self.session_manager.get_effective_jwt_token(
                     self.owner_user_id, self.jwt_token
                 )
-                if hasattr(self.session_manager, "_anonymous_jwt"):
-                    effective_jwt = self.session_manager._anonymous_jwt
-
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                self.owner_user_id, effective_jwt
-            )
-            docs_before = await self._count_system_default_docs(opensearch_client)
-            logger.info(
-                "URL ingestion before",
-                docs_before=docs_before,
-            )
 
             result = await self.langflow_file_service.run_url_ingestion_flow(
                 docs_url=self.docs_url,

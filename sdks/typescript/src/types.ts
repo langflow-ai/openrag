@@ -238,7 +238,7 @@ export interface OpenRAGClientOptions {
   extraHeaders?: Record<string, string>;
   /** Base URL for the API. Falls back to OPENRAG_URL env var. */
   baseUrl?: string;
-  /** Request timeout in milliseconds (default 30000). */
+  /** Request timeout in milliseconds (default 60000). */
   timeout?: number;
 }
 

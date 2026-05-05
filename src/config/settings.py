@@ -1,8 +1,12 @@
 from config.paths import get_flows_path
 import asyncio
+import json
 import os
 import threading
 import concurrent.futures
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 from utils.env_utils import get_env_int, get_env_float
 
 import httpx
@@ -48,6 +52,85 @@ NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
 if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
     logger.warning("FLOW_ID is deprecated. Please use LANGFLOW_CHAT_FLOW_ID instead")
     LANGFLOW_CHAT_FLOW_ID = _legacy_flow_id
+
+_ASTRA_CHAT_FLOW_ID_DEFAULT = "6df7ff83-97be-46be-b624-ab40ff53fd7b"
+_ASTRA_INGEST_FLOW_ID_DEFAULT = "4ae67a0f-8f97-4563-ad54-3c18fe07ce30"
+_ASTRA_URL_INGEST_FLOW_ID_DEFAULT = "fbd0aee6-29b1-4a51-a802-27fb3bec9927"
+_ASTRA_NUDGES_FLOW_ID_DEFAULT = "05b262d8-45ba-4574-afad-797e8918defd"
+
+ASTRA_CHAT_FLOW_ID = os.getenv("ASTRA_CHAT_FLOW_ID") or _ASTRA_CHAT_FLOW_ID_DEFAULT
+ASTRA_INGEST_FLOW_ID = os.getenv("ASTRA_INGEST_FLOW_ID") or _ASTRA_INGEST_FLOW_ID_DEFAULT
+ASTRA_URL_INGEST_FLOW_ID = os.getenv("ASTRA_URL_INGEST_FLOW_ID") or _ASTRA_URL_INGEST_FLOW_ID_DEFAULT
+ASTRA_NUDGES_FLOW_ID = os.getenv("ASTRA_NUDGES_FLOW_ID") or _ASTRA_NUDGES_FLOW_ID_DEFAULT
+
+DEFAULT_KNOWLEDGE_BACKEND = "opensearch"
+SUPPORTED_KNOWLEDGE_BACKENDS = {"opensearch", "astra", "astradb"}
+
+
+@dataclass(frozen=True)
+class FlowDefinition:
+    flow_id: str
+    filename: str
+    default_flow_id: Optional[str] = None
+    vector_store_node_id: Optional[str] = None
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_FLOWS_DIRECTORY = _PROJECT_ROOT / "flows"
+
+OPENSEARCH_FLOW_DEFINITIONS = {
+    "retrieval": FlowDefinition(
+        flow_id=LANGFLOW_CHAT_FLOW_ID or "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
+        filename="openrag_agent.json",
+        default_flow_id="1098eea1-6649-4e1d-aed1-b77249fb8dd0",
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
+    ),
+    "ingest": FlowDefinition(
+        flow_id=LANGFLOW_INGEST_FLOW_ID or "5488df7c-b93f-4f87-a446-b67028bc0813",
+        filename="ingestion_flow.json",
+        default_flow_id="5488df7c-b93f-4f87-a446-b67028bc0813",
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4",
+    ),
+    "url_ingest": FlowDefinition(
+        flow_id=LANGFLOW_URL_INGEST_FLOW_ID or "72c3d17c-2dac-4a73-b48a-6518473d7830",
+        filename="openrag_url_mcp.json",
+        default_flow_id="72c3d17c-2dac-4a73-b48a-6518473d7830",
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
+    ),
+    "nudges": FlowDefinition(
+        flow_id=NUDGES_FLOW_ID or "ebc01d31-1976-46ce-a385-b0240327226c",
+        filename="openrag_nudges.json",
+        default_flow_id="ebc01d31-1976-46ce-a385-b0240327226c",
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-0ByE3",
+    ),
+}
+
+ASTRA_FLOW_DEFINITIONS = {
+    "retrieval": FlowDefinition(
+        flow_id=ASTRA_CHAT_FLOW_ID,
+        filename="openrag_agent_astra.json",
+        default_flow_id=ASTRA_CHAT_FLOW_ID,
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
+    ),
+    "ingest": FlowDefinition(
+        flow_id=ASTRA_INGEST_FLOW_ID,
+        filename="ingestion_flow_astra.json",
+        default_flow_id=ASTRA_INGEST_FLOW_ID,
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4",
+    ),
+    "url_ingest": FlowDefinition(
+        flow_id=ASTRA_URL_INGEST_FLOW_ID,
+        filename="openrag_url_mcp_astra.json",
+        default_flow_id=ASTRA_URL_INGEST_FLOW_ID,
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
+    ),
+    "nudges": FlowDefinition(
+        flow_id=ASTRA_NUDGES_FLOW_ID,
+        filename="openrag_nudges_astra.json",
+        default_flow_id=ASTRA_NUDGES_FLOW_ID,
+        vector_store_node_id="OpenSearchVectorStoreComponentMultimodalMultiEmbedding-0ByE3",
+    ),
+}
 
 
 # Langflow superuser credentials for API key generation
@@ -905,6 +988,141 @@ clients = AppClients()
 def get_openrag_config():
     """Get current OpenRAG configuration."""
     return config_manager.get_config()
+
+
+def normalize_knowledge_backend(backend: Optional[str]) -> str:
+    """Normalize a configured knowledge backend name."""
+    if backend is None:
+        return DEFAULT_KNOWLEDGE_BACKEND
+
+    normalized = backend.strip().lower()
+    if not normalized:
+        return DEFAULT_KNOWLEDGE_BACKEND
+    if normalized == "astradb":
+        return "astra"
+    if normalized in {"opensearch", "astra"}:
+        return normalized
+
+    supported = ", ".join(sorted(SUPPORTED_KNOWLEDGE_BACKENDS))
+    raise ValueError(
+        f"Unsupported knowledge backend '{backend}'. Supported values: {supported}"
+    )
+
+
+def get_knowledge_backend() -> str:
+    """Get the active knowledge backend, honoring env override over config."""
+    configured_backend = getattr(get_openrag_config().knowledge, "backend", None)
+    return normalize_knowledge_backend(os.getenv("VECTOR_BACKEND") or configured_backend)
+
+
+def is_astra_backend() -> bool:
+    """Return True when Astra is the active Langflow vector backend."""
+    return get_knowledge_backend() == "astra"
+
+
+def validate_knowledge_backend_config() -> None:
+    """Validate backend-specific runtime requirements."""
+    if not is_astra_backend():
+        return
+
+    missing = [
+        name
+        for name in ("ASTRA_DB_APPLICATION_TOKEN", "ASTRA_DB_API_ENDPOINT")
+        if not os.getenv(name)
+    ]
+    if missing:
+        missing_values = ", ".join(missing)
+        raise ValueError(
+            "Knowledge backend 'astra' requires the following environment "
+            f"variables to be set: {missing_values}"
+        )
+
+
+def _get_flow_definitions_for_backend(backend: Optional[str] = None) -> dict[str, FlowDefinition]:
+    resolved_backend = normalize_knowledge_backend(backend) if backend else get_knowledge_backend()
+    # Registry built at call time so monkeypatching module-level dicts works in tests
+    registry: dict[str, dict[str, FlowDefinition]] = {
+        "opensearch": OPENSEARCH_FLOW_DEFINITIONS,
+        "astra": ASTRA_FLOW_DEFINITIONS,
+    }
+    definitions = registry.get(resolved_backend)
+    if definitions is None:
+        raise ValueError(f"No flow definitions registered for backend '{resolved_backend}'")
+    return definitions
+
+
+def get_active_flow_definition(flow_type: str) -> FlowDefinition:
+    """Get the active Langflow definition for the selected backend."""
+    try:
+        return _get_flow_definitions_for_backend()[flow_type]
+    except KeyError as exc:
+        raise ValueError(f"Unknown flow type '{flow_type}'") from exc
+
+
+def get_active_flow_configs() -> list[tuple[str, str]]:
+    """Return the active flow type/id pairs for the selected backend."""
+    definitions = _get_flow_definitions_for_backend()
+    return [(name, flow.flow_id) for name, flow in definitions.items() if flow.flow_id]
+
+
+def get_active_flow_id(flow_type: str) -> Optional[str]:
+    """Return the active flow ID for a given flow type."""
+    return get_active_flow_definition(flow_type).flow_id
+
+
+def get_active_flow_file_name(flow_type: str) -> str:
+    """Return the checked-in filename for the active flow."""
+    return get_active_flow_definition(flow_type).filename
+
+
+def _find_flow_file_path_by_id(flow_id: str) -> Optional[Path]:
+    """Scan checked-in flow JSON files for a specific flow ID."""
+    if not flow_id or not _FLOWS_DIRECTORY.exists():
+        return None
+
+    for flow_file in _FLOWS_DIRECTORY.glob("*.json"):
+        try:
+            with flow_file.open("r", encoding="utf-8") as handle:
+                if json.load(handle).get("id") == flow_id:
+                    return flow_file
+        except (OSError, ValueError):
+            continue
+
+    return None
+
+
+def get_active_flow_file_path(flow_type: str) -> str:
+    """Return the absolute path to the checked-in flow JSON file."""
+    definition = get_active_flow_definition(flow_type)
+    default_path = _FLOWS_DIRECTORY / definition.filename
+
+    if definition.flow_id and definition.default_flow_id and definition.flow_id != definition.default_flow_id:
+        matching_path = _find_flow_file_path_by_id(definition.flow_id)
+        if matching_path is not None:
+            return str(matching_path)
+
+    return str(default_path)
+
+
+def get_active_vector_store_node_id(flow_type: str) -> Optional[str]:
+    """Return the vector-store node ID used by the active flow."""
+    return get_active_flow_definition(flow_type).vector_store_node_id
+
+
+def get_active_chat_flow_id() -> Optional[str]:
+    return get_active_flow_id("retrieval")
+
+
+def get_active_ingest_flow_id() -> Optional[str]:
+    return get_active_flow_id("ingest")
+
+
+def get_active_url_ingest_flow_id() -> Optional[str]:
+    return get_active_flow_id("url_ingest")
+
+
+def get_active_nudges_flow_id() -> Optional[str]:
+    return get_active_flow_id("nudges")
 
 
 # Expose configuration settings for backward compatibility and easy access

@@ -15,6 +15,11 @@ load_dotenv()
 os.environ['GOOGLE_OAUTH_CLIENT_ID'] = ''
 os.environ['GOOGLE_OAUTH_CLIENT_SECRET'] = ''
 
+# Use an isolated config directory so in-process tests don't race with the
+# containerized backend's bind-mounted config file in CI.
+_TEST_CONFIG_DIR = Path(tempfile.mkdtemp(prefix="openrag-config-"))
+os.environ["OPENRAG_CONFIG_PATH"] = str(_TEST_CONFIG_DIR)
+
 from config.settings import clients
 from session_manager import SessionManager
 from main import generate_jwt_keys
@@ -35,7 +40,7 @@ async def onboard_system():
         return
 
     # Delete any existing config to ensure clean onboarding
-    config_file = Path("config/config.yaml")
+    config_file = _TEST_CONFIG_DIR / "config.yaml"
     if config_file.exists():
         config_file.unlink()
 

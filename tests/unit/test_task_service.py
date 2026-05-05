@@ -6,6 +6,7 @@ import asyncio
 import pytest
 import time
 from unittest.mock import Mock, AsyncMock, patch
+import config.settings as app_settings
 from services.task_service import TaskService, IngestionTimeoutError
 from models.tasks import TaskStatus, UploadTask, FileTask
 
@@ -233,3 +234,44 @@ async def test_concurrent_mixed_counter_updates(task_service):
     assert task.successful_files == 13
     assert task.processed_files == task.successful_files + task.failed_files
 
+
+@pytest.mark.asyncio
+async def test_background_processor_skips_index_refresh_for_astra(task_service, monkeypatch):
+    class _Processor:
+        async def process_item(self, upload_task, item, file_task):
+            file_task.status = TaskStatus.COMPLETED
+            upload_task.successful_files += 1
+
+    task_id = "astra-task"
+    user_id = "user-astra"
+    upload_task = UploadTask(
+        task_id=task_id,
+        total_files=1,
+        file_tasks={"file1": FileTask(file_path="file1")},
+    )
+    upload_task.processor = _Processor()
+    task_service.task_store[user_id] = {task_id: upload_task}
+
+    refresh_mock = AsyncMock()
+    backend_refresh_mock = AsyncMock()
+    fake_backend = Mock()
+    fake_backend.refresh = backend_refresh_mock
+    mock_opensearch = Mock()
+    mock_opensearch.indices.refresh = refresh_mock
+    monkeypatch.setattr(
+        app_settings.clients,
+        "opensearch",
+        mock_opensearch,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "services.knowledge_backend.get_knowledge_backend_service",
+        lambda _session_manager: fake_backend,
+    )
+    monkeypatch.setattr("services.task_service.TelemetryClient.send_event", AsyncMock())
+
+    await task_service.background_custom_processor(user_id, task_id, ["file1"], processor=upload_task.processor)
+
+    refresh_mock.assert_not_awaited()
+    backend_refresh_mock.assert_awaited_once()
+    assert upload_task.status == TaskStatus.COMPLETED

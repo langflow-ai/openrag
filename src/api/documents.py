@@ -5,6 +5,8 @@ from utils.logging_config import get_logger
 
 from dependencies import get_session_manager, get_current_user
 from session_manager import User
+from services.knowledge_access import build_access_context
+from services.knowledge_backend import get_knowledge_backend_service
 
 logger = get_logger(__name__)
 
@@ -18,10 +20,9 @@ async def delete_documents_by_filename_core(
     session_manager,
     user_id: str,
     jwt_token: str | None,
+    user_email: str | None = None,
 ):
     """Shared delete-by-filename logic for v1 and non-v1 endpoints."""
-    from config.settings import get_index_name
-    from utils.opensearch_queries import build_filename_delete_body
 
     normalized_filename = (filename or "").strip()
     if not normalized_filename:
@@ -37,17 +38,17 @@ async def delete_documents_by_filename_core(
         )
 
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user_id, jwt_token
+        access_context = build_access_context(
+            user_id=user_id,
+            user_email=user_email,
+            jwt_token=jwt_token,
+            session_manager=session_manager,
         )
-        delete_query = build_filename_delete_body(normalized_filename)
-        result = await opensearch_client.delete_by_query(
-            index=get_index_name(),
-            body=delete_query,
-            conflicts="proceed",
+        knowledge_backend = get_knowledge_backend_service(session_manager)
+        deleted_count = await knowledge_backend.delete_by_filename(
+            normalized_filename,
+            access_context,
         )
-
-        deleted_count = result.get("deleted", 0)
         logger.info(
             f"Deleted {deleted_count} chunks for filename {normalized_filename}",
             user_id=user_id,
@@ -102,7 +103,14 @@ async def delete_documents_by_filename_core(
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
     from main import init_index
-    from config.settings import IBM_AUTH_ENABLED, clients as app_clients
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        clients as app_clients,
+        get_knowledge_backend,
+    )
+
+    if get_knowledge_backend() != "opensearch":
+        return
 
     opensearch_client = None
     if IBM_AUTH_ENABLED and jwt_token:
@@ -117,36 +125,19 @@ async def check_filename_exists(
     user: User = Depends(get_current_user),
 ):
     """Check if a document with a specific filename already exists"""
-    from config.settings import get_index_name
-
     jwt_token = user.jwt_token
 
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user.user_id, jwt_token
+        access_context = build_access_context(
+            user_id=user.user_id,
+            user_email=user.email,
+            jwt_token=jwt_token,
+            session_manager=session_manager,
         )
-
-        from utils.opensearch_queries import build_filename_search_body
-        from utils.file_utils import get_filename_aliases
-
-        candidate_filenames = get_filename_aliases(filename)
-        if not candidate_filenames:
-            return JSONResponse({"exists": False, "filename": filename}, status_code=200)
-
-        logger.debug("Checking filename existence", filename=filename, index_name=get_index_name())
-        exists = False
+        knowledge_backend = get_knowledge_backend_service(session_manager)
 
         try:
-            for candidate in candidate_filenames:
-                search_body = build_filename_search_body(candidate, size=1, source=["filename"])
-                response = await opensearch_client.search(
-                    index=get_index_name(),
-                    body=search_body
-                )
-                hits = response.get("hits", {}).get("hits", [])
-                if hits:
-                    exists = True
-                    break
+            exists = await knowledge_backend.filename_exists(filename, access_context)
         except Exception as search_err:
             if "index_not_found_exception" in str(search_err):
                 logger.info("Index does not exist, creating it now before upload")
@@ -176,5 +167,6 @@ async def delete_documents_by_filename(
         session_manager=session_manager,
         user_id=user.user_id,
         jwt_token=user.jwt_token,
+        user_email=user.email,
     )
     return JSONResponse(payload, status_code=status_code)

@@ -80,6 +80,25 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
 
+## Knowledge backend settings
+
+Select the vector backend that OpenRAG should use for Langflow ingestion and retrieval.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VECTOR_BACKEND` | `opensearch` | Select the active knowledge backend. Use `opensearch` for the default OpenSearch-backed flows, or `astra` to switch OpenRAG to the built-in Astra DB Langflow flows. |
+| `ASTRA_DB_APPLICATION_TOKEN` | Not set | Required when `VECTOR_BACKEND=astra`. Astra DB application token used by the Astra-backed Langflow vector store component. |
+| `ASTRA_DB_API_ENDPOINT` | Not set | Required when `VECTOR_BACKEND=astra`. Astra DB Data API endpoint used by the Astra-backed Langflow vector store component. |
+| `ASTRA_DB_KEYSPACE` | Not set | Optional when `VECTOR_BACKEND=astra`. Astra DB keyspace/namespace to use instead of the database default. |
+| `ASTRA_CHAT_FLOW_ID` | Built-in | Optional. Override the default Astra chat/retrieval flow ID. Only needed when replacing the built-in Astra flows with custom ones. |
+| `ASTRA_INGEST_FLOW_ID` | Built-in | Optional. Override the default Astra ingestion flow ID. |
+| `ASTRA_URL_INGEST_FLOW_ID` | Built-in | Optional. Override the default Astra URL ingestion flow ID. |
+| `ASTRA_NUDGES_FLOW_ID` | Built-in | Optional. Override the default Astra nudges flow ID. |
+
+:::warning
+The Astra backend stores one vector representation per collection. If you change the embedding provider or model for an existing Astra-backed corpus, reingest the documents so all stored vectors are regenerated with the new embedding configuration.
+:::
+
 ## Langflow settings {#langflow-settings}
 
 Configure the OpenRAG Langflow server's authentication, contact point, and built-in flow definitions.
@@ -103,7 +122,7 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_SECRET_KEY` | Automatically generated | Secret encryption key for Langflow internal operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key) for this variable. If this variable isn't set, then Langflow generates a secret key automatically.  |
 | `LANGFLOW_SUPERUSER` | `admin` | Username for the Langflow administrator user. |
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
-| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
+| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the stock OpenSearch-backed chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. When `VECTOR_BACKEND=astra`, OpenRAG automatically switches to the built-in Astra flow set. |
 | `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
 | `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
 | `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the OpenRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |

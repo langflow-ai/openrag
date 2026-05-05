@@ -29,6 +29,15 @@ global:
     password: ""                          # OpenSearch password (stored in secret)
     indexName: "documents"                # OpenSearch index name
 
+  astra:
+    applicationToken: ""                 # Astra DB application token
+    apiEndpoint: ""                      # Astra DB Data API endpoint
+    keyspace: ""                         # Optional Astra DB keyspace/namespace override
+    chatFlowId: ""                       # Optional: override built-in Astra chat flow ID
+    ingestFlowId: ""                     # Optional: override built-in Astra ingestion flow ID
+    urlIngestFlowId: ""                  # Optional: override built-in Astra URL ingestion flow ID
+    nudgesFlowId: ""                     # Optional: override built-in Astra nudges flow ID
+
   docling:
     host: docling-serve.docling.svc.cluster.local
     port: 5001
@@ -100,9 +109,13 @@ langflow:
       path: flows
       files:
         - ingestion_flow.json
+        - ingestion_flow_astra.json
         - openrag_agent.json
+        - openrag_agent_astra.json
         - openrag_nudges.json
+        - openrag_nudges_astra.json
         - openrag_url_mcp.json
+        - openrag_url_mcp_astra.json
     chatFlowId: "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     ingestFlowId: "5488df7c-b93f-4f87-a446-b67028bc0813"
     urlIngestFlowId: "72c3d17c-2dac-4a73-b48a-6518473d7830"
@@ -171,7 +184,7 @@ langflow:
     host: "https://cloud.langfuse.com"
 
   # Variables to expose to flows
-  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL"
+  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,ASTRA_DB_APPLICATION_TOKEN,ASTRA_DB_API_ENDPOINT,ASTRA_DB_KEYSPACE"
 
   # Probes
   livenessProbe:
@@ -543,6 +556,7 @@ appConfig:
     # System prompt can be customized here
     systemPrompt: ""                      # Leave empty to use default
   knowledge:
+    backend: "opensearch"
     chunkOverlap: 200
     chunkSize: 1000
     embeddingModel: "text-embedding-3-large"

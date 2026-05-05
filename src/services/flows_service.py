@@ -1,14 +1,17 @@
 from config.settings import (
     AGENT_COMPONENT_DISPLAY_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
-    LANGFLOW_URL_INGEST_FLOW_ID,
-    NUDGES_FLOW_ID,
     LANGFLOW_URL,
-    LANGFLOW_CHAT_FLOW_ID,
-    LANGFLOW_INGEST_FLOW_ID,
     OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     clients,
+    get_active_chat_flow_id,
+    get_active_flow_configs,
+    get_active_flow_file_path,
+    get_active_ingest_flow_id,
+    get_active_nudges_flow_id,
+    get_active_url_ingest_flow_id,
+    get_active_vector_store_node_id,
     get_openrag_config,
 )
 import json
@@ -94,6 +97,9 @@ class FlowsService:
             if flow_id not in self._flow_locks:
                 self._flow_locks[flow_id] = asyncio.Lock()
             return self._flow_locks[flow_id]
+
+    def _active_flow_configs(self) -> list[tuple[str, str]]:
+        return get_active_flow_configs()
 
     def _get_flows_directory(self):
         """Get the flows directory path"""
@@ -181,12 +187,7 @@ class FlowsService:
             "failed": [],
         }
 
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
+        flow_configs = self._active_flow_configs()
 
         logger.info("Starting periodic backup of Langflow flows")
 
@@ -433,24 +434,22 @@ class FlowsService:
             raise ValueError("LANGFLOW_URL environment variable is required")
 
         # Determine flow ID based on type
-        if flow_type == "nudges":
-            flow_id = NUDGES_FLOW_ID
-        elif flow_type == "retrieval":
-            flow_id = LANGFLOW_CHAT_FLOW_ID
-        elif flow_type == "ingest":
-            flow_id = LANGFLOW_INGEST_FLOW_ID
-        elif flow_type == "url_ingest":
-            flow_id = LANGFLOW_URL_INGEST_FLOW_ID
-        else:
+        flow_id_getters = {
+            "nudges": get_active_nudges_flow_id,
+            "retrieval": get_active_chat_flow_id,
+            "ingest": get_active_ingest_flow_id,
+            "url_ingest": get_active_url_ingest_flow_id,
+        }
+        if flow_type not in flow_id_getters:
             raise ValueError(
                 "flow_type must be either 'nudges', 'retrieval', 'ingest', or 'url_ingest'"
             )
+        flow_id = flow_id_getters[flow_type]()
 
         if not flow_id:
             raise ValueError(f"Flow ID not configured for flow_type '{flow_type}'")
 
-        # Dynamically find the flow file by ID
-        flow_path = self._find_flow_file_by_id(flow_id)
+        flow_path = get_active_flow_file_path(flow_type)
         if not flow_path:
             raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
 
@@ -664,41 +663,45 @@ class FlowsService:
 
     async def update_chat_flow_model(self, model_name: str, provider: str):
         """Helper function to update the model in the chat flow"""
-        if not LANGFLOW_CHAT_FLOW_ID:
-            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        chat_flow_id = get_active_chat_flow_id()
+        if not chat_flow_id:
+            raise ValueError("The active chat flow ID is not configured")
 
         # Determine target component IDs based on provider
         target_llm_id = self._get_provider_component_ids(provider)[1]
 
-        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
+        await self._update_flow_field(chat_flow_id, "model_name", model_name,
                                 node_display_name=target_llm_id)
 
     async def update_chat_flow_system_prompt(self, system_prompt: str, provider: str):
         """Helper function to update the system prompt in the chat flow"""
-        if not LANGFLOW_CHAT_FLOW_ID:
-            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        chat_flow_id = get_active_chat_flow_id()
+        if not chat_flow_id:
+            raise ValueError("The active chat flow ID is not configured")
 
         # Determine target component IDs based on provider
         target_agent_id = self._get_provider_component_ids(provider)[1]
 
-        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
+        await self._update_flow_field(chat_flow_id, "system_prompt", system_prompt,
                                 node_display_name=target_agent_id)
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
         """Helper function to update docling preset in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        ingest_flow_id = get_active_ingest_flow_id()
+        if not ingest_flow_id:
+            raise ValueError("The active ingest flow ID is not configured")
 
         from config.settings import DOCLING_COMPONENT_DISPLAY_NAME
-        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "docling_serve_opts", preset_config,
+        await self._update_flow_field(ingest_flow_id, "docling_serve_opts", preset_config,
                                 node_display_name=DOCLING_COMPONENT_DISPLAY_NAME)
 
     async def update_ingest_flow_chunk_size(self, chunk_size: int):
         """Helper function to update chunk size in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        ingest_flow_id = get_active_ingest_flow_id()
+        if not ingest_flow_id:
+            raise ValueError("The active ingest flow ID is not configured")
         await self._update_flow_field(
-            LANGFLOW_INGEST_FLOW_ID,
+            ingest_flow_id,
             "chunk_size",
             chunk_size,
             node_display_name="Split Text",
@@ -706,10 +709,11 @@ class FlowsService:
 
     async def update_ingest_flow_chunk_overlap(self, chunk_overlap: int):
         """Helper function to update chunk overlap in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        ingest_flow_id = get_active_ingest_flow_id()
+        if not ingest_flow_id:
+            raise ValueError("The active ingest flow ID is not configured")
         await self._update_flow_field(
-            LANGFLOW_INGEST_FLOW_ID,
+            ingest_flow_id,
             "chunk_overlap",
             chunk_overlap,
             node_display_name="Split Text",
@@ -717,13 +721,14 @@ class FlowsService:
 
     async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
         """Helper function to update embedding model in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        ingest_flow_id = get_active_ingest_flow_id()
+        if not ingest_flow_id:
+            raise ValueError("The active ingest flow ID is not configured")
 
         # Determine target component IDs based on provider
         target_embedding_id = self._get_provider_component_ids(provider)[0]
 
-        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
+        await self._update_flow_field(ingest_flow_id, "model", embedding_model,
                                 node_display_name=target_embedding_id)
 
     def _replace_node_in_flow(self, flow_data, old_display_name, new_node):
@@ -849,12 +854,7 @@ class FlowsService:
 
         Returns the set of flow type names that were actually created.
         """
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
+        flow_configs = self._active_flow_configs()
         created_flow_types: set[str] = set()
 
         async def ensure_single_flow_exists(flow_type, flow_id):
@@ -919,12 +919,7 @@ class FlowsService:
         """
         reset_flows = []
 
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
+        flow_configs = self._active_flow_configs()
 
         async def check_single_flow_reset(flow_type, flow_id):
             if not flow_id:
@@ -970,10 +965,8 @@ class FlowsService:
             # Use provided flow_configs or default to all flows
             if flow_configs is None:
                 flow_configs = [
-                    {"name": "nudges", "flow_id": NUDGES_FLOW_ID},
-                    {"name": "retrieval", "flow_id": LANGFLOW_CHAT_FLOW_ID},
-                    {"name": "ingest", "flow_id": LANGFLOW_INGEST_FLOW_ID},
-                    {"name": "url_ingest", "flow_id": LANGFLOW_URL_INGEST_FLOW_ID},
+                    {"name": name, "flow_id": flow_id}
+                    for name, flow_id in self._active_flow_configs()
                 ]
 
             tasks = []
@@ -1135,6 +1128,123 @@ class FlowsService:
                     f"Failed to update flow: HTTP {response.status_code} - {response.text}"
                 )
 
+        updates_made = []
+
+        # Update embedding component
+        if not DISABLE_INGEST_WITH_LANGFLOW and (embedding_model or force_embedding_update):
+            # Get all embedding nodes in the flow
+            embedding_nodes = self._find_nodes_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
+            logger.info(f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'")
+
+            # Count configured embedding-enabled providers
+            config_obj = get_openrag_config()
+            configured_providers = []
+            if config_obj.providers.openai.configured: configured_providers.append("openai")
+            if config_obj.providers.watsonx.configured: configured_providers.append("watsonx")
+            if config_obj.providers.ollama.configured: configured_providers.append("ollama")
+
+            # Ensure current provider is in the list for counting purposes if it's being configured
+            if provider in ["openai", "watsonx", "ollama"] and provider not in configured_providers:
+                configured_providers.append(provider)
+
+            all_possible = ["openai", "watsonx", "ollama"]
+            configured_providers = [p for p in all_possible if p in configured_providers]
+            provider_count = len(configured_providers)
+            logger.info(f"Configured embedding providers: {configured_providers} (count: {provider_count})")
+
+            # Determine slot mapping context
+            if provider_count == 1:
+                logger.info("Configuration mode: all 3 slots belong to the single active provider")
+            elif provider_count == 2:
+                logger.info("Configuration mode: first 2 slots assigned to providers 1 and 2")
+            elif provider_count == 3:
+                logger.info("Configuration mode: slots 1, 2, and 3 assigned to their respective providers")
+
+            # 1. Check if any node is already this provider - always update those first
+            matched_nodes = []
+            provider_display = self._get_provider_name_display(provider)
+            for node, idx in embedding_nodes:
+                if self._get_node_provider(node) == provider_display:
+                    matched_nodes.append((node, idx))
+
+            if matched_nodes:
+                logger.info(f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'")
+                for node, idx in matched_nodes:
+                    if await self._update_component_fields(node, provider, embedding_model):
+                        updates_made.append(f"embedding model: {embedding_model} (updated existing {provider} node)")
+            else:
+                # 2. No existing node matched, use slot-based logic
+                try:
+                    p_index = configured_providers.index(provider)
+                    logger.info(f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})")
+
+                    if provider_count == 1:
+                        # Single provider mode: update all available nodes (up to 3)
+                        logger.info(f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})")
+                        for i in range(min(3, len(embedding_nodes))):
+                            node, idx = embedding_nodes[i]
+                            if await self._update_component_fields(node, provider, embedding_model):
+                                updates_made.append(
+                                    f"embedding model: {embedding_model} (set node {i+1})"
+                                )
+                    else:
+                        # Multiple providers: each gets one slot based on its list index
+                        # This satisfies:
+                        # - 2 providers -> node 0 and node 1 updated ("two first nodes")
+                        # - 3 providers -> node 0, 1, 2 updated ("each gets its first one")
+                        if p_index < len(embedding_nodes):
+                            node, idx = embedding_nodes[p_index]
+                            logger.info(f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index+1})")
+                            if await self._update_component_fields(node, provider, embedding_model):
+                                updates_made.append(
+                                    f"embedding model: {embedding_model} (set node {p_index+1})"
+                                )
+                        else:
+                            logger.info(f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment")
+                except ValueError:
+                    logger.warning(f"Current provider '{provider}' not found in configured providers list: {configured_providers}")
+
+            if embedding_model:
+                vector_store_node_id = get_active_vector_store_node_id(flow_name)
+                if vector_store_node_id:
+                    vector_store_node, vector_store_node_index = self._find_node_in_flow(
+                        flow_data, node_id=vector_store_node_id
+                    )
+                    if (
+                        vector_store_node is not None
+                        and vector_store_node_index is not None
+                    ):
+                        vector_template = (
+                            vector_store_node.get("data", {})
+                            .get("node", {})
+                            .get("template", {})
+                        )
+                        if "embedding_model_name" in vector_template:
+                            flow_data["data"]["nodes"][vector_store_node_index]["data"]["node"]["template"][
+                                "embedding_model_name"
+                            ]["value"] = embedding_model
+                            updates_made.append(
+                                f"vector store embedding model: {embedding_model}"
+                            )
+
+        # Update LLM component (if exists in this flow)
+        if llm_model or force_llm_update:
+            llm_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME)
+            if llm_node:
+                if await self._update_component_fields(
+                    llm_node, provider, llm_model
+                ):
+                    updates_made.append(f"llm model: {llm_model}")
+            # Update LLM component (if exists in this flow)
+            agent_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
+            if agent_node:
+                if await self._update_component_fields(
+                    agent_node, provider, llm_model
+                ):
+                    updates_made.append(f"agent model: {llm_model}")
+
+        # If no updates were made, return skip message
+        if not updates_made:
             return {
                 "flow": flow_name,
                 "success": True,

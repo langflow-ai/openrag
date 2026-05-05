@@ -4,7 +4,8 @@ from fastapi import Depends, Request
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, PlainTextResponse
 from connectors.sharepoint.utils import is_valid_sharepoint_url
-from config.settings import get_index_name
+from services.knowledge_access import build_access_context
+from services.knowledge_backend import get_knowledge_backend_service
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 from dependencies import get_connector_service, get_session_manager, get_current_user
@@ -18,53 +19,27 @@ async def get_synced_file_ids_for_connector(
     user_id: str,
     session_manager,
     jwt_token: str = None,
+    user_email: str | None = None,
 ) -> tuple:
     """
-    Query OpenSearch for unique document_id values where connector_type matches.
+    Query the active knowledge backend for synced document IDs and filenames.
     Returns tuple of (file_ids, filenames) - use file_ids if available, else filenames as fallback.
     
     Note: Langflow-ingested files may not have document_id stored. In that case,
     filenames are returned for filename-based filtering during sync.
     """
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        
-        # Query for both document_id and filename aggregations
-        query_body = {
-            "size": 0,
-            "query": {
-                "term": {
-                    "connector_type": connector_type
-                }
-            },
-            "aggs": {
-                "unique_document_ids": {
-                    "terms": {
-                        "field": "document_id",
-                        "size": 10000
-                    }
-                },
-                "unique_filenames": {
-                    "terms": {
-                        "field": "filename",
-                        "size": 10000
-                    }
-                }
-            }
-        }
-        
-        result = await opensearch_client.search(
-            index=get_index_name(),
-            body=query_body
+        access_context = build_access_context(
+            user_id=user_id,
+            user_email=user_email,
+            jwt_token=jwt_token,
+            session_manager=session_manager,
         )
-        
-        # Get document_ids (preferred - these are the actual connector file IDs)
-        doc_id_buckets = result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
-        file_ids = [bucket["key"] for bucket in doc_id_buckets if bucket["key"]]
-        
-        # Get filenames as fallback
-        filename_buckets = result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
-        filenames = [bucket["key"] for bucket in filename_buckets if bucket["key"]]
+        knowledge_backend = get_knowledge_backend_service(session_manager)
+        file_ids, filenames = await knowledge_backend.list_connector_file_refs(
+            connector_type,
+            access_context,
+        )
         
         logger.debug(
             "Found synced files for connector",
@@ -255,13 +230,15 @@ async def connector_sync(
                     jwt_token=jwt_token,
                 )
         else:
-            # No files specified - sync only files already in OpenSearch for this connector
+            # No files specified - sync only files already present in the active
+            # knowledge backend for this connector.
             # This ensures deleted files stay deleted
             existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
                 connector_type=connector_type,
                 user_id=user.user_id,
                 session_manager=session_manager,
                 jwt_token=jwt_token,
+                user_email=user.email,
             )
 
             if not existing_file_ids and not existing_filenames:
@@ -675,17 +652,19 @@ async def sync_all_connectors(
 
         for connector_type in cloud_connector_types:
             try:
-                # First, get existing file IDs/filenames from OpenSearch for this connector type
+                # First, get existing file IDs/filenames from the active knowledge
+                # backend for this connector type.
                 existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     session_manager=session_manager,
                     jwt_token=jwt_token,
+                    user_email=user.email,
                 )
                 
                 if not existing_file_ids and not existing_filenames:
                     logger.debug(
-                        "No existing files in OpenSearch for connector type, skipping",
+                        "No existing files in knowledge backend for connector type, skipping",
                         connector_type=connector_type,
                     )
                     skipped_connectors.append(connector_type)

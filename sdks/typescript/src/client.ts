@@ -119,7 +119,7 @@ export class OpenRAGClient {
       OpenRAGClient.DEFAULT_BASE_URL
     ).replace(/\/$/, "");
 
-    this._timeout = options.timeout ?? 30000;
+    this._timeout = options.timeout ?? 60000;
 
     // Initialize sub-clients
     this.chat = new ChatClient(this);

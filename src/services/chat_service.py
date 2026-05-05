@@ -1,5 +1,10 @@
 import json
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
+from config.settings import (
+    LANGFLOW_URL,
+    clients,
+    get_active_chat_flow_id,
+    get_active_nudges_flow_id,
+)
 from agent import async_chat, async_langflow, async_chat_stream
 from auth_context import set_auth_context
 from utils.logging_config import get_logger
@@ -65,9 +70,10 @@ class ChatService:
         if not prompt:
             raise ValueError("Prompt is required")
 
-        if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:
+        chat_flow_id = get_active_chat_flow_id()
+        if not LANGFLOW_URL or not chat_flow_id:
             raise ValueError(
-                "LANGFLOW_URL and LANGFLOW_CHAT_FLOW_ID environment variables are required"
+                "LANGFLOW_URL and an active chat flow ID are required"
             )
 
         # Prepare extra headers for JWT authentication and embedding model
@@ -156,7 +162,7 @@ class ChatService:
 
             return async_langflow_chat_stream(
                 langflow_client,
-                LANGFLOW_CHAT_FLOW_ID,
+                chat_flow_id,
                 prompt,
                 user_id,
                 extra_headers=extra_headers,
@@ -168,7 +174,7 @@ class ChatService:
 
             response_text, response_id, sources = await async_langflow_chat(
                 langflow_client,
-                LANGFLOW_CHAT_FLOW_ID,
+                chat_flow_id,
                 prompt,
                 user_id,
                 extra_headers=extra_headers,
@@ -193,9 +199,10 @@ class ChatService:
     ):
         """Handle Langflow nudges chat requests with knowledge filters"""
 
-        if not LANGFLOW_URL or not NUDGES_FLOW_ID:
+        nudges_flow_id = get_active_nudges_flow_id()
+        if not LANGFLOW_URL or not nudges_flow_id:
             raise ValueError(
-                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
+                "LANGFLOW_URL and an active nudges flow ID are required"
             )
 
         # Prepare extra headers for JWT authentication and embedding model
@@ -300,7 +307,7 @@ class ChatService:
 
         response_text, response_id, _sources = await async_langflow_chat(
             langflow_client,
-            NUDGES_FLOW_ID,
+            nudges_flow_id,
             prompt,
             user_id,
             extra_headers=extra_headers,
@@ -356,7 +363,7 @@ class ChatService:
 
             response_text, response_id = await async_langflow(
                 langflow_client=langflow_client,
-                flow_id=LANGFLOW_CHAT_FLOW_ID,
+                flow_id=get_active_chat_flow_id(),
                 prompt=document_prompt,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
@@ -509,7 +516,7 @@ class ChatService:
             logger.debug(f"Attempting to fetch Langflow history for user: {user_id}")
             langflow_history = (
                 await langflow_history_service.get_user_conversation_history(
-                    user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
+                    user_id, flow_id=get_active_chat_flow_id()
                 )
             )
 

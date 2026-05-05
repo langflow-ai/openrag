@@ -88,6 +88,7 @@ async def delete_document_endpoint(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
-        jwt_token=None,
+        jwt_token=user.jwt_token,
+        user_email=user.email,
     )
     return JSONResponse(payload, status_code=status_code)

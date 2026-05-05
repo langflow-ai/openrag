@@ -47,7 +47,8 @@ async def search_endpoint(
         result = await search_service.search(
             query,
             user_id=user.user_id,
-            jwt_token=None,  # API key auth has no JWT
+            jwt_token=user.jwt_token,
+            user_email=user.email,
             filters=body.filters or {},
             limit=body.limit,
             score_threshold=body.score_threshold,

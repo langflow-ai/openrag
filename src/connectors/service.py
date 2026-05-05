@@ -48,11 +48,50 @@ class ConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        ingest_settings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
+        from services.knowledge_access import build_access_context
+        from services.knowledge_backend import get_knowledge_backend_service
 
         # Create temporary file from document content
         from utils.file_utils import auto_cleanup_tempfile
+
+        access_context = build_access_context(
+            user_id=owner_user_id,
+            user_email=owner_email,
+            jwt_token=jwt_token,
+            session_manager=self.session_manager,
+        )
+        knowledge_backend = get_knowledge_backend_service(self.session_manager)
+        fallback_filenames = [
+            name
+            for name in [
+                document.filename,
+                clean_connector_filename(document.filename, document.mimetype),
+            ]
+            if name
+        ]
+        fallback_filenames = list(dict.fromkeys(fallback_filenames))
+
+        deleted_count = await knowledge_backend.delete_by_document_id(
+            document.id,
+            access_context,
+        )
+        if deleted_count == 0:
+            for filename in fallback_filenames:
+                deleted_count = await knowledge_backend.delete_by_filename(
+                    filename,
+                    access_context,
+                )
+                if deleted_count > 0:
+                    break
+
+        logger.info(
+            "Deleted existing chunks before legacy connector re-ingestion",
+            document_id=document.id,
+            deleted_count=deleted_count,
+        )
 
         with auto_cleanup_tempfile(
             suffix=get_file_extension(document.mimetype)
@@ -66,10 +105,28 @@ class ConnectorService:
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
 
+            standard_kwargs: Dict[str, Any] = {}
+            if isinstance(ingest_settings, dict):
+                embedding_model = ingest_settings.get("embeddingModel")
+                if isinstance(embedding_model, str) and embedding_model.strip():
+                    standard_kwargs["embedding_model"] = embedding_model.strip()
+
+                for ui_key, param in (
+                    ("chunkSize", "chunk_size"),
+                    ("chunkOverlap", "chunk_overlap"),
+                ):
+                    raw_value = ingest_settings.get(ui_key)
+                    if raw_value is None:
+                        continue
+                    try:
+                        standard_kwargs[param] = int(raw_value)
+                    except (TypeError, ValueError):
+                        pass
+
             processor = TaskProcessor(document_service=self.document_service, models_service=self.models_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
-                file_hash=document.id,  # Use connector document ID as hash
+                file_hash=document.id,
                 owner_user_id=owner_user_id,
                 original_filename=document.filename,  # Pass the original Google Doc title
                 jwt_token=jwt_token,
@@ -78,16 +135,20 @@ class ConnectorService:
                 file_size=len(document.content) if document.content else 0,
                 connector_type=connector_type,
                 acl=document.acl,
+                extra_metadata={
+                    "source_url": document.source_url,
+                    "created_time": document.created_time.isoformat()
+                    if document.created_time
+                    else None,
+                    "modified_time": document.modified_time.isoformat()
+                    if document.modified_time
+                    else None,
+                    "metadata": document.metadata,
+                },
+                **standard_kwargs,
             )
 
             logger.info("[CONNECTOR] Document processed", document_id=document.id, status=result.get("status"))
-
-            # If successfully indexed or already exists, update the indexed documents with connector metadata
-            if result["status"] in ["indexed", "unchanged"]:
-                # Update all chunks with connector-specific metadata
-                await self._update_connector_metadata(
-                    document, owner_user_id, connector_type, jwt_token
-                )
 
             return {
                 **result,

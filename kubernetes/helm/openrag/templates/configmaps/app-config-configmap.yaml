@@ -15,6 +15,7 @@ data:
       {{- end }}
     edited: false
     knowledge:
+      backend: {{ .Values.appConfig.knowledge.backend | quote }}
       chunk_overlap: {{ .Values.appConfig.knowledge.chunkOverlap }}
       chunk_size: {{ .Values.appConfig.knowledge.chunkSize }}
       embedding_model: {{ .Values.appConfig.knowledge.embeddingModel | quote }}

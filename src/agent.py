@@ -102,6 +102,155 @@ def get_user_conversation(user_id: str):
     return latest_conversation
 
 
+def _normalize_source_candidate(candidate):
+    """Normalize one potential source record from nested Langflow/OpenSearch payloads."""
+    if not isinstance(candidate, dict):
+        return None
+
+    candidates = [candidate]
+    for nested_key in ("data", "_source"):
+        nested_value = candidate.get(nested_key)
+        if isinstance(nested_value, dict):
+            candidates.append(nested_value)
+
+    for current in candidates:
+        text = current.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+
+        filename = current.get("filename") or current.get("document_name") or ""
+        if not isinstance(filename, str):
+            filename = ""
+        filename = filename.strip()
+        if not filename:
+            continue
+
+        score = current.get("score", candidate.get("score", 0))
+        page = current.get("page", candidate.get("page"))
+        mimetype = current.get("mimetype", candidate.get("mimetype"))
+
+        return {
+            "filename": filename,
+            "text": text,
+            "score": score,
+            "page": page,
+            "mimetype": mimetype,
+        }
+
+    return None
+
+
+def _extract_source_filenames_from_text(text):
+    """Extract filename hints from plain-text Langflow summaries."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+
+    import re
+
+    filenames = []
+    seen = set()
+
+    def add_filename(value):
+        if not isinstance(value, str):
+            return
+
+        normalized = value.strip().strip("`'\"").strip()
+        normalized = normalized.strip(".,;:()[]{}")
+        if "/" in normalized:
+            normalized = normalized.rsplit("/", 1)[-1]
+
+        if not re.search(r"\.[A-Za-z0-9]{1,16}$", normalized):
+            return
+        if normalized in seen:
+            return
+
+        seen.add(normalized)
+        filenames.append(normalized)
+
+    for match in re.finditer(r"\(Source:\s*([^)]+)\)", text):
+        add_filename(match.group(1))
+
+    for match in re.finditer(r"(?im)\bFiles?\s*:\s*([^\n]+)", text):
+        segment = match.group(1)
+        backticked = re.findall(r"`([^`]+)`", segment)
+        if backticked:
+            for filename in backticked:
+                add_filename(filename)
+            continue
+
+        for piece in segment.split(","):
+            add_filename(piece)
+
+    return filenames
+
+
+def _collect_sources_from_payload(payload):
+    """Recursively collect source-like records from nested Langflow payloads."""
+    sources = []
+    seen_nodes = set()
+    seen_sources = set()
+    hinted_filenames = []
+    seen_hinted_filenames = set()
+
+    def visit(node):
+        if isinstance(node, dict):
+            node_id = id(node)
+            if node_id in seen_nodes:
+                return
+            seen_nodes.add(node_id)
+
+            normalized = _normalize_source_candidate(node)
+            if normalized:
+                source_key = (
+                    normalized["filename"],
+                    normalized["text"],
+                    normalized["page"],
+                    normalized["mimetype"],
+                )
+                if source_key not in seen_sources:
+                    seen_sources.add(source_key)
+                    sources.append(normalized)
+
+            for value in node.values():
+                visit(value)
+            return
+
+        if isinstance(node, str):
+            for filename in _extract_source_filenames_from_text(node):
+                if filename in seen_hinted_filenames:
+                    continue
+                seen_hinted_filenames.add(filename)
+                hinted_filenames.append(filename)
+            return
+
+        if isinstance(node, list):
+            node_id = id(node)
+            if node_id in seen_nodes:
+                return
+            seen_nodes.add(node_id)
+
+            for item in node:
+                visit(item)
+
+    visit(payload)
+
+    seen_source_filenames = {source["filename"] for source in sources if source["filename"]}
+    for filename in hinted_filenames:
+        if filename in seen_source_filenames:
+            continue
+        sources.append(
+            {
+                "filename": filename,
+                "text": "",
+                "score": 0,
+                "page": None,
+                "mimetype": None,
+            }
+        )
+
+    return sources
+
+
 # Generic async response function for streaming
 async def async_response_stream(
     client,
@@ -612,70 +761,29 @@ async def async_langflow_chat(
             message_count=len(conversation_state["messages"]),
         )
 
-    # Extract sources from retrieval tool calls in the response
-    sources = []
+    resp_dict = (
+        response_obj.model_dump()
+        if hasattr(response_obj, "model_dump")
+        else getattr(response_obj, "__dict__", {})
+    )
+    sources = _collect_sources_from_payload(resp_dict)
 
-    # Layer 1: Structured output items (OpenAI Responses API format).
-    # Relaxed: check for any output item with a non-empty `results` field,
-    # regardless of `type` string (Langflow may use different type names).
-    if hasattr(response_obj, "output") and response_obj.output:
-        for output_item in response_obj.output:
-            for result in getattr(output_item, "results", None) or []:
-                rd = (
-                    result.model_dump()
-                    if hasattr(result, "model_dump")
-                    else (result if isinstance(result, dict) else {})
-                )
-                if "text" in rd:
-                    sources.append({
-                        "filename": rd.get("filename", ""),
-                        "text": rd.get("text", ""),
-                        "score": rd.get("score", 0),
-                        "page": rd.get("page"),
-                        "mimetype": rd.get("mimetype"),
-                    })
-
-    # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
-    # Langflow may embed retrieval results directly in the response dict rather than
-    # inside typed output items.
-    if not sources:
-        resp_dict = (
-            response_obj.model_dump()
-            if hasattr(response_obj, "model_dump")
-            else getattr(response_obj, "__dict__", {})
-        )
-        implicit_results = (
-            resp_dict.get("results")
-            or resp_dict.get("outputs")
-            or resp_dict.get("retrieved_documents")
-            or resp_dict.get("retrieval_results")
-            or []
-        )
-        if isinstance(implicit_results, list):
-            for result in implicit_results:
-                if isinstance(result, dict) and "text" in result:
-                    sources.append({
-                        "filename": result.get("filename", ""),
-                        "text": result.get("text", ""),
-                        "score": result.get("score", 0),
-                        "page": result.get("page"),
-                        "mimetype": result.get("mimetype"),
-                    })
-
-    # Layer 3: Citation-text fallback.
-    # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.
-    # This is the last-resort fallback when Langflow's response object carries no
-    # structured retrieval data.
-    if not sources:
-        import re
-        for match in re.finditer(r"\(Source:\s*([^\)]+)\)", response_text):
-            sources.append({
-                "filename": match.group(1).strip(),
+    # Merge source hints from the rendered response text as a final fallback for
+    # Langflow flows that summarize retrieved filenames into prose.
+    seen_source_filenames = {source["filename"] for source in sources if source["filename"]}
+    for filename in _extract_source_filenames_from_text(response_text):
+        if filename in seen_source_filenames:
+            continue
+        sources.append(
+            {
+                "filename": filename,
                 "text": "",
                 "score": 0,
                 "page": None,
                 "mimetype": None,
-            })
+            }
+        )
+        seen_source_filenames.add(filename)
 
     if not store_conversation:
         return response_text, response_id, sources
@@ -799,9 +907,9 @@ async def async_langflow_chat_stream(
                 "error": error_occurred,  # Mark if this was an error response
             }
             # Store usage data if available (from response.completed event)
-        if usage_data:
-            assistant_message["response_data"] = {"usage": usage_data}
-        conversation_state["messages"].append(assistant_message)
+            if usage_data:
+                assistant_message["response_data"] = {"usage": usage_data}
+            conversation_state["messages"].append(assistant_message)
 
         # Store the conversation thread with its response_id
         if response_id:

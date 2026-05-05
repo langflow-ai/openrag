@@ -10,6 +10,19 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _resolve_default_config_file() -> Path:
+    """Resolve the default config file from env or repository defaults."""
+    explicit_config_file = os.getenv("OPENRAG_CONFIG_FILE")
+    if explicit_config_file:
+        return Path(explicit_config_file).expanduser()
+
+    config_directory = os.getenv("OPENRAG_CONFIG_PATH")
+    if config_directory:
+        return Path(config_directory).expanduser() / "config.yaml"
+
+    return Path("config/config.yaml")
+
+
 @dataclass
 class OpenAIConfig:
     """OpenAI provider configuration."""
@@ -72,6 +85,7 @@ class ProvidersConfig:
 class KnowledgeConfig:
     """Knowledge/ingestion configuration."""
 
+    backend: str = "opensearch"
     embedding_model: str = ""
     embedding_provider: str = "openai"  # Which provider to use for embeddings
     chunk_size: int = 1000
@@ -165,11 +179,9 @@ class ConfigManager:
         Args:
             config_file: Path to configuration file. Defaults to 'config.yaml' in project root.
         """
-        if config_file:
-            self.config_file = Path(config_file)
-        else:
-            from config.paths import get_config_file_path
-            self.config_file = Path(get_config_file_path())
+        self.config_file = (
+            Path(config_file).expanduser() if config_file else _resolve_default_config_file()
+        )
         self._config: Optional[OpenRAGConfig] = None
 
 
@@ -274,6 +286,8 @@ class ConfigManager:
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
         # Knowledge settings
+        if os.getenv("VECTOR_BACKEND"):
+            config_data["knowledge"]["backend"] = os.getenv("VECTOR_BACKEND")
         if os.getenv("EMBEDDING_MODEL"):
             config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
         if os.getenv("EMBEDDING_PROVIDER"):

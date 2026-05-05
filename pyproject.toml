@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
     "agentd>=0.8.1",
     "aiofiles>=24.1.0",
+    "astrapy>=2.2.1",
     "aiohttp>=3.13.4",
     "cryptography>=46.0.6",
     "google-api-python-client>=2.143.0",
@@ -65,5 +66,4 @@ openrag = "tui.main:run_tui"
 [tool.uv]
 package = true
 override-dependencies = ["python-dotenv>=1.1.0"]
-
 
