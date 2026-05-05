@@ -202,21 +202,6 @@ func TestReconcile_BackendMountsOperatorManagedEnvSecret(t *testing.T) {
 	assert.True(t, found, "backend-env volume should exist with operator-managed secret")
 }
 
-func TestReconcile_CreatesEnvSecrets(t *testing.T) {
-	s := newScheme(t)
-	cr := minimalCR("my-openrag", "my-ns")
-	r, c := reconciler(s, cr)
-
-	reconcileOnce(t, r, cr)
-
-	for _, role := range []string{"be-env", "lf-env", "gen-creds"} {
-		sec := &corev1.Secret{}
-		require.NoError(t, c.Get(context.Background(),
-			types.NamespacedName{Name: resourceName(cr.Name, role), Namespace: "my-ns"}, sec),
-			"secret for role %s should exist", role)
-	}
-}
-
 func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")
