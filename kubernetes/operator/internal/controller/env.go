@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -86,14 +87,13 @@ func NewEnvVarManager() *EnvVarManager {
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
 			"OPENRAG_DOCUMENTS_PATH":    "/app/openrag-documents",
-			"OPENRAG_DOCUMENT_PATH":     "/app/openrag-documents", // omg which one?
 			"OPENRAG_FLOWS_BACKUP_PATH": "/app/backend-data/flow-backups",
 			"OPENRAG_KEYS_PATH":         "/app/backend-data/keys",
 			"OPENRAG_CONFIG_PATH":       "/app/backend-data/config",
 			"OPENRAG_VERSION":           "latest",
 
 			// OpenSearch configuration
-			"OPENSEARCH_DATA_PATH": "./opensearch-data",
+			"OPENSEARCH_DATA_PATH": "",
 
 			// Logging configuration
 			"LOG_LEVEL":    "DEBUG",
@@ -186,11 +186,18 @@ func (m *EnvVarManager) mergeEnvVars(defaults map[string]string, prefix string, 
 
 // BuildEnvFileContent converts a map of env vars to .env file format
 func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
+	// Sort keys to ensure deterministic output
+	keys := make([]string, 0, len(envVars))
+	for k := range envVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var b strings.Builder
-	for k, v := range envVars {
+	for _, k := range keys {
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(v)
+		b.WriteString(envVars[k])
 		b.WriteString("\n")
 	}
 	return b.String()
