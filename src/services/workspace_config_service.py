@@ -53,12 +53,29 @@ class WorkspaceConfigService:
     ):
         self._cm = config_manager
         self._session_factory = session_factory
+        # Track in-flight DB-mirror tasks so the lifespan shutdown can
+        # await them, and serialize them so rapid double-saves don't
+        # race on the DB.
+        self._mirror_lock = asyncio.Lock()
+        self._pending_mirrors: set[asyncio.Task] = set()
         if db_writes_enabled():
             self._install_yaml_write_hooks()
         logger.info(
             "WorkspaceConfigService initialized",
             storage_mode=get_storage_mode(),
         )
+
+    async def await_pending_mirrors(self) -> None:
+        """Block until every pending mirror task has finished.
+
+        Called from the lifespan shutdown handler so we don't drop
+        in-flight DB writes when uvicorn cancels remaining tasks.
+        """
+        if not self._pending_mirrors:
+            return
+        pending = list(self._pending_mirrors)
+        logger.info("awaiting pending DB mirror tasks", count=len(pending))
+        await asyncio.gather(*pending, return_exceptions=True)
 
     # ------------------------------------------------------------------
     # Read paths
@@ -251,8 +268,18 @@ class WorkspaceConfigService:
         if getattr(cm, "_db_mirror_installed", False):
             return
 
-        original_save = cm.save_config_file
-        original_update_ob = cm.update_onboarding_state
+        # Pin the *truly original* unpatched methods on the cm BEFORE
+        # any patching happens. Test cleanup may delete
+        # `_db_mirror_installed` to force re-install — without this
+        # capture-once attribute, the second install would close over
+        # the FIRST install's patched method, building an
+        # ever-deepening closure chain.
+        if not hasattr(cm, "_db_mirror_original_save"):
+            cm._db_mirror_original_save = cm.save_config_file  # type: ignore[attr-defined]
+            cm._db_mirror_original_update_ob = cm.update_onboarding_state  # type: ignore[attr-defined]
+
+        original_save = cm._db_mirror_original_save
+        original_update_ob = cm._db_mirror_original_update_ob
 
         def patched_save(config=None, preserve_edited: bool = False) -> bool:
             mode = get_storage_mode()
@@ -309,23 +336,38 @@ class WorkspaceConfigService:
     def _schedule_mirror(self) -> None:
         """Fire-and-forget DB mirror of the current config_manager state.
 
-        Runs as an asyncio Task on whatever loop is currently active.
-        Failures are logged but don't propagate to the synchronous
-        caller. If there's no running loop (sync test context), the
-        mirror is skipped — the next async-aware caller catches up.
+        Runs as a tracked asyncio Task on the active loop. Three
+        guarantees:
+          1. The config snapshot is captured at SCHEDULE time, not at
+             task-run time — so rapid `save(A)` then `save(B)` mirrors
+             *both* states in order, not B twice.
+          2. An asyncio.Lock serializes mirror writes, preventing two
+             concurrent ``UPSERT`` against the same row.
+          3. The task is tracked in ``self._pending_mirrors`` so the
+             shutdown handler can await it before disposing the engine.
+
+        If there's no running loop (sync test context) the mirror is
+        skipped; the next async-aware caller catches up.
         """
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
 
+        # Snapshot NOW. Reading at task-run time would race with
+        # subsequent saves to the in-memory config.
+        config_snapshot = self._cm.get_config()
+
         async def _do_mirror():
             try:
-                await self._mirror_to_db(self._cm.get_config())
+                async with self._mirror_lock:
+                    await self._mirror_to_db(config_snapshot)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("DB mirror after yaml save failed", error=str(exc))
 
-        loop.create_task(_do_mirror())
+        task = loop.create_task(_do_mirror())
+        self._pending_mirrors.add(task)
+        task.add_done_callback(self._pending_mirrors.discard)
 
     async def _mirror_to_db(
         self,

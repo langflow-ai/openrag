@@ -265,6 +265,90 @@ async def test_cannot_delete_self(app):
 
 
 @pytest.mark.asyncio
+async def test_cannot_delete_last_admin(app):
+    """Single-admin DB. A non-admin actor with `users:delete` permission
+    tries to DELETE the sole admin → cannot_delete_last_admin (400).
+
+    The cannot_delete_self guard runs first, so we use a non-admin actor
+    with a custom role granting `users:delete`. This isolates the
+    last-admin guard from the self-delete guard.
+    """
+    fastapi_app, SessionLocal, _ = app
+    admin_id = PERSONAS["admin"].user_id
+    user_id = PERSONAS["user"].user_id
+
+    # Grant the `user` persona a custom role that includes users:delete
+    # without being an admin. This requires us to create the role and
+    # assign it via the admin endpoints.
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post(
+            "/admin/roles",
+            json={"name": "user_deleter", "permissions": ["users:delete"]},
+            headers=_admin_headers(),
+        )
+        assert r.status_code == 200
+        deleter_role_id = r.json()["id"]
+        r = await c.post(
+            f"/admin/users/{user_id}/roles",
+            json={"role_id": deleter_role_id},
+            headers=_admin_headers(),
+        )
+        assert r.status_code == 200
+        # `user` (non-admin, has users:delete) tries to delete the sole admin.
+        r = await c.delete(
+            f"/admin/users/{admin_id}",
+            headers={"X-Test-Persona": "user"},
+        )
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "cannot_delete_last_admin"
+
+
+@pytest.mark.asyncio
+async def test_can_delete_non_last_admin(app):
+    """Two-admin DB → deleting one admin leaves the other; should succeed."""
+    fastapi_app, SessionLocal, _ = app
+    user_id = PERSONAS["user"].user_id
+    async with SessionLocal() as s:
+        admin_role = await RoleRepo(s).get_by_name("admin")
+
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        # Promote user to admin → now 2 admins.
+        r = await c.post(
+            f"/admin/users/{user_id}/roles",
+            json={"role_id": admin_role.id},
+            headers=_admin_headers(),
+        )
+        assert r.status_code == 200
+        # Admin (still admin) deletes the second admin → succeeds.
+        r = await c.delete(
+            f"/admin/users/{user_id}",
+            headers=_admin_headers(),
+        )
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cannot_deactivate_last_admin(app):
+    """PATCH /users/{admin_id} {is_active: False} on the only admin → 400."""
+    fastapi_app, SessionLocal, _ = app
+    admin_id = PERSONAS["admin"].user_id
+    async with SessionLocal() as s:
+        admin_role = await RoleRepo(s).get_by_name("admin")
+
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.patch(
+            f"/admin/users/{admin_id}",
+            json={"is_active": False},
+            headers=_admin_headers(),
+        )
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "cannot_deactivate_last_admin"
+
+
+@pytest.mark.asyncio
 async def test_unknown_permission_rejected_on_create_role(app):
     fastapi_app, _, _ = app
     transport = httpx.ASGITransport(app=fastapi_app)

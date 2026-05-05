@@ -37,3 +37,7 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 - Skill bodies are intentionally kept agent-neutral. Do not add references to tools or features that only exist in one runtime (for example, do not name specific slash commands, hook systems, or task-tracking tools).
 - Claude-Code-specific plumbing belongs in `plugin.json` or `.claude/`, not in `SKILL.md`.
 - See `plugins/README.md` for the full layout and distribution model.
+
+## Operational constraints
+
+**Single-worker only (until Redis cache lands).** The RBAC permission cache and OAuth-subject→DB-id cache are both per-process (`cachetools.TTLCache`). Running with multiple uvicorn workers or multiple helm replicas means a role grant or revoke takes effect in only one process; the others serve stale permissions for up to `OPENRAG_PERM_CACHE_TTL` seconds (default 60). The startup event in `src/main.py` enforces `UVICORN_WORKERS<=1` and `CACHE_BACKEND=memory` and hard-fails otherwise. To horizontally scale, swap the cache to Redis first.

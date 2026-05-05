@@ -1,6 +1,6 @@
 from typing import Optional, Any, Dict
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
@@ -14,6 +14,23 @@ from dependencies import (
 from session_manager import User
 
 logger = get_logger(__name__)
+
+
+async def _assert_owns(session_id: Optional[str], user_id: str) -> None:
+    """Raise 403 if `session_id` is set but not owned by `user_id`.
+
+    No-op when `session_id` is None (new conversation, nothing to check).
+    Raise 404 if a session is referenced that doesn't exist — don't leak
+    existence to non-owners.
+    """
+    if not session_id:
+        return
+    from services.session_ownership_service import session_ownership_service
+    owner = await session_ownership_service.get_session_owner(session_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail={"error": "session_not_found"})
+    if owner != user_id:
+        raise HTTPException(status_code=403, detail={"error": "session_forbidden"})
 
 
 class ChatBody(BaseModel):
@@ -35,6 +52,8 @@ async def chat_endpoint(
     """Handle chat requests"""
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    await _assert_owns(body.previous_response_id, user.user_id)
 
     jwt_token = user.jwt_token
 
@@ -85,6 +104,8 @@ async def langflow_endpoint(
     """Handle Langflow chat requests"""
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    await _assert_owns(body.previous_response_id, user.user_id)
 
     jwt_token = user.jwt_token
 
@@ -175,6 +196,7 @@ async def delete_session_endpoint(
     user: User = Depends(require_permission("conversations:delete:own")),
 ):
     """Delete a chat session"""
+    await _assert_owns(session_id, user.user_id)
     try:
         result = await chat_service.delete_session(user.user_id, session_id)
 

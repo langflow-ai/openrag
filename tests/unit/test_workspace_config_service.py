@@ -170,3 +170,46 @@ async def test_kill_switch_disables_db(monkeypatch, tmp_config_manager, session_
     async with session_factory() as session:
         agent = await WorkspaceConfigRepo(session).get_section("agent")
         assert agent is None  # never written
+
+
+@pytest.mark.asyncio
+async def test_reinstall_does_not_chain_closures(tmp_config_manager, session_factory):
+    """Regression: re-instantiating WorkspaceConfigService over the same
+    ConfigManager (after `_db_mirror_installed` is deleted by test
+    cleanup) must NOT close over the previous install's patched method.
+
+    Without the capture-once fix, the second install captures the
+    already-patched method as `original_save`, then patches again, so
+    every call to `cm.save_config_file` runs the mirror logic TWICE.
+    """
+    svc1 = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+    captured_original = tmp_config_manager._db_mirror_original_save  # noqa: SLF001
+
+    # Simulate test teardown that deletes the install flag without
+    # restoring the patched method (matches the existing pattern at
+    # tests/unit/test_workspace_config_service.py:155).
+    delattr(tmp_config_manager, "_db_mirror_installed")
+
+    svc2 = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+
+    # The pinned original on the cm must be the FIRST install's
+    # original — not the patched method captured by the first install.
+    assert tmp_config_manager._db_mirror_original_save is captured_original  # noqa: SLF001
+
+    # Save once and confirm exactly ONE mirror task is scheduled, not two.
+    config = tmp_config_manager.load_config()
+    config.agent.llm_model = "no-chain"
+    tmp_config_manager.save_config_file(config)
+    # Both services share the cm, so both _pending_mirrors sets see
+    # different views — but only ONE patched method runs, so total
+    # cross-service tasks must be exactly 1.
+    total_pending = len(svc1._pending_mirrors) + len(svc2._pending_mirrors)  # noqa: SLF001
+    assert total_pending == 1
+
+    await svc1.await_pending_mirrors()
+    await svc2.await_pending_mirrors()
+    delattr(tmp_config_manager, "_db_mirror_installed")

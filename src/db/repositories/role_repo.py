@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Permission, Role, RolePermission, UserRole
@@ -23,11 +23,27 @@ class RoleRepo:
 
     async def count_admins(self) -> int:
         result = await self.session.execute(
-            select(UserRole)
+            select(func.count())
+            .select_from(UserRole)
             .join(Role, Role.id == UserRole.role_id)
             .where(Role.name == "admin")
         )
-        return len(list(result.scalars().all()))
+        return int(result.scalar_one() or 0)
+
+    async def list_admin_user_ids(self) -> list[str]:
+        """All user_ids that currently hold the admin role.
+
+        Returned in lexicographic order so callers can use it as a
+        deterministic tie-breaker (e.g. bootstrap-race rollback in
+        ``user_service._assign_bootstrap_or_default``).
+        """
+        result = await self.session.execute(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(Role.name == "admin")
+            .order_by(UserRole.user_id)
+        )
+        return list(result.scalars().all())
 
     async def list_user_roles(self, user_id: str) -> list[Role]:
         result = await self.session.execute(
