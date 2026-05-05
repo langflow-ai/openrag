@@ -33,6 +33,7 @@ logger = get_logger(__name__)
 
 JSON_TO_DB_V1 = "json_to_db_v1"
 CLEANUP_TEST_FIXTURES_V1 = "cleanup_test_fixtures_v1"
+CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 
 # Stable user_ids used by RBAC unit-test fixtures. If they ended up in a
 # real DB it's because pytest leaked into `data/openrag.db` — sweep them
@@ -169,6 +170,52 @@ async def cleanup_test_fixture_rows(session: AsyncSession) -> int:
     return deleted_total
 
 
+async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
+    """Copy what ``config.yaml`` holds today into the ``workspace_config``
+    table. Idempotent.
+
+    Returns the number of section rows written. Zero is fine — means the
+    workspace has no config.yaml yet (fresh install) and the table will
+    fill up the first time an admin completes onboarding.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from db.repositories import WorkspaceConfigRepo
+    from utils.encryption import encrypt_secret
+
+    # Read the current yaml-backed config exactly the way the legacy
+    # ConfigManager does (decrypts api_keys, applies env overrides, etc.).
+    try:
+        from config.config_manager import config_manager
+        config = config_manager.load_config()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("config_yaml_to_db_v1: load_config() failed; skipping", error=str(exc))
+        return 0
+
+    config_dict = config.to_dict()
+    providers = dict(config_dict.get("providers", {}))
+    for prov_name, prov_data in providers.items():
+        if isinstance(prov_data, dict) and prov_data.get("api_key"):
+            # Re-encrypt with the JSON envelope so the DB row matches
+            # what config.yaml stores on disk.
+            prov_data["api_key"] = encrypt_secret(prov_data["api_key"])
+        providers[prov_name] = prov_data
+
+    sections = {
+        "providers": providers,
+        "knowledge": config_dict.get("knowledge", {}),
+        "agent": config_dict.get("agent", {}),
+        "onboarding": config_dict.get("onboarding", {}),
+        "meta": {"edited": bool(config_dict.get("edited", False))},
+    }
+
+    repo = WorkspaceConfigRepo(session)
+    written = 0
+    for section, value in sections.items():
+        await repo.upsert(section, value)
+        written += 1
+    return written
+
+
 async def run(session: AsyncSession) -> None:
     """Top-level entry. Caller is responsible for committing."""
     if not await _already_done(session, JSON_TO_DB_V1):
@@ -192,6 +239,17 @@ async def run(session: AsyncSession) -> None:
         )
         if removed:
             logger.info("Test-fixture cleanup removed leaked rows", count=removed)
+
+    if not await _already_done(session, CONFIG_YAML_TO_DB_V1):
+        try:
+            written = await migrate_config_yaml_to_db(session)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("config_yaml_to_db_v1 failed; will retry on next boot", error=str(exc))
+            return
+        await _mark_done(
+            session, CONFIG_YAML_TO_DB_V1, notes=f"sections_written={written}"
+        )
+        logger.info("config_yaml_to_db_v1 completed", sections_written=written)
 
 
 # ---------------------------------------------------------------------------

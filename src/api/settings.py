@@ -1695,7 +1695,9 @@ async def update_onboarding_state(
         # Convert body to dict excluding None values
         body_dict = body.model_dump(exclude_unset=True)
 
-        # Update onboarding state using config manager
+        # Update onboarding state using config manager (a monkey-patch
+        # installed by WorkspaceConfigService mirrors this to the SQL
+        # workspace_config table fire-and-forget).
         success = config_manager.update_onboarding_state(**body_dict)
 
         if not success:

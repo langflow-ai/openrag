@@ -13,6 +13,7 @@ from db.models.role_permission import RolePermission
 from db.models.user import User
 from db.models.user_preferences import UserPreferences
 from db.models.user_role import UserRole
+from db.models.workspace_config import WorkspaceConfig
 
 __all__ = [
     "ApiKey",
@@ -24,4 +25,5 @@ __all__ = [
     "User",
     "UserPreferences",
     "UserRole",
+    "WorkspaceConfig",
 ]

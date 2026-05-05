@@ -30,12 +30,18 @@ interface AuthContextType {
   version: string | null;
   permissions: Set<string>;
   roles: string[];
+  /** True iff the workspace has been onboarded. Sourced from the public
+   * GET /api/onboarding-status endpoint (no auth needed). */
+  isOnboarded: boolean | null;
+  /** Current onboarding step indicator (int index or named step). */
+  onboardingStep: number | string | null;
   can: (perm: string) => boolean;
   login: () => void;
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   refreshPermissions: () => Promise<void>;
+  refreshOnboardingStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -262,6 +268,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await fetchPermissions();
   }, [fetchPermissions]);
 
+  // Public onboarding-status — fetched once on mount, no auth required.
+  // The frontend uses this to decide between the wizard and the login flow.
+  const [isOnboarded, setIsOnboarded] = useState<boolean | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState<number | string | null>(
+    null,
+  );
+
+  const fetchOnboardingStatus = useCallback(async () => {
+    try {
+      const r = await fetch("/api/onboarding-status");
+      if (!r.ok) return;
+      const data = await r.json();
+      setIsOnboarded(Boolean(data?.onboarded));
+      const step = data?.current_step;
+      setOnboardingStep(
+        typeof step === "string" || typeof step === "number" ? step : null,
+      );
+    } catch {
+      // Conservative: don't flip the flag if the call fails.
+    }
+  }, []);
+
+  const refreshOnboardingStatus = useCallback(async () => {
+    await fetchOnboardingStatus();
+  }, [fetchOnboardingStatus]);
+
+  useEffect(() => {
+    fetchOnboardingStatus();
+  }, [fetchOnboardingStatus]);
+
   useEffect(() => {
     if (user || isNoAuthMode || isIbmAuthMode) {
       fetchPermissions();
@@ -292,12 +328,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     version,
     permissions,
     roles,
+    isOnboarded,
+    onboardingStep,
     can,
     login,
     loginWithIbm,
     logout,
     refreshAuth,
     refreshPermissions,
+    refreshOnboardingStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
