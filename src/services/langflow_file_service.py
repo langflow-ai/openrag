@@ -1,5 +1,6 @@
 import json
 import asyncio
+import time
 import httpx
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -227,6 +228,7 @@ class LangflowFileService:
         
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
+        start_time = time.time()
         logger.info("[INGEST] Run started", flow_id=self.flow_id_ingest, filename=filename, mimetype=mimetype)
         resp = await clients.langflow_request(
             "POST",
@@ -234,8 +236,9 @@ class LangflowFileService:
             json=payload,
             headers=headers,
         )
+        duration = round(time.time() - start_time, 2)
         logger.info(
-            "[INGEST] Run complete", status_code=resp.status_code, reason=resp.reason_phrase
+            "[INGEST] Run complete", status_code=resp.status_code, reason=resp.reason_phrase, duration_s=duration
         )
         if resp.status_code >= 400:
             logger.error(
@@ -567,6 +570,7 @@ class LangflowFileService:
 
         # Step 3: Run ingestion via Langflow
         try:
+            total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
                 file_paths=[], # Files are not uploaded to Langflow FS
                 file_tuples=[file_tuple],
@@ -579,7 +583,8 @@ class LangflowFileService:
                 connector_type=connector_type,
                 docling_task_id=task_id,
             )
-            logger.debug("[LF] Ingestion completed successfully")
+            total_duration = round(time.time() - total_start_time, 2)
+            logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")
         except Exception as e:
             logger.error(
                 "[LF] Ingestion failed during combined operation",
