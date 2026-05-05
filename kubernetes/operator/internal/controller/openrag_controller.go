@@ -712,7 +712,10 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
 					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup: ptr.To[int64](1000), // Allow volume access for non-root users
+						FSGroup:      ptr.To[int64](1000),
+						RunAsUser:    ptr.To[int64](1000),
+						RunAsGroup:   ptr.To[int64](1000),
+						RunAsNonRoot: ptr.To(true),
 					},
 					Volumes: volumes,
 					Containers: []corev1.Container{
@@ -874,7 +877,10 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
 					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup: ptr.To[int64](1000), // Allow volume access for non-root users
+						FSGroup:      ptr.To[int64](1000), // Allow volume access for non-root users
+						RunAsUser:    ptr.To[int64](1000),
+						RunAsGroup:   ptr.To[int64](1000),
+						RunAsNonRoot: ptr.To(true),
 					},
 					InitContainers: initContainers,
 					Volumes:        volumes,
