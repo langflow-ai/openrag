@@ -1493,6 +1493,15 @@ async def initialize_services():
         session_factory=_lazy_session_factory,
     )
 
+    # Plumb the session factory into the two chat-history services
+    # (session_ownership + conversation_persistence). They lazy-resolve
+    # `db.engine.SessionLocal` as a fallback, but setting it here makes
+    # the wiring explicit and avoids the import path on the hot loop.
+    from services.session_ownership_service import session_ownership_service
+    from services.conversation_persistence_service import conversation_persistence
+    session_ownership_service._session_factory = _lazy_session_factory
+    conversation_persistence._session_factory = _lazy_session_factory
+
     return {
         "document_service": document_service,
         "search_service": search_service,

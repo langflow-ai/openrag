@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 JSON_TO_DB_V1 = "json_to_db_v1"
 CLEANUP_TEST_FIXTURES_V1 = "cleanup_test_fixtures_v1"
 CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
+CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 
 # Stable user_ids used by RBAC unit-test fixtures. If they ended up in a
 # real DB it's because pytest leaked into `data/openrag.db` — sweep them
@@ -216,6 +217,94 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
     return written
 
 
+async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, int]:
+    """Copy ``data/session_ownership.json`` and ``data/conversations.json``
+    into the DB. Idempotent — only inserts rows that aren't already present.
+
+    Returns a small stats dict for the migration_status notes column.
+    """
+    from db.repositories import ConversationRepo, SessionOwnershipRepo
+
+    stats = {"sessions_inserted": 0, "conversations_inserted": 0}
+
+    # --- session_ownership.json ---------------------------------------
+    so_payload = await _read_json(get_data_file("session_ownership.json"))
+    if isinstance(so_payload, dict):
+        repo = SessionOwnershipRepo(session)
+        for sid, data in so_payload.items():
+            if not isinstance(data, dict):
+                continue
+            uid = data.get("user_id")
+            if not uid:
+                continue
+            try:
+                created = (
+                    datetime.fromisoformat(data["created_at"])
+                    if data.get("created_at")
+                    else None
+                )
+            except Exception:  # noqa: BLE001
+                created = None
+            try:
+                last = (
+                    datetime.fromisoformat(data["last_accessed"])
+                    if data.get("last_accessed")
+                    else None
+                )
+            except Exception:  # noqa: BLE001
+                last = None
+            await repo.upsert_raw(
+                response_id=str(sid),
+                user_id=str(uid),
+                created_at=created,
+                last_accessed=last,
+            )
+            stats["sessions_inserted"] += 1
+
+    # --- conversations.json -------------------------------------------
+    conv_payload = await _read_json(get_data_file("conversations.json"))
+    if isinstance(conv_payload, dict):
+        crepo = ConversationRepo(session)
+        for uid, user_convs in conv_payload.items():
+            if not isinstance(user_convs, dict):
+                continue
+            for resp_id, meta in user_convs.items():
+                if not isinstance(meta, dict):
+                    continue
+                if await crepo.get(str(resp_id)) is not None:
+                    continue
+                try:
+                    created = (
+                        datetime.fromisoformat(meta["created_at"])
+                        if meta.get("created_at")
+                        else None
+                    )
+                except Exception:  # noqa: BLE001
+                    created = None
+                try:
+                    last = (
+                        datetime.fromisoformat(meta["last_activity"])
+                        if meta.get("last_activity")
+                        else None
+                    )
+                except Exception:  # noqa: BLE001
+                    last = None
+                await crepo.upsert(
+                    response_id=str(resp_id),
+                    user_id=str(uid),
+                    title=meta.get("title"),
+                    endpoint=meta.get("endpoint"),
+                    previous_response_id=meta.get("previous_response_id"),
+                    filter_id=meta.get("filter_id"),
+                    total_messages=int(meta.get("total_messages") or 0),
+                    created_at=created,
+                    last_activity=last,
+                )
+                stats["conversations_inserted"] += 1
+
+    return stats
+
+
 async def run(session: AsyncSession) -> None:
     """Top-level entry. Caller is responsible for committing."""
     if not await _already_done(session, JSON_TO_DB_V1):
@@ -250,6 +339,22 @@ async def run(session: AsyncSession) -> None:
             session, CONFIG_YAML_TO_DB_V1, notes=f"sections_written={written}"
         )
         logger.info("config_yaml_to_db_v1 completed", sections_written=written)
+
+    if not await _already_done(session, CHAT_HISTORY_JSON_TO_DB_V1):
+        try:
+            stats = await migrate_chat_history_json_to_db(session)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "chat_history_json_to_db_v1 failed; will retry on next boot",
+                error=str(exc),
+            )
+            return
+        notes = (
+            f"sessions={stats['sessions_inserted']},"
+            f"conversations={stats['conversations_inserted']}"
+        )
+        await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
+        logger.info("chat_history_json_to_db_v1 completed", **stats)
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,9 @@ from services.conversation_persistence_service import conversation_persistence
 active_conversations = {}
 
 
-def get_user_conversations(user_id: str):
-    """Get conversation metadata for a user from persistent storage"""
-    return conversation_persistence.get_user_conversations(user_id)
+async def get_user_conversations(user_id: str):
+    """Get conversation metadata for a user from persistent storage."""
+    return await conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
@@ -688,7 +688,7 @@ async def async_langflow_chat(
         try:
             from services.session_ownership_service import session_ownership_service
 
-            session_ownership_service.claim_session(user_id, response_id)
+            await session_ownership_service.claim_session(user_id, response_id)
             logger.debug(f"Claimed session {response_id} for user {user_id}")
         except Exception as e:
             logger.warning(f"Failed to claim session ownership: {e}")
@@ -810,7 +810,7 @@ async def async_langflow_chat_stream(
         try:
             from services.session_ownership_service import session_ownership_service
 
-            session_ownership_service.claim_session(user_id, response_id)
+            await session_ownership_service.claim_session(user_id, response_id)
             logger.debug(f"Claimed session {response_id} for user {user_id}")
         except Exception as e:
             logger.warning(f"Failed to claim session ownership: {e}")
@@ -876,7 +876,7 @@ async def delete_user_conversation(user_id: str, response_id: str) -> bool:
     # Release session ownership (best-effort; never masks storage errors above)
     try:
         from services.session_ownership_service import session_ownership_service
-        session_ownership_service.release_session(user_id, response_id)
+        await session_ownership_service.release_session(user_id, response_id)
         logger.debug(f"Released session ownership for {response_id} for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to release session ownership: {e}")
