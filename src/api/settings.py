@@ -38,6 +38,7 @@ from dependencies import (
     get_knowledge_filter_service,
     get_chat_service,
 )
+from services.docling_service import DoclingConfig, get_docling_preset_configs
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -197,18 +198,11 @@ class RefreshOpenRAGDocsResponse(BaseModel):
     message: str
     refreshed: bool
 
-class DoclingConfig(BaseModel):
-    do_ocr: bool
-    ocr_engine: str
-    do_table_structure: bool
-    do_picture_classification: bool
-    do_picture_description: bool
-    picture_description_local: Optional[dict] = None
-
 class DoclingPresetResponse(BaseModel):
     message: str
     settings: dict
     preset_config: DoclingConfig
+
 
 class OnboardingStateResponse(BaseModel):
     message: str
@@ -229,31 +223,6 @@ class RollbackBody(BaseModel):
 
 
 # Docling preset configurations
-def get_docling_preset_configs(
-    table_structure=False, ocr=False, picture_descriptions=False
-):
-    """Get docling preset configurations based on toggle settings
-
-    Args:
-        table_structure: Enable table structure parsing (default: False)
-        ocr: Enable OCR for text extraction from images (default: False)
-        picture_descriptions: Enable picture descriptions/captions (default: False)
-    """
-    is_macos = platform.system() == "Darwin"
-
-    config = {
-        "do_ocr": ocr,
-        "ocr_engine": "ocrmac" if is_macos else "easyocr",
-        "do_table_structure": table_structure,
-        "do_picture_classification": picture_descriptions,
-        "do_picture_description": picture_descriptions,
-        "picture_description_local": {
-            "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
-            "prompt": "Describe this image in a few sentences.",
-        },
-    }
-
-    return config
 
 
 async def get_settings(

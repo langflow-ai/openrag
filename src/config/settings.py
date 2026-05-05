@@ -324,6 +324,7 @@ class AppClients:
         self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
+        self._docling_service = None
 
     async def initialize(self):
         os_auth = None if IBM_AUTH_ENABLED else (OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD)
@@ -599,6 +600,16 @@ class AppClients:
                 logger.warning("Failed to close patched client during refresh", error=str(e))
             finally:
                 self._patched_async_client = None
+
+    @property
+    def docling_service(self):
+        """Property that ensures DoclingService is initialized."""
+        if self._docling_service is not None:
+            return self._docling_service
+
+        from services.docling_service import DoclingService
+        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
+        return self._docling_service
 
     async def cleanup(self):
         """Cleanup resources - should be called on application shutdown"""

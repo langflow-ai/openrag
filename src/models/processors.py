@@ -13,9 +13,10 @@ logger = get_logger(__name__)
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
-    def __init__(self, document_service=None, models_service=None):
+    def __init__(self, document_service=None, models_service=None, docling_service=None):
         self.document_service = document_service
         self.models_service = models_service
+        self.docling_service = docling_service
 
     async def check_document_exists(
         self,
@@ -261,9 +262,7 @@ class TaskProcessor:
             if original_filename:
                 slim_doc["filename"] = original_filename
         else:
-            from utils.docling_client import convert_file
-
-            full_doc = await convert_file(file_path, httpx_client=clients.docling_http_client)
+            full_doc = await self.docling_service.convert_file(file_path)
             slim_doc = extract_relevant(full_doc)
 
         if chunk_size is not None:
@@ -407,8 +406,14 @@ class DocumentFileProcessor(TaskProcessor):
         owner_email: str = None,
         is_sample_data: bool = False,
         connector_type: str = "local",
+        docling_service=None,
     ):
-        super().__init__(document_service, models_service)
+        super().__init__(
+            document_service,
+            models_service,
+            docling_service=docling_service
+            or (document_service.docling_service if document_service else None),
+        )
         self.owner_user_id = owner_user_id
         self.jwt_token = jwt_token
         self.owner_name = owner_name
@@ -484,7 +489,13 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(document_service=document_service, models_service=models_service)
+        super().__init__(
+            document_service=document_service,
+            models_service=models_service,
+            docling_service=document_service.docling_service
+            if document_service
+            else None,
+        )
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
@@ -604,7 +615,15 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         owner_email: str = None,
         ingest_settings: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__()
+        super().__init__(
+            document_service=langflow_connector_service.task_service.document_service
+            if langflow_connector_service.task_service
+            else None,
+            models_service=langflow_connector_service.task_service.models_service
+            if langflow_connector_service.task_service
+            else None,
+            docling_service=langflow_connector_service.docling_service,
+        )
         self.langflow_connector_service = langflow_connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process

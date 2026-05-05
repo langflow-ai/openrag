@@ -22,6 +22,7 @@ class ConnectorService:
         session_manager=None,
         models_service=None,
         document_service=None,
+        docling_service=None,
     ):
         self.clients = patched_async_client
         self.embed_model = embed_model
@@ -31,6 +32,7 @@ class ConnectorService:
         self.connection_manager = ConnectionManager()
         self.models_service = models_service
         self.document_service = document_service
+        self.docling_service = docling_service
 
     async def initialize(self):
         """Initialize the service by loading existing connections"""
@@ -66,7 +68,11 @@ class ConnectorService:
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
 
-            processor = TaskProcessor(document_service=self.document_service, models_service=self.models_service)
+            processor = TaskProcessor(
+                document_service=self.document_service,
+                models_service=self.models_service,
+                docling_service=self.docling_service,
+            )
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=document.id,  # Use connector document ID as hash
