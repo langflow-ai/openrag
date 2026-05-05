@@ -2,9 +2,7 @@ package controller
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -77,6 +75,10 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			if err := r.Update(ctx, instance); err != nil {
 				return ctrl.Result{}, err
 			}
+			// Return immediately after adding finalizer to avoid duplicate reconciliation.
+			// The update will trigger a new reconcile that will do the actual work.
+			logger.Info("added finalizer, will reconcile again")
+			return ctrl.Result{}, nil
 		}
 	}
 
@@ -87,9 +89,6 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
-	}
-	if err := r.reconcileGeneratedCreds(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("generated creds: %w", err)
 	}
 	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("env secrets: %w", err)
@@ -174,46 +173,6 @@ func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *ope
 		}
 	}
 	return nil
-}
-
-// reconcileGeneratedCreds creates a stable Secret holding auto-generated
-// LANGFLOW_SECRET_KEY and OPENRAG_ENCRYPTION_KEY. It is only created once —
-// subsequent reconcile loops skip it to preserve the generated values.
-func (r *OpenRAGReconciler) reconcileGeneratedCreds(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	secretName := resourceName(o.Name, "gen-creds")
-	existing := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, existing)
-	if err == nil {
-		return nil // already exists, don't overwrite stable keys
-	}
-	if !errors.IsNotFound(err) {
-		return err
-	}
-
-	langflowKey, err := generateKey(32)
-	if err != nil {
-		return err
-	}
-	encryptionKey, err := generateKey(32)
-	if err != nil {
-		return err
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNS,
-			Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
-		},
-		StringData: map[string]string{
-			"LANGFLOW_SECRET_KEY":    langflowKey,
-			"OPENRAG_ENCRYPTION_KEY": encryptionKey,
-		},
-	}
-	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-		return err
-	}
-	return r.Create(ctx, secret)
 }
 
 // parseEnvValue extracts a value from .env file content for the given key
@@ -1027,24 +986,35 @@ func (r *OpenRAGReconciler) setOwnerOrLabel(o *openragv1alpha1.OpenRAG, obj clie
 }
 
 func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Object) error {
+	existing := obj.DeepCopyObject().(client.Object)
+	err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing)
+	if errors.IsNotFound(err) {
+		// Object doesn't exist, create it with hash annotation
+		hash, err := desiredHash(obj)
+		if err != nil {
+			return err
+		}
+		setAnnotation(obj, specHashAnnotation, hash)
+		return r.Create(ctx, obj)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Object exists, check if update is needed
 	hash, err := desiredHash(obj)
 	if err != nil {
 		return err
 	}
-	setAnnotation(obj, specHashAnnotation, hash)
 
-	existing := obj.DeepCopyObject().(client.Object)
-	if err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
-		if errors.IsNotFound(err) {
-			return r.Create(ctx, obj)
-		}
-		return err
-	}
-
-	if existing.GetAnnotations()[specHashAnnotation] == hash {
+	existingHash := existing.GetAnnotations()[specHashAnnotation]
+	if existingHash == hash {
+		// No changes needed
 		return nil
 	}
 
+	// Update needed - set the new hash and resource version
+	setAnnotation(obj, specHashAnnotation, hash)
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	return r.Update(ctx, obj)
 }
@@ -1185,12 +1155,4 @@ func secretEnvVar(name string, sel *corev1.SecretKeySelector) corev1.EnvVar {
 		Name:      name,
 		ValueFrom: &corev1.EnvVarSource{SecretKeyRef: sel},
 	}
-}
-
-func generateKey(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
 }

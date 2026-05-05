@@ -158,6 +158,16 @@ func TestEnvVarManager_BuildEnvFileContent(t *testing.T) {
 
 	// Should have newlines
 	assert.Contains(t, content, "\n")
+
+	// Should be deterministic (alphabetically sorted)
+	expected := "VAR1=value1\nVAR2=value2\nVAR3=value3\n"
+	assert.Equal(t, expected, content, "Output should be deterministic and sorted")
+
+	// Verify determinism by calling multiple times
+	for i := 0; i < 10; i++ {
+		result := manager.BuildEnvFileContent(envVars)
+		assert.Equal(t, expected, result, "Output should be identical on iteration %d", i)
+	}
 }
 
 func TestEnvVarManager_RealWorldScenario(t *testing.T) {
