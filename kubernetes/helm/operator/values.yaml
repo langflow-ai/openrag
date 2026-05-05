@@ -49,11 +49,8 @@ securityContext:
 # Resource limits and requests
 resources:
   limits:
-    cpu: 500m
+    cpu: 100m
     memory: 128Mi
-  requests:
-    cpu: 10m
-    memory: 64Mi
 
 # Leader election configuration
 leaderElection:
@@ -75,4 +72,3 @@ affinity: {}
 # Termination grace period in seconds
 terminationGracePeriodSeconds: 10
 
-# Made with Bob

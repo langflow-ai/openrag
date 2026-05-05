@@ -16,4 +16,3 @@ subjects:
   namespace: {{ .Release.Namespace }}
 {{- end }}
 
-# Made with Bob

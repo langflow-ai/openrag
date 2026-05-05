@@ -65,4 +65,3 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 
-# Made with Bob

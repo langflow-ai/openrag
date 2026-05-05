@@ -13,4 +13,3 @@ subjects:
   name: {{ include "openrag-operator.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 
-# Made with Bob

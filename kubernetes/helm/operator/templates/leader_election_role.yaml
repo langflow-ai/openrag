@@ -18,4 +18,3 @@ rules:
   verbs: ["create","patch"]
 {{- end }}
 
-# Made with Bob
