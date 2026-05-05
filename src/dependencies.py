@@ -105,6 +105,10 @@ def get_rbac_service(services: dict = Depends(get_services)):
     return services["rbac_service"]
 
 
+def get_workspace_config_service(services: dict = Depends(get_services)):
+    return services["workspace_config_service"]
+
+
 # ─────────────────────────────────────────────
 # Database session
 # ─────────────────────────────────────────────

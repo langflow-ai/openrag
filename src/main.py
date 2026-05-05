@@ -1474,6 +1474,7 @@ async def initialize_services():
     # the time the lifespan opens the engine.
     from db import engine as _db_engine_mod
     from services.rbac_service import RBACService
+    from services.workspace_config_service import WorkspaceConfigService
 
     def _lazy_session_factory():
         sl = _db_engine_mod.SessionLocal
@@ -1484,6 +1485,14 @@ async def initialize_services():
         return sl()
 
     rbac_service = RBACService(_lazy_session_factory)
+
+    # WorkspaceConfigService — DB-first reads of what config.yaml holds,
+    # with the legacy ConfigManager kept as the yaml fallback during
+    # Phase B (dual-write).
+    workspace_config_service = WorkspaceConfigService(
+        config_manager=config_manager,
+        session_factory=_lazy_session_factory,
+    )
 
     return {
         "document_service": document_service,
@@ -1502,6 +1511,7 @@ async def initialize_services():
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
         "rbac_service": rbac_service,
+        "workspace_config_service": workspace_config_service,
     }
 
 
@@ -2067,8 +2077,11 @@ async def create_app():
     # ===== Users / RBAC Endpoints (JWT auth) =====
     from api import users as users_api
     from api.admin import rbac as admin_rbac
+    from api import config as config_api
     app.include_router(users_api.router)
     app.include_router(admin_rbac.router)
+    # Public — must work pre-auth so the onboarding wizard can render.
+    app.include_router(config_api.router)
 
     # ===== API Key Management Endpoints (JWT auth for UI) =====
     app.add_api_route(
