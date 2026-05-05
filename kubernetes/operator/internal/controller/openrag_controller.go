@@ -77,6 +77,10 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			if err := r.Update(ctx, instance); err != nil {
 				return ctrl.Result{}, err
 			}
+			// Return immediately after adding finalizer to avoid duplicate reconciliation.
+			// The update will trigger a new reconcile that will do the actual work.
+			logger.Info("added finalizer, will reconcile again")
+			return ctrl.Result{}, nil
 		}
 	}
 
@@ -1027,24 +1031,35 @@ func (r *OpenRAGReconciler) setOwnerOrLabel(o *openragv1alpha1.OpenRAG, obj clie
 }
 
 func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Object) error {
+	existing := obj.DeepCopyObject().(client.Object)
+	err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing)
+	if errors.IsNotFound(err) {
+		// Object doesn't exist, create it with hash annotation
+		hash, err := desiredHash(obj)
+		if err != nil {
+			return err
+		}
+		setAnnotation(obj, specHashAnnotation, hash)
+		return r.Create(ctx, obj)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Object exists, check if update is needed
 	hash, err := desiredHash(obj)
 	if err != nil {
 		return err
 	}
-	setAnnotation(obj, specHashAnnotation, hash)
 
-	existing := obj.DeepCopyObject().(client.Object)
-	if err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
-		if errors.IsNotFound(err) {
-			return r.Create(ctx, obj)
-		}
-		return err
-	}
-
-	if existing.GetAnnotations()[specHashAnnotation] == hash {
+	existingHash := existing.GetAnnotations()[specHashAnnotation]
+	if existingHash == hash {
+		// No changes needed
 		return nil
 	}
 
+	// Update needed - set the new hash and resource version
+	setAnnotation(obj, specHashAnnotation, hash)
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	return r.Update(ctx, obj)
 }

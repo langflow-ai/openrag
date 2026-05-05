@@ -270,6 +270,9 @@ func TestReconcile_CreatesTargetNamespace(t *testing.T) {
 	cr.Spec.TargetNamespace = "tenant-ns"
 	r, c := reconciler(s, cr)
 
+	// First reconcile adds finalizer and returns early
+	reconcileOnce(t, r, cr)
+	// Second reconcile creates namespace and resources
 	reconcileOnce(t, r, cr)
 
 	ns := &corev1.Namespace{}
@@ -310,6 +313,9 @@ func TestReconcile_ResourcesInTargetNamespace(t *testing.T) {
 	cr.Spec.TargetNamespace = "tenant-ns"
 	r, c := reconciler(s, cr)
 
+	// First reconcile adds finalizer and returns early
+	reconcileOnce(t, r, cr)
+	// Second reconcile creates resources
 	reconcileOnce(t, r, cr)
 
 	d := &appsv1.Deployment{}

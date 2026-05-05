@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -186,11 +187,18 @@ func (m *EnvVarManager) mergeEnvVars(defaults map[string]string, prefix string, 
 
 // BuildEnvFileContent converts a map of env vars to .env file format
 func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
+	// Sort keys to ensure deterministic output
+	keys := make([]string, 0, len(envVars))
+	for k := range envVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var b strings.Builder
-	for k, v := range envVars {
+	for _, k := range keys {
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(v)
+		b.WriteString(envVars[k])
 		b.WriteString("\n")
 	}
 	return b.String()
