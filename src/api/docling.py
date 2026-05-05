@@ -77,15 +77,18 @@ def determine_docling_host() -> str:
     return "localhost"
 
 
-# Use explicit URL if provided, otherwise auto-detect host
-_docling_url_override = os.getenv("DOCLING_SERVE_URL")
-if _docling_url_override:
-    DOCLING_SERVICE_URL = _docling_url_override.rstrip("/")
-    HOST_IP = _docling_url_override  # For display in health responses
-    logger.info("Using DOCLING_SERVE_URL override: %s", DOCLING_SERVICE_URL)
-else:
-    HOST_IP = determine_docling_host()
-    DOCLING_SERVICE_URL = f"http://{HOST_IP}:5001"
+def get_docling_service_url() -> str:
+    """Return the Docling Serve URL, reading DOCLING_SERVE_URL from the environment
+    at call time so that runtime changes to the variable are picked up without
+    requiring a server restart.
+    """
+    override = os.getenv("DOCLING_SERVE_URL")
+    if override:
+        url = override.rstrip("/")
+        logger.debug("Using DOCLING_SERVE_URL override: %s", url)
+        return url
+    host = determine_docling_host()
+    return f"http://{host}:5001"
 
 
 async def health(request: Request) -> JSONResponse:
@@ -93,7 +96,8 @@ async def health(request: Request) -> JSONResponse:
     Proxy health check to docling-serve.
     This allows the frontend to check docling status via same-origin request.
     """
-    health_url = f"{DOCLING_SERVICE_URL}/health"
+    docling_url = get_docling_service_url()
+    health_url = f"{docling_url}/health"
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -104,14 +108,14 @@ async def health(request: Request) -> JSONResponse:
             if response.status_code == 200:
                 return JSONResponse({
                     "status": "healthy",
-                    "host": HOST_IP
+                    "host": docling_url
                 })
             else:
                 logger.warning("Docling health check failed", url=health_url, status_code=response.status_code)
                 return JSONResponse({
                     "status": "unhealthy",
                     "message": f"Health check failed with status: {response.status_code}",
-                    "host": HOST_IP
+                    "host": docling_url
                 }, status_code=503)
 
     except httpx.TimeoutException:
@@ -119,12 +123,12 @@ async def health(request: Request) -> JSONResponse:
         return JSONResponse({
             "status": "unhealthy",
             "message": "Connection timeout",
-            "host": HOST_IP
+            "host": docling_url
         }, status_code=503)
     except Exception as e:
         logger.error("Docling health check failed", url=health_url, error=str(e))
         return JSONResponse({
             "status": "unhealthy",
             "message": str(e),
-            "host": HOST_IP
+            "host": docling_url
         }, status_code=503)
