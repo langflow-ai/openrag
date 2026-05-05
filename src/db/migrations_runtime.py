@@ -32,14 +32,14 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 JSON_TO_DB_V1 = "json_to_db_v1"
-CLEANUP_TEST_FIXTURES_V1 = "cleanup_test_fixtures_v1"
+# Reserved (do not reuse): "cleanup_test_fixtures_v1" was a one-shot
+# migration that DELETEd users with id IN ('admin-sub','dev-sub',...)
+# — removed because those plain strings could plausibly collide with
+# real OAuth subjects in IBM AMS deployments. Test pollution is now
+# prevented at source by tests/unit/conftest.py forcing in-memory
+# SQLite, so there's no longer dirty data to sweep.
 CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
-
-# Stable user_ids used by RBAC unit-test fixtures. If they ended up in a
-# real DB it's because pytest leaked into `data/openrag.db` — sweep them
-# out exactly once.
-LEGACY_TEST_USERS = ("admin-sub", "dev-sub", "user-sub", "viewer-sub")
 
 
 async def _already_done(session: AsyncSession, name: str) -> bool:
@@ -139,36 +139,6 @@ async def migrate_legacy_users(session: AsyncSession) -> int:
             # Some other run beat us to it.
             continue
     return inserted
-
-
-async def cleanup_test_fixture_rows(session: AsyncSession) -> int:
-    """Delete RBAC-test-fixture user rows that leaked into a real DB.
-
-    Only purges rows whose `id` matches one of the stable test fixture
-    user_ids AND whose email ends with the synthetic test domain. Caller
-    commits.
-    """
-    from sqlalchemy import text
-
-    sql_safe_ids = ",".join(f"'{u}'" for u in LEGACY_TEST_USERS)
-    if not sql_safe_ids:
-        return 0
-    deleted_total = 0
-    for table in ("user_roles", "audit_log"):
-        col = "actor_user_id" if table == "audit_log" else "user_id"
-        result = await session.execute(
-            text(f"DELETE FROM {table} WHERE {col} IN ({sql_safe_ids})")
-        )
-        deleted_total += result.rowcount or 0
-    # Match by id alone — the LEGACY_TEST_USERS values are stable strings
-    # uniquely owned by RBAC unit-test fixtures. No real OAuth subject would
-    # ever equal "admin-sub" / "dev-sub" / "user-sub" / "viewer-sub".
-    # (We can't filter by email here because the column is encrypted JSON.)
-    result = await session.execute(
-        text(f"DELETE FROM users WHERE id IN ({sql_safe_ids})")
-    )
-    deleted_total += result.rowcount or 0
-    return deleted_total
 
 
 async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
@@ -316,18 +286,6 @@ async def run(session: AsyncSession) -> None:
             return
         await _mark_done(session, JSON_TO_DB_V1, notes=f"legacy_users_inserted={inserted}")
         logger.info("JSON->DB migration completed", inserted=inserted)
-
-    if not await _already_done(session, CLEANUP_TEST_FIXTURES_V1):
-        try:
-            removed = await cleanup_test_fixture_rows(session)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Test-fixture cleanup failed", error=str(exc))
-            return
-        await _mark_done(
-            session, CLEANUP_TEST_FIXTURES_V1, notes=f"rows_removed={removed}"
-        )
-        if removed:
-            logger.info("Test-fixture cleanup removed leaked rows", count=removed)
 
     if not await _already_done(session, CONFIG_YAML_TO_DB_V1):
         try:

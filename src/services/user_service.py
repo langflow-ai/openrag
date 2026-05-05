@@ -140,13 +140,32 @@ async def _assign_bootstrap_or_default(
             logger.warning("admin role not seeded; skipping bootstrap assignment")
             return
         await role_repo.assign_role(user_id, admin_role.id)
-        await audit_repo.write(
-            event="user.bootstrap_admin",
-            actor_user_id=user_id,
-            target_type="user",
-            target_id=user_id,
-        )
-        return
+        await session.flush()
+
+        # Race-detect: a concurrent caller may have *also* observed
+        # admin_count == 0 and granted admin to a different user. Both
+        # writes succeeded (no DB-level mutex). Resolve by lexicographic
+        # tie-break — only the smallest user_id keeps admin; others
+        # demote and fall through to the default-role path. This is
+        # portable across SQLite and Postgres without advisory locks.
+        admins = await role_repo.list_admin_user_ids()
+        if len(admins) > 1 and min(admins) != user_id:
+            await role_repo.revoke_role(user_id, admin_role.id)
+            await session.flush()
+            logger.warning(
+                "bootstrap race detected; demoted to default role",
+                user_id=user_id,
+                winner=min(admins),
+            )
+            # Fall through to the default-role assignment block below.
+        else:
+            await audit_repo.write(
+                event="user.bootstrap_admin",
+                actor_user_id=user_id,
+                target_type="user",
+                target_id=user_id,
+            )
+            return
 
     # No-auth synthetic user -> configurable role
     if user_id == "anonymous":

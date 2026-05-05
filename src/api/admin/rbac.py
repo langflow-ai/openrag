@@ -29,7 +29,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import (
@@ -201,6 +201,16 @@ async def update_user(
     if row is None:
         raise HTTPException(404, {"error": "user_not_found"})
 
+    # Don't let the operator deactivate the last active admin.
+    if body.is_active is False and row.is_active:
+        role_repo = RoleRepo(session)
+        roles = await role_repo.list_user_roles(user_id)
+        if any(r.name == "admin" for r in roles):
+            if await role_repo.count_admins() <= 1:
+                raise HTTPException(
+                    400, {"error": "cannot_deactivate_last_admin"}
+                )
+
     changed: dict = {}
     if body.is_active is not None and body.is_active != row.is_active:
         row.is_active = body.is_active
@@ -238,7 +248,30 @@ async def delete_user(
     if row is None:
         raise HTTPException(404, {"error": "user_not_found"})
 
-    # Tear down user_roles + preferences then the user row.
+    # Don't let the operator delete the last admin.
+    role_repo = RoleRepo(session)
+    roles = await role_repo.list_user_roles(user_id)
+    if any(r.name == "admin" for r in roles):
+        if await role_repo.count_admins() <= 1:
+            raise HTTPException(400, {"error": "cannot_delete_last_admin"})
+
+    # Pre-null audit_log.actor_user_id so the audit row written below
+    # for the delete event survives even after the deleted user's other
+    # historical audit rows are nulled by the SET NULL FK policy. (The
+    # FK migration handles the cascade from the DB side; this explicit
+    # nulling is belt-and-suspenders for older deployments where the
+    # 0005_user_fk_ondelete migration hasn't run yet.)
+    await session.execute(
+        update(AuditLog)
+        .where(AuditLog.actor_user_id == user_id)
+        .values(actor_user_id=None)
+    )
+    # The 0005 migration sets ON DELETE CASCADE for user_roles and
+    # user_preferences and ON DELETE SET NULL for granted_by /
+    # workspace_config.updated_by, so a single delete of the user row
+    # propagates correctly. Keep the explicit deletes for the legacy
+    # path (deployments that haven't applied 0005 yet); they're no-ops
+    # under the new FK policy.
     await session.execute(
         UserRole.__table__.delete().where(UserRole.user_id == user_id)
     )

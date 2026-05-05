@@ -2235,6 +2235,34 @@ async def create_app():
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
+        # Hard-fail if the operator has configured multiple workers. The
+        # RBAC permission cache and the OAuth-subject→DB-id cache are
+        # both per-process; a second worker silently sees stale
+        # permissions for up to OPENRAG_PERM_CACHE_TTL seconds after
+        # role mutations. Until the cache moves to a shared backend
+        # (Redis), this constraint is real and must be enforced.
+        _workers = int(os.getenv("UVICORN_WORKERS", "1") or "1")
+        if _workers > 1:
+            logger.error(
+                "Multi-worker deployment unsupported until cache is "
+                "shared across processes. Set UVICORN_WORKERS=1.",
+                requested_workers=_workers,
+            )
+            raise RuntimeError("UVICORN_WORKERS>1 is not supported")
+        cache_backend = os.getenv("CACHE_BACKEND", "memory").lower()
+        if cache_backend not in ("memory",):
+            logger.error(
+                "Unsupported CACHE_BACKEND. Only 'memory' is wired.",
+                requested=cache_backend,
+            )
+            raise RuntimeError(f"unsupported CACHE_BACKEND={cache_backend!r}")
+        logger.info(
+            "Permission cache configured",
+            backend=cache_backend,
+            workers=_workers,
+            perm_cache_ttl_s=int(os.getenv("OPENRAG_PERM_CACHE_TTL", "60") or "60"),
+        )
+
         # Open the SQL engine on uvicorn's live loop (NOT the one used by
         # asyncio.run(create_app()) which closed already). All RBAC code
         # uses RBACService's lazy factory that reads db.engine.SessionLocal
@@ -2319,6 +2347,17 @@ async def create_app():
             Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
         )
         logger.info("Application shutdown initiated")
+
+        # Drain any pending workspace_config DB-mirror tasks before we
+        # tear down the engine. Without this, a save_config triggered
+        # right before shutdown can be cancelled mid-write, leaving
+        # yaml and DB out of sync.
+        try:
+            wcs = services.get("workspace_config_service") if isinstance(services, dict) else None
+            if wcs is not None:
+                await wcs.await_pending_mirrors()
+        except Exception as e:  # noqa: BLE001
+            logger.error("Error awaiting pending DB mirrors", error=str(e))
 
         # Gracefully shutdown OpenSearch connection first
         try:
