@@ -11,9 +11,10 @@ logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    def __init__(self, flows_service=None):
+    def __init__(self, flows_service=None, docling_service=None):
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
+        self.docling_service = docling_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
@@ -133,6 +134,7 @@ class LangflowFileService:
         allowed_users: Optional[List[str]] = None,
         allowed_groups: Optional[List[str]] = None,
         selected_embedding_model: Optional[str] = None,
+        docling_task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -209,6 +211,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
             "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
+            "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id) if docling_task_id else "",
         }
 
         # Serialize ACL lists as JSON strings for Langflow global vars
@@ -517,8 +520,9 @@ class LangflowFileService:
         connector_type: Optional[str] = None,   
     ) -> Dict[str, Any]:
         """
-        Combined upload, ingest, and delete operation.
-        First uploads the file, then runs ingestion on it, then optionally deletes the file.
+        Combined Docling upload and Langflow ingest operation.
+        First uploads the file to Docling, then runs ingestion on it via Langflow 
+        using the Docling task ID.
 
         Args:
             file_tuple: File tuple (filename, content, content_type)
@@ -526,34 +530,32 @@ class LangflowFileService:
             tweaks: Optional tweaks for the ingestion flow
             settings: Optional UI settings to convert to component tweaks
             jwt_token: Optional JWT token for authentication
-            delete_after_ingest: Whether to delete the file from Langflow after ingestion (default: True)
+            delete_after_ingest: Whether to delete the file (ignored as we don't upload to Langflow)
 
         Returns:
-            Combined result with upload info, ingestion result, and deletion status
+            Combined result with Docling task info and ingestion result
         """
-        logger.debug("[LF] Starting combined upload and ingest operation")
+        logger.debug("[LF] Starting Docling-based upload and ingest operation")
 
-        # Step 1: Upload the file
+        filename, content, _ = file_tuple
+
+        # Step 1: Upload the file to Docling
         try:
-            upload_result = await self.upload_user_file(file_tuple, jwt_token=jwt_token)
+            task_id = await self.docling_service.upload_to_docling_direct_async(filename, content)
             logger.debug(
-                "[LF] Upload completed successfully",
+                "[LF] Docling upload completed successfully",
                 extra={
-                    "file_id": upload_result.get("id"),
-                    "file_path": upload_result.get("path"),
+                    "task_id": task_id,
+                    "filename": filename,
                 },
             )
         except Exception as e:
             logger.error(
-                "[LF] Upload failed during combined operation", extra={"error": str(e)}
+                "[LF] Docling upload failed during combined operation", extra={"error": str(e)}
             )
-            raise Exception(f"Upload failed: {str(e)}")
+            raise Exception(f"Docling upload failed: {str(e)}")
 
         # Step 2: Prepare for ingestion
-        file_path = upload_result.get("path")
-        if not file_path:
-            raise ValueError("Upload successful but no file path returned")
-
         final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
             tweaks, settings
         )
@@ -563,10 +565,10 @@ class LangflowFileService:
                 extra={"settings": settings, "tweaks": final_tweaks},
             )
 
-        # Step 3: Run ingestion
+        # Step 3: Run ingestion via Langflow
         try:
             ingest_result = await self.run_ingestion_flow(
-                file_paths=[file_path],
+                file_paths=[], # Files are not uploaded to Langflow FS
                 file_tuples=[file_tuple],
                 jwt_token=jwt_token,
                 session_id=session_id,
@@ -575,54 +577,20 @@ class LangflowFileService:
                 owner_name=owner_name,
                 owner_email=owner_email,
                 connector_type=connector_type,
+                docling_task_id=task_id,
             )
             logger.debug("[LF] Ingestion completed successfully")
         except Exception as e:
             logger.error(
                 "[LF] Ingestion failed during combined operation",
-                extra={"error": str(e), "file_path": file_path},
+                extra={"error": str(e), "filename": filename},
             )
             raise
 
-        # Step 4: Delete file from Langflow (optional)
-        file_id = upload_result.get("id")
-        delete_result = None
-        delete_error = None
-
-        if delete_after_ingest and file_id:
-            try:
-                logger.debug(
-                    "[LF] Deleting file after successful ingestion",
-                    extra={"file_id": file_id},
-                )
-                await self.delete_user_file(file_id)
-                delete_result = {"status": "deleted", "file_id": file_id}
-                logger.debug("[LF] File deleted successfully")
-            except Exception as e:
-                delete_error = str(e)
-                logger.warning(
-                    "[LF] Failed to delete file after ingestion",
-                    extra={"error": delete_error, "file_id": file_id},
-                )
-                delete_result = {
-                    "status": "delete_failed",
-                    "file_id": file_id,
-                    "error": delete_error,
-                }
-
         # Return combined result
-        result = {
+        return {
             "status": "success",
-            "upload": upload_result,
+            "docling_task_id": task_id,
             "ingestion": ingest_result,
-            "message": f"File '{upload_result.get('name')}' uploaded and ingested successfully",
+            "message": f"File '{filename}' processed via Docling and ingested successfully",
         }
-
-        if delete_after_ingest:
-            result["deletion"] = delete_result
-            if delete_result and delete_result.get("status") == "deleted":
-                result["message"] += " and cleaned up"
-            elif delete_error:
-                result["message"] += f" (cleanup warning: {delete_error})"
-
-        return result
