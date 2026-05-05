@@ -11,6 +11,11 @@ services:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+    extra_hosts:
+      # Lets the security plugin reach a host-side `make backend` for
+      # OIDC discovery / JWKS. Inside compose the service DNS already
+      # resolves; this alias is only used when the backend runs on the host.
+      - "openrag-backend:host-gateway"
     ports:
       - "9200:9200"
       - "9600:9600"

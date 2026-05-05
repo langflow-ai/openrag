@@ -25,8 +25,13 @@ export function UserNav() {
     login,
     logout,
     version,
+    roles,
   } = useAuth();
   const { theme, setTheme } = useTheme();
+
+  const roleLabel = roles.length
+    ? roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(", ")
+    : null;
 
   if (isLoading) {
     return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />;
@@ -113,6 +118,17 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="m-0" />
+        {roleLabel && (
+          <>
+            <div className="flex items-center justify-between pl-3 pr-2 h-9">
+              <span className="text-sm">Role</span>
+              <p className="text-xs leading-none text-muted-foreground">
+                {roleLabel}
+              </p>
+            </div>
+            <DropdownMenuSeparator className="m-0" />
+          </>
+        )}
         {version && (
           <>
             <div className="flex items-center justify-between pl-3 pr-2 h-9">

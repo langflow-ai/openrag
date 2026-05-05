@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   duplicateCheck,
   uploadFiles,
@@ -118,6 +119,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 
 export function KnowledgeDropdown() {
   const { isIbmAuthMode } = useAuth();
+  const { can } = usePermissions();
+  const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
@@ -698,6 +701,11 @@ export function KnowledgeDropdown() {
         </Button>
       </div>
     );
+  }
+
+  if (!canUpload) {
+    // Viewer / restricted users see no entry point at all.
+    return null;
   }
 
   return (

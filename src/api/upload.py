@@ -15,6 +15,7 @@ from dependencies import (
     get_chat_service,
     get_session_manager,
     get_current_user,
+    require_permission,
 )
 from session_manager import User
 from utils.logging_config import get_logger
@@ -34,7 +35,7 @@ async def upload(
     file: UploadFile = File(...),
     document_service=Depends(get_document_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload a single file"""
     try:
@@ -70,7 +71,7 @@ async def upload_path(
     body: UploadPathBody,
     task_service=Depends(get_task_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload all files from a directory path"""
     if not body.path or not os.path.isdir(body.path):
@@ -115,7 +116,7 @@ async def upload_context(
     document_service=Depends(get_document_service),
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
@@ -172,7 +173,7 @@ async def upload_bucket(
     models_service=Depends(get_models_service),
     docling_service=Depends(get_docling_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Process all files from an S3 bucket URL"""
     if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
