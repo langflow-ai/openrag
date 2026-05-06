@@ -130,13 +130,17 @@ async def migrate_legacy_users(session: AsyncSession) -> int:
             email_lookup_hash=email_lookup_hash(synth_email),
             display_name=legacy_id,
         )
+        # SAVEPOINT per row so a duplicate (e.g. another runner already
+        # inserted this legacy id) only rolls back THIS row, not the
+        # whole outer transaction with previously inserted legacy users.
         try:
-            session.add(row)
-            await session.flush()
+            async with session.begin_nested():
+                session.add(row)
+                await session.flush()
             inserted += 1
         except IntegrityError:
-            await session.rollback()
-            # Some other run beat us to it.
+            # Some other run beat us to it; savepoint rolled back
+            # automatically — outer transaction and prior inserts intact.
             continue
     return inserted
 
