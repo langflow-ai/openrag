@@ -376,7 +376,6 @@ class LangflowFileService:
             crawl_depth=crawl_depth,
             connector_type=connector_type,
             embedding_model=embedding_model,
-            headers=headers,
             payload=payload,
         )
         resp = await clients.langflow_request(

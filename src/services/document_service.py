@@ -146,7 +146,7 @@ class DocumentService:
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor
-            processor = TaskProcessor(document_service=self, models_service=self.models_service)
+            processor = TaskProcessor(document_service=self, models_service=self.models_service, docling_service=self.docling_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=file_hash,
