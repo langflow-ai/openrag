@@ -1,8 +1,9 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  name: {{ include "openrag-operator.fullname" . }}-manager-role
+  labels:
+    {{- include "openrag-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -99,3 +100,4 @@ rules:
   - get
   - patch
   - update
+
