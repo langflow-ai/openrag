@@ -13,7 +13,7 @@ from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
-from utils.container_utils import get_container_host
+from utils.container_utils import get_container_host, determine_docling_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.logging_config import get_logger
 # Import configuration manager
@@ -68,6 +68,21 @@ IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentia
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
+
+# Docling service URL configuration
+# Priority:
+# 1. DOCLING_SERVE_URL environment variable
+# 2. Auto-detected host (container gateway, host.docker.internal, or localhost)
+_docling_url_override = os.getenv("DOCLING_SERVE_URL")
+if _docling_url_override:
+    DOCLING_SERVE_URL = _docling_url_override.rstrip("/")
+    # For health display / logging
+    DOCLING_HOST_IP = _docling_url_override
+    logger.info("Using DOCLING_SERVE_URL override: %s", DOCLING_SERVE_URL)
+else:
+    DOCLING_HOST_IP = determine_docling_host()
+    DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
+    logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 

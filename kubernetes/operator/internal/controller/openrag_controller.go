@@ -508,6 +508,19 @@ func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG, secretK
 		}
 	}
 
+	// Docling configuration from CR spec
+	if d := o.Spec.Docling; d != nil {
+		scheme := d.Scheme
+		if scheme == "" {
+			scheme = "http"
+		}
+		port := d.Port
+		if port == 0 {
+			port = 5001
+		}
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
+	}
+
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars)
 }

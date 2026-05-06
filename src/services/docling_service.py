@@ -6,7 +6,7 @@ from typing import Any, Optional, Dict
 import httpx
 from pydantic import BaseModel
 
-from config.settings import get_openrag_config
+from config.settings import get_openrag_config, DOCLING_SERVE_URL
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -56,8 +56,7 @@ class DoclingService:
         if docling_url:
             self.docling_url = docling_url.rstrip("/")
         else:
-            from api.docling import DOCLING_SERVICE_URL
-            self.docling_url = DOCLING_SERVICE_URL
+            self.docling_url = DOCLING_SERVE_URL
             
         self.httpx_client = httpx_client
 
