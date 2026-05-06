@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -48,8 +48,8 @@ class UserRepo:
     async def update_last_login(self, user_id: str) -> None:
         user = await self.get_by_id(user_id)
         if user:
-            user.last_login = datetime.utcnow()
-            user.updated_at = datetime.utcnow()
+            user.last_login = datetime.now(UTC)
+            user.updated_at = datetime.now(UTC)
             self.session.add(user)
             await self.session.flush()
 
@@ -67,8 +67,8 @@ class UserRepo:
             legacy.display_name = display_name
         if picture_url:
             legacy.picture_url = picture_url
-        legacy.last_login = datetime.utcnow()
-        legacy.updated_at = datetime.utcnow()
+        legacy.last_login = datetime.now(UTC)
+        legacy.updated_at = datetime.now(UTC)
         self.session.add(legacy)
         await self.session.flush()
         return legacy

@@ -1,6 +1,6 @@
 """Async CRUD over the ``session_ownership`` table."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -25,7 +25,7 @@ class SessionOwnershipRepo:
         the existing owner before calling this for an existing row.
         """
         existing = await self.get(response_id)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if existing is None:
             row = SessionOwnership(
                 response_id=response_id,
@@ -77,7 +77,7 @@ class SessionOwnershipRepo:
         row = SessionOwnership(
             response_id=response_id,
             user_id=user_id,
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or datetime.now(UTC),
             last_accessed=last_accessed,
         )
         self.session.add(row)
