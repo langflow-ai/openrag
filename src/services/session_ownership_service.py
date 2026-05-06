@@ -4,8 +4,8 @@ Tracks which user owns which chat session. Mode-aware:
 
 | OPENRAG_STORAGE_MODE | Reads                          | Writes                |
 |----------------------|--------------------------------|-----------------------|
-| hybrid (default)     | DB → JSON fallback             | DB + JSON dual-write  |
-| db                   | DB only — JSON ignored         | DB only — no JSON     |
+| db (default)         | DB only — JSON ignored         | DB only — no JSON     |
+| hybrid               | DB → JSON fallback             | DB + JSON dual-write  |
 | files (legacy)       | JSON only                      | JSON only             |
 
 All public methods are async. Call sites in ``src/agent.py`` were

@@ -61,10 +61,10 @@ def tmp_config_manager():
 # ======================================================================
 
 
-def test_default_mode_is_hybrid(monkeypatch):
+def test_default_mode_is_db(monkeypatch):
     monkeypatch.delenv("OPENRAG_STORAGE_MODE", raising=False)
     monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
-    assert get_storage_mode() == "hybrid"
+    assert get_storage_mode() == "db"
 
 
 def test_explicit_mode_db(monkeypatch):
@@ -90,7 +90,7 @@ def test_legacy_kill_switch_forces_files(monkeypatch):
 def test_invalid_value_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "weird")
     monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
-    assert get_storage_mode() == "hybrid"
+    assert get_storage_mode() == "db"
 
 
 # ======================================================================

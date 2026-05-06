@@ -4,11 +4,11 @@ of truth, with yaml kept as a fallback when storage mode is `hybrid`.
 Honors the unified ``OPENRAG_STORAGE_MODE`` flag (see
 ``src/config/storage_mode.py``):
 
-| Mode    | Reads             | Writes               |
-|---------|-------------------|----------------------|
-| hybrid  | DB → yaml fallback| DB + yaml (default)  |
-| db      | DB only           | DB only — yaml ignored, never written |
-| files   | yaml only         | yaml only            |
+| Mode             | Reads             | Writes               |
+|------------------|-------------------|----------------------|
+| db (default)     | DB only           | DB only — yaml ignored, never written |
+| hybrid           | DB → yaml fallback| DB + yaml dual-write |
+| files            | yaml only         | yaml only            |
 
 Mirrors the existing ``ConfigManager`` API surface (``load_config`` /
 ``get_config`` / ``reload_config`` / ``save_config_file`` /

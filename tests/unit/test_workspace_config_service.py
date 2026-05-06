@@ -59,8 +59,14 @@ async def test_load_config_falls_back_to_yaml_when_db_empty(
 
 @pytest.mark.asyncio
 async def test_save_config_writes_to_yaml_and_db(
-    tmp_config_manager, session_factory
+    monkeypatch, tmp_config_manager, session_factory
 ):
+    """Hybrid mode dual-writes to both yaml and the DB.
+
+    The default mode is ``db`` (DB-only, no yaml), so this test forces
+    hybrid via an env override to exercise the dual-write contract.
+    """
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
     svc = WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
