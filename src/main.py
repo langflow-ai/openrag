@@ -2263,6 +2263,22 @@ async def create_app():
             perm_cache_ttl_s=int(os.getenv("OPENRAG_PERM_CACHE_TTL", "60") or "60"),
         )
 
+        # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes
+        # every authenticated user effectively admin — log loudly so
+        # operators see it on every boot. Available in all run modes;
+        # the operator owns the trade-off.
+        from services.rbac_service import is_rbac_enforced
+        from utils.run_mode_utils import get_run_mode
+        if is_rbac_enforced():
+            logger.info("RBAC enforcement is ON", run_mode=get_run_mode())
+        else:
+            logger.warning(
+                "RBAC enforcement is DISABLED — every authenticated "
+                "user has full access via the OPENRAG_RBAC_ENFORCE=false "
+                "kill switch.",
+                run_mode=get_run_mode(),
+            )
+
         # Open the SQL engine on uvicorn's live loop (NOT the one used by
         # asyncio.run(create_app()) which closed already). All RBAC code
         # uses RBACService's lazy factory that reads db.engine.SessionLocal

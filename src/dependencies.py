@@ -192,13 +192,25 @@ def require_permission(perm: str):
 
     Raises HTTP 403 with `{required: <perm>}` when the user lacks it.
     Honors API key role snapshots via `request.state.api_key_role_ids`.
+
+    When ``OPENRAG_RBAC_ENFORCE=false`` the check is skipped and the
+    authenticated user is returned unconditionally. The startup event
+    in ``src/main.py`` refuses to boot when this flag is combined with
+    a ``saas`` or ``on_prem`` run mode, so the bypass cannot silently
+    land in production.
     """
+    from services.rbac_service import is_rbac_enforced
 
     async def _dep(
         request: Request,
         user: User = Depends(get_current_user),
         rbac=Depends(get_rbac_service),
     ) -> User:
+        if not is_rbac_enforced():
+            # RBAC kill-switch: still resolve the DB id so downstream
+            # ownership checks that compare against it keep working.
+            await _resolve_db_user_id(user)
+            return user
         role_override = getattr(request.state, "api_key_role_ids", None)
         db_user_id = await _resolve_db_user_id(user)
         perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)

@@ -15,6 +15,12 @@ load_dotenv()
 os.environ['GOOGLE_OAUTH_CLIENT_ID'] = ''
 os.environ['GOOGLE_OAUTH_CLIENT_SECRET'] = ''
 
+# RBAC is OFF by default in production. For tests we keep it ON so the
+# RBAC assertions in admin-endpoint and require_permission tests aren't
+# silently bypassed. Specific tests that exercise the kill switch
+# override this via monkeypatch.
+os.environ.setdefault("OPENRAG_RBAC_ENFORCE", "true")
+
 # Pin the RBAC/SQL DB to an isolated temp file BEFORE any code that
 # imports `db.engine` runs. The DB engine module reads DATABASE_URL at
 # init time, so this must happen at module load. Without it the
