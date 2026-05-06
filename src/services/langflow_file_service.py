@@ -117,6 +117,14 @@ class LangflowFileService:
             )
         resp.raise_for_status()
 
+    async def delete_all_files(self, file_id: str) -> None:
+        """Delete a file by id using v2: DELETE /api/v2/files/{id}."""
+        import logging
+        # NOTE: use v2 root, not /api/v1
+        logger.debug("[LF] Delete (v2) -> /api/v2/files/{id}", file_id=file_id)
+        resp = await clients.langflow_request("DELETE", f"/api/v2/files")
+        resp.raise_for_status()
+
     async def run_ingestion_flow(
         self,
         file_paths: List[str],
@@ -191,7 +199,7 @@ class LangflowFileService:
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
-        
+
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         if selected_embedding_model:
@@ -221,7 +229,7 @@ class LangflowFileService:
             headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(
                 allowed_groups or []
             )
-        
+
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
         logger.info("[INGEST] Run started", flow_id=self.flow_id_ingest, filename=filename, mimetype=mimetype)
@@ -241,7 +249,7 @@ class LangflowFileService:
                 reason=resp.reason_phrase,
                 body=resp.text[:1000],
             )
-            
+
             # Extract error message from Langflow response
             error_message = f"Server error '{resp.status_code} {resp.reason_phrase}'"
             try:
@@ -261,9 +269,9 @@ class LangflowFileService:
                         error_message = detail["message"]
             except Exception:
                 pass
-            
+
             raise Exception(error_message)
-        
+
         # Check if response is actually JSON before parsing
         content_type = resp.headers.get("content-type", "")
         if "application/json" not in content_type:
@@ -278,7 +286,7 @@ class LangflowFileService:
                 f"This may indicate the ingestion flow failed or the endpoint is incorrect. "
                 f"Response preview: {resp.text[:500]}"
             )
-        
+
         try:
             resp_json = resp.json()
         except Exception as e:
@@ -331,7 +339,7 @@ class LangflowFileService:
 
             "X-Langflow-Global-Var-DOCUMENT_ID":"",
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
-    
+
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps( []),
             "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps( []),
         }
@@ -514,7 +522,7 @@ class LangflowFileService:
         owner: Optional[str] = None,
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,   
+        connector_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Combined upload, ingest, and delete operation.
