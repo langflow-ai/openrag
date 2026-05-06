@@ -4,10 +4,10 @@
 
 # Operator image configuration
 image:
-  repository: ghcr.io/langflow-ai/openrag-operator
+  repository: itestmycode/openrag-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "v0.1.0"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -58,7 +58,7 @@ leaderElection:
 
 # Health probe configuration
 healthProbe:
-  bindAddress: ":8081"
+  bindAddress: ":8080"
 
 # Node selector for pod assignment
 nodeSelector: {}
