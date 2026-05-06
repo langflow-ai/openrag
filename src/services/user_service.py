@@ -106,25 +106,22 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     try:
         await user_repo.add(row)
     except IntegrityError:
-        # Race or pre-existing row. Roll back and look the row up by
-        # any of its three unique constraints — (oauth_provider,
-        # oauth_subject), email_lookup_hash, or id (PK). Whichever
-        # matches is the row we should use.
+        # The collision could be on any of the three unique constraints:
+        # (oauth_provider, oauth_subject), email_lookup_hash, or id (PK).
+        # Only the FIRST means we hit our own identity (same logical
+        # user via concurrent insert by a peer process); the latter two
+        # mean a *different* identity already owns that id or email.
         await session.rollback()
         existing = await user_repo.get_by_oauth(provider, subject)
-        if existing is None and user.email:
-            # email_lookup_hash UNIQUE collision — same user identified
-            # by email; reuse it instead of trying to insert a sibling.
-            existing = await user_repo.get_by_email(user.email)
-        if existing is None:
-            existing = await user_repo.get_by_id(new_id)
         if existing:
             await user_repo.update_last_login(existing.id)
             return existing
-        # Genuine PK collision across providers (different subject string,
-        # same id). Retry with a UUID id; oauth_provider/subject and
-        # email differ from the conflicting row, so the unique constraints
-        # won't fire again.
+        # PK collision across providers (different subject chose the
+        # same id). Retry with a UUID id; (provider, subject) and email
+        # differ from the conflicting row so this insert succeeds.
+        # email_lookup_hash collision is NOT recoverable here — that's
+        # a real conflict (two identities with the same email) and we
+        # let it propagate to the caller.
         new_id = str(uuid.uuid4())
         row = UserRow(
             id=new_id,

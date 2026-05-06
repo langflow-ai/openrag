@@ -167,3 +167,92 @@ async def test_concurrent_signins_same_user_no_integrity_error(
         from db.repositories import UserRepo
         rows = await UserRepo(session).list_all()
     assert len(rows) == 1, f"expected 1 anonymous user row, got {len(rows)}"
+
+
+@pytest.mark.asyncio
+async def test_cache_keys_are_per_provider_subject_pair(
+    session_factory, monkeypatch
+):
+    """Two users with the SAME oauth_subject string but DIFFERENT
+    providers must NOT share a cache slot. Pre-fix the cache was keyed
+    on user.user_id alone, so e.g. AnonymousUser (provider="none",
+    user_id="anonymous") would collide with any future identity that
+    issued the same subject string.
+    """
+    import db.engine as _engine_mod
+    monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
+
+    from dependencies import _ensure_db_user, _ENSURED_USER_IDS, _ENSURE_LOCKS
+    _ENSURED_USER_IDS.clear()
+    _ENSURE_LOCKS.clear()
+
+    # Same subject string, different providers, different emails.
+    user_a = User(
+        user_id="shared-subject",
+        email="a@x.com",
+        name="A",
+        provider="google",
+    )
+    user_b = User(
+        user_id="shared-subject",
+        email="b@x.com",
+        name="B",
+        provider="ibm",
+    )
+
+    id_a = await _ensure_db_user(user_a)
+    id_b = await _ensure_db_user(user_b)
+
+    # Distinct cache slots…
+    assert "google:shared-subject" in _ENSURED_USER_IDS
+    assert "ibm:shared-subject" in _ENSURED_USER_IDS
+    # …and distinct DB ids (the (oauth_provider, oauth_subject) UNIQUE
+    # constraint isn't violated because the two pairs differ on provider).
+    assert id_a is not None and id_b is not None
+    assert id_a != id_b, "distinct identities must map to distinct DB ids"
+
+    # And distinct locks were created — same-provider concurrent calls
+    # serialize, but cross-provider calls don't block each other.
+    assert "google:shared-subject" in _ENSURE_LOCKS
+    assert "ibm:shared-subject" in _ENSURE_LOCKS
+    assert _ENSURE_LOCKS["google:shared-subject"] is not _ENSURE_LOCKS["ibm:shared-subject"]
+
+
+@pytest.mark.asyncio
+async def test_invalidate_pops_only_target_identity(
+    session_factory, monkeypatch
+):
+    """invalidate_user_ensured_cache(provider, subject) must pop only
+    the matching identity's cache + lock entries — not the whole cache."""
+    import db.engine as _engine_mod
+    monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
+
+    from dependencies import (
+        _ensure_db_user,
+        _ENSURED_USER_IDS,
+        _ENSURE_LOCKS,
+        invalidate_user_ensured_cache,
+    )
+    _ENSURED_USER_IDS.clear()
+    _ENSURE_LOCKS.clear()
+
+    await _ensure_db_user(
+        User(user_id="alice-sub", email="a@x", name="A", provider="google")
+    )
+    await _ensure_db_user(
+        User(user_id="bob-sub", email="b@x", name="B", provider="ibm")
+    )
+    assert {"google:alice-sub", "ibm:bob-sub"} <= set(_ENSURED_USER_IDS.keys())
+
+    invalidate_user_ensured_cache("google", "alice-sub")
+
+    assert "google:alice-sub" not in _ENSURED_USER_IDS
+    assert "google:alice-sub" not in _ENSURE_LOCKS
+    # bob's entries untouched
+    assert "ibm:bob-sub" in _ENSURED_USER_IDS
+    assert "ibm:bob-sub" in _ENSURE_LOCKS
+
+    # Calling with no args clears everything.
+    invalidate_user_ensured_cache()
+    assert len(_ENSURED_USER_IDS) == 0
+    assert len(_ENSURE_LOCKS) == 0
