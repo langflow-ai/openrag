@@ -135,7 +135,6 @@ async def upload_and_ingest_user_file(
     session_id: Optional[str] = Form(None),
     settings_json: Optional[str] = Form(None, alias="settings"),
     tweaks_json: Optional[str] = Form(None, alias="tweaks"),
-    delete_after_ingest: str = Form("true"),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
@@ -180,7 +179,6 @@ async def upload_and_ingest_user_file(
                 session_id=session_id,
                 tweaks=tweaks,
                 settings=settings,
-                delete_after_ingest=delete_after_ingest.lower() == "true",
             )
 
             return JSONResponse(

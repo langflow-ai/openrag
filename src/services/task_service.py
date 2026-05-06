@@ -26,9 +26,10 @@ class TaskService:
     # Cleanup interval in seconds (2 hours)
     CLEANUP_INTERVAL_SECONDS = 2 * 60 * 60
 
-    def __init__(self, document_service=None, models_service=None, ingestion_timeout=3600):
+    def __init__(self, document_service=None, models_service=None, ingestion_timeout=3600, docling_service=None):
         self.document_service = document_service
         self.models_service = models_service
+        self.docling_service = docling_service
         self.task_store: dict[
             str, dict[str, UploadTask]
         ] = {}  # user_id -> {task_id -> UploadTask}
@@ -122,6 +123,7 @@ class TaskService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            docling_service=self.docling_service,
         )
         return await self.create_custom_task(user_id, file_paths, processor)
 
@@ -138,7 +140,6 @@ class TaskService:
         session_id: str = None,
         tweaks: dict = None,
         settings: dict = None,
-        delete_after_ingest: bool = True,
         replace_duplicates: bool = False,
         connector_type: str = "local",
         existing_task_id: str = None,
@@ -157,7 +158,6 @@ class TaskService:
             session_id=session_id,
             tweaks=tweaks,
             settings=settings,
-            delete_after_ingest=delete_after_ingest,
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
         )

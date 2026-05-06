@@ -19,13 +19,16 @@ class LangflowConnectorService:
         self,
         task_service=None,
         session_manager=None,
+        flows_service=None,
+        docling_service=None,
     ):
         self.task_service = task_service
         self.session_manager = session_manager
+        self.docling_service = docling_service
         self.connection_manager = ConnectionManager()
-
-        # Initialize LangflowFileService for processing connector documents
-        self.langflow_service = LangflowFileService()
+        self.langflow_service = LangflowFileService(
+            flows_service=flows_service, docling_service=docling_service
+        )
 
     async def initialize(self):
         """Initialize the service by loading existing connections"""

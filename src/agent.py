@@ -515,25 +515,24 @@ async def async_chat_stream(
         yield chunk
 
     # Add the complete assistant response to message history with response_id and timestamp
-    if full_response:
-        assistant_message = {
-            "role": "assistant",
-            "content": full_response,
-            "response_id": response_id,
-            "timestamp": datetime.now(),
-        }
-        # Store usage data if available (from response.completed event)
-        if usage_data:
-            assistant_message["response_data"] = {"usage": usage_data}
-        conversation_state["messages"].append(assistant_message)
+    assistant_message = {
+        "role": "assistant",
+        "content": full_response,
+        "response_id": response_id,
+        "timestamp": datetime.now(),
+    }
+    # Store usage data if available (from response.completed event)
+    if usage_data:
+        assistant_message["response_data"] = {"usage": usage_data}
+    conversation_state["messages"].append(assistant_message)
 
-        # Store the conversation thread with its response_id
-        if response_id:
-            conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, response_id, conversation_state)
-            logger.debug(
-                f"Stored conversation thread for user {user_id} with response_id: {response_id}"
-            )
+    # Store the conversation thread with its response_id
+    if response_id:
+        conversation_state["last_activity"] = datetime.now()
+        await store_conversation_thread(user_id, response_id, conversation_state)
+        logger.debug(
+            f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+        )
 
 
 # Async langflow function with conversation storage (non-streaming)
@@ -789,16 +788,15 @@ async def async_langflow_chat_stream(
             yield chunk
 
         # Add the complete assistant response to message history with response_id, timestamp, and function call data
-        if full_response:
-            assistant_message = {
-                "role": "assistant",
-                "content": full_response,
-                "response_id": response_id,
-                "timestamp": datetime.now(),
-                "chunks": collected_chunks,  # Store complete chunk data for function calls
-                "error": error_occurred,  # Mark if this was an error response
-            }
-            # Store usage data if available (from response.completed event)
+        assistant_message = {
+            "role": "assistant",
+            "content": full_response,
+            "response_id": response_id,
+            "timestamp": datetime.now(),
+            "chunks": collected_chunks,  # Store complete chunk data for function calls
+            "error": error_occurred,  # Mark if this was an error response
+        }
+        # Store usage data if available (from response.completed event)
         if usage_data:
             assistant_message["response_data"] = {"usage": usage_data}
         conversation_state["messages"].append(assistant_message)

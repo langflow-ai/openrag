@@ -152,7 +152,7 @@ export function useChatStreaming({
       }
 
       try {
-        while (true) {
+        streamLoop: while (true) {
           const { done, value } = await reader.read();
           if (controller.signal.aborted || thisStreamId !== streamIdRef.current)
             break;
@@ -460,19 +460,6 @@ export function useChatStreaming({
                   }
                 }
 
-                // Check for error status from Langflow
-                if (
-                  chunk.finish_reason === "error" ||
-                  chunk.status === "failed"
-                ) {
-                  console.error("Error detected in stream");
-
-                  // Mark this as an error message and complete the stream
-                  isError = true;
-
-                  // Exit the streaming loop by throwing so the reader stops promptly on error
-                  throw new Error("Error detected in stream");
-                }
                 // Handle text output streaming (Realtime API)
                 else if (chunk.type === "response.output_text.delta") {
                   currentContent += chunk.delta || "";
@@ -550,6 +537,20 @@ export function useChatStreaming({
                   console.log(
                     "[Heuristic Detection] Created synthetic function call",
                   );
+                }
+
+                // Check for error status from Langflow
+                if (
+                  chunk.finish_reason === "error" ||
+                  chunk.status === "failed"
+                ) {
+                  console.error("Error detected in stream");
+
+                  // Mark this as an error message and complete the stream
+                  isError = true;
+
+                  // Exit the streaming loop by breaking the labeled while loop
+                  break streamLoop;
                 }
 
                 // Update streaming message in real-time

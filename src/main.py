@@ -602,7 +602,6 @@ async def _ingest_default_documents_langflow(
         session_id=None,  # No session for default documents
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
-        delete_after_ingest=True,  # Clean up after ingestion
         replace_duplicates=True,
         connector_type=connector_type,
         existing_task_id=existing_task_id,
@@ -1377,21 +1376,35 @@ async def initialize_services():
 
     # Initialize services
     models_service = ModelsService()
-    document_service = DocumentService(session_manager=session_manager, models_service=models_service)
+    document_service = DocumentService(
+        session_manager=session_manager,
+        models_service=models_service,
+        docling_service=clients.docling_service,
+    )
     search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
-    task_service = TaskService(document_service, models_service, ingestion_timeout=INGESTION_TIMEOUT)
+    task_service = TaskService(
+        document_service,
+        models_service,
+        ingestion_timeout=INGESTION_TIMEOUT,
+        docling_service=clients.docling_service,
+    )
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
-    langflow_file_service = LangflowFileService(flows_service=flows_service)
+    langflow_file_service = LangflowFileService(
+        flows_service=flows_service,
+        docling_service=clients.docling_service,
+    )
     langflow_mcp_service = LangflowMCPService()
 
     # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
+        flows_service=flows_service,
+        docling_service=clients.docling_service,
     )
     openrag_connector_service = ConnectorService(
         patched_async_client=clients,
@@ -1401,6 +1414,7 @@ async def initialize_services():
         session_manager=session_manager,
         models_service=models_service,
         document_service=document_service,
+        docling_service=clients.docling_service,
     )
 
     # Create connector router that chooses based on configuration
@@ -1461,6 +1475,7 @@ async def initialize_services():
         "session_manager": session_manager,
         "api_key_service": api_key_service,
         "langflow_mcp_service": langflow_mcp_service,
+        "docling_service": clients.docling_service,
     }
 
 
