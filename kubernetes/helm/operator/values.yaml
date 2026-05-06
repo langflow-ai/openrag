@@ -4,10 +4,10 @@
 
 # Operator image configuration
 image:
-  repository: itestmycode/openrag-operator
+  repository: ghcr.io/langflow-ai/openrag-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.1.0"
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
