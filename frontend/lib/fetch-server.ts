@@ -5,7 +5,7 @@ export async function fetchFromBackend(
   init?: RequestInit,
 ): Promise<Response> {
   const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL || false;
+  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
   const baseUrl = backendSSL
     ? `https://${backendHost}:8000`
     : `http://${backendHost}:8000`;
