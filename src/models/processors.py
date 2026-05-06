@@ -730,10 +730,15 @@ class S3FileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         models_service=None,
+        docling_service=None,
     ):
         import boto3
 
-        super().__init__(document_service, models_service)
+        super().__init__(
+            document_service,
+            models_service,
+            docling_service,
+        )
         self.bucket = bucket
         self.s3_client = s3_client or boto3.client("s3")
         self.owner_user_id = owner_user_id
@@ -814,7 +819,6 @@ class LangflowFileProcessor(TaskProcessor):
         session_id: str = None,
         tweaks: dict = None,
         settings: dict = None,
-        delete_after_ingest: bool = True,
         replace_duplicates: bool = False,
         connector_type: str = "local",
     ):
@@ -828,7 +832,6 @@ class LangflowFileProcessor(TaskProcessor):
         self.session_id = session_id
         self.tweaks = tweaks or {}
         self.settings = settings
-        self.delete_after_ingest = delete_after_ingest
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
 
@@ -912,7 +915,6 @@ class LangflowFileProcessor(TaskProcessor):
                 tweaks=final_tweaks,
                 settings=self.settings,
                 jwt_token=effective_jwt,
-                delete_after_ingest=self.delete_after_ingest,
                 owner=self.owner_user_id,
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,

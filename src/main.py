@@ -602,7 +602,6 @@ async def _ingest_default_documents_langflow(
         session_id=None,  # No session for default documents
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
-        delete_after_ingest=True,  # Clean up after ingestion
         replace_duplicates=True,
         connector_type=connector_type,
         existing_task_id=existing_task_id,

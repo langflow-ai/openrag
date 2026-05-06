@@ -1,7 +1,6 @@
-import base64
 import asyncio
 import platform
-import os
+import json
 from pathlib import Path
 from typing import Any, Optional, Dict
 import httpx
@@ -44,6 +43,8 @@ def get_docling_preset_configs(
     return config
 
 class DoclingService:
+    _default_client: Optional[httpx.AsyncClient] = None
+
     def __init__(self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None):
         """
         Initialize the DoclingService.
@@ -61,10 +62,13 @@ class DoclingService:
         self.httpx_client = httpx_client
 
     def _get_client(self) -> httpx.AsyncClient:
-        """Return the provided client or create a temporary one."""
         if self.httpx_client:
             return self.httpx_client
-        return httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
+        if DoclingService._default_client is None or DoclingService._default_client.is_closed:
+            DoclingService._default_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(300.0, connect=10.0)
+            )
+        return DoclingService._default_client
 
     def _build_docling_options(self) -> Dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs."""
@@ -92,9 +96,12 @@ class DoclingService:
         
         # Docling serve async multipart endpoint /v1/convert/file/async
         # Options are passed as form data
-        data = {k: str(v) if isinstance(v, bool) else v for k, v in options.items() if not isinstance(v, dict)}
-        # picture_description_local needs to be JSON if it's a dict
-        import json
+        data = {
+            k: str(v).lower() if isinstance(v, bool) else v
+            for k, v in options.items()
+            if not isinstance(v, dict)
+        }        # picture_description_local needs to be JSON if it's a dict
+
         if "picture_description_local" in options:
             data["picture_description_local"] = json.dumps(options["picture_description_local"])
 
@@ -134,7 +141,6 @@ class DoclingService:
         """
         Poll Docling Serve for the result of an async conversion task.
         """
-        elapsed = 0.0
         client = self._get_client()
         should_close = client != self.httpx_client
         

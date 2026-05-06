@@ -5,7 +5,11 @@ import httpx
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config.settings import LANGFLOW_INGEST_FLOW_ID, LANGFLOW_URL_INGEST_FLOW_ID, clients
+from config.settings import (
+    LANGFLOW_INGEST_FLOW_ID,
+    LANGFLOW_URL_INGEST_FLOW_ID,
+    clients,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -184,17 +188,25 @@ class LangflowFileService:
             bool(jwt_token),
         )
         # To compute the file size in bytes, use len() on the file content (which should be bytes)
-        file_size_bytes = len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
+        file_size_bytes = (
+            len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
+        )
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         # Extract file metadata if file_tuples is provided
-        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
-        mimetype = str(file_tuples[0][2]) if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2 else ""
+        filename = (
+            str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
+        )
+        mimetype = (
+            str(file_tuples[0][2])
+            if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
+            else ""
+        )
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
-        
+
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         if selected_embedding_model:
@@ -210,9 +222,13 @@ class LangflowFileService:
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
+            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id)
+            if document_id
+            else "",
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
-            "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id) if docling_task_id else "",
+            "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
+            if docling_task_id
+            else "",
         }
 
         # Serialize ACL lists as JSON strings for Langflow global vars
@@ -225,11 +241,18 @@ class LangflowFileService:
             headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(
                 allowed_groups or []
             )
-        
+
         # Add provider credentials as global variables for ingestion
-        await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
+        await add_provider_credentials_to_headers(
+            headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+        )
         start_time = time.time()
-        logger.info("[INGEST] Run started", flow_id=self.flow_id_ingest, filename=filename, mimetype=mimetype)
+        logger.info(
+            "[INGEST] Run started",
+            flow_id=self.flow_id_ingest,
+            filename=filename,
+            mimetype=mimetype,
+        )
         resp = await clients.langflow_request(
             "POST",
             f"/api/v1/run/{self.flow_id_ingest}",
@@ -238,7 +261,10 @@ class LangflowFileService:
         )
         duration = round(time.time() - start_time, 2)
         logger.info(
-            "[INGEST] Run complete", status_code=resp.status_code, reason=resp.reason_phrase, duration_s=duration
+            "[INGEST] Run complete",
+            status_code=resp.status_code,
+            reason=resp.reason_phrase,
+            duration_s=duration,
         )
         if resp.status_code >= 400:
             logger.error(
@@ -247,7 +273,7 @@ class LangflowFileService:
                 reason=resp.reason_phrase,
                 body=resp.text[:1000],
             )
-            
+
             # Extract error message from Langflow response
             error_message = f"Server error '{resp.status_code} {resp.reason_phrase}'"
             try:
@@ -267,9 +293,9 @@ class LangflowFileService:
                         error_message = detail["message"]
             except Exception:
                 pass
-            
+
             raise Exception(error_message)
-        
+
         # Check if response is actually JSON before parsing
         content_type = resp.headers.get("content-type", "")
         if "application/json" not in content_type:
@@ -284,7 +310,7 @@ class LangflowFileService:
                 f"This may indicate the ingestion flow failed or the endpoint is incorrect. "
                 f"Response preview: {resp.text[:500]}"
             )
-        
+
         try:
             resp_json = resp.json()
         except Exception as e:
@@ -334,15 +360,15 @@ class LangflowFileService:
             "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-
-            "X-Langflow-Global-Var-DOCUMENT_ID":"",
+            "X-Langflow-Global-Var-DOCUMENT_ID": "",
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
-    
-            "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps( []),
-            "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps( []),
+            "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps([]),
+            "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps([]),
+            "X-Langflow-Global-Var-DOCLING_TASK_ID": "",
         }
-        await add_provider_credentials_to_headers(headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
-
+        await add_provider_credentials_to_headers(
+            headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+        )
 
         logger.info(
             "[LF] Running URL ingestion flow",
@@ -399,6 +425,7 @@ class LangflowFileService:
         last_error: Exception | None = None
 
         from config.paths import get_flows_path
+
         flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
         if not flow_file.exists():
             raise ValueError(
@@ -516,15 +543,14 @@ class LangflowFileService:
         tweaks: Optional[Dict[str, Any]] = None,
         settings: Optional[Dict[str, Any]] = None,
         jwt_token: Optional[str] = None,
-        delete_after_ingest: bool = True,
         owner: Optional[str] = None,
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,   
+        connector_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Combined Docling upload and Langflow ingest operation.
-        First uploads the file to Docling, then runs ingestion on it via Langflow 
+        First uploads the file to Docling, then runs ingestion on it via Langflow
         using the Docling task ID.
 
         Args:
@@ -533,18 +559,25 @@ class LangflowFileService:
             tweaks: Optional tweaks for the ingestion flow
             settings: Optional UI settings to convert to component tweaks
             jwt_token: Optional JWT token for authentication
-            delete_after_ingest: Whether to delete the file (ignored as we don't upload to Langflow)
 
         Returns:
             Combined result with Docling task info and ingestion result
         """
         logger.debug("[LF] Starting Docling-based upload and ingest operation")
 
+        if self.docling_service is None:
+            raise RuntimeError(
+                "DoclingService is not configured. Ensure DOCLING_SERVE_URL is set "
+                "and the service was injected correctly."
+            )
+
         filename, content, _ = file_tuple
 
         # Step 1: Upload the file to Docling
         try:
-            task_id = await self.docling_service.upload_to_docling_direct_async(filename, content)
+            task_id = await self.docling_service.upload_to_docling_direct_async(
+                filename, content
+            )
             logger.debug(
                 "[LF] Docling upload completed successfully",
                 extra={
@@ -554,7 +587,8 @@ class LangflowFileService:
             )
         except Exception as e:
             logger.error(
-                "[LF] Docling upload failed during combined operation", extra={"error": str(e)}
+                "[LF] Docling upload failed during combined operation",
+                extra={"error": str(e)},
             )
             raise Exception(f"Docling upload failed: {str(e)}")
 
@@ -572,7 +606,7 @@ class LangflowFileService:
         try:
             total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
-                file_paths=[], # Files are not uploaded to Langflow FS
+                file_paths=[],  # Files are not uploaded to Langflow FS
                 file_tuples=[file_tuple],
                 jwt_token=jwt_token,
                 session_id=session_id,
@@ -590,6 +624,14 @@ class LangflowFileService:
                 "[LF] Ingestion failed during combined operation",
                 extra={"error": str(e), "filename": filename},
             )
+            try:
+                await self.docling_service.cancel_task(task_id)
+            except Exception as cleanup_err:
+                logger.warning(
+                    "[LF] Failed to cancel Docling task after ingestion error",
+                    task_id=task_id,
+                    error=str(cleanup_err),
+                )
             raise
 
         # Return combined result

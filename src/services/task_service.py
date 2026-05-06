@@ -140,7 +140,6 @@ class TaskService:
         session_id: str = None,
         tweaks: dict = None,
         settings: dict = None,
-        delete_after_ingest: bool = True,
         replace_duplicates: bool = False,
         connector_type: str = "local",
         existing_task_id: str = None,
@@ -159,7 +158,6 @@ class TaskService:
             session_id=session_id,
             tweaks=tweaks,
             settings=settings,
-            delete_after_ingest=delete_after_ingest,
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
         )
