@@ -4,10 +4,10 @@
 
 # Operator image configuration
 image:
-  repository: ghcr.io/langflow-ai/openrag-operator
+  repository: itestmycode/openrag-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "v0.1.0"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -35,6 +35,9 @@ podAnnotations: {}
 podSecurityContext:
   runAsNonRoot: true
   # fsGroup: 2000
+  # On OpenShift, leave fsGroup unset to let OpenShift assign it automatically
+  # seccompProfile:
+  #   type: RuntimeDefault
 
 # Container security context
 securityContext:
@@ -49,6 +52,9 @@ securityContext:
 # Resource limits and requests
 resources:
   limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
     cpu: 100m
     memory: 128Mi
 
@@ -58,7 +64,7 @@ leaderElection:
 
 # Health probe configuration
 healthProbe:
-  bindAddress: ":8081"
+  bindAddress: ":8080"
 
 # Node selector for pod assignment
 nodeSelector: {}
