@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ class PreferencesRepo:
             prefs.provider_overrides = provider_overrides
         if preferences_json is not None:
             prefs.preferences_json = preferences_json
-        prefs.updated_at = datetime.utcnow()
+        prefs.updated_at = datetime.now(UTC)
         self.session.add(prefs)
         await self.session.flush()
         return prefs
