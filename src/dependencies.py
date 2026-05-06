@@ -28,7 +28,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Maps OAuth user_id (== JWT subject) -> SQL users.id. Doubles as the
+# Maps composite "{provider}:{subject}" -> SQL users.id. Doubles as the
 # "we've already ensured a DB row for this user" cache so we don't pay
 # the round-trip on every authenticated request. Cleared on user/role
 # mutations via the rbac service invalidation hook.
@@ -36,15 +36,35 @@ logger = get_logger(__name__)
 # Necessary because legacy-migrated rows have id == user_id while older
 # Phase-1 new rows had id == uuid4(); permission lookups need the SQL id,
 # not the OAuth subject.
+#
+# The key is composite (provider, subject), NOT just user_id, because the
+# OAuth subject string alone is not unique across providers — e.g. the
+# synthetic `AnonymousUser` (provider="none", user_id="anonymous") must
+# not collide with a hypothetical real user whose IdP issued the same
+# subject string. Identity in this codebase is the (provider, subject)
+# pair (see `ensure_user_row` and the `(oauth_provider, oauth_subject)`
+# UNIQUE constraint on the users table).
 _ENSURED_USER_IDS: TTLCache[str, str] = TTLCache(maxsize=4096, ttl=300)
 
-# Per-user-id asyncio.Lock used to serialize concurrent first-time
-# `_ensure_db_user` calls for the SAME user_id. Without this, two
-# requests racing through the cache miss → INSERT path both observe an
-# empty users table, both attempt INSERT, and the second fails with
-# `UNIQUE constraint failed: users.email_lookup_hash`. The lock is
-# scoped per-user_id so unrelated logins never block each other.
+# Per-(provider, subject) asyncio.Lock used to serialize concurrent
+# first-time `_ensure_db_user` calls for the SAME identity. Without
+# this, two requests racing through the cache miss → INSERT path both
+# observe an empty users table, both attempt INSERT, and the second
+# fails with `UNIQUE constraint failed: users.email_lookup_hash`. The
+# lock is scoped per-identity so unrelated logins never block each
+# other (and so two providers issuing the same subject string don't
+# share a lock).
 _ENSURE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _user_cache_key(user: User) -> str:
+    """Composite cache/lock key for a `User`.
+
+    Mirrors the (oauth_provider, oauth_subject) UNIQUE constraint in
+    the users table. The fallback to "unknown" matches `ensure_user_row`'s
+    behavior when `user.provider` is empty.
+    """
+    return f"{user.provider or 'unknown'}:{user.user_id}"
 
 
 # ─────────────────────────────────────────────
@@ -146,19 +166,20 @@ async def _ensure_db_user(user: User) -> Optional[str]:
     """
     if not user or not user.user_id:
         return None
-    cached_db_id = _ENSURED_USER_IDS.get(user.user_id)
+    cache_key = _user_cache_key(user)
+    cached_db_id = _ENSURED_USER_IDS.get(cache_key)
     if cached_db_id is not None:
         return cached_db_id
 
-    # Serialize concurrent first-time ensures for the SAME user_id so a
+    # Serialize concurrent first-time ensures for the SAME identity so a
     # second caller observes the first's committed row instead of
-    # racing through the cache miss → INSERT path. Per-user lock so
-    # unrelated users never block each other.
-    lock = _ENSURE_LOCKS.setdefault(user.user_id, asyncio.Lock())
+    # racing through the cache miss → INSERT path. Per-(provider,
+    # subject) lock so unrelated users never block each other.
+    lock = _ENSURE_LOCKS.setdefault(cache_key, asyncio.Lock())
     async with lock:
         # Re-check the cache inside the lock; the previous holder may
         # have just populated it.
-        cached_db_id = _ENSURED_USER_IDS.get(user.user_id)
+        cached_db_id = _ENSURED_USER_IDS.get(cache_key)
         if cached_db_id is not None:
             return cached_db_id
         try:
@@ -173,7 +194,7 @@ async def _ensure_db_user(user: User) -> Optional[str]:
             async with _SessionLocal() as session:
                 db_row = await ensure_user_row(session, user)
                 await session.commit()
-            _ENSURED_USER_IDS[user.user_id] = db_row.id
+            _ENSURED_USER_IDS[cache_key] = db_row.id
             return db_row.id
         except Exception as exc:  # noqa: BLE001
             logger.warning("ensure_user_row failed", user_id=user.user_id, error=str(exc))
@@ -188,19 +209,31 @@ async def _resolve_db_user_id(user: User) -> str:
     """
     if not user or not user.user_id:
         return ""
-    cached = _ENSURED_USER_IDS.get(user.user_id)
+    cached = _ENSURED_USER_IDS.get(_user_cache_key(user))
     if cached is not None:
         return cached
     resolved = await _ensure_db_user(user)
     return resolved or user.user_id
 
 
-def invalidate_user_ensured_cache(user_id: Optional[str] = None) -> None:
-    """Called after admin mutations so role changes are picked up promptly."""
-    if user_id is None:
+def invalidate_user_ensured_cache(
+    oauth_provider: Optional[str] = None,
+    oauth_subject: Optional[str] = None,
+) -> None:
+    """Pop the ensure-cache + lock for a single identity, or clear all
+    if neither argument is provided.
+
+    Called after admin mutations so role changes are picked up promptly.
+    Identity is the (oauth_provider, oauth_subject) composite — the same
+    shape used as the cache key.
+    """
+    if oauth_provider is None or oauth_subject is None:
         _ENSURED_USER_IDS.clear()
-    else:
-        _ENSURED_USER_IDS.pop(user_id, None)
+        _ENSURE_LOCKS.clear()
+        return
+    key = f"{oauth_provider or 'unknown'}:{oauth_subject}"
+    _ENSURED_USER_IDS.pop(key, None)
+    _ENSURE_LOCKS.pop(key, None)
 
 
 # ─────────────────────────────────────────────

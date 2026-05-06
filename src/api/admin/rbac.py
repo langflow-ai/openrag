@@ -228,7 +228,7 @@ async def update_user(
         )
         await session.commit()
         rbac.invalidate(row.id)
-        invalidate_user_ensured_cache(row.id)
+        invalidate_user_ensured_cache(row.oauth_provider, row.oauth_subject)
 
     return await _user_to_out(session, row)
 
@@ -247,6 +247,12 @@ async def delete_user(
     row = await UserRepo(session).get_by_id(user_id)
     if row is None:
         raise HTTPException(404, {"error": "user_not_found"})
+
+    # Capture identity for the post-commit cache invalidation; after
+    # session.delete(row) + commit the row is expunged and these
+    # attributes become unavailable.
+    deleted_provider = row.oauth_provider
+    deleted_subject = row.oauth_subject
 
     # Don't let the operator delete the last admin.
     role_repo = RoleRepo(session)
@@ -290,7 +296,7 @@ async def delete_user(
     )
     await session.commit()
     rbac.invalidate(user_id)
-    invalidate_user_ensured_cache(user_id)
+    invalidate_user_ensured_cache(deleted_provider, deleted_subject)
     return {"success": True}
 
 
