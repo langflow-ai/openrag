@@ -15,6 +15,12 @@ export interface UsePermissionsResult {
   refresh: () => Promise<void>;
   /** True while the auth context is still resolving. */
   isLoading: boolean;
+  /**
+   * Whether the backend is enforcing RBAC. When false, the system
+   * runs in pre-RBAC mode — components that render only when RBAC is
+   * meaningful (Users & Roles, audit log, role pills) should hide.
+   */
+  rbacEnforced: boolean;
 }
 
 /**
@@ -25,8 +31,14 @@ export interface UsePermissionsResult {
  * UI affordances (hide tabs, disable buttons, etc).
  */
 export function usePermissions(): UsePermissionsResult {
-  const { permissions, can, isLoading, refreshPermissions, isNoAuthMode } =
-    useAuth();
+  const {
+    permissions,
+    can,
+    isLoading,
+    refreshPermissions,
+    isNoAuthMode,
+    rbacEnforced,
+  } = useAuth();
 
   const canAny = (perms: string[]) => {
     if (isNoAuthMode) return true;
@@ -45,5 +57,6 @@ export function usePermissions(): UsePermissionsResult {
     canAll,
     refresh: refreshPermissions,
     isLoading,
+    rbacEnforced,
   };
 }

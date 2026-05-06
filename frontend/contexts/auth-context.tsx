@@ -30,6 +30,14 @@ interface AuthContextType {
   version: string | null;
   permissions: Set<string>;
   roles: string[];
+  /**
+   * Whether the backend is enforcing RBAC (mirrors `OPENRAG_RBAC_ENFORCE`).
+   * When false, the system behaves like the pre-RBAC release: any
+   * authenticated user has full access. The UI hides RBAC-only
+   * sections (Users & Roles, audit log, role pills) so the experience
+   * matches the backend behavior.
+   */
+  rbacEnforced: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
    * GET /api/onboarding-status endpoint (no auth needed). */
   isOnboarded: boolean | null;
@@ -242,6 +250,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
+  // Default to true so RBAC-only UI doesn't briefly flash on first
+  // load before /api/users/me responds. The backend is authoritative;
+  // this is just a UI affordance.
+  const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
 
   const fetchPermissions = useCallback(async () => {
     try {
@@ -258,6 +270,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const userRoles: string[] = Array.isArray(data?.roles) ? data.roles : [];
       setPermissions(new Set(perms));
       setRoles(userRoles);
+      // Field is optional from older backends — default to true.
+      setRbacEnforced(
+        typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
+      );
     } catch {
       setPermissions(new Set());
       setRoles([]);
@@ -328,6 +344,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     version,
     permissions,
     roles,
+    rbacEnforced,
     isOnboarded,
     onboardingStep,
     can,

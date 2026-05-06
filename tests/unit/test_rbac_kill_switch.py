@@ -203,6 +203,8 @@ async def test_me_returns_full_permission_catalog_when_disabled(app, monkeypatch
     # Should include the entire seeded catalog
     expected_subset = {"users:list", "users:delete", "config:write", "chat:use"}
     assert expected_subset.issubset(set(body["permissions"]))
+    # And the flag is surfaced so the UI can hide RBAC-only sections
+    assert body["rbac_enforced"] is False
 
 
 @pytest.mark.asyncio
@@ -221,3 +223,4 @@ async def test_me_returns_only_user_perms_when_enforced(app, monkeypatch):
 
     # Should NOT include admin-only perms when enforced
     assert "users:delete" not in body["permissions"]
+    assert body["rbac_enforced"] is True
