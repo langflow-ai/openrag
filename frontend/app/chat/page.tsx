@@ -44,6 +44,7 @@ function ChatPage() {
     refreshConversations,
     refreshConversationsSilent,
     refreshTrigger,
+    refreshTriggerSilent,
     previousResponseIds,
     setPreviousResponseIds,
     placeholderConversation,
@@ -82,7 +83,7 @@ function ChatPage() {
   // Check if chat history is loading
   const { isLoading: isConversationsLoading } = useGetConversationsQuery(
     endpoint,
-    refreshTrigger,
+    refreshTrigger + refreshTriggerSilent,
   );
 
   // Use conversation-specific filter instead of global filter
@@ -358,15 +359,20 @@ function ChatPage() {
     };
   }, [abortStream, setLoading]);
 
-  // Load conversation only when user explicitly selects a conversation
+  // Load conversation data from context
   useEffect(() => {
     // Only load conversation data when:
     // 1. conversationData exists AND
-    // 2. It's different from the last loaded conversation AND
+    // 2. (It's a different conversation OR we're not streaming and data has changed) AND
     // 3. User is not in the middle of an interaction
+    const isNewConversation =
+      lastLoadedConversationRef.current !== conversationData?.response_id;
+    const hasMessageCountChanged =
+      conversationData?.messages?.length !== messages.length;
+
     if (
       conversationData?.messages &&
-      lastLoadedConversationRef.current !== conversationData.response_id &&
+      (isNewConversation || (!isStreamLoading && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -558,6 +564,8 @@ function ChatPage() {
     isUserInteracting,
     isForkingInProgress,
     setPreviousResponseIds,
+    isStreamLoading,
+    messages.length,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
