@@ -164,7 +164,7 @@ func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *ope
 	for _, role := range []string{"fe", "be", "lf"} {
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      saName(o.Name, role),
+				Name:      saName(role),
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, role),
 			},
@@ -310,12 +310,12 @@ func (r *OpenRAGReconciler) getOrCreateLangflowSecretKey(ctx context.Context, o 
 // from CR fields and fixed runtime defaults.
 func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	// Get or create encryption keys
-	backendEncryptionKey, err := r.getOrCreateEncryptionKey(ctx, o, targetNS, "openrag-be-encryption-key", "OPENRAG_ENCRYPTION_KEY", resourceName(o.Name, "be-env"))
+	backendEncryptionKey, err := r.getOrCreateEncryptionKey(ctx, o, targetNS, "openrag-be-encryption-key", "OPENRAG_ENCRYPTION_KEY", resourceName("be-env"))
 	if err != nil {
 		return fmt.Errorf("failed to get backend encryption key: %w", err)
 	}
 
-	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-secret-key", "LANGFLOW_SECRET_KEY", resourceName(o.Name, "lf-env"))
+	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-secret-key", "LANGFLOW_SECRET_KEY", resourceName("lf-env"))
 	if err != nil {
 		return fmt.Errorf("failed to get langflow secret key: %w", err)
 	}
@@ -325,8 +325,8 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 		content string
 	}
 	defs := []envDef{
-		{resourceName(o.Name, "be-env"), r.buildBackendEnv(o, backendEncryptionKey)},
-		{resourceName(o.Name, "lf-env"), r.buildLangflowEnv(o, langflowSecretKey)},
+		{resourceName("be-env"), r.buildBackendEnv(o, backendEncryptionKey)},
+		{resourceName("lf-env"), r.buildLangflowEnv(o, langflowSecretKey)},
 	}
 	for _, d := range defs {
 		secret := &corev1.Secret{
@@ -355,7 +355,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Operator-derived values (always set)
-	envVars["LANGFLOW_URL"] = "http://" + resourceName(o.Name, "lf") + ":7860"
+	envVars["LANGFLOW_URL"] = "http://" + resourceName("lf") + ":7860"
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
@@ -518,8 +518,8 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 		storage *openragv1alpha1.PersistenceSpec
 	}
 	defs := []pvcDef{
-		{resourceName(o.Name, "lf-data"), o.Spec.Langflow.Storage},
-		{resourceName(o.Name, "be-data"), o.Spec.Backend.Storage},
+		{resourceName("lf-data"), o.Spec.Langflow.Storage},
+		{resourceName("be-data"), o.Spec.Backend.Storage},
 	}
 	for _, d := range defs {
 		if d.storage == nil || !d.storage.Enabled || d.storage.ExistingClaim != "" {
@@ -572,7 +572,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	for _, d := range defs {
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName(o.Name, d.role),
+				Name:      resourceName(d.role),
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, d.role),
 			},
@@ -614,20 +614,29 @@ func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openrag
 func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.Frontend
 	replicas := replicasOrDefault(spec.Replicas)
+	baseLabels := componentLabels(o.Name, "fe")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "fe"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "fe"),
+			Name:        resourceName("fe"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "fe")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "fe")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName(o.Name, "fe"),
+					ServiceAccountName: saName("fe"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -639,7 +648,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							ImagePullPolicy: spec.ImagePullPolicy,
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 3000}},
 							Env: append([]corev1.EnvVar{
-								{Name: "OPENRAG_BACKEND_HOST", Value: resourceName(o.Name, "be")},
+								{Name: "OPENRAG_BACKEND_HOST", Value: resourceName("be")},
 							}, spec.Env...),
 							Resources:      spec.Resources,
 							LivenessProbe:  httpProbe("/", 3000, 30, 10),
@@ -664,7 +673,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 		{
 			Name: "backend-env",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: resourceName(o.Name, "be-env")},
+				Secret: &corev1.SecretVolumeSource{SecretName: resourceName("be-env")},
 			},
 		},
 	}
@@ -674,7 +683,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName(o.Name, "be-data")
+		pvcName := resourceName("be-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -696,20 +705,29 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 	envVars = append(envVars, spec.Env...)
 
+	baseLabels := componentLabels(o.Name, "be")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "be"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "be"),
+			Name:        resourceName("be"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "be")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "be")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName(o.Name, "be"),
+					ServiceAccountName: saName("be"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -808,7 +826,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		{
 			Name: "langflow-env",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: resourceName(o.Name, "lf-env")},
+				Secret: &corev1.SecretVolumeSource{SecretName: resourceName("lf-env")},
 			},
 		},
 	}
@@ -818,7 +836,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName(o.Name, "lf-data")
+		pvcName := resourceName("lf-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -861,20 +879,29 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	envVars := r.langflowSensitiveEnvVars(o)
 	envVars = append(envVars, spec.Env...)
 
+	baseLabels := componentLabels(o.Name, "lf")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "lf"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "lf"),
+			Name:        resourceName("lf"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "lf")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "lf")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName(o.Name, "lf"),
+					ServiceAccountName: saName("lf"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -963,7 +990,7 @@ func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openr
 
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "lf-netpol"),
+			Name:      resourceName("lf-netpol"),
 			Namespace: targetNS,
 			Labels:    labels,
 		},
@@ -1111,12 +1138,17 @@ func targetNamespace(o *openragv1alpha1.OpenRAG) string {
 	return o.Namespace
 }
 
-func resourceName(crName, role string) string {
-	return crName + "-openrag-" + role
+// resourceName generates a DNS-1035 compliant name for Kubernetes resources.
+// Since each namespace is tenant-exclusive, we don't need to include the CR name.
+// This provides clean, predictable names: openrag-fe, openrag-be, openrag-lf.
+func resourceName(role string) string {
+	return "openrag-" + role
 }
 
-func saName(crName, role string) string {
-	return "openrag-" + crName + "-" + role
+// saName generates service account names.
+// Since each namespace is tenant-exclusive, we don't need to include the CR name.
+func saName(role string) string {
+	return "openrag-" + role
 }
 
 func componentLabels(crName, role string) map[string]string {
@@ -1126,6 +1158,51 @@ func componentLabels(crName, role string) map[string]string {
 		"app.kubernetes.io/component":  role,
 		"app.kubernetes.io/managed-by": "openrag-operator",
 	}
+}
+
+// mergeLabels merges custom labels with base labels.
+// Base labels always take precedence over custom labels.
+func mergeLabels(baseLabels, customLabels map[string]string) map[string]string {
+	merged := make(map[string]string)
+	// Start with custom labels
+	for k, v := range customLabels {
+		merged[k] = v
+	}
+	// Base labels always override
+	for k, v := range baseLabels {
+		merged[k] = v
+	}
+	return merged
+}
+
+// mergeAnnotations merges custom annotations.
+func mergeAnnotations(customAnnotations map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for k, v := range customAnnotations {
+		merged[k] = v
+	}
+	return merged
+}
+
+// mergePodLabels merges custom user labels with operator-managed labels for pod templates.
+// Operator-managed labels (app.kubernetes.io/*) cannot be overridden.
+func mergePodLabels(baseLabels, customLabels map[string]string) map[string]string {
+	return mergeLabels(baseLabels, customLabels)
+}
+
+// mergePodAnnotations merges custom user annotations for pod templates.
+func mergePodAnnotations(customAnnotations map[string]string) map[string]string {
+	return mergeAnnotations(customAnnotations)
+}
+
+// mergeDeploymentLabels merges custom labels with base labels for Deployment/StatefulSet objects.
+func mergeDeploymentLabels(baseLabels, customLabels map[string]string) map[string]string {
+	return mergeLabels(baseLabels, customLabels)
+}
+
+// mergeDeploymentAnnotations merges custom annotations for Deployment/StatefulSet objects.
+func mergeDeploymentAnnotations(customAnnotations map[string]string) map[string]string {
+	return mergeAnnotations(customAnnotations)
 }
 
 func replicasOrDefault(r *int32) int32 {

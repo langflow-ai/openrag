@@ -38,6 +38,50 @@ type ComponentSpec struct {
 
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Labels are custom labels to add to the Deployment/StatefulSet object metadata.
+	// These labels appear on the workload resource itself, not the pods.
+	// Useful for querying and grouping Deployment/StatefulSet objects.
+	// Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+	// Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="label keys must be valid Kubernetes label keys (prefix/name or name)"
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))",message="label values must be 63 characters or less and match regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$"
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
+	// These annotations appear on the workload resource itself, not the pods.
+	// Useful for GitOps metadata, deployment tracking, and automation tools.
+	// Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+	// Annotation values can be arbitrary strings.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="annotation keys must be valid Kubernetes annotation keys (prefix/name or name)"
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// PodLabels are custom labels to add to the pod template.
+	// These labels appear on the actual pods created by the Deployment/StatefulSet.
+	// Useful for pod selectors, monitoring queries, network policies, and service mesh.
+	// Merged with operator-managed labels (app.kubernetes.io/*).
+	// Cannot override operator-managed labels.
+	// Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+	// Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="label keys must be valid Kubernetes label keys (prefix/name or name)"
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))",message="label values must be 63 characters or less and match regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$"
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// PodAnnotations are custom annotations to add to the pod template.
+	// These annotations appear on the actual pods created by the Deployment/StatefulSet.
+	// Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+	// Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+	// Annotation values can be arbitrary strings.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="annotation keys must be valid Kubernetes annotation keys (prefix/name or name)"
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 }
 
 // FrontendSpec configures the OpenRAG frontend (Next.js).
