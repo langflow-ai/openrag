@@ -35,6 +35,9 @@ podAnnotations: {}
 podSecurityContext:
   runAsNonRoot: true
   # fsGroup: 2000
+  # On OpenShift, leave fsGroup unset to let OpenShift assign it automatically
+  # seccompProfile:
+  #   type: RuntimeDefault
 
 # Container security context
 securityContext:
@@ -49,6 +52,9 @@ securityContext:
 # Resource limits and requests
 resources:
   limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
     cpu: 100m
     memory: 128Mi
 
