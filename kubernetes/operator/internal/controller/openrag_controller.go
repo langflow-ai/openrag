@@ -614,18 +614,27 @@ func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openrag
 func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.Frontend
 	replicas := replicasOrDefault(spec.Replicas)
+	baseLabels := componentLabels(o.Name, "fe")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "fe"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "fe"),
+			Name:        resourceName(o.Name, "fe"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "fe")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "fe")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName(o.Name, "fe"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
@@ -696,18 +705,27 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 	envVars = append(envVars, spec.Env...)
 
+	baseLabels := componentLabels(o.Name, "be")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "be"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "be"),
+			Name:        resourceName(o.Name, "be"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "be")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "be")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName(o.Name, "be"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
@@ -861,18 +879,27 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	envVars := r.langflowSensitiveEnvVars(o)
 	envVars = append(envVars, spec.Env...)
 
+	baseLabels := componentLabels(o.Name, "lf")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName(o.Name, "lf"),
-			Namespace: targetNS,
-			Labels:    componentLabels(o.Name, "lf"),
+			Name:        resourceName(o.Name, "lf"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: componentLabels(o.Name, "lf")},
+			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: componentLabels(o.Name, "lf")},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName(o.Name, "lf"),
 					ImagePullSecrets:   o.Spec.ImagePullSecrets,
@@ -1126,6 +1153,51 @@ func componentLabels(crName, role string) map[string]string {
 		"app.kubernetes.io/component":  role,
 		"app.kubernetes.io/managed-by": "openrag-operator",
 	}
+}
+
+// mergeLabels merges custom labels with base labels.
+// Base labels always take precedence over custom labels.
+func mergeLabels(baseLabels, customLabels map[string]string) map[string]string {
+	merged := make(map[string]string)
+	// Start with custom labels
+	for k, v := range customLabels {
+		merged[k] = v
+	}
+	// Base labels always override
+	for k, v := range baseLabels {
+		merged[k] = v
+	}
+	return merged
+}
+
+// mergeAnnotations merges custom annotations.
+func mergeAnnotations(customAnnotations map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for k, v := range customAnnotations {
+		merged[k] = v
+	}
+	return merged
+}
+
+// mergePodLabels merges custom user labels with operator-managed labels for pod templates.
+// Operator-managed labels (app.kubernetes.io/*) cannot be overridden.
+func mergePodLabels(baseLabels, customLabels map[string]string) map[string]string {
+	return mergeLabels(baseLabels, customLabels)
+}
+
+// mergePodAnnotations merges custom user annotations for pod templates.
+func mergePodAnnotations(customAnnotations map[string]string) map[string]string {
+	return mergeAnnotations(customAnnotations)
+}
+
+// mergeDeploymentLabels merges custom labels with base labels for Deployment/StatefulSet objects.
+func mergeDeploymentLabels(baseLabels, customLabels map[string]string) map[string]string {
+	return mergeLabels(baseLabels, customLabels)
+}
+
+// mergeDeploymentAnnotations merges custom annotations for Deployment/StatefulSet objects.
+func mergeDeploymentAnnotations(customAnnotations map[string]string) map[string]string {
+	return mergeAnnotations(customAnnotations)
 }
 
 func replicasOrDefault(r *int32) int32 {

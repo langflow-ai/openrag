@@ -38,6 +38,32 @@ type ComponentSpec struct {
 
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Labels are custom labels to add to the Deployment/StatefulSet object metadata.
+	// These labels appear on the workload resource itself, not the pods.
+	// Useful for querying and grouping Deployment/StatefulSet objects.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
+	// These annotations appear on the workload resource itself, not the pods.
+	// Useful for GitOps metadata, deployment tracking, and automation tools.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// PodLabels are custom labels to add to the pod template.
+	// These labels appear on the actual pods created by the Deployment/StatefulSet.
+	// Useful for pod selectors, monitoring queries, network policies, and service mesh.
+	// Merged with operator-managed labels (app.kubernetes.io/*).
+	// Cannot override operator-managed labels.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// PodAnnotations are custom annotations to add to the pod template.
+	// These annotations appear on the actual pods created by the Deployment/StatefulSet.
+	// Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+	// +optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 }
 
 // FrontendSpec configures the OpenRAG frontend (Next.js).

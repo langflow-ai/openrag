@@ -390,3 +390,344 @@ func TestReconcile_Deletion_SkipsUnmanagedNamespace(t *testing.T) {
 	remaining := &corev1.Namespace{}
 	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: "tenant-ns"}, remaining))
 }
+
+// ---------------------------------------------------------------------------
+// Labels and Annotations (Deployment and Pod level)
+// ---------------------------------------------------------------------------
+
+func TestMergeDeploymentLabels_CustomLabelsAreMerged(t *testing.T) {
+	baseLabels := map[string]string{
+		"app.kubernetes.io/name":      "openrag",
+		"app.kubernetes.io/instance":  "test",
+		"app.kubernetes.io/component": "fe",
+	}
+	customLabels := map[string]string{
+		"deployment-label":    "deployment-value",
+		"argocd.argoproj.io/instance": "my-app",
+	}
+
+	merged := mergeDeploymentLabels(baseLabels, customLabels)
+
+	// Custom labels should be present
+	assert.Equal(t, "deployment-value", merged["deployment-label"])
+	assert.Equal(t, "my-app", merged["argocd.argoproj.io/instance"])
+
+	// Operator-managed labels should be present
+	assert.Equal(t, "openrag", merged["app.kubernetes.io/name"])
+	assert.Equal(t, "test", merged["app.kubernetes.io/instance"])
+}
+
+func TestMergeDeploymentAnnotations_CustomAnnotationsAreMerged(t *testing.T) {
+	customAnnotations := map[string]string{
+		"deployment.kubernetes.io/revision": "5",
+		"meta.helm.sh/release-name":       "my-release",
+	}
+
+	merged := mergeDeploymentAnnotations(customAnnotations)
+
+	assert.Equal(t, "5", merged["deployment.kubernetes.io/revision"])
+	assert.Equal(t, "my-release", merged["meta.helm.sh/release-name"])
+}
+
+func TestMergePodLabels_CustomLabelsAreMerged(t *testing.T) {
+	baseLabels := map[string]string{
+		"app.kubernetes.io/name":      "openrag",
+		"app.kubernetes.io/instance":  "test",
+		"app.kubernetes.io/component": "fe",
+	}
+	customLabels := map[string]string{
+		"custom-label":         "custom-value",
+		"another-label":        "another-value",
+		"prometheus.io/scrape": "true",
+	}
+
+	merged := mergePodLabels(baseLabels, customLabels)
+
+	// Custom labels should be present
+	assert.Equal(t, "custom-value", merged["custom-label"])
+	assert.Equal(t, "another-value", merged["another-label"])
+	assert.Equal(t, "true", merged["prometheus.io/scrape"])
+
+	// Operator-managed labels should be present
+	assert.Equal(t, "openrag", merged["app.kubernetes.io/name"])
+	assert.Equal(t, "test", merged["app.kubernetes.io/instance"])
+	assert.Equal(t, "fe", merged["app.kubernetes.io/component"])
+}
+
+func TestMergePodLabels_OperatorLabelsCannotBeOverridden(t *testing.T) {
+	baseLabels := map[string]string{
+		"app.kubernetes.io/name":     "openrag",
+		"app.kubernetes.io/instance": "test",
+	}
+	customLabels := map[string]string{
+		"app.kubernetes.io/name":     "hacked", // Try to override
+		"app.kubernetes.io/instance": "evil",   // Try to override
+	}
+
+	merged := mergePodLabels(baseLabels, customLabels)
+
+	// Operator labels should win
+	assert.Equal(t, "openrag", merged["app.kubernetes.io/name"])
+	assert.Equal(t, "test", merged["app.kubernetes.io/instance"])
+}
+
+func TestMergePodAnnotations_CustomAnnotationsAreMerged(t *testing.T) {
+	customAnnotations := map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   "8080",
+		"custom-annotation":    "value",
+	}
+
+	merged := mergePodAnnotations(customAnnotations)
+
+	assert.Equal(t, "true", merged["prometheus.io/scrape"])
+	assert.Equal(t, "8080", merged["prometheus.io/port"])
+	assert.Equal(t, "value", merged["custom-annotation"])
+}
+
+func TestReconcile_FrontendCustomPodLabels(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Frontend.PodLabels = map[string]string{
+		"team":                 "platform",
+		"prometheus.io/scrape": "true",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+
+	podLabels := d.Spec.Template.Labels
+
+	// Custom labels should be present
+	assert.Equal(t, "platform", podLabels["team"])
+	assert.Equal(t, "true", podLabels["prometheus.io/scrape"])
+
+	// Operator-managed labels should still be present
+	assert.Equal(t, "openrag", podLabels["app.kubernetes.io/name"])
+	assert.Equal(t, "my-openrag", podLabels["app.kubernetes.io/instance"])
+	assert.Equal(t, "fe", podLabels["app.kubernetes.io/component"])
+	assert.Equal(t, "openrag-operator", podLabels["app.kubernetes.io/managed-by"])
+}
+
+func TestReconcile_BackendCustomPodAnnotations(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Backend.PodAnnotations = map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   "8000",
+		"custom-annotation":    "backend-value",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
+
+	podAnnotations := d.Spec.Template.Annotations
+
+	// Custom annotations should be present
+	assert.Equal(t, "true", podAnnotations["prometheus.io/scrape"])
+	assert.Equal(t, "8000", podAnnotations["prometheus.io/port"])
+	assert.Equal(t, "backend-value", podAnnotations["custom-annotation"])
+}
+
+func TestReconcile_LangflowCustomPodLabelsAndAnnotations(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Langflow.PodLabels = map[string]string{
+		"version":    "v1.0.0",
+		"monitoring": "enabled",
+	}
+	cr.Spec.Langflow.PodAnnotations = map[string]string{
+		"sidecar.istio.io/inject":    "true",
+		"vault.hashicorp.com/inject": "false",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "lf"), Namespace: "my-ns"}, d))
+
+	podLabels := d.Spec.Template.Labels
+	podAnnotations := d.Spec.Template.Annotations
+
+	// Custom labels should be present
+	assert.Equal(t, "v1.0.0", podLabels["version"])
+	assert.Equal(t, "enabled", podLabels["monitoring"])
+
+	// Operator-managed labels should still be present
+	assert.Equal(t, "openrag", podLabels["app.kubernetes.io/name"])
+	assert.Equal(t, "lf", podLabels["app.kubernetes.io/component"])
+
+	// Custom annotations should be present
+	assert.Equal(t, "true", podAnnotations["sidecar.istio.io/inject"])
+	assert.Equal(t, "false", podAnnotations["vault.hashicorp.com/inject"])
+}
+
+func TestReconcile_SelectorLabelsAreNotAffectedByCustomPodLabels(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	// Add custom pod labels
+	cr.Spec.Frontend.PodLabels = map[string]string{
+		"custom-label": "should-not-be-in-selector",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+
+	// Selector should only have operator-managed labels
+	selectorLabels := d.Spec.Selector.MatchLabels
+	assert.Equal(t, 4, len(selectorLabels), "Selector should only have 4 operator-managed labels")
+	assert.Equal(t, "openrag", selectorLabels["app.kubernetes.io/name"])
+	assert.Equal(t, "my-openrag", selectorLabels["app.kubernetes.io/instance"])
+	assert.Equal(t, "fe", selectorLabels["app.kubernetes.io/component"])
+	assert.Equal(t, "openrag-operator", selectorLabels["app.kubernetes.io/managed-by"])
+
+	// Custom label should NOT be in selector
+	_, exists := selectorLabels["custom-label"]
+	assert.False(t, exists, "Custom labels should not be in selector")
+
+	// But pod labels should include both
+	podLabels := d.Spec.Template.Labels
+	assert.Equal(t, "should-not-be-in-selector", podLabels["custom-label"])
+}
+
+func TestReconcile_FrontendDeploymentLevelLabelsAndAnnotations(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Frontend.Labels = map[string]string{
+		"deployment-label": "deployment-value",
+		"team":            "frontend-team",
+	}
+	cr.Spec.Frontend.Annotations = map[string]string{
+		"deployment.kubernetes.io/revision": "1",
+		"meta.helm.sh/release-name":       "my-release",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+
+	// Deployment-level labels should be present
+	assert.Equal(t, "deployment-value", d.Labels["deployment-label"])
+	assert.Equal(t, "frontend-team", d.Labels["team"])
+
+	// Operator-managed labels should still be present on deployment
+	assert.Equal(t, "openrag", d.Labels["app.kubernetes.io/name"])
+	assert.Equal(t, "fe", d.Labels["app.kubernetes.io/component"])
+
+	// Deployment-level annotations should be present
+	assert.Equal(t, "1", d.Annotations["deployment.kubernetes.io/revision"])
+	assert.Equal(t, "my-release", d.Annotations["meta.helm.sh/release-name"])
+}
+
+func TestReconcile_DeploymentAndPodLabelsAreIndependent(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Backend.Labels = map[string]string{
+		"deployment-only": "on-deployment",
+	}
+	cr.Spec.Backend.PodLabels = map[string]string{
+		"pod-only": "on-pod",
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
+
+	// Deployment should have deployment-only label
+	assert.Equal(t, "on-deployment", d.Labels["deployment-only"])
+	// Deployment should NOT have pod-only label
+	_, exists := d.Labels["pod-only"]
+	assert.False(t, exists, "Pod-only label should not be on deployment")
+
+	// Pod should have pod-only label
+	podLabels := d.Spec.Template.Labels
+	assert.Equal(t, "on-pod", podLabels["pod-only"])
+	// Pod should NOT have deployment-only label
+	_, exists = podLabels["deployment-only"]
+	assert.False(t, exists, "Deployment-only label should not be on pod")
+
+	// Both should have operator-managed labels
+	assert.Equal(t, "openrag", d.Labels["app.kubernetes.io/name"])
+	assert.Equal(t, "openrag", podLabels["app.kubernetes.io/name"])
+}
+
+func TestReconcile_AllThreeComponentsSupportBothLevels(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+
+	// Frontend with deployment annotations
+	cr.Spec.Frontend.Annotations = map[string]string{
+		"frontend-deploy-annotation": "fe-value",
+	}
+	cr.Spec.Frontend.PodAnnotations = map[string]string{
+		"frontend-pod-annotation": "fe-pod-value",
+	}
+
+	// Backend with deployment labels
+	cr.Spec.Backend.Labels = map[string]string{
+		"backend-deploy-label": "be-value",
+	}
+	cr.Spec.Backend.PodLabels = map[string]string{
+		"backend-pod-label": "be-pod-value",
+	}
+
+	// Langflow with both
+	cr.Spec.Langflow.Labels = map[string]string{
+		"langflow-deploy-label": "lf-value",
+	}
+	cr.Spec.Langflow.Annotations = map[string]string{
+		"langflow-deploy-annotation": "lf-annotation",
+	}
+	cr.Spec.Langflow.PodLabels = map[string]string{
+		"langflow-pod-label": "lf-pod-value",
+	}
+	cr.Spec.Langflow.PodAnnotations = map[string]string{
+		"langflow-pod-annotation": "lf-pod-annotation",
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Check Frontend
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, feDeploy))
+	assert.Equal(t, "fe-value", feDeploy.Annotations["frontend-deploy-annotation"])
+	assert.Equal(t, "fe-pod-value", feDeploy.Spec.Template.Annotations["frontend-pod-annotation"])
+
+	// Check Backend
+	beDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, beDeploy))
+	assert.Equal(t, "be-value", beDeploy.Labels["backend-deploy-label"])
+	assert.Equal(t, "be-pod-value", beDeploy.Spec.Template.Labels["backend-pod-label"])
+
+	// Check Langflow
+	lfDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName(cr.Name, "lf"), Namespace: "my-ns"}, lfDeploy))
+	assert.Equal(t, "lf-value", lfDeploy.Labels["langflow-deploy-label"])
+	assert.Equal(t, "lf-annotation", lfDeploy.Annotations["langflow-deploy-annotation"])
+	assert.Equal(t, "lf-pod-value", lfDeploy.Spec.Template.Labels["langflow-pod-label"])
+	assert.Equal(t, "lf-pod-annotation", lfDeploy.Spec.Template.Annotations["langflow-pod-annotation"])
+}

@@ -979,6 +979,14 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
+                      These annotations appear on the workload resource itself, not the pods.
+                      Useful for GitOps metadata, deployment tracking, and automation tools.
+                    type: object
                   encryptionKeySecret:
                     description: |-
                       EncryptionKeySecret references the Secret key for OPENRAG_ENCRYPTION_KEY.
@@ -1162,6 +1170,14 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are custom labels to add to the Deployment/StatefulSet object metadata.
+                      These labels appear on the workload resource itself, not the pods.
+                      Useful for querying and grouping Deployment/StatefulSet objects.
+                    type: object
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -1236,6 +1252,24 @@ spec:
                   oauthBrokerUrl:
                     description: OAuthBrokerURL is the OAuth callback URL (OAUTH_BROKER_URL).
                     type: string
+                  podAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodAnnotations are custom annotations to add to the pod template.
+                      These annotations appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                    type: object
+                  podLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodLabels are custom labels to add to the pod template.
+                      These labels appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for pod selectors, monitoring queries, network policies, and service mesh.
+                      Merged with operator-managed labels (app.kubernetes.io/*).
+                      Cannot override operator-managed labels.
+                    type: object
                   replicas:
                     default: 1
                     format: int32
@@ -2313,6 +2347,14 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
+                      These annotations appear on the workload resource itself, not the pods.
+                      Useful for GitOps metadata, deployment tracking, and automation tools.
+                    type: object
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -2442,9 +2484,35 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are custom labels to add to the Deployment/StatefulSet object metadata.
+                      These labels appear on the workload resource itself, not the pods.
+                      Useful for querying and grouping Deployment/StatefulSet objects.
+                    type: object
                   nodeSelector:
                     additionalProperties:
                       type: string
+                    type: object
+                  podAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodAnnotations are custom annotations to add to the pod template.
+                      These annotations appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                    type: object
+                  podLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodLabels are custom labels to add to the pod template.
+                      These labels appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for pod selectors, monitoring queries, network policies, and service mesh.
+                      Merged with operator-managed labels (app.kubernetes.io/*).
+                      Cannot override operator-managed labels.
                     type: object
                   replicas:
                     default: 1
@@ -3494,6 +3562,14 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
+                      These annotations appear on the workload resource itself, not the pods.
+                      Useful for GitOps metadata, deployment tracking, and automation tools.
+                    type: object
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -3635,9 +3711,35 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are custom labels to add to the Deployment/StatefulSet object metadata.
+                      These labels appear on the workload resource itself, not the pods.
+                      Useful for querying and grouping Deployment/StatefulSet objects.
+                    type: object
                   nodeSelector:
                     additionalProperties:
                       type: string
+                    type: object
+                  podAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodAnnotations are custom annotations to add to the pod template.
+                      These annotations appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                    type: object
+                  podLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodLabels are custom labels to add to the pod template.
+                      These labels appear on the actual pods created by the Deployment/StatefulSet.
+                      Useful for pod selectors, monitoring queries, network policies, and service mesh.
+                      Merged with operator-managed labels (app.kubernetes.io/*).
+                      Cannot override operator-managed labels.
                     type: object
                   replicas:
                     default: 1
