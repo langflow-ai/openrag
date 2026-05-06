@@ -15,6 +15,7 @@ Usage:
         ...
 """
 
+import asyncio
 import dataclasses
 from typing import AsyncIterator, Optional
 
@@ -36,6 +37,14 @@ logger = get_logger(__name__)
 # Phase-1 new rows had id == uuid4(); permission lookups need the SQL id,
 # not the OAuth subject.
 _ENSURED_USER_IDS: TTLCache[str, str] = TTLCache(maxsize=4096, ttl=300)
+
+# Per-user-id asyncio.Lock used to serialize concurrent first-time
+# `_ensure_db_user` calls for the SAME user_id. Without this, two
+# requests racing through the cache miss → INSERT path both observe an
+# empty users table, both attempt INSERT, and the second fails with
+# `UNIQUE constraint failed: users.email_lookup_hash`. The lock is
+# scoped per-user_id so unrelated logins never block each other.
+_ENSURE_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 # ─────────────────────────────────────────────
@@ -140,23 +149,35 @@ async def _ensure_db_user(user: User) -> Optional[str]:
     cached_db_id = _ENSURED_USER_IDS.get(user.user_id)
     if cached_db_id is not None:
         return cached_db_id
-    try:
-        from db.engine import SessionLocal, init_engine
-        from services.user_service import ensure_user_row
 
-        if SessionLocal is None:
-            init_engine()
-        from db.engine import SessionLocal as _SessionLocal
-        if _SessionLocal is None:
+    # Serialize concurrent first-time ensures for the SAME user_id so a
+    # second caller observes the first's committed row instead of
+    # racing through the cache miss → INSERT path. Per-user lock so
+    # unrelated users never block each other.
+    lock = _ENSURE_LOCKS.setdefault(user.user_id, asyncio.Lock())
+    async with lock:
+        # Re-check the cache inside the lock; the previous holder may
+        # have just populated it.
+        cached_db_id = _ENSURED_USER_IDS.get(user.user_id)
+        if cached_db_id is not None:
+            return cached_db_id
+        try:
+            from db.engine import SessionLocal, init_engine
+            from services.user_service import ensure_user_row
+
+            if SessionLocal is None:
+                init_engine()
+            from db.engine import SessionLocal as _SessionLocal
+            if _SessionLocal is None:
+                return None
+            async with _SessionLocal() as session:
+                db_row = await ensure_user_row(session, user)
+                await session.commit()
+            _ENSURED_USER_IDS[user.user_id] = db_row.id
+            return db_row.id
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ensure_user_row failed", user_id=user.user_id, error=str(exc))
             return None
-        async with _SessionLocal() as session:
-            db_row = await ensure_user_row(session, user)
-            await session.commit()
-        _ENSURED_USER_IDS[user.user_id] = db_row.id
-        return db_row.id
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("ensure_user_row failed", user_id=user.user_id, error=str(exc))
-        return None
 
 
 async def _resolve_db_user_id(user: User) -> str:
