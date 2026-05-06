@@ -83,3 +83,47 @@ async def test_idempotent_second_run(session_in_temp_data):
     count_after = len((await s.execute(select(UserRow))).scalars().all())
 
     assert count_before == count_after
+
+
+@pytest.mark.asyncio
+async def test_partial_collision_keeps_other_legacy_inserts(session_in_temp_data):
+    """If one legacy user_id already exists in the DB (e.g. from a prior
+    run on a different file), the per-row IntegrityError must roll back
+    only THAT savepoint, not the whole outer transaction. Previously
+    `session.rollback()` in the except dropped every other newly-flushed
+    row in the same migration pass.
+    """
+    s = session_in_temp_data
+    from db.migrations_runtime import migrate_legacy_users
+    from db.repositories._helpers import email_lookup_hash
+
+    # Seed: pre-existing legacy row for user-aaa (one of the four ids
+    # that the JSON fixtures will try to insert).
+    pre_existing = UserRow(
+        id="user-aaa",
+        oauth_provider="legacy",
+        oauth_subject="user-aaa",
+        email="user-aaa@unknown.local",
+        email_lookup_hash=email_lookup_hash("user-aaa@unknown.local"),
+        display_name="user-aaa",
+    )
+    s.add(pre_existing)
+    await s.commit()
+    # Expunge so the session's identity map is empty for the migration —
+    # mirrors production, where the migration runs on a session that
+    # didn't load this row.
+    s.expunge_all()
+
+    inserted = await migrate_legacy_users(s)
+    await s.commit()
+
+    legacy = {
+        r.oauth_subject
+        for r in (await s.execute(select(UserRow))).scalars().all()
+        if r.oauth_provider == "legacy"
+    }
+    # All four legacy ids should be present: user-aaa (pre-existing) +
+    # user-bbb / user-ccc / user-ddd (newly migrated).
+    assert legacy == {"user-aaa", "user-bbb", "user-ccc", "user-ddd"}
+    # user-aaa was a duplicate, so insert count is 3.
+    assert inserted == 3
