@@ -26,12 +26,18 @@ export function UserNav() {
     logout,
     version,
     roles,
+    rbacEnforced,
   } = useAuth();
   const { theme, setTheme } = useTheme();
 
-  const roleLabel = roles.length
-    ? roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(", ")
-    : null;
+  // Suppress the role row entirely when RBAC is off — the user
+  // technically still has DB-assigned roles (admin from bootstrap),
+  // but those roles have no operational effect, so showing them is
+  // confusing.
+  const roleLabel =
+    rbacEnforced && roles.length
+      ? roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(", ")
+      : null;
 
   if (isLoading) {
     return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />;

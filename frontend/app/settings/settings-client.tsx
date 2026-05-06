@@ -1165,10 +1165,12 @@ function KnowledgeSourcesPage() {
               >
                 API Keys
               </CardTitle>
-              <Button onClick={() => setCreateKeyDialogOpen(true)} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Key
-              </Button>
+              <RequirePermission perm="apikeys:create:self">
+                <Button onClick={() => setCreateKeyDialogOpen(true)} size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Key
+                </Button>
+              </RequirePermission>
             </div>
             <CardDescription>
               API keys allow programmatic access to OpenRAG via the public API.
@@ -1258,14 +1260,16 @@ function KnowledgeSourcesPage() {
                 <p className="text-muted-foreground mb-4">
                   No API keys yet. Create one to get started.
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateKeyDialogOpen(true)}
-                  size="sm"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create your first API key
-                </Button>
+                <RequirePermission perm="apikeys:create:self">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCreateKeyDialogOpen(true)}
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create your first API key
+                  </Button>
+                </RequirePermission>
               </div>
             )}
           </CardContent>

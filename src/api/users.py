@@ -43,6 +43,10 @@ class MeResponse(BaseModel):
     provider: str
     roles: List[str]
     permissions: List[str]
+    # OPENRAG_RBAC_ENFORCE — surfaced so the UI can hide RBAC-only
+    # sections (Users & Roles, Audit log, role pills) when the
+    # operator has the kill switch off.
+    rbac_enforced: bool
 
 
 @router.get("/me", response_model=MeResponse)
@@ -71,6 +75,7 @@ async def get_me(
         provider=user.provider or "unknown",
         roles=[r.name for r in roles],
         permissions=sorted(perms),
+        rbac_enforced=is_rbac_enforced(),
     )
 
 
