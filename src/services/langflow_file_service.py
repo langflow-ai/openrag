@@ -624,14 +624,7 @@ class LangflowFileService:
                 "[LF] Ingestion failed during combined operation",
                 extra={"error": str(e), "filename": filename},
             )
-            try:
-                await self.docling_service.cancel_task(task_id)
-            except Exception as cleanup_err:
-                logger.warning(
-                    "[LF] Failed to cancel Docling task after ingestion error",
-                    task_id=task_id,
-                    error=str(cleanup_err),
-                )
+            # Can't cancel Docling task because API for that does not exist
             raise
 
         # Return combined result
