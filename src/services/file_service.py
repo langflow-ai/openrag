@@ -8,7 +8,6 @@ with support for pagination, filtering, sorting, and fuzzy search.
 from typing import Any, Dict, List, Optional
 
 from config.settings import get_index_name
-from utils.acl_utils import build_acl_filter
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -108,9 +107,9 @@ class FileService:
         owner: Optional[str] = None,
         search: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Build the bool query with ACL + optional filters + filename search."""
+        """Build the bool query with optional filters + filename search."""
         must = []
-        filter_clauses = [build_acl_filter(user_id)]
+        filter_clauses = []
 
         if connector_type:
             filter_clauses.append({"term": {"connector_type": connector_type}})

@@ -151,11 +151,6 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
-            from utils.acl_utils import build_acl_filter
-            from config.settings import is_no_auth_mode
-            if user_id and not is_no_auth_mode():
-                filter_clauses.append(build_acl_filter(user_id))
-
             try:
                 # Build aggregation query with filters applied
                 agg_query = {
@@ -312,11 +307,6 @@ class SearchService:
                         else:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
-
-            from utils.acl_utils import build_acl_filter
-            from config.settings import is_no_auth_mode
-            if user_id and not is_no_auth_mode():
-                filter_clauses.append(build_acl_filter(user_id))
 
         # Build query body
         if is_wildcard_match_all:
