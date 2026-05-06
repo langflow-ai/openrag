@@ -402,7 +402,7 @@ func TestMergeDeploymentLabels_CustomLabelsAreMerged(t *testing.T) {
 		"app.kubernetes.io/component": "fe",
 	}
 	customLabels := map[string]string{
-		"deployment-label":    "deployment-value",
+		"deployment-label":            "deployment-value",
 		"argocd.argoproj.io/instance": "my-app",
 	}
 
@@ -420,7 +420,7 @@ func TestMergeDeploymentLabels_CustomLabelsAreMerged(t *testing.T) {
 func TestMergeDeploymentAnnotations_CustomAnnotationsAreMerged(t *testing.T) {
 	customAnnotations := map[string]string{
 		"deployment.kubernetes.io/revision": "5",
-		"meta.helm.sh/release-name":       "my-release",
+		"meta.helm.sh/release-name":         "my-release",
 	}
 
 	merged := mergeDeploymentAnnotations(customAnnotations)
@@ -609,11 +609,11 @@ func TestReconcile_FrontendDeploymentLevelLabelsAndAnnotations(t *testing.T) {
 	cr := minimalCR("my-openrag", "my-ns")
 	cr.Spec.Frontend.Labels = map[string]string{
 		"deployment-label": "deployment-value",
-		"team":            "frontend-team",
+		"team":             "frontend-team",
 	}
 	cr.Spec.Frontend.Annotations = map[string]string{
 		"deployment.kubernetes.io/revision": "1",
-		"meta.helm.sh/release-name":       "my-release",
+		"meta.helm.sh/release-name":         "my-release",
 	}
 	r, c := reconciler(s, cr)
 
