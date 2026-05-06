@@ -87,13 +87,20 @@ func TestTargetNamespace_UsesSpecField(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResourceName(t *testing.T) {
-	assert.Equal(t, "my-openrag-openrag-fe", resourceName("my-openrag", "fe"))
-	assert.Equal(t, "my-openrag-openrag-be", resourceName("my-openrag", "be"))
-	assert.Equal(t, "my-openrag-openrag-lf", resourceName("my-openrag", "lf"))
+	// Test simple, namespace-scoped names (no CR name prefix needed)
+	assert.Equal(t, "openrag-fe", resourceName("fe"))
+	assert.Equal(t, "openrag-be", resourceName("be"))
+	assert.Equal(t, "openrag-lf", resourceName("lf"))
+	// Test DNS-1035 compliance (must start with letter)
+	assert.Regexp(t, `^[a-z]([-a-z0-9]*[a-z0-9])?$`, resourceName("fe"))
+	assert.Regexp(t, `^[a-z]([-a-z0-9]*[a-z0-9])?$`, resourceName("be"))
 }
 
 func TestSAName(t *testing.T) {
-	assert.Equal(t, "openrag-my-openrag-fe", saName("my-openrag", "fe"))
+	// Service accounts also use simple, namespace-scoped names
+	assert.Equal(t, "openrag-fe", saName("fe"))
+	assert.Equal(t, "openrag-be", saName("be"))
+	assert.Equal(t, "openrag-lf", saName("lf"))
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +117,7 @@ func TestReconcile_CreatesDeployments(t *testing.T) {
 	for _, role := range []string{"fe", "be", "lf"} {
 		d := &appsv1.Deployment{}
 		require.NoError(t, c.Get(context.Background(),
-			types.NamespacedName{Name: resourceName(cr.Name, role), Namespace: "my-ns"}, d),
+			types.NamespacedName{Name: resourceName(role), Namespace: "my-ns"}, d),
 			"deployment for role %s should exist", role)
 	}
 }
@@ -126,7 +133,7 @@ func TestReconcile_CreatesServices(t *testing.T) {
 	for role, port := range ports {
 		svc := &corev1.Service{}
 		require.NoError(t, c.Get(context.Background(),
-			types.NamespacedName{Name: resourceName(cr.Name, role), Namespace: "my-ns"}, svc))
+			types.NamespacedName{Name: resourceName(role), Namespace: "my-ns"}, svc))
 		assert.Equal(t, port, svc.Spec.Ports[0].Port, "service port for role %s", role)
 	}
 }
@@ -141,7 +148,7 @@ func TestReconcile_CreatesServiceAccounts(t *testing.T) {
 	for _, role := range []string{"fe", "be", "lf"} {
 		sa := &corev1.ServiceAccount{}
 		require.NoError(t, c.Get(context.Background(),
-			types.NamespacedName{Name: saName(cr.Name, role), Namespace: "my-ns"}, sa),
+			types.NamespacedName{Name: saName(role), Namespace: "my-ns"}, sa),
 			"service account for role %s should exist", role)
 	}
 }
@@ -155,7 +162,7 @@ func TestReconcile_SetsOwnerReferences_SameNamespace(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, d))
 	require.Len(t, d.OwnerReferences, 1)
 	assert.Equal(t, cr.Name, d.OwnerReferences[0].Name)
 }
@@ -169,7 +176,7 @@ func TestReconcile_FrontendEnvContainsBackendHost(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, d))
 
 	var backendHost string
 	for _, e := range d.Spec.Template.Spec.Containers[0].Env {
@@ -177,7 +184,7 @@ func TestReconcile_FrontendEnvContainsBackendHost(t *testing.T) {
 			backendHost = e.Value
 		}
 	}
-	assert.Equal(t, resourceName(cr.Name, "be"), backendHost)
+	assert.Equal(t, resourceName("be"), backendHost)
 }
 
 func TestReconcile_BackendMountsOperatorManagedEnvSecret(t *testing.T) {
@@ -189,9 +196,9 @@ func TestReconcile_BackendMountsOperatorManagedEnvSecret(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("be"), Namespace: "my-ns"}, d))
 
-	expectedSecret := resourceName(cr.Name, "be-env")
+	expectedSecret := resourceName("be-env")
 	var found bool
 	for _, v := range d.Spec.Template.Spec.Volumes {
 		if v.Name == "backend-env" {
@@ -211,7 +218,7 @@ func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
 
 	sec := &corev1.Secret{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "be-env"), Namespace: "my-ns"}, sec))
+		types.NamespacedName{Name: resourceName("be-env"), Namespace: "my-ns"}, sec))
 
 	// In the test environment, StringData is not converted to Data
 	// Use StringData if Data is empty (test env), otherwise use Data (real cluster)
@@ -219,7 +226,7 @@ func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
 	if envContent == "" && sec.StringData != nil {
 		envContent = sec.StringData[".env"]
 	}
-	assert.Contains(t, envContent, "LANGFLOW_URL=http://"+resourceName(cr.Name, "lf")+":7860")
+	assert.Contains(t, envContent, "LANGFLOW_URL=http://"+resourceName("lf")+":7860")
 }
 
 func TestReconcile_LangflowMountsPVC(t *testing.T) {
@@ -233,12 +240,12 @@ func TestReconcile_LangflowMountsPVC(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "lf"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "my-ns"}, d))
 
 	var found bool
 	for _, v := range d.Spec.Template.Spec.Volumes {
 		if v.Name == "langflow-data" {
-			assert.Equal(t, resourceName(cr.Name, "lf-data"), v.PersistentVolumeClaim.ClaimName)
+			assert.Equal(t, resourceName("lf-data"), v.PersistentVolumeClaim.ClaimName)
 			found = true
 		}
 	}
@@ -305,7 +312,7 @@ func TestReconcile_ResourcesInTargetNamespace(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "tenant-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "tenant-ns"}, d))
 	// Cross-namespace: no owner references, managed-by label instead.
 	assert.Empty(t, d.OwnerReferences)
 	assert.Equal(t, cr.Name, d.Labels[managedByLabel])
@@ -498,7 +505,7 @@ func TestReconcile_FrontendCustomPodLabels(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, d))
 
 	podLabels := d.Spec.Template.Labels
 
@@ -527,7 +534,7 @@ func TestReconcile_BackendCustomPodAnnotations(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("be"), Namespace: "my-ns"}, d))
 
 	podAnnotations := d.Spec.Template.Annotations
 
@@ -554,7 +561,7 @@ func TestReconcile_LangflowCustomPodLabelsAndAnnotations(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "lf"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "my-ns"}, d))
 
 	podLabels := d.Spec.Template.Labels
 	podAnnotations := d.Spec.Template.Annotations
@@ -585,7 +592,7 @@ func TestReconcile_SelectorLabelsAreNotAffectedByCustomPodLabels(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, d))
 
 	// Selector should only have operator-managed labels
 	selectorLabels := d.Spec.Selector.MatchLabels
@@ -621,7 +628,7 @@ func TestReconcile_FrontendDeploymentLevelLabelsAndAnnotations(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, d))
 
 	// Deployment-level labels should be present
 	assert.Equal(t, "deployment-value", d.Labels["deployment-label"])
@@ -651,7 +658,7 @@ func TestReconcile_DeploymentAndPodLabelsAreIndependent(t *testing.T) {
 
 	d := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, d))
+		types.NamespacedName{Name: resourceName("be"), Namespace: "my-ns"}, d))
 
 	// Deployment should have deployment-only label
 	assert.Equal(t, "on-deployment", d.Labels["deployment-only"])
@@ -711,23 +718,84 @@ func TestReconcile_AllThreeComponentsSupportBothLevels(t *testing.T) {
 	// Check Frontend
 	feDeploy := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "fe"), Namespace: "my-ns"}, feDeploy))
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "my-ns"}, feDeploy))
 	assert.Equal(t, "fe-value", feDeploy.Annotations["frontend-deploy-annotation"])
 	assert.Equal(t, "fe-pod-value", feDeploy.Spec.Template.Annotations["frontend-pod-annotation"])
 
 	// Check Backend
 	beDeploy := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "be"), Namespace: "my-ns"}, beDeploy))
+		types.NamespacedName{Name: resourceName("be"), Namespace: "my-ns"}, beDeploy))
 	assert.Equal(t, "be-value", beDeploy.Labels["backend-deploy-label"])
 	assert.Equal(t, "be-pod-value", beDeploy.Spec.Template.Labels["backend-pod-label"])
 
 	// Check Langflow
 	lfDeploy := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: resourceName(cr.Name, "lf"), Namespace: "my-ns"}, lfDeploy))
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "my-ns"}, lfDeploy))
 	assert.Equal(t, "lf-value", lfDeploy.Labels["langflow-deploy-label"])
 	assert.Equal(t, "lf-annotation", lfDeploy.Annotations["langflow-deploy-annotation"])
 	assert.Equal(t, "lf-pod-value", lfDeploy.Spec.Template.Labels["langflow-pod-label"])
 	assert.Equal(t, "lf-pod-annotation", lfDeploy.Spec.Template.Annotations["langflow-pod-annotation"])
+}
+
+// TestReconcile_UUIDNameDNS1035Compliance verifies that resources work correctly
+// even when CR names start with numbers (UUIDs). Since we use namespace-scoped
+// naming (openrag-fe, openrag-be, openrag-lf), the CR name doesn't affect resource names.
+func TestReconcile_UUIDNameDNS1035Compliance(t *testing.T) {
+	s := newScheme(t)
+	// Use the exact UUID from the production error - this should work fine now
+	uuidName := "9a826efa-112d-4e2d-9f8d-ce103880ab41"
+	cr := minimalCR(uuidName, "test-ns")
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Verify all created resources have DNS-1035 compliant names
+	// DNS-1035: must start with letter, end with alphanumeric, contain only lowercase alphanumeric and hyphens
+	dns1035Regex := `^[a-z]([-a-z0-9]*[a-z0-9])?$`
+
+	// Check frontend deployment
+	feDeploy := &appsv1.Deployment{}
+	feName := resourceName("fe")
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: feName, Namespace: "test-ns"}, feDeploy))
+	assert.Regexp(t, dns1035Regex, feName, "Frontend deployment name must be DNS-1035 compliant")
+	assert.Regexp(t, dns1035Regex, feDeploy.Name, "Frontend deployment name must be DNS-1035 compliant")
+
+	// Check frontend service
+	feSvc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: feName, Namespace: "test-ns"}, feSvc))
+	assert.Regexp(t, dns1035Regex, feSvc.Name, "Frontend service name must be DNS-1035 compliant")
+
+	// Check backend deployment
+	beDeploy := &appsv1.Deployment{}
+	beName := resourceName("be")
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: beName, Namespace: "test-ns"}, beDeploy))
+	assert.Regexp(t, dns1035Regex, beName, "Backend deployment name must be DNS-1035 compliant")
+
+	// Check backend service
+	beSvc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: beName, Namespace: "test-ns"}, beSvc))
+	assert.Regexp(t, dns1035Regex, beSvc.Name, "Backend service name must be DNS-1035 compliant")
+
+	// Check langflow deployment
+	lfDeploy := &appsv1.Deployment{}
+	lfName := resourceName("lf")
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: lfName, Namespace: "test-ns"}, lfDeploy))
+	assert.Regexp(t, dns1035Regex, lfName, "Langflow deployment name must be DNS-1035 compliant")
+
+	// Verify the simple naming pattern: "openrag-{role}" (namespace-scoped)
+	assert.Equal(t, "openrag-fe", feName)
+	assert.Equal(t, "openrag-be", beName)
+	assert.Equal(t, "openrag-lf", lfName)
+
+	// Verify the CR UUID name is tracked in labels, not in resource names
+	assert.Equal(t, uuidName, feDeploy.Labels["app.kubernetes.io/instance"])
+	assert.Equal(t, uuidName, beDeploy.Labels["app.kubernetes.io/instance"])
+	assert.Equal(t, uuidName, lfDeploy.Labels["app.kubernetes.io/instance"])
 }

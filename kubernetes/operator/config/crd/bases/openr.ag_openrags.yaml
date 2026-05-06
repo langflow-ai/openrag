@@ -986,7 +986,17 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   encryptionKeySecret:
                     description: |-
                       EncryptionKeySecret references the Secret key for OPENRAG_ENCRYPTION_KEY.
@@ -1177,7 +1187,20 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -1259,7 +1282,17 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -1269,7 +1302,20 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
@@ -2354,7 +2400,17 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -2491,7 +2547,20 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -2503,7 +2572,17 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -2513,7 +2592,20 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
@@ -3569,7 +3661,17 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -3718,7 +3820,20 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -3730,7 +3845,17 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
+                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
+                      Annotation values can be arbitrary strings.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys (prefix/name or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -3740,7 +3865,20 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
+                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
+                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
+                    maxProperties: 64
                     type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys (prefix/name
+                        or name)
+                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
+                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
+                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
+                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                    - message: label values must be 63 characters or less and match
+                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
