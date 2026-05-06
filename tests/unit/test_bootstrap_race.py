@@ -121,3 +121,49 @@ async def test_no_race_single_signin_unchanged(session_factory):
     async with session_factory() as session:
         admins = await RoleRepo(session).list_admin_user_ids()
     assert admins == ["solo"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_signins_same_user_no_integrity_error(
+    session_factory, monkeypatch
+):
+    """Five concurrent `_ensure_db_user` calls for the SAME anonymous
+    user must not raise IntegrityError on email_lookup_hash. The
+    previous bug: both callers observed an empty users table, both
+    tried to INSERT, the second failed with
+    `UNIQUE constraint failed: users.email_lookup_hash`.
+
+    The fix is a per-user-id `asyncio.Lock` in `_ensure_db_user` that
+    serializes concurrent first-time ensures for the same user_id, so
+    the second caller sees the first's committed row in the cache
+    instead of racing through the cache miss → INSERT path.
+    """
+    # _ensure_db_user reads `db.engine.SessionLocal`, so wire it to
+    # our test session_factory.
+    import db.engine as _engine_mod
+    monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
+
+    from dependencies import _ensure_db_user, _ENSURED_USER_IDS, _ENSURE_LOCKS
+    _ENSURED_USER_IDS.clear()
+    _ENSURE_LOCKS.clear()
+
+    anon = User(
+        user_id="anonymous",
+        email="anonymous@localhost",
+        name="Anonymous",
+        provider="none",
+    )
+
+    ids = await asyncio.gather(*[_ensure_db_user(anon) for _ in range(5)])
+
+    # All concurrent callers receive the same DB id…
+    assert all(uid == ids[0] for uid in ids), (
+        f"expected all callers to observe the same id, got {ids}"
+    )
+    assert ids[0] is not None, "expected a non-None id (no IntegrityError)"
+
+    # …and exactly one user row exists.
+    async with session_factory() as session:
+        from db.repositories import UserRepo
+        rows = await UserRepo(session).list_all()
+    assert len(rows) == 1, f"expected 1 anonymous user row, got {len(rows)}"
