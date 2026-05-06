@@ -3,11 +3,11 @@ bodies live in Langflow).
 
 Mode-aware (``OPENRAG_STORAGE_MODE`` from ``src/config/storage_mode.py``):
 
-| Mode    | Reads                | Writes              |
-|---------|----------------------|---------------------|
-| hybrid  | DB → JSON fallback   | DB + JSON dual      |
-| db      | DB only              | DB only — no JSON   |
-| files   | JSON only            | JSON only           |
+| Mode         | Reads                | Writes              |
+|--------------|----------------------|---------------------|
+| db (default) | DB only              | DB only — no JSON   |
+| hybrid       | DB → JSON fallback   | DB + JSON dual      |
+| files        | JSON only            | JSON only           |
 
 All public methods are async. Call sites in ``src/agent.py`` were
 flipped from sync to ``await`` as part of this migration.

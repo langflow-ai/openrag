@@ -2,20 +2,23 @@
 
 Three modes — one env var, no per-domain proliferation:
 
-    OPENRAG_STORAGE_MODE = hybrid | db | files
+    OPENRAG_STORAGE_MODE = db | hybrid | files
 
 | Mode    | DB writes | File writes | File reads (fallback) | When to use                          |
 |---------|-----------|-------------|-----------------------|--------------------------------------|
-| hybrid  | yes       | yes         | yes                   | default — Phase B dual-write         |
-| db      | yes       | NO          | no                    | clean target — DB is sole authority  |
+| db      | yes       | NO          | no                    | default — DB is sole authority       |
+| hybrid  | yes       | yes         | yes                   | Phase B dual-write (legacy fallback) |
 | files   | NO        | yes         | yes                   | rollback / legacy installs           |
 
 Backwards compat: the legacy ``OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=true``
 kill switch is still honored — if set, mode is forced to ``files``.
 
-Today only ``workspace_config`` consults this flag. As ``connections.json``,
-``conversations.json``, and ``session_ownership.json`` migrate to the DB
-in follow-up PRs, each new service will read the same env var.
+``workspace_config``, ``session_ownership`` and ``conversations`` all
+consult this flag. The default is now ``db`` so fresh installs never
+write JSON state to disk. Existing installs with JSON files are
+upgraded once at boot via the runtime migrations
+(``config_yaml_to_db_v1``, ``chat_history_json_to_db_v1``); after that
+the JSON files are ignored.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from typing import Literal
 StorageMode = Literal["hybrid", "db", "files"]
 
 _VALID = {"hybrid", "db", "files"}
-_DEFAULT: StorageMode = "hybrid"
+_DEFAULT: StorageMode = "db"
 
 
 def get_storage_mode() -> StorageMode:
