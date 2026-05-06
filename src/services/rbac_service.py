@@ -32,6 +32,23 @@ def _cache_ttl() -> int:
         return 60
 
 
+def is_rbac_enforced() -> bool:
+    """Whether ``require_permission`` should actually check permissions.
+
+    Default: ``false`` — RBAC is **opt-in**. Out of the box OpenRAG
+    behaves exactly like the pre-RBAC release: any authenticated user
+    has full access; API-key role overrides are also bypassed. This is
+    intentional so single-user OSS installs and migration paths don't
+    need any RBAC ceremony.
+
+    Set ``OPENRAG_RBAC_ENFORCE=true`` to turn the permissions system
+    on for multi-user deployments. Available in all ``OPENRAG_RUN_MODE``
+    values; operators own the trade-off.
+    """
+    raw = os.getenv("OPENRAG_RBAC_ENFORCE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 class RBACService:
     def __init__(self, session_factory) -> None:
         self._session_factory = session_factory
@@ -83,7 +100,14 @@ class RBACService:
         any_perm: str,
         role_override: Optional[list[str]] = None,
     ) -> None:
-        """Self-or-elevated check used by /delete:own etc. Raises 403 on miss."""
+        """Self-or-elevated check used by /delete:own etc. Raises 403 on miss.
+
+        When ``OPENRAG_RBAC_ENFORCE=false`` this returns immediately —
+        every authenticated user passes every gate, matching the
+        bypass in ``dependencies.require_permission``.
+        """
+        if not is_rbac_enforced():
+            return
         perms = await self.get_user_permissions(user.user_id, role_override)
         if any_perm in perms:
             return

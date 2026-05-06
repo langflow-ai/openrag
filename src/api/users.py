@@ -9,10 +9,25 @@ from typing import List
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from db.repositories import RoleRepo, UserRepo
+from db.repositories import PermissionRepo, RoleRepo, UserRepo
 from dependencies import get_current_user, get_db_session, get_rbac_service
+from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set[str]:
+    """Return the permissions the UI should treat the user as having.
+
+    When ``OPENRAG_RBAC_ENFORCE=false``, the backend lets every
+    authenticated user through every gate, so the frontend should also
+    show every action — otherwise users see disabled buttons that
+    actually work. We return the full permission catalog from the DB.
+    """
+    if is_rbac_enforced():
+        return await rbac.get_user_permissions(db_id)
+    perms = await PermissionRepo(session).list_all()
+    return {p.name for p in perms}
 
 # Backend routes are mounted WITHOUT the /api prefix because the Next.js
 # proxy at frontend/app/api/[...path]/route.ts strips it before forwarding.
@@ -46,7 +61,7 @@ async def get_me(
     db_id = db_user.id if db_user else user.user_id
 
     roles = await role_repo.list_user_roles(db_id)
-    perms = await rbac.get_user_permissions(db_id)
+    perms = await _effective_permissions(rbac, db_id, session)
 
     return MeResponse(
         user_id=user.user_id,
@@ -75,5 +90,5 @@ async def get_my_permissions(
         db_user = await user_repo.get_by_id(user.user_id)
     db_id = db_user.id if db_user else user.user_id
 
-    perms = await rbac.get_user_permissions(db_id)
+    perms = await _effective_permissions(rbac, db_id, session)
     return PermissionsResponse(permissions=sorted(perms))

@@ -13,6 +13,12 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 import os as _os
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
+# Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a
+# developer who has the kill switch in their local `.env` doesn't
+# silently make every 403-asserting test pass-through. Tests that
+# explicitly want the bypass override this via monkeypatch.
+_os.environ["OPENRAG_RBAC_ENFORCE"] = "true"
+
 import pytest
 import pytest_asyncio
 

@@ -41,3 +41,5 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 ## Operational constraints
 
 **Single-worker only (until Redis cache lands).** The RBAC permission cache and OAuth-subject→DB-id cache are both per-process (`cachetools.TTLCache`). Running with multiple uvicorn workers or multiple helm replicas means a role grant or revoke takes effect in only one process; the others serve stale permissions for up to `OPENRAG_PERM_CACHE_TTL` seconds (default 60). The startup event in `src/main.py` enforces `UVICORN_WORKERS<=1` and `CACHE_BACKEND=memory` and hard-fails otherwise. To horizontally scale, swap the cache to Redis first.
+
+**RBAC is opt-in.** `OPENRAG_RBAC_ENFORCE` defaults to `false`, which makes OpenRAG behave like the pre-RBAC release: every authenticated user has full access; API-key role overrides are also bypassed. To turn the permissions system on (admin/developer/user/viewer roles, `require_permission` gates, audit denials), set `OPENRAG_RBAC_ENFORCE=true`. Available in all `OPENRAG_RUN_MODE` values — operators own the trade-off. The startup event logs the enforcement state on every boot.
