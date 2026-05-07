@@ -15,6 +15,7 @@ from dependencies import (
     get_chat_service,
     get_session_manager,
     get_current_user,
+    require_all_permissions,
     require_permission,
 )
 from session_manager import User
@@ -116,7 +117,7 @@ async def upload_context(
     document_service=Depends(get_document_service),
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(require_permission("knowledge:upload")),
+    user: User = Depends(require_all_permissions(("knowledge:upload", "chat:use"))),
 ):
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"

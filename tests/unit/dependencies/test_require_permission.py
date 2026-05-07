@@ -29,6 +29,7 @@ from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
     get_current_user,
     get_rbac_service,
+    require_all_permissions,
     require_permission,
 )
 from services.rbac_service import RBACService  # noqa: E402
@@ -131,6 +132,12 @@ async def app(monkeypatch):
     async def flows_edit(user=Depends(require_permission("flows:edit"))):
         return JSONResponse({"user_id": user.user_id})
 
+    @app.post("/test/upload-context")
+    async def upload_context_gate(
+        user=Depends(require_all_permissions(("knowledge:upload", "chat:use")))
+    ):
+        return JSONResponse({"user_id": user.user_id})
+
     yield app
     await engine.dispose()
 
@@ -163,6 +170,9 @@ async def app(monkeypatch):
         ("viewer", "/test/kf-create", 403),
         ("viewer", "/test/users-list", 403),
         ("viewer", "/test/flows-edit", 403),
+        # upload-context is both ingestion and chat behavior
+        ("user", "/test/upload-context", 200),
+        ("viewer", "/test/upload-context", 403),
     ],
 )
 async def test_permission_enforcement(app, persona, perm_path, expected):
@@ -182,3 +192,12 @@ async def test_403_response_includes_required_perm(app):
         r = await c.post("/test/config-write", headers={"X-Test-Persona": "user"})
     assert r.status_code == 403
     assert r.json()["detail"]["required"] == "config:write"
+
+
+@pytest.mark.asyncio
+async def test_all_permissions_response_lists_required_permissions(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/test/upload-context", headers={"X-Test-Persona": "viewer"})
+    assert r.status_code == 403
+    assert r.json()["detail"]["required"] == ["knowledge:upload", "chat:use"]

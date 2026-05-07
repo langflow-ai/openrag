@@ -17,7 +17,7 @@ Usage:
 
 import asyncio
 import dataclasses
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Sequence
 
 from cachetools import TTLCache
 from fastapi import Depends, HTTPException, Request
@@ -273,6 +273,37 @@ def require_permission(perm: str):
             raise HTTPException(
                 status_code=403,
                 detail={"error": "permission_denied", "required": perm},
+            )
+        return user
+
+    return _dep
+
+
+def require_all_permissions(required_perms: Sequence[str]):
+    """FastAPI dependency factory enforcing all listed permissions."""
+    required = tuple(required_perms)
+    if not required:
+        raise ValueError("require_all_permissions requires at least one permission")
+
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_current_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            await _resolve_db_user_id(user)
+            return user
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        db_user_id = await _resolve_db_user_id(user)
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        missing = [perm for perm in required if perm not in perms]
+        if missing:
+            await rbac.audit_denied(db_user_id, ",".join(missing))
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": list(required)},
             )
         return user
 
