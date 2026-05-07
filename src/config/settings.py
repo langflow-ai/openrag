@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
+OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST", OPENSEARCH_HOST)
@@ -83,8 +84,6 @@ else:
     DOCLING_HOST_IP = determine_docling_host()
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
-
-IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
