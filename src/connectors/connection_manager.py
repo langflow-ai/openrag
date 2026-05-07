@@ -39,8 +39,12 @@ class ConnectionConfig:
 class ConnectionManager:
     """Manages multiple connector connections with persistence"""
 
-    def __init__(self, connections_file: str = "data/connections.json"):
-        self.connections_file = Path(connections_file)
+    def __init__(self, connections_file: Optional[str] = None):
+        if connections_file is None:
+            data_dir = Path(os.getenv("OPENRAG_DATA_PATH", "data"))
+            self.connections_file = data_dir / "connections.json"
+        else:
+            self.connections_file = Path(connections_file)
         # Ensure data directory exists
         self.connections_file.parent.mkdir(parents=True, exist_ok=True)
         self.connections: Dict[str, ConnectionConfig] = {}
