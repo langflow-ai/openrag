@@ -413,6 +413,7 @@ export default function UploadProviderPage() {
             mimeType: file.mimeType,
             downloadUrl: file.downloadUrl,
             size: file.size,
+            isFolder: file.isFolder,
           })),
           settings: ingestSettings,
         },

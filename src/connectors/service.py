@@ -383,9 +383,15 @@ class ConnectorService:
                 )
                 # If we have file_infos with download URLs, use original file_ids
                 # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                # Exclude folders — they have no downloadable content on their own.
                 if file_infos:
-                    logger.info("Using original file IDs with cached download URLs")
-                    expanded_file_ids = file_ids
+                    non_folder_infos = [f for f in file_infos if not f.get("isFolder")]
+                    non_folder_ids = [f["id"] for f in non_folder_infos if f.get("id")]
+                    if non_folder_ids:
+                        logger.info("Using original file IDs with cached download URLs (folders excluded)")
+                        expanded_file_ids = non_folder_ids
+                    else:
+                        raise ValueError("No files to sync after expanding folders")
                 else:
                     raise ValueError("No files to sync after expanding folders")
 
