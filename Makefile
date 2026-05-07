@@ -833,10 +833,29 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "$(YELLOW)Building all images locally...$(NC)"; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
+	build_with_retry() { \
+		image_tag="$$1"; \
+		dockerfile="$$2"; \
+		max_attempts=3; \
+		attempt=1; \
+		while [ $$attempt -le $$max_attempts ]; do \
+			echo "$(YELLOW)Building $$image_tag (attempt $$attempt/$$max_attempts)...$(NC)"; \
+			if $(CONTAINER_RUNTIME) build -t "$$image_tag" -f "$$dockerfile" .; then \
+				return 0; \
+			fi; \
+			if [ $$attempt -eq $$max_attempts ]; then \
+				echo "$(RED)Failed to build $$image_tag after $$max_attempts attempts$(NC)"; \
+				return 1; \
+			fi; \
+			echo "$(YELLOW)Build failed, retrying in 5s...$(NC)"; \
+			sleep 5; \
+			attempt=$$((attempt + 1)); \
+		done; \
+	}; \
+	build_with_retry langflowai/openrag-opensearch:latest Dockerfile; \
+	build_with_retry langflowai/openrag-backend:latest Dockerfile.backend; \
+	build_with_retry langflowai/openrag-frontend:latest Dockerfile.frontend; \
+	build_with_retry langflowai/openrag-langflow:latest Dockerfile.langflow; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
 	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \

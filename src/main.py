@@ -1911,6 +1911,12 @@ async def create_app():
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/documents/rename",
+        documents.rename_document,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # OIDC endpoints
     app.add_api_route(

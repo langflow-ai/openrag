@@ -30,6 +30,7 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
+import { KnowledgeRenameDocumentDialog } from "@/components/knowledge-rename-document-dialog";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -39,9 +40,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useKnowledgeRenameDocument } from "@/hooks/useKnowledgeRenameDocument";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
+  getRenameCurrentFilename,
 } from "@/lib/knowledge-table-state";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
@@ -108,6 +111,8 @@ function SearchPage() {
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
+  const { openRenameDialog, renameInProgress, renameDialogProps } =
+    useKnowledgeRenameDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
 
@@ -311,6 +316,7 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
+
   const fileResults = buildKnowledgeTableRows(
     searchFiles,
     taskFiles,
@@ -566,7 +572,10 @@ function SearchPage() {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
+            renameCurrentFilename={data ? getRenameCurrentFilename(data) : ""}
+            documentId={data?.document_id}
             connectorType={data?.connector_type}
+            onOpenRename={openRenameDialog}
           />
         );
       },
@@ -836,7 +845,11 @@ function SearchPage() {
             className="w-full overflow-auto border"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={
+              isSearchLoading ||
+              deleteDocumentMutation.isPending ||
+              renameInProgress
+            }
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}
@@ -867,7 +880,11 @@ function SearchPage() {
             className="w-full overflow-auto"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={
+              isSearchLoading ||
+              deleteDocumentMutation.isPending ||
+              renameInProgress
+            }
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}
@@ -895,6 +912,8 @@ function SearchPage() {
           />
         )}
       </div>
+
+      <KnowledgeRenameDocumentDialog {...renameDialogProps} />
 
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

@@ -14,6 +14,11 @@ fi
 echo "Using container runtime: $CONTAINER_RUNTIME"
 echo "Starting E2E Setup..."
 
+# Force no-auth mode for deterministic Playwright onboarding flows.
+# E2E tests are not designed to complete interactive OAuth login.
+export GOOGLE_OAUTH_CLIENT_ID=""
+export GOOGLE_OAUTH_CLIENT_SECRET=""
+
 # Pre-create langflow-data as world-writable so the Langflow container (UID 1000)
 # and the runner (UID 1001) can both access it, regardless of Docker's :U flag behavior.
 mkdir -p langflow-data

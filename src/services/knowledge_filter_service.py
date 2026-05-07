@@ -1,17 +1,68 @@
+import json
+from datetime import datetime
 from typing import Any, Dict, Optional
 
+from utils.logging_config import get_logger
+
 KNOWLEDGE_FILTERS_INDEX_NAME = "knowledge_filters"
+
+logger = get_logger(__name__)
+
+
+def _serialize_normalized_query_data(data: dict) -> str:
+    """Align with ``normalize_query_data`` in api/knowledge_filter.py."""
+    filters = data.get("filters") or {}
+    normalized_filters = {
+        "data_sources": filters.get("data_sources", ["*"]),
+        "data_source_refs": filters.get("data_source_refs", []),
+        "document_types": filters.get("document_types", ["*"]),
+        "owners": filters.get("owners", ["*"]),
+        "connector_types": filters.get("connector_types", ["*"]),
+    }
+    normalized = {
+        "query": data.get("query", ""),
+        "filters": normalized_filters,
+        "limit": data.get("limit", 10),
+        "scoreThreshold": data.get("scoreThreshold", 0),
+        "color": data.get("color", "zinc"),
+        "icon": data.get("icon", "filter"),
+    }
+    return json.dumps(normalized)
 
 
 class KnowledgeFilterService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
 
+    async def _enrich_filter_doc_query_data(
+        self,
+        filter_doc: Dict[str, Any],
+        user_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> Dict[str, Any]:
+        """Enrich ``query_data.filters.data_source_refs`` before persistence."""
+        query_data = filter_doc.get("query_data")
+        if not query_data:
+            return filter_doc
+        if not isinstance(query_data, str):
+            query_data = _serialize_normalized_query_data(query_data)
+        enriched_query_data = await self.enrich_data_source_refs_in_query_data(
+            query_data,
+            user_id=user_id,
+            jwt_token=jwt_token,
+        )
+        enriched_filter_doc = dict(filter_doc)
+        enriched_filter_doc["query_data"] = enriched_query_data
+        return enriched_filter_doc
+
     async def create_knowledge_filter(
         self, filter_doc: Dict[str, Any], user_id: str = None, jwt_token: str = None
     ) -> Dict[str, Any]:
         """Create a new knowledge filter"""
         try:
+            filter_doc = await self._enrich_filter_doc_query_data(
+                filter_doc, user_id=user_id, jwt_token=jwt_token
+            )
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 user_id, jwt_token
@@ -35,6 +86,36 @@ class KnowledgeFilterService:
             else:
                 return {"success": False, "error": "Failed to create knowledge filter"}
 
+        except Exception as e:
+            logger.exception("create_knowledge_filter failed", error=str(e))
+            return {"success": False, "error": "Failed to create knowledge filter"}
+
+    async def upsert_knowledge_filter(
+        self, filter_doc: Dict[str, Any], user_id: str = None, jwt_token: str = None
+    ) -> Dict[str, Any]:
+        """Create or replace a knowledge filter atomically by id."""
+        try:
+            filter_doc = await self._enrich_filter_doc_query_data(
+                filter_doc, user_id=user_id, jwt_token=jwt_token
+            )
+            opensearch_client = self.session_manager.get_user_opensearch_client(
+                user_id, jwt_token
+            )
+            result = await opensearch_client.index(
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_doc["id"],
+                body=filter_doc,
+                refresh="wait_for",
+            )
+            if result.get("result") in ["created", "updated"]:
+                try:
+                    await opensearch_client.indices.refresh(
+                        index=KNOWLEDGE_FILTERS_INDEX_NAME
+                    )
+                except Exception:
+                    pass
+                return {"success": True, "id": filter_doc["id"], "filter": filter_doc}
+            return {"success": False, "error": "Failed to upsert knowledge filter"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -105,7 +186,12 @@ class KnowledgeFilterService:
             return {"success": True, "filters": filters}
 
         except Exception as e:
-            return {"success": False, "error": str(e), "filters": []}
+            logger.exception("search_knowledge_filters failed", error=str(e))
+            return {
+                "success": False,
+                "error": "Failed to search knowledge filters",
+                "filters": [],
+            }
 
     async def get_knowledge_filter(
         self, filter_id: str, user_id: str = None, jwt_token: str = None
@@ -128,7 +214,8 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Knowledge filter not found"}
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            logger.exception("get_knowledge_filter failed", error=str(e))
+            return {"success": False, "error": "Failed to get knowledge filter"}
 
     async def update_knowledge_filter(
         self,
@@ -139,6 +226,17 @@ class KnowledgeFilterService:
     ) -> Dict[str, Any]:
         """Update an existing knowledge filter"""
         try:
+            if "query_data" in updates:
+                query_data = updates.get("query_data")
+                if query_data:
+                    if not isinstance(query_data, str):
+                        query_data = _serialize_normalized_query_data(query_data)
+                    updates = dict(updates)
+                    updates["query_data"] = await self.enrich_data_source_refs_in_query_data(
+                        query_data,
+                        user_id=user_id,
+                        jwt_token=jwt_token,
+                    )
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 user_id, jwt_token
@@ -168,6 +266,208 @@ class KnowledgeFilterService:
 
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    async def _sample_document_id_for_filename(
+        self,
+        filename: str,
+        user_id: str | None,
+        jwt_token: str | None,
+    ) -> str | None:
+        """Return a document_id from one chunk with this filename, if any."""
+        from config.settings import get_index_name
+        from utils.opensearch_queries import build_filename_search_body
+
+        fn = (filename or "").strip()
+        if not fn:
+            return None
+        try:
+            opensearch_client = self.session_manager.get_user_opensearch_client(
+                user_id, jwt_token
+            )
+            body = build_filename_search_body(
+                fn, size=5, source=["document_id"]
+            )
+            resp = await opensearch_client.search(
+                index=get_index_name(), body=body
+            )
+            for h in resp.get("hits", {}).get("hits", []):
+                src = h.get("_source") or {}
+                did = src.get("document_id")
+                if did is not None and str(did).strip():
+                    return str(did).strip()
+        except Exception as e:
+            logger.warning(
+                "Could not resolve document_id for filename",
+                filename=fn,
+                error=str(e),
+            )
+        return None
+
+    async def enrich_data_source_refs_in_query_data(
+        self,
+        query_data_str: str,
+        user_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> str:
+        """Fill missing ``document_id`` on refs using the corpus index."""
+        try:
+            data = json.loads(query_data_str)
+        except json.JSONDecodeError:
+            return query_data_str
+        filters = data.get("filters") or {}
+        refs = filters.get("data_source_refs")
+        if not refs or not isinstance(refs, list):
+            return query_data_str
+        changed = False
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            if (ref.get("document_id") or "").strip():
+                continue
+            fn = (ref.get("filename") or "").strip()
+            if not fn:
+                continue
+            sampled = await self._sample_document_id_for_filename(
+                fn, user_id, jwt_token
+            )
+            if sampled:
+                ref["document_id"] = sampled
+                changed = True
+        if not changed:
+            return query_data_str
+        filters["data_source_refs"] = refs
+        data["filters"] = filters
+        return _serialize_normalized_query_data(data)
+
+    async def sync_filters_after_document_rename(
+        self,
+        old_filename: str,
+        new_filename: str,
+        document_id: str | None,
+        user_id: str | None = None,
+        jwt_token: str | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Patch saved filters when a file is renamed: update ``data_source_refs``
+        filenames and multiselect ``data_sources`` values so searches still match.
+        """
+        from pathlib import Path
+
+        from utils.file_utils import get_filename_aliases
+
+        old = (old_filename or "").strip()
+        new = (new_filename or "").strip()
+        did = (document_id or "").strip() or None
+        if not old or not new:
+            return {"success": True, "updated_filters": 0}
+
+        match_keys: set[str] = set(get_filename_aliases(old))
+        if old:
+            match_keys.add(old)
+        # Labels often omit extension or differ by stem only (e.g. task_report vs task_report.pdf).
+        expanded: set[str] = set()
+        for k in match_keys:
+            if not k:
+                continue
+            expanded.add(k)
+            expanded.add(Path(k).stem)
+            expanded.add(Path(k).name)
+        match_keys = {x for x in expanded if x}
+
+        try:
+            listed = await self.search_knowledge_filters(
+                "", user_id=user_id, jwt_token=jwt_token, limit=1000
+            )
+            if not listed.get("success"):
+                return listed
+            updated_count = 0
+            for fdoc in listed.get("filters") or []:
+                qraw = fdoc.get("query_data")
+                if not qraw:
+                    continue
+                try:
+                    data = json.loads(qraw) if isinstance(qraw, str) else (qraw or {})
+                except json.JSONDecodeError:
+                    continue
+                filters_part = data.get("filters") or {}
+                changed = False
+
+                ds = list(filters_part.get("data_sources") or [])
+                if ds and "*" not in ds:
+                    new_ds = []
+                    for v in ds:
+                        vs = str(v).strip()
+                        if vs in match_keys:
+                            new_ds.append(did if did else new)
+                            changed = True
+                        else:
+                            new_ds.append(v)
+                    new_ds = list(dict.fromkeys(new_ds))
+                    filters_part["data_sources"] = new_ds
+
+                refs = filters_part.get("data_source_refs")
+                if isinstance(refs, list) and len(refs) > 0:
+                    new_refs = []
+                    for ref in refs:
+                        if not isinstance(ref, dict):
+                            new_refs.append(ref)
+                            continue
+                        rfn = (ref.get("filename") or "").strip()
+                        rdoc = (ref.get("document_id") or "").strip() or None
+                        new_ref = dict(ref)
+                        if did and rdoc == did:
+                            if rfn != new:
+                                new_ref["filename"] = new
+                                changed = True
+                        elif rfn in match_keys:
+                            new_ref["filename"] = new
+                            if did and not rdoc:
+                                new_ref["document_id"] = did
+                            changed = True
+                        new_refs.append(new_ref)
+                    filters_part["data_source_refs"] = new_refs
+
+                if not changed:
+                    continue
+
+                data["filters"] = filters_part
+                updated_q = _serialize_normalized_query_data(data)
+                fid = fdoc.get("id")
+                if not fid:
+                    continue
+                up = await self.update_knowledge_filter(
+                    str(fid),
+                    {
+                        "query_data": updated_q,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    },
+                    user_id=user_id,
+                    jwt_token=jwt_token,
+                )
+                if up.get("success"):
+                    updated_count += 1
+
+            if updated_count:
+                logger.info(
+                    "Synced knowledge filters after document rename",
+                    updated_filters=updated_count,
+                    old_filename=old,
+                    new_filename=new,
+                    user_id=user_id,
+                )
+            return {"success": True, "updated_filters": updated_count}
+        except Exception as e:
+            logger.exception(
+                "sync_filters_after_document_rename failed",
+                error=str(e),
+                old_filename=old,
+                user_id=user_id,
+            )
+            return {
+                "success": False,
+                "error": "Failed to sync knowledge filters after document rename",
+                "updated_filters": 0,
+            }
 
     async def delete_knowledge_filter(
         self, filter_id: str, user_id: str = None, jwt_token: str = None

@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { FilterColor, IconKey } from "@/components/filter-icon-popover";
+import type { DataSourceRef } from "@/lib/filter-normalization";
 
 interface KnowledgeFilter {
   id: string;
@@ -24,6 +25,7 @@ export interface ParsedQueryData {
   query: string;
   filters: {
     data_sources: string[];
+    data_source_refs?: DataSourceRef[];
     document_types: string[];
     owners: string[];
     connector_types: string[];
@@ -97,6 +99,7 @@ export function KnowledgeFilterProvider({
           query: raw.query ?? "",
           filters: {
             data_sources: raw.filters?.data_sources ?? ["*"],
+            data_source_refs: raw.filters?.data_source_refs ?? [],
             document_types: raw.filters?.document_types ?? ["*"],
             owners: raw.filters?.owners ?? ["*"],
             connector_types: raw.filters?.connector_types ?? ["*"],
@@ -154,6 +157,7 @@ export function KnowledgeFilterProvider({
       query: "",
       filters: {
         data_sources: ["*"],
+        data_source_refs: [],
         document_types: ["*"],
         owners: ["*"],
         connector_types: ["*"],

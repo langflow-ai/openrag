@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, EllipsisVertical, RefreshCw } from "lucide-react";
+import { AlertCircle, EllipsisVertical, Pencil, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -24,9 +24,20 @@ import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { Button } from "./ui/button";
 
+export interface RenameDialogTarget {
+  filename: string;
+  /** Indexed `filename` for the rename API when it differs from the grid label (e.g. URL-grouped rows). */
+  renameCurrentFilename?: string;
+  documentId?: string;
+}
+
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  renameCurrentFilename?: string;
+  documentId?: string;
   connectorType?: string;
+  /** Host the rename modal outside the grid (e.g. knowledge page) so refetch does not unmount it. */
+  onOpenRename?: (target: RenameDialogTarget) => void;
 }
 
 // Cloud connector types that support sync
@@ -35,10 +46,18 @@ const CLOUD_CONNECTOR_TYPES = new Set([
   "onedrive",
   "sharepoint",
 ]);
+const RENAME_DISABLED_CONNECTOR_TYPES = new Set([
+  "url",
+  "openrag_docs",
+  "system_default",
+]);
 
 export const KnowledgeActionsDropdown = ({
   filename,
+  renameCurrentFilename,
+  documentId,
   connectorType,
+  onOpenRename,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -49,6 +68,10 @@ export const KnowledgeActionsDropdown = ({
 
   // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
+  const normalizedConnectorType = (connectorType || "").trim().toLowerCase();
+  const isRenameDisabledByConnector =
+    normalizedConnectorType.length > 0 &&
+    RENAME_DISABLED_CONNECTOR_TYPES.has(normalizedConnectorType);
 
   // Check if the connector is connected
   const isConnected = useMemo(() => {
@@ -120,6 +143,22 @@ export const KnowledgeActionsDropdown = ({
           >
             View chunks
           </DropdownMenuItem>
+          {!isRenameDisabledByConnector && (
+            <DropdownMenuItem
+              className="text-primary focus:text-primary cursor-pointer"
+              disabled={!onOpenRename}
+              onClick={() => {
+                onOpenRename?.({
+                  filename,
+                  renameCurrentFilename: renameCurrentFilename ?? filename,
+                  documentId,
+                });
+              }}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Rename
+            </DropdownMenuItem>
+          )}
           {isCloudFile && (
             <TooltipProvider>
               <Tooltip delayDuration={0}>

@@ -35,7 +35,12 @@ async def chat_endpoint(
 
     if body.filters:
         from auth_context import set_search_filters
-        set_search_filters(body.filters)
+        from utils.search_source_enrichment import enrich_search_filters_source_dimension
+
+        enriched = await enrich_search_filters_source_dimension(
+            session_manager, user.user_id, jwt_token, dict(body.filters)
+        )
+        set_search_filters(enriched)
 
     from auth_context import set_search_limit, set_score_threshold
     set_search_limit(body.limit)
@@ -85,7 +90,12 @@ async def langflow_endpoint(
 
     if body.filters:
         from auth_context import set_search_filters
-        set_search_filters(body.filters)
+        from utils.search_source_enrichment import enrich_search_filters_source_dimension
+
+        enriched = await enrich_search_filters_source_dimension(
+            session_manager, user.user_id, jwt_token, dict(body.filters)
+        )
+        set_search_filters(enriched)
 
     from auth_context import set_search_limit, set_score_threshold
     set_search_limit(body.limit)

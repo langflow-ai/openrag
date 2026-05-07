@@ -108,6 +108,11 @@ class SearchService:
         )
 
         filters = get_search_filters() or {}
+        from utils.search_source_enrichment import enrich_search_filters_source_dimension
+
+        filters = await enrich_search_filters_source_dimension(
+            self.session_manager, user_id, jwt_token, filters
+        )
         limit = get_search_limit()
         score_threshold = get_score_threshold()
         # Detect wildcard request ("*") to return global facets/stats without semantic search
@@ -124,32 +129,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
+            from utils.search_filter_clauses import build_user_filter_clauses
 
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append(
-                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
-                            )
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = build_user_filter_clauses(filters)
 
             try:
                 # Build aggregation query with filters applied
@@ -281,32 +263,9 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
+            from utils.search_filter_clauses import build_user_filter_clauses
 
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append(
-                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
-                            )
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = build_user_filter_clauses(filters)
 
         # Build query body
         if is_wildcard_match_all:
@@ -418,6 +377,7 @@ class SearchService:
             },
             "_source": [
                 "filename",
+                "document_id",
                 "mimetype",
                 "page",
                 "text",
@@ -544,6 +504,7 @@ class SearchService:
             chunks.append(
                 {
                     "filename": source.get("filename"),
+                    "document_id": source.get("document_id"),
                     "mimetype": source.get("mimetype"),
                     "page": source.get("page"),
                     "text": source.get("text"),

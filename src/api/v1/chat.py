@@ -115,7 +115,12 @@ async def chat_create_endpoint(
     jwt_token = user.jwt_token
 
     if body.filters:
-        set_search_filters(body.filters)
+        from utils.search_source_enrichment import enrich_search_filters_source_dimension
+
+        enriched = await enrich_search_filters_source_dimension(
+            session_manager, user.user_id, jwt_token, dict(body.filters)
+        )
+        set_search_filters(enriched)
     set_search_limit(body.limit)
     set_score_threshold(body.score_threshold)
     set_auth_context(user_id, jwt_token)

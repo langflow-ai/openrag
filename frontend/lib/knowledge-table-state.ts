@@ -2,9 +2,22 @@ import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import type { TaskFile } from "@/contexts/task-context";
 
 export interface KnowledgeSourceOption {
+  /** `document_id` when present, else filename/URL (multiselect value). */
   value: string;
   label: string;
   count: number;
+  documentId?: string;
+}
+
+/** Value for POST /documents/rename `current_filename` (indexed field), not the grid grouping key. */
+export function getRenameCurrentFilename(
+  file: Pick<SearchFile, "filename" | "chunks">,
+): string {
+  const fromChunk = file.chunks?.[0]?.filename?.trim();
+  if (fromChunk) {
+    return fromChunk;
+  }
+  return (file.filename || "").trim();
 }
 
 export function getKnowledgeFileIdentity(file?: {
@@ -98,22 +111,34 @@ export function buildKnowledgeTableRows(
 export function buildActiveSourceOptions(
   rows: SearchFile[],
 ): KnowledgeSourceOption[] {
-  const sourceCounts = rows
-    .filter((file) => (file.status || "active") === "active")
-    .reduce((acc, file) => {
-      const source = file.filename?.trim() || file.source_url?.trim();
-      if (!source) {
-        return acc;
+  const byValue = new Map<
+    string,
+    { label: string; count: number; documentId?: string }
+  >();
+  for (const file of rows.filter((f) => (f.status || "active") === "active")) {
+    const label = file.filename?.trim() || file.source_url?.trim();
+    if (!label) {
+      continue;
+    }
+    const id = file.document_id?.trim();
+    const value = id || label;
+    const cur = byValue.get(value);
+    if (cur) {
+      cur.count += 1;
+      if (!cur.documentId && id) {
+        cur.documentId = id;
       }
-      acc.set(source, (acc.get(source) || 0) + 1);
-      return acc;
-    }, new Map<string, number>());
+    } else {
+      byValue.set(value, { label, count: 1, documentId: id });
+    }
+  }
 
-  return Array.from(sourceCounts.entries())
-    .map(([source, count]) => ({
-      value: source,
-      label: source,
+  return Array.from(byValue.entries())
+    .map(([value, { label, count, documentId }]) => ({
+      value,
+      label,
       count,
+      documentId,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }

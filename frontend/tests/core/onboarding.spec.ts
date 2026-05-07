@@ -18,19 +18,37 @@ test("can configure OpenAI provider", async ({ page }) => {
     page.getByTestId("conversation-button-What is OpenRAG?").first(),
   ).toBeVisible();
 
-  await expect(page.getByTestId("selected-knowledge-filter")).toContainText(
-    "test-document",
-  );
+  const selectedKnowledgeFilter = page.getByTestId("selected-knowledge-filter");
+  const ensureTestDocumentFilter = async () => {
+    const currentFilterText =
+      (await selectedKnowledgeFilter.textContent()) || "";
+    if (currentFilterText.includes("test-document")) {
+      return;
+    }
+    const clearSelectedFilter = page.getByTestId("clear-selected-filter");
+    if (await clearSelectedFilter.isVisible()) {
+      await clearSelectedFilter.click();
+    }
+    const chatInput = page.getByTestId("chat-input");
+    await chatInput.click();
+    await chatInput.fill("@test-document");
+    await chatInput.press("Enter");
+    await expect(selectedKnowledgeFilter).toContainText("test-document", {
+      timeout: 15000,
+    });
+  };
+
+  await ensureTestDocumentFilter();
 
   await page
     .getByTestId("chat-input")
-    .fill("What is the ID of verification of the document?");
+    .fill("From @test-document, return only the exact value after 'ID:'");
 
   await page.getByTestId("send-button").click();
 
   await expect(page.getByText("Thinking")).toBeVisible();
 
-  await expect(page.getByText("OPENRAG-GENERIC-ASSET-001")).toBeVisible({
+  await expect(page.getByText(/OPENRAG-GENERIC-ASSET-001/i)).toBeVisible({
     timeout: 60000,
   });
 

@@ -546,6 +546,7 @@ class LangflowFileService:
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
         connector_type: Optional[str] = None,
+        document_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Combined Docling upload and Langflow ingest operation.
@@ -614,6 +615,7 @@ class LangflowFileService:
                 owner_name=owner_name,
                 owner_email=owner_email,
                 connector_type=connector_type,
+                document_id=document_id,
                 docling_task_id=task_id,
             )
             total_duration = round(time.time() - total_start_time, 2)

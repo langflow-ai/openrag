@@ -18,8 +18,9 @@ export interface UploadFileResult {
 export async function duplicateCheck(
   file: File,
 ): Promise<DuplicateCheckResponse> {
+  const contentHash = await computeContentHashId(file);
   const response = await fetch(
-    `/api/documents/check-filename?filename=${encodeURIComponent(file.name)}`,
+    `/api/documents/check-filename?filename=${encodeURIComponent(file.name)}&content_hash=${encodeURIComponent(contentHash)}`,
   );
 
   if (!response.ok) {
@@ -30,6 +31,21 @@ export async function duplicateCheck(
   }
 
   return response.json();
+}
+
+async function computeContentHashId(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const bytes = new Uint8Array(digest);
+  let binary = "";
+  for (const b of bytes) {
+    binary += String.fromCharCode(b);
+  }
+  const base64 = btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  return base64.slice(0, 24);
 }
 
 export async function uploadFileForContext(

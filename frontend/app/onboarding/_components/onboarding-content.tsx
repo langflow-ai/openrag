@@ -285,7 +285,7 @@ export function OnboardingContent({
                 messageIndex={0}
                 expandedFunctionCalls={new Set()}
                 onToggle={() => {}}
-                isStreaming={!!streamingMessage}
+                isStreaming={Boolean(streamingMessage) || isLoading}
                 isCompleted={currentStep > 3}
               />
             )}

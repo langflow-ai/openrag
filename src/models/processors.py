@@ -62,6 +62,66 @@ class TaskProcessor:
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
 
+    async def check_document_id_exists(
+        self,
+        document_id: str,
+        opensearch_client,
+        owner_user_id: str = None,
+    ) -> bool:
+        """
+        Check if any chunk exists with the given document_id.
+        Uses a search query instead of _id lookup because chunk documents are
+        typically stored with per-chunk ids, not the raw document_id.
+        """
+        from config.settings import get_index_name
+        import asyncio
+
+        normalized_id = (document_id or "").strip()
+        if not normalized_id:
+            return False
+
+        must = [{"term": {"document_id": normalized_id}}]
+        if owner_user_id:
+            must.append({"term": {"owner": owner_user_id}})
+        search_body = {
+            "query": {"bool": {"must": must}},
+            "size": 1,
+            "_source": False,
+        }
+
+        max_retries = 3
+        retry_delay = 1.0
+        for attempt in range(max_retries):
+            try:
+                response = await opensearch_client.search(
+                    index=get_index_name(),
+                    body=search_body,
+                )
+                hits = response.get("hits", {}).get("hits", [])
+                return len(hits) > 0
+            except (asyncio.TimeoutError, Exception) as e:
+                if attempt == max_retries - 1:
+                    logger.error(
+                        "OpenSearch document_id check failed after retries",
+                        document_id=normalized_id,
+                        error=str(e),
+                        attempt=attempt + 1,
+                    )
+                    logger.warning(
+                        "Assuming document_id doesn't exist due to connection issues",
+                        document_id=normalized_id,
+                    )
+                    return False
+                logger.warning(
+                    "OpenSearch document_id check failed, retrying",
+                    document_id=normalized_id,
+                    error=str(e),
+                    attempt=attempt + 1,
+                    retry_in=retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+
     async def check_filename_exists(
         self,
         filename: str,
@@ -159,7 +219,8 @@ class TaskProcessor:
                 delete_body = build_filename_delete_body(candidate)
                 response = await opensearch_client.delete_by_query(
                     index=get_index_name(),
-                    body=delete_body
+                    body=delete_body,
+                    conflicts="proceed",
                 )
                 deleted_count += response.get("deleted", 0)
             logger.info(
@@ -175,6 +236,96 @@ class TaskProcessor:
                 error=str(e)
             )
             raise
+
+    async def delete_document_by_id(
+        self,
+        document_id: str,
+        opensearch_client,
+        owner_user_id: str = None,
+    ) -> None:
+        """Delete all chunks for a document_id from OpenSearch."""
+        from config.settings import get_index_name
+
+        normalized_id = (document_id or "").strip()
+        if not normalized_id:
+            return
+
+        must = [{"term": {"document_id": normalized_id}}]
+        if owner_user_id:
+            must.append({"term": {"owner": owner_user_id}})
+
+        try:
+            response = await opensearch_client.delete_by_query(
+                index=get_index_name(),
+                body={"query": {"bool": {"must": must}}},
+                conflicts="proceed",
+            )
+            logger.info(
+                "Deleted existing document chunks by document_id",
+                document_id=normalized_id,
+                deleted_count=response.get("deleted", 0),
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to delete existing document by document_id",
+                document_id=normalized_id,
+                error=str(e),
+            )
+            raise
+
+    async def ensure_document_id_for_filename(
+        self,
+        filename: str,
+        document_id: str,
+        opensearch_client,
+        owner_user_id: str = None,
+    ) -> int:
+        """
+        Backfill/normalize document_id for chunks indexed by Langflow under filename.
+        This guarantees content-based duplicate checks keep working after rename.
+        """
+        from config.settings import get_index_name
+        from utils.file_utils import get_filename_aliases
+
+        normalized_id = (document_id or "").strip()
+        aliases = get_filename_aliases(filename)
+        if not normalized_id or not aliases:
+            return 0
+
+        must_clauses = [
+            {
+                "bool": {
+                    "should": [{"term": {"filename": name}} for name in aliases],
+                    "minimum_should_match": 1,
+                }
+            }
+        ]
+        if owner_user_id:
+            must_clauses.append({"term": {"owner": owner_user_id}})
+
+        response = await opensearch_client.update_by_query(
+            index=get_index_name(),
+            body={
+                "query": {"bool": {"must": must_clauses}},
+                "script": {
+                    "source": "ctx._source.document_id = params.doc_id",
+                    "lang": "painless",
+                    "params": {"doc_id": normalized_id},
+                },
+            },
+            conflicts="proceed",
+            refresh=True,
+        )
+        updated = int(response.get("updated", 0) or 0)
+        if updated > 0:
+            logger.info(
+                "Backfilled document_id for filename chunks",
+                filename=filename,
+                document_id=normalized_id,
+                owner=owner_user_id,
+                updated=updated,
+            )
+        return updated
 
     async def process_document_standard(
         self,
@@ -841,6 +992,7 @@ class LangflowFileProcessor(TaskProcessor):
         """Process a file path using LangflowFileService upload_and_ingest_file"""
         import mimetypes
         import os
+        from utils.hash_utils import hash_id
         from models.tasks import TaskStatus
         import time
 
@@ -857,6 +1009,28 @@ class LangflowFileProcessor(TaskProcessor):
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 self.owner_user_id, self.jwt_token
             )
+            file_hash = hash_id(item)
+            content_exists = await self.check_document_id_exists(
+                file_hash,
+                opensearch_client,
+                owner_user_id=self.owner_user_id,
+            )
+
+            if content_exists and not self.replace_duplicates:
+                file_task.status = TaskStatus.FAILED
+                file_task.error = (
+                    f"File content already exists for '{original_filename}'"
+                )
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+            elif content_exists and self.replace_duplicates:
+                logger.info(f"Replacing existing document by content hash: {file_hash}")
+                await self.delete_document_by_id(
+                    file_hash,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
 
             filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
 
@@ -919,7 +1093,25 @@ class LangflowFileProcessor(TaskProcessor):
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 connector_type=self.connector_type,
+                document_id=file_hash,
             )
+
+            # Some Langflow flows may still index chunks with empty document_id.
+            # Normalize it here so content-based duplicate checks remain reliable.
+            try:
+                await self.ensure_document_id_for_filename(
+                    langflow_filename,
+                    file_hash,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
+            except Exception as backfill_err:
+                logger.warning(
+                    "Non-fatal document_id backfill failure after Langflow ingest",
+                    langflow_filename=langflow_filename,
+                    file_hash=file_hash,
+                    error=str(backfill_err),
+                )
 
             # Update task with success
             file_task.status = TaskStatus.COMPLETED

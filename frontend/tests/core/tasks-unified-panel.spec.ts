@@ -3,10 +3,20 @@ import { completeOnboarding } from "../utils/onboarding";
 
 test.describe.configure({ mode: "serial" });
 
-test.beforeEach(async ({ page }) => {
+test.beforeAll(async ({ browser }) => {
+  const page = await browser.newPage();
   await completeOnboarding(page, {
     llmProvider: "openai",
     embeddingProvider: "openai",
+    reset: true,
+  });
+  await page.close();
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("onboarding-completed")).toBeVisible({
+    timeout: 120000,
   });
 });
 

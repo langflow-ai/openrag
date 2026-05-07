@@ -29,6 +29,7 @@ def normalize_query_data(query_data: str | dict) -> str:
     filters = data.get("filters") or {}
     normalized_filters = {
         "data_sources": filters.get("data_sources", ["*"]),
+        "data_source_refs": filters.get("data_source_refs", []),
         "document_types": filters.get("document_types", ["*"]),
         "owners": filters.get("owners", ["*"]),
         "connector_types": filters.get("connector_types", ["*"]),
@@ -183,12 +184,6 @@ async def update_knowledge_filter(
 
     existing_filter = existing_result["filter"]
 
-    delete_result = await knowledge_filter_service.delete_knowledge_filter(
-        filter_id, user_id=user.user_id, jwt_token=jwt_token
-    )
-    if not delete_result.get("success"):
-        return JSONResponse({"error": "Failed to delete existing knowledge filter"}, status_code=500)
-
     query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
     try:
         normalized_query_data = normalize_query_data(query_data)
@@ -208,7 +203,7 @@ async def update_knowledge_filter(
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    result = await knowledge_filter_service.create_knowledge_filter(
+    result = await knowledge_filter_service.upsert_knowledge_filter(
         updated_filter, user_id=user.user_id, jwt_token=jwt_token
     )
 

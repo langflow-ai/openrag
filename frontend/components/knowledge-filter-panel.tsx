@@ -8,6 +8,7 @@ import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
 import { useGetSearchAggregations } from "@/app/api/queries/useGetSearchAggregations";
 import {
   EMPTY_SEARCH_RESULT,
+  type SearchResult,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
 import {
@@ -30,6 +31,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import type { DataSourceRef } from "@/lib/filter-normalization";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
@@ -111,14 +113,25 @@ export function KnowledgeFilterPanel() {
       // Use the exact selections from the saved filter
       // Empty arrays mean "none selected" not "all selected"
       // Provide defaults for missing fields to handle API-created filters
+      const refs = filters.data_source_refs as DataSourceRef[] | undefined;
+      const fromRefs =
+        refs?.length && refs.length > 0
+          ? refs
+              .map((r) =>
+                r.document_id?.trim()
+                  ? r.document_id.trim()
+                  : (r.filename ?? "").trim(),
+              )
+              .filter((s) => s.length > 0)
+          : [];
       const processedFilters = {
-        data_sources: filters.data_sources ?? ["*"],
+        data_sources: fromRefs.length
+          ? fromRefs
+          : (filters.data_sources ?? ["*"]),
         document_types: filters.document_types ?? ["*"],
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
       };
-
-      console.log("[DEBUG] Loading filter selections:", processedFilters);
 
       setSelectedFilters(processedFilters);
       setResultLimit(parsedFilterData.limit || 10);
@@ -135,12 +148,27 @@ export function KnowledgeFilterPanel() {
     if (createMode && parsedFilterData) {
       setQuery(parsedFilterData.query || "");
       // Provide defaults for missing filter fields
-      const filters = parsedFilterData.filters || {};
+      const filtersCreate = parsedFilterData.filters || {};
+      const refsCreate = filtersCreate.data_source_refs as
+        | DataSourceRef[]
+        | undefined;
+      const fromRefsCreate =
+        refsCreate?.length && refsCreate.length > 0
+          ? refsCreate
+              .map((r) =>
+                r.document_id?.trim()
+                  ? r.document_id.trim()
+                  : (r.filename ?? "").trim(),
+              )
+              .filter((s) => s.length > 0)
+          : [];
       setSelectedFilters({
-        data_sources: filters.data_sources ?? ["*"],
-        document_types: filters.document_types ?? ["*"],
-        owners: filters.owners ?? ["*"],
-        connector_types: filters.connector_types ?? ["*"],
+        data_sources: fromRefsCreate.length
+          ? fromRefsCreate
+          : (filtersCreate.data_sources ?? ["*"]),
+        document_types: filtersCreate.document_types ?? ["*"],
+        owners: filtersCreate.owners ?? ["*"],
+        connector_types: filtersCreate.connector_types ?? ["*"],
       });
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
@@ -162,7 +190,7 @@ export function KnowledgeFilterPanel() {
   const { data = EMPTY_SEARCH_RESULT } = useGetSearchQuery("*", null, {
     enabled: isPanelOpen,
   });
-  const allSearchData = data.files;
+  const allSearchData = (data as SearchResult).files;
 
   useEffect(() => {
     if (!aggregations) return;
@@ -187,9 +215,24 @@ export function KnowledgeFilterPanel() {
       nameInputRef.current?.focus();
       return;
     }
+    const buildSourceRefs = (): DataSourceRef[] => {
+      const ds = selectedFilters.data_sources;
+      if (!ds || ds.includes("*")) return [];
+      return ds.map((val) => {
+        const opt = sourceOptions.find((o) => o.value === val);
+        return {
+          filename: opt?.label ?? val,
+          document_id: opt?.documentId?.trim() || null,
+        };
+      });
+    };
+
     const filterData = {
       query,
-      filters: selectedFilters,
+      filters: {
+        ...selectedFilters,
+        data_source_refs: buildSourceRefs(),
+      },
       limit: resultLimit,
       scoreThreshold,
       color,

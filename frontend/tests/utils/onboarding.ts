@@ -45,8 +45,7 @@ export async function completeOnboarding(
     await expect(completedLocator.or(contentLocator)).toBeVisible({
       timeout: 15000,
     });
-  } catch (error) {
-    console.log("Neither onboarding state visible, refreshing page...");
+  } catch (_error) {
     await page.reload();
     await expect(completedLocator.or(contentLocator)).toBeVisible({
       timeout: 15000,
@@ -55,14 +54,17 @@ export async function completeOnboarding(
 
   const isCompleted = await completedLocator.isVisible();
 
-  if (isCompleted) {
-    if (!reset) {
-      console.log("Onboarding already complete, skipping...");
-      return;
-    }
+  if (!reset && isCompleted) {
+    return;
+  }
 
-    console.log("Onboarding complete and reset is true, rolling back...");
-    const response = await page.request.post("/api/onboarding/rollback");
+  // Mid-run failures can advance backend onboarding step without ever showing the
+  // main chat layout (`onboarding-completed`). Always rollback when tests request a
+  // reset so LLM/embedding tabs stay reachable on Playwright retries.
+  if (reset) {
+    const response = await page.request.post("/api/onboarding/rollback", {
+      data: { embedding_only: false },
+    });
     if (!response.ok()) {
       const text = await response.text();
       console.error(
@@ -73,9 +75,7 @@ export async function completeOnboarding(
       }
     }
 
-    console.log("Refreshing page after rollback...");
     await page.reload();
-    // After rollback and reload, we must see the onboarding content
     await expect(contentLocator).toBeVisible({ timeout: 15000 });
   }
 
