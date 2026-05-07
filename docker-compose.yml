@@ -11,6 +11,14 @@ services:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+    # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
+    # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
+    # docker DNS — so the alias overrides docker-compose service-name
+    # resolution unconditionally and routes OpenSearch's JWKS lookup to
+    # the host gateway. In CI the host has nothing on port 8000, so JWT
+    # validation breaks (every /search returns 401). Dev-local users who
+    # run `make backend` on the host need the alias and should add it via
+    # an override file (see AGENTS.md → Operational constraints).
     ports:
       - "9200:9200"
       - "9600:9600"

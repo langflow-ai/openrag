@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
 
-from dependencies import get_session_manager, get_current_user
+from dependencies import get_session_manager, get_current_user, require_permission
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -168,7 +168,7 @@ async def check_filename_exists(
 async def delete_documents_by_filename(
     body: DeleteDocumentBody,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:delete:own")),
     ):
     """Delete all documents with a specific filename"""
     payload, status_code =await delete_documents_by_filename_core(
