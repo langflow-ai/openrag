@@ -107,6 +107,40 @@ async def test_chat_endpoint_calls_assert_owns_with_previous_response_id(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_chat_endpoint_uses_db_user_id_for_ownership_and_storage(monkeypatch):
+    from api import chat as chat_module
+    from api.chat import ChatBody
+
+    calls = []
+
+    async def _fake_assert(sid, uid):
+        calls.append(("assert", sid, uid))
+
+    fake_chat_service = AsyncMock()
+    fake_chat_service.chat = AsyncMock(return_value={"response": "ok"})
+
+    monkeypatch.setattr(chat_module, "_assert_owns", _fake_assert)
+
+    class FakeUser:
+        user_id = "oauth-alice"
+        db_user_id = "db-alice"
+        jwt_token = None
+        name = "A"
+        email = "a@x"
+
+    body = ChatBody(prompt="hi", previous_response_id="sess-1")
+    await chat_module.chat_endpoint(
+        body=body,
+        chat_service=fake_chat_service,
+        session_manager=None,
+        user=FakeUser(),
+    )
+    assert calls[0] == ("assert", "sess-1", "db-alice")
+    assert fake_chat_service.chat.await_args.kwargs["storage_user_id"] == "db-alice"
+    assert fake_chat_service.chat.await_args.args[1] == "oauth-alice"
+
+
+@pytest.mark.asyncio
 async def test_langflow_endpoint_calls_assert_owns(monkeypatch):
     from api import chat as chat_module
     from api.chat import ChatBody
@@ -162,3 +196,57 @@ async def test_delete_session_endpoint_calls_assert_owns(monkeypatch):
         user=FakeUser(),
     )
     assert calls[0] == ("assert", "sess-1", "alice")
+
+
+@pytest.mark.asyncio
+async def test_upload_context_uses_db_user_id_for_existing_session(monkeypatch):
+    from api import upload as upload_module
+
+    calls = []
+
+    async def _fake_assert(sid, uid):
+        calls.append(("assert", sid, uid))
+
+    monkeypatch.setattr("api.chat._assert_owns", _fake_assert)
+
+    class FakeFile:
+        filename = "notes.txt"
+
+    class FakeUser:
+        user_id = "oauth-alice"
+        db_user_id = "db-alice"
+        jwt_token = "token"
+        name = "A"
+        email = "a@x"
+
+    fake_document_service = AsyncMock()
+    fake_document_service.process_upload_context = AsyncMock(
+        return_value={
+            "content": "hello",
+            "filename": "notes.txt",
+            "pages": 1,
+            "content_length": 5,
+        }
+    )
+    fake_chat_service = AsyncMock()
+    fake_chat_service.upload_context_chat = AsyncMock(return_value=("ok", "resp-1"))
+
+    await upload_module.upload_context(
+        file=FakeFile(),
+        previous_response_id="sess-1",
+        endpoint="chat",
+        document_service=fake_document_service,
+        chat_service=fake_chat_service,
+        session_manager=None,
+        user=FakeUser(),
+    )
+
+    assert calls[0] == ("assert", "sess-1", "db-alice")
+    assert (
+        fake_chat_service.upload_context_chat.await_args.kwargs["storage_user_id"]
+        == "db-alice"
+    )
+    assert (
+        fake_chat_service.upload_context_chat.await_args.kwargs["user_id"]
+        == "oauth-alice"
+    )

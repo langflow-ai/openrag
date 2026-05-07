@@ -122,6 +122,13 @@ async def upload_context(
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
     user_id = user.user_id if user else None
+    storage_user_id = (
+        (getattr(user, "db_user_id", None) or user.user_id) if user else None
+    )
+
+    if previous_response_id and storage_user_id:
+        from api.chat import _assert_owns
+        await _assert_owns(previous_response_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -143,6 +150,7 @@ async def upload_context(
         owner=owner_user_id,
         owner_name=owner_name,
         owner_email=owner_email,
+        storage_user_id=storage_user_id,
     )
 
     response_data = {

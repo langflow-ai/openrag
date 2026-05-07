@@ -24,9 +24,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
+from db.models import User as UserRow  # noqa: E402
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
+    _ENSURED_USER_IDS,
+    _user_cache_key,
     get_current_user,
     get_rbac_service,
     require_all_permissions,
@@ -82,6 +85,17 @@ async def app(monkeypatch):
         await role_repo.revoke_role(viewer_db.id, user_role.id)
         await role_repo.assign_role(viewer_db.id, viewer_role.id)
 
+        aliased_db = UserRow(
+            id="db-aliased-user",
+            oauth_provider="google",
+            oauth_subject="oauth-aliased-sub",
+            email="alias@x.com",
+            display_name="Alias",
+        )
+        s.add(aliased_db)
+        await s.flush()
+        await role_repo.assign_role(aliased_db.id, user_role.id)
+
         await s.commit()
 
         # Map persona name -> User dataclass with id matching the DB row id so
@@ -100,6 +114,13 @@ async def app(monkeypatch):
         PERSONAS["viewer"] = User(
             user_id=viewer_db.id, email="v@x.com", name="V", provider="google"
         )
+        PERSONAS["aliased"] = User(
+            user_id="oauth-aliased-sub",
+            email="alias@x.com",
+            name="Alias",
+            provider="google",
+        )
+        _ENSURED_USER_IDS[_user_cache_key(PERSONAS["aliased"])] = aliased_db.id
 
     rbac = RBACService(SessionLocal)
 
@@ -138,7 +159,12 @@ async def app(monkeypatch):
     ):
         return JSONResponse({"user_id": user.user_id})
 
+    @app.post("/test/whoami")
+    async def whoami(user=Depends(require_permission("chat:use"))):
+        return JSONResponse({"user_id": user.user_id, "db_user_id": user.db_user_id})
+
     yield app
+    _ENSURED_USER_IDS.pop(_user_cache_key(PERSONAS["aliased"]), None)
     await engine.dispose()
 
 
@@ -201,3 +227,15 @@ async def test_all_permissions_response_lists_required_permissions(app):
         r = await c.post("/test/upload-context", headers={"X-Test-Persona": "viewer"})
     assert r.status_code == 403
     assert r.json()["detail"]["required"] == ["knowledge:upload", "chat:use"]
+
+
+@pytest.mark.asyncio
+async def test_permission_check_uses_resolved_db_user_id(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/test/whoami", headers={"X-Test-Persona": "aliased"})
+    assert r.status_code == 200
+    assert r.json() == {
+        "user_id": "oauth-aliased-sub",
+        "db_user_id": "db-aliased-user",
+    }

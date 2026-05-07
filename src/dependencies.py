@@ -216,6 +216,24 @@ async def _resolve_db_user_id(user: User) -> str:
     return resolved or user.user_id
 
 
+async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional[User]:
+    """Attach the internal SQL users.id to the request user.
+
+    `User.user_id` remains the external auth subject used in JWT/OpenSearch
+    flows. `User.db_user_id` is the OpenRAG owner id used by SQL-backed
+    RBAC and ownership tables.
+    """
+    if user is None:
+        request.state.db_user_id = None
+        request.state.user = None
+        return None
+    db_user_id = await _resolve_db_user_id(user)
+    user_with_db_id = dataclasses.replace(user, db_user_id=db_user_id)
+    request.state.db_user_id = db_user_id
+    request.state.user = user_with_db_id
+    return user_with_db_id
+
+
 def invalidate_user_ensured_cache(
     oauth_provider: Optional[str] = None,
     oauth_subject: Optional[str] = None,
@@ -263,10 +281,12 @@ def require_permission(perm: str):
         if not is_rbac_enforced():
             # RBAC kill-switch: still resolve the DB id so downstream
             # ownership checks that compare against it keep working.
-            await _resolve_db_user_id(user)
-            return user
+            return await _attach_db_user_id(request, user)
         role_override = getattr(request.state, "api_key_role_ids", None)
         db_user_id = await _resolve_db_user_id(user)
+        user = dataclasses.replace(user, db_user_id=db_user_id)
+        request.state.db_user_id = db_user_id
+        request.state.user = user
         perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
         if perm not in perms:
             await rbac.audit_denied(db_user_id, perm)
@@ -293,10 +313,12 @@ def require_all_permissions(required_perms: Sequence[str]):
         rbac=Depends(get_rbac_service),
     ) -> User:
         if not is_rbac_enforced():
-            await _resolve_db_user_id(user)
-            return user
+            return await _attach_db_user_id(request, user)
         role_override = getattr(request.state, "api_key_role_ids", None)
         db_user_id = await _resolve_db_user_id(user)
+        user = dataclasses.replace(user, db_user_id=db_user_id)
+        request.state.db_user_id = db_user_id
+        request.state.user = user
         perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
         missing = [perm for perm in required if perm not in perms]
         if missing:
@@ -485,16 +507,13 @@ async def get_current_user(
         user = await _get_ibm_user(request, required=True)
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
-        await _ensure_db_user(user)
-        return user
+        return await _attach_db_user_id(request, user)
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        request.state.user = user
         effective_token = session_manager.get_effective_jwt_token(None, None)
         user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        await _ensure_db_user(user_with_token)
-        return user_with_token
+        return await _attach_db_user_id(request, user_with_token)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -508,9 +527,7 @@ async def get_current_user(
     effective_token = session_manager.get_effective_jwt_token(user.user_id, auth_token)
     user_with_token = dataclasses.replace(user, jwt_token=effective_token)
 
-    request.state.user = user_with_token
-    await _ensure_db_user(user_with_token)
-    return user_with_token
+    return await _attach_db_user_id(request, user_with_token)
 
 
 async def get_optional_user(
@@ -533,16 +550,15 @@ async def get_optional_user(
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
         if user:
-            await _ensure_db_user(user)
-        return user
+            return await _attach_db_user_id(request, user)
+        request.state.db_user_id = None
+        return None
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        request.state.user = user
         effective_token = session_manager.get_effective_jwt_token(None, None)
         user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        await _ensure_db_user(user_with_token)
-        return user_with_token
+        return await _attach_db_user_id(request, user_with_token)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -560,10 +576,11 @@ async def get_optional_user(
         dataclasses.replace(user, jwt_token=effective_token) if user else None
     )
 
-    request.state.user = user_with_token
     if user_with_token:
-        await _ensure_db_user(user_with_token)
-    return user_with_token
+        return await _attach_db_user_id(request, user_with_token)
+    request.state.user = None
+    request.state.db_user_id = None
+    return None
 
 
 async def get_api_key_user_async(
@@ -598,8 +615,7 @@ async def get_api_key_user_async(
                 opensearch_username=ibm_username,
                 opensearch_credentials=ibm_api_key,
             )
-            request.state.user = user
-            return user
+            return await _attach_db_user_id(request, user)
 
     # API key path
     api_key = request.headers.get("X-API-Key")
@@ -644,7 +660,6 @@ async def get_api_key_user_async(
     effective_token = session_manager.get_effective_jwt_token(user.user_id, None)
     user_with_token = dataclasses.replace(user, jwt_token=effective_token)
 
-    request.state.user = user_with_token
     request.state.api_key_id = user_info["key_id"]
     # Phase 2 will populate api_key_role_ids from the SQL api_keys table.
     # In Phase 1 we leave it unset so require_permission falls back to the
@@ -652,6 +667,5 @@ async def get_api_key_user_async(
     request.state.api_key_role_ids = getattr(
         request.state, "api_key_role_ids", None
     )
-    await _ensure_db_user(user_with_token)
 
-    return user_with_token
+    return await _attach_db_user_id(request, user_with_token)
