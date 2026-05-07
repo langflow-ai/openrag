@@ -231,13 +231,14 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                 )
             except Exception:  # noqa: BLE001
                 last = None
-            await repo.upsert_raw(
+            inserted = await repo.upsert_raw(
                 response_id=str(sid),
                 user_id=str(uid),
                 created_at=created,
                 last_accessed=last,
             )
-            stats["sessions_inserted"] += 1
+            if inserted:
+                stats["sessions_inserted"] += 1
 
     # --- conversations.json -------------------------------------------
     conv_payload = await _read_json(get_data_file("conversations.json"))
