@@ -650,7 +650,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName("fe"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -741,7 +741,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName("be"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -915,7 +915,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: saName("lf"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -1185,6 +1185,36 @@ func mergeLabels(baseLabels, customLabels map[string]string) map[string]string {
 	for k, v := range baseLabels {
 		merged[k] = v
 	}
+	return merged
+}
+
+// mergeImagePullSecrets merges global and component-specific imagePullSecrets.
+// Component-level secrets are added first, followed by global secrets.
+// Duplicates (same name) are automatically deduplicated, keeping the first occurrence.
+func mergeImagePullSecrets(global, component []corev1.LocalObjectReference) []corev1.LocalObjectReference {
+	if len(component) == 0 && len(global) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var merged []corev1.LocalObjectReference
+
+	// Add component secrets first
+	for _, secret := range component {
+		if !seen[secret.Name] {
+			merged = append(merged, secret)
+			seen[secret.Name] = true
+		}
+	}
+
+	// Add global secrets
+	for _, secret := range global {
+		if !seen[secret.Name] {
+			merged = append(merged, secret)
+			seen[secret.Name] = true
+		}
+	}
+
 	return merged
 }
 

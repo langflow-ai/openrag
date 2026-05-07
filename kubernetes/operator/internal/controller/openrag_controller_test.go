@@ -799,3 +799,195 @@ func TestReconcile_UUIDNameDNS1035Compliance(t *testing.T) {
 	assert.Equal(t, uuidName, beDeploy.Labels["app.kubernetes.io/instance"])
 	assert.Equal(t, uuidName, lfDeploy.Labels["app.kubernetes.io/instance"])
 }
+
+// ---------------------------------------------------------------------------
+// ImagePullSecrets tests
+// ---------------------------------------------------------------------------
+
+func TestMergeImagePullSecrets_BothEmpty(t *testing.T) {
+	result := mergeImagePullSecrets(nil, nil)
+	assert.Nil(t, result)
+}
+
+func TestMergeImagePullSecrets_OnlyGlobal(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	result := mergeImagePullSecrets(global, nil)
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}}, result)
+}
+
+func TestMergeImagePullSecrets_OnlyComponent(t *testing.T) {
+	component := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+	}
+	result := mergeImagePullSecrets(nil, component)
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "component-secret"}}, result)
+}
+
+func TestMergeImagePullSecrets_BothPresent(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	component := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+	}
+	result := mergeImagePullSecrets(global, component)
+	expected := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+		{Name: "global-secret"},
+	}
+	assert.Equal(t, expected, result)
+}
+
+func TestMergeImagePullSecrets_Deduplication(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "shared-secret"},
+		{Name: "global-only"},
+	}
+	component := []corev1.LocalObjectReference{
+		{Name: "component-only"},
+		{Name: "shared-secret"}, // Duplicate
+	}
+	result := mergeImagePullSecrets(global, component)
+	// Component secrets come first, dedup keeps first occurrence
+	expected := []corev1.LocalObjectReference{
+		{Name: "component-only"},
+		{Name: "shared-secret"}, // From component (first occurrence)
+		{Name: "global-only"},
+	}
+	assert.Equal(t, expected, result)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Frontend(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Frontend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "frontend-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Backend(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Backend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "backend-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Langflow(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Langflow.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "langflow-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_GlobalAndComponentImagePullSecrets(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	// Set global secrets
+	cr.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	// Set component-specific secrets
+	cr.Spec.Frontend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+	}
+	cr.Spec.Backend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+	}
+	cr.Spec.Langflow.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Check frontend: should have both frontend-specific and global
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, feDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+		{Name: "global-secret"},
+	}, feDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	// Check backend: should have both backend-specific and global
+	beDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, beDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+		{Name: "global-secret"},
+	}, beDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	// Check langflow: should have both langflow-specific and global
+	lfDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, lfDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+		{Name: "global-secret"},
+	}, lfDeploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_OnlyGlobalImagePullSecrets(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// All components should use the global secret
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, feDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		feDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	beDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, beDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		beDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	lfDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, lfDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		lfDeploy.Spec.Template.Spec.ImagePullSecrets)
+}
