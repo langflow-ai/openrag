@@ -5,8 +5,6 @@ import type {
   TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
-import type { FilterInput } from "@/lib/filter-normalization";
-import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   detectImplicitToolCall,
   detectRAGFromContent,
@@ -14,6 +12,8 @@ import {
   parseOpenRAGChunk,
   parseRealtimeChunk,
 } from "@/lib/chat-stream-parsers";
+import type { FilterInput } from "@/lib/filter-normalization";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
 interface UseChatStreamingOptions {
   endpoint?: string;
@@ -190,13 +190,19 @@ export function useChatStreaming({
                 parseOpenRAGChunk(chunk, content);
                 detectImplicitToolCall(chunk, currentFunctionCalls);
 
-                if (chunk.finish_reason === "error" || chunk.status === "failed") {
+                if (
+                  chunk.finish_reason === "error" ||
+                  chunk.status === "failed"
+                ) {
                   console.error("Error detected in stream");
                   isError = true;
                   break streamLoop;
                 }
 
-                if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
+                if (
+                  !controller.signal.aborted &&
+                  thisStreamId === streamIdRef.current
+                ) {
                   setStreamingMessage({
                     role: "assistant",
                     content: content.value,
@@ -219,7 +225,10 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
-      if (!hasReceivedData || (!content.value && currentFunctionCalls.length === 0)) {
+      if (
+        !hasReceivedData ||
+        (!content.value && currentFunctionCalls.length === 0)
+      ) {
         throw new Error(
           "No response received from the server. Please try again.",
         );

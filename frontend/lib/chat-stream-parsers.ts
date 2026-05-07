@@ -24,7 +24,8 @@ export function parseOpenAIChatChunk(
     } else if (fc.arguments) {
       const last = calls[calls.length - 1];
       if (last) {
-        last.argumentsString = (last.argumentsString ?? "") + (fc.arguments as string);
+        last.argumentsString =
+          (last.argumentsString ?? "") + (fc.arguments as string);
         if (last.argumentsString.includes("}")) {
           try {
             last.arguments = JSON.parse(last.argumentsString);
@@ -49,7 +50,8 @@ export function parseOpenAIChatChunk(
       } else if (fn.arguments) {
         const last = calls[calls.length - 1];
         if (last) {
-          last.argumentsString = (last.argumentsString ?? "") + (fn.arguments as string);
+          last.argumentsString =
+            (last.argumentsString ?? "") + (fn.arguments as string);
           if (last.argumentsString.includes("}")) {
             try {
               last.arguments = JSON.parse(last.argumentsString);
@@ -99,13 +101,21 @@ export function parseRealtimeChunk(
     if (!existing) {
       existing = [...calls]
         .reverse()
-        .find((fc) => fc.status === "pending" && !fc.id && fc.name === (item.tool_name || item.name));
+        .find(
+          (fc) =>
+            fc.status === "pending" &&
+            !fc.id &&
+            fc.name === (item.tool_name || item.name),
+        );
     }
     if (existing) {
       existing.id = item.id as string;
       existing.type = item.type as string;
       existing.name = (item.tool_name || item.name || existing.name) as string;
-      existing.arguments = (item.inputs || existing.arguments) as Record<string, unknown>;
+      existing.arguments = (item.inputs || existing.arguments) as Record<
+        string,
+        unknown
+      >;
     } else {
       calls.push({
         name: (item.tool_name || item.name || "unknown") as string,
@@ -139,8 +149,14 @@ export function parseRealtimeChunk(
     if (existing) {
       existing.id = item.id as string;
       existing.type = item.type as string;
-      existing.name = (item.tool_name || item.name || item.type || existing.name) as string;
-      existing.arguments = (item.inputs || existing.arguments) as Record<string, unknown>;
+      existing.name = (item.tool_name ||
+        item.name ||
+        item.type ||
+        existing.name) as string;
+      existing.arguments = (item.inputs || existing.arguments) as Record<
+        string,
+        unknown
+      >;
     } else {
       calls.push({
         name: (item.tool_name || item.name || item.type || "unknown") as string,
@@ -155,15 +171,22 @@ export function parseRealtimeChunk(
 
   if (type === "response.output_item.done" && item?.type === "function_call") {
     const functionCall = calls.find(
-      (fc) => fc.id === item.id || fc.name === item.tool_name || fc.name === item.name,
+      (fc) =>
+        fc.id === item.id ||
+        fc.name === item.tool_name ||
+        fc.name === item.name,
     );
     if (functionCall) {
       functionCall.status = item.status === "completed" ? "completed" : "error";
       functionCall.id = item.id as string;
       functionCall.type = item.type as string;
-      functionCall.name = (item.tool_name || item.name || functionCall.name) as string;
-      functionCall.arguments = (item.inputs || functionCall.arguments) as Record<string, unknown>;
-      if (item.results) functionCall.result = item.results as FunctionCall["result"];
+      functionCall.name = (item.tool_name ||
+        item.name ||
+        functionCall.name) as string;
+      functionCall.arguments = (item.inputs ||
+        functionCall.arguments) as Record<string, unknown>;
+      if (item.results)
+        functionCall.result = item.results as FunctionCall["result"];
     }
     return true;
   }
@@ -184,11 +207,13 @@ export function parseRealtimeChunk(
         (item.type as string).includes(fc.name),
     );
     if (functionCall) {
-      functionCall.arguments = (item.inputs || functionCall.arguments) as Record<string, unknown>;
+      functionCall.arguments = (item.inputs ||
+        functionCall.arguments) as Record<string, unknown>;
       functionCall.status = item.status === "completed" ? "completed" : "error";
       functionCall.id = item.id as string;
       functionCall.type = item.type as string;
-      if (item.results) functionCall.result = item.results as FunctionCall["result"];
+      if (item.results)
+        functionCall.result = item.results as FunctionCall["result"];
     } else {
       calls.push({
         name: (item.tool_name || item.name || item.type || "unknown") as string,
@@ -242,7 +267,10 @@ export function parseOpenRAGChunk(
 }
 
 // Granite 3.3 8b workaround: detects implicit tool calls with no explicit tool call markers
-export function detectImplicitToolCall(chunk: unknown, calls: FunctionCall[]): void {
+export function detectImplicitToolCall(
+  chunk: unknown,
+  calls: FunctionCall[],
+): void {
   if (calls.length > 0) return;
 
   const c = chunk as Chunk;
@@ -256,16 +284,25 @@ export function detectImplicitToolCall(chunk: unknown, calls: FunctionCall[]): v
       key.toLowerCase().includes("result"),
   );
   if (toolRelatedKeys.length > 0) {
-    console.log("[Tool Detection] Found tool-related keys:", toolRelatedKeys, chunk);
+    console.log(
+      "[Tool Detection] Found tool-related keys:",
+      toolRelatedKeys,
+      chunk,
+    );
   }
 
   const data = c.data as Chunk | undefined;
   const hasImplicitToolCall =
-    (c.results && Array.isArray(c.results) && (c.results as unknown[]).length > 0) ||
-    (c.outputs && Array.isArray(c.outputs) && (c.outputs as unknown[]).length > 0) ||
+    (c.results &&
+      Array.isArray(c.results) &&
+      (c.results as unknown[]).length > 0) ||
+    (c.outputs &&
+      Array.isArray(c.outputs) &&
+      (c.outputs as unknown[]).length > 0) ||
     c.retrieved_documents ||
     c.retrieval_results ||
-    (data && (data.results || data.retrieved_documents || data.retrieval_results));
+    (data &&
+      (data.results || data.retrieved_documents || data.retrieval_results));
 
   if (!hasImplicitToolCall) return;
 
@@ -291,9 +328,12 @@ export function detectImplicitToolCall(chunk: unknown, calls: FunctionCall[]): v
 
 // Post-processing: detects RAG usage from citation/content patterns in final response text
 export function detectRAGFromContent(content: string): FunctionCall | null {
-  const hasCitations = /\(Source:|\[Source:|\bSource:|filename:|document:/i.test(content);
+  const hasCitations =
+    /\(Source:|\[Source:|\bSource:|filename:|document:/i.test(content);
   const hasRAGPattern =
-    /based on.*(?:document|file|information|data)|according to.*(?:document|file)/i.test(content);
+    /based on.*(?:document|file|information|data)|according to.*(?:document|file)/i.test(
+      content,
+    );
 
   if (!hasCitations && !hasRAGPattern) return null;
 
