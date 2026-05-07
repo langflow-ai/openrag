@@ -73,7 +73,8 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
-	if instance.Spec.TargetNamespace != "" && instance.Spec.TargetNamespace != instance.Namespace {
+	targetNS := targetNamespace(instance)
+	if targetNS != instance.Namespace {
 		if !controllerutil.ContainsFinalizer(instance, finalizer) {
 			controllerutil.AddFinalizer(instance, finalizer)
 			if err := r.Update(ctx, instance); err != nil {
@@ -85,8 +86,6 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, nil
 		}
 	}
-
-	targetNS := targetNamespace(instance)
 
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
@@ -121,8 +120,9 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 		return nil
 	}
 
+	targetNS := targetNamespace(o)
 	ns := &corev1.Namespace{}
-	err := r.Get(ctx, client.ObjectKey{Name: o.Spec.TargetNamespace}, ns)
+	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}
