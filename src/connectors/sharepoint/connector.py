@@ -655,7 +655,11 @@ class SharePointConnector(BaseConnector):
             return None
             
         except Exception as e:
-            logger.error(f"Failed to get file metadata for {file_id}: {e}")
+            logger.error(
+                f"Failed to get file metadata for {file_id}: {e}. "
+                f"Site info: {self._parse_sharepoint_url()}, "
+                f"SharePoint URL: {self.sharepoint_url}"
+            )
             return None
     
     async def _download_file_content(self, file_id: str) -> bytes:
