@@ -38,17 +38,10 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
-# Backwards compatible flow ID handling with deprecation warnings
-_legacy_flow_id = os.getenv("FLOW_ID")
-
-LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
+LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID")
 LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
 LANGFLOW_URL_INGEST_FLOW_ID = os.getenv("LANGFLOW_URL_INGEST_FLOW_ID")
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
-
-if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
-    logger.warning("FLOW_ID is deprecated. Please use LANGFLOW_CHAT_FLOW_ID instead")
-    LANGFLOW_CHAT_FLOW_ID = _legacy_flow_id
 
 
 # Langflow superuser credentials for API key generation
