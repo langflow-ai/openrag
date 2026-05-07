@@ -372,6 +372,18 @@ async def connector_sync(
                     connector_type=connector_type,
                     file_count=len(existing_file_ids),
                 )
+                # Reconcile orphans (files deleted at the source) before re-syncing.
+                # Strict gating: skip when sync is capped — we'd see a partial remote
+                # listing and delete legitimate files.
+                if body.max_files is None:
+                    await reconcile_orphans_for_connector_type(
+                        connector_type=connector_type,
+                        user_id=user.user_id,
+                        connector_service=connector_service,
+                        session_manager=session_manager,
+                        jwt_token=jwt_token,
+                        existing_file_ids=existing_file_ids,
+                    )
                 task_id = await connector_service.sync_specific_files(
                     working_connection.connection_id,
                     user.user_id,
@@ -831,6 +843,17 @@ async def sync_all_connectors(
                         "Syncing specific files by document_id",
                         connector_type=connector_type,
                         file_count=len(existing_file_ids),
+                    )
+                    # Reconcile orphans (files deleted at the source) before re-syncing.
+                    # sync_all_connectors has no caps or filters, so gating reduces
+                    # to the strict checks inside the helper.
+                    await reconcile_orphans_for_connector_type(
+                        connector_type=connector_type,
+                        user_id=user.user_id,
+                        connector_service=connector_service,
+                        session_manager=session_manager,
+                        jwt_token=jwt_token,
+                        existing_file_ids=existing_file_ids,
                     )
                     task_id = await connector_service.sync_specific_files(
                         working_connection.connection_id,
