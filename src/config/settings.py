@@ -13,7 +13,7 @@ from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
-from utils.container_utils import get_container_host
+from utils.container_utils import get_container_host, determine_docling_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.logging_config import get_logger
 # Import configuration manager
@@ -68,6 +68,21 @@ IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentia
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
+
+# Docling service URL configuration
+# Priority:
+# 1. DOCLING_SERVE_URL environment variable
+# 2. Auto-detected host (container gateway, host.docker.internal, or localhost)
+_docling_url_override = os.getenv("DOCLING_SERVE_URL")
+if _docling_url_override:
+    DOCLING_SERVE_URL = _docling_url_override.rstrip("/")
+    # For health display / logging
+    DOCLING_HOST_IP = _docling_url_override
+    logger.info("Using DOCLING_SERVE_URL override: %s", DOCLING_SERVE_URL)
+else:
+    DOCLING_HOST_IP = determine_docling_host()
+    DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
+    logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 
@@ -324,6 +339,7 @@ class AppClients:
         self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
+        self._docling_service = None
 
     async def initialize(self):
         os_auth = None if IBM_AUTH_ENABLED else (OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD)
@@ -359,6 +375,10 @@ class AppClients:
                 pool=30.0,
             )
         )
+
+        # Eagerly initialize DoclingService to ensure thread-safety
+        from services.docling_service import DoclingService
+        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
 
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
@@ -599,6 +619,23 @@ class AppClients:
                 logger.warning("Failed to close patched client during refresh", error=str(e))
             finally:
                 self._patched_async_client = None
+
+    @property
+    def docling_service(self):
+        """Property that ensures DoclingService is initialized."""
+        # Quick check without lock
+        if self._docling_service is not None:
+            return self._docling_service
+
+        # Use lock to ensure only one thread initializes
+        with self._client_init_lock:
+            # Double-check after acquiring lock
+            if self._docling_service is not None:
+                return self._docling_service
+
+            from services.docling_service import DoclingService
+            self._docling_service = DoclingService(httpx_client=self.docling_http_client)
+            return self._docling_service
 
     async def cleanup(self):
         """Cleanup resources - should be called on application shutdown"""

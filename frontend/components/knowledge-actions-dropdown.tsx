@@ -20,8 +20,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
+import { RequirePermission } from "./require-permission";
 import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
@@ -165,12 +167,16 @@ export const KnowledgeActionsDropdown = ({
               </Tooltip>
             </TooltipProvider>
           )}
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive cursor-pointer"
-            onClick={() => setShowDeleteDialog(true)}
+          <RequirePermission
+            anyOf={["knowledge:delete:own", "knowledge:delete:any"]}
           >
-            Delete
-          </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive cursor-pointer"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              Delete
+            </DropdownMenuItem>
+          </RequirePermission>
         </DropdownMenuContent>
       </DropdownMenu>
 

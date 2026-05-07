@@ -150,6 +150,7 @@ stringData:
     ALLOWED_USERS={{ .Values.langflow.flowDefaults.allowedUsers | quote }}
     ALLOWED_GROUPS={{ .Values.langflow.flowDefaults.allowedGroups | quote }}
     OPENRAG-QUERY-FILTER={{ .Values.langflow.openragQueryFilter | quote }}
+    DOCLING_TASK_ID={{ .Values.langflow.flowDefaults.doclingTaskId | quote }}
     FILENAME={{ .Values.langflow.flowDefaults.filename | quote }}
     MIMETYPE={{ .Values.langflow.flowDefaults.mimetype | quote }}
     FILESIZE={{ .Values.langflow.flowDefaults.filesize | quote }}

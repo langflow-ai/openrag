@@ -27,7 +27,6 @@ async def upload_ingest_router(
     session_id: Optional[str] = Form(None),
     settings_json: Optional[str] = Form(None, alias="settings"),
     tweaks_json: Optional[str] = Form(None, alias="tweaks"),
-    delete_after_ingest: str = Form("true"),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     document_service=Depends(get_document_service),
@@ -64,7 +63,6 @@ async def upload_ingest_router(
         session_id=session_id,
         settings_json=settings_json,
         tweaks_json=tweaks_json,
-        delete_after_ingest=delete_after_ingest.lower() == "true",
         replace_duplicates=replace_duplicates.lower() == "true",
         create_filter=create_filter.lower() == "true",
         langflow_file_service=langflow_file_service,
@@ -79,7 +77,6 @@ async def _langflow_upload_ingest_task(
     session_id,
     settings_json,
     tweaks_json,
-    delete_after_ingest: bool,
     replace_duplicates: bool,
     create_filter: bool,
     langflow_file_service,
@@ -141,7 +138,6 @@ async def _langflow_upload_ingest_task(
                 session_id=session_id,
                 tweaks=tweaks,
                 settings=settings,
-                delete_after_ingest=delete_after_ingest,
                 replace_duplicates=replace_duplicates,
             )
 

@@ -42,6 +42,7 @@ export function ChatRenderer({
   const {
     endpoint,
     refreshTrigger,
+    refreshTriggerSilent,
     refreshConversations,
     startNewConversation,
     setConversationFilter,
@@ -79,7 +80,7 @@ export function ChatRenderer({
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const { data: conversations = [], isLoading: isConversationsLoading } =
-    useGetConversationsQuery(endpoint, refreshTrigger, {
+    useGetConversationsQuery(endpoint, refreshTrigger + refreshTriggerSilent, {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
     }) as { data: ChatConversation[]; isLoading: boolean };
 

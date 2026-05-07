@@ -8,6 +8,52 @@ External dependencies (OpenSearch, Docling) are referenced by connection config 
 
 - Go 1.26.0 (`gvm use go1.26.0`)
 - kubectl pointed at a cluster
+- Helm 3.x (for Helm chart installation)
+
+## Installation
+
+### Option 1: Using Helm (Recommended)
+
+The Helm chart deploys both the CRDs and the operator deployment.
+
+```bash
+# Install from local chart
+helm install openrag-operator ./kubernetes/helm/operator \
+  --namespace openrag-control \
+  --create-namespace
+
+# Verify installation
+kubectl get deployment -n openrag-control
+kubectl get crd openrags.openr.ag
+```
+
+**Customize installation:**
+
+```bash
+# Set custom image tag
+helm install openrag-operator ./kubernetes/helm/operator \
+  --namespace openrag-control \
+  --create-namespace \
+  --set image.tag=v0.1.0
+
+# Or use a values file
+helm install openrag-operator ./kubernetes/helm/operator \
+  --namespace openrag-control \
+  --create-namespace \
+  -f my-values.yaml
+```
+
+### Option 2: Using kubectl + kustomize
+
+```bash
+# Install CRDs
+make install
+
+# Deploy the operator
+make deploy IMG=ghcr.io/langflow-ai/openrag-operator:latest
+```
+
+### Option 3: Local development (see below)
 
 ## Local development cluster (kind + podman)
 
@@ -71,7 +117,7 @@ go run cmd/main.go
 kind delete cluster --name openrag
 ```
 
-## Quick start
+## Quick start (development)
 
 ```bash
 make deps          # download controller-gen, kustomize, envtest into ./bin
@@ -87,6 +133,90 @@ Apply the sample CR:
 ```bash
 kubectl apply -f config/samples/openrag_v1alpha1_openrag.yaml
 kubectl get openrag
+```
+
+## Helm Chart
+
+The operator Helm chart is located at `kubernetes/helm/operator/` with the following structure:
+
+```
+kubernetes/helm/operator/
+├── Chart.yaml                     # Chart metadata
+├── values.yaml                    # Default configuration values
+├── .helmignore                    # Files to ignore when packaging
+├── crds/
+│   └── openr.ag_openrags.yaml    # OpenRAG CRD (auto-installed)
+└── templates/
+    ├── _helpers.tpl               # Template helpers
+    ├── NOTES.txt                  # Post-install notes
+    ├── deployment.yaml            # Operator deployment
+    ├── serviceaccount.yaml        # Service account
+    ├── role.yaml                  # ClusterRole for operator
+    ├── rolebinding.yaml           # ClusterRoleBinding
+    ├── leader_election_role.yaml  # Role for leader election
+    └── leader_election_rolebinding.yaml
+```
+
+### Helm Chart Configuration
+
+Key configurable values in `values.yaml`:
+
+```yaml
+image:
+  repository: ghcr.io/langflow-ai/openrag-operator
+  tag: ""  # defaults to chart appVersion
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+leaderElection:
+  enabled: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+```
+
+### Helm Chart Operations
+
+**Lint the chart:**
+```bash
+helm lint ./kubernetes/helm/operator
+```
+
+**Template the chart (dry-run):**
+```bash
+helm template openrag-operator ./kubernetes/helm/operator \
+  --namespace openrag-control
+```
+
+**Package the chart:**
+```bash
+helm package ./kubernetes/helm/operator
+```
+
+**Upgrade the operator:**
+```bash
+helm upgrade openrag-operator ./kubernetes/helm/operator \
+  --namespace openrag-control
+```
+
+**Uninstall:**
+```bash
+helm uninstall openrag-operator --namespace openrag-control
+```
+
+**Note:** CRDs are not automatically upgraded by Helm. If the CRD changes, manually apply it:
+```bash
+kubectl apply -f kubernetes/helm/operator/crds/openr.ag_openrags.yaml
 ```
 
 ## CR overview
@@ -121,3 +251,35 @@ spec:
 ```
 
 See [`config/samples/openrag_v1alpha1_openrag.yaml`](config/samples/openrag_v1alpha1_openrag.yaml) for a full annotated example.
+
+## Release Process
+
+The operator uses GitHub Actions for automated releases:
+
+### Docker Image Publishing
+
+Images are automatically published to GitHub Container Registry (GHCR) when you push a tag:
+
+```bash
+# Create and push a release tag
+git tag operator/v0.1.0
+git push origin operator/v0.1.0
+```
+
+This triggers the `.github/workflows/operator-release.yml` workflow which:
+1. Builds multi-architecture images (linux/amd64, linux/arm64)
+2. Pushes to `ghcr.io/<owner>/openrag-operator:v0.1.0`
+3. Creates a multi-arch manifest with `:latest` tag
+4. Creates a GitHub release with release notes
+
+**Manual trigger:**
+You can also trigger the release workflow manually from the GitHub Actions UI with a custom tag.
+
+**Image location:**
+- Registry: `ghcr.io`
+- Repository: `ghcr.io/langflow-ai/openrag-operator`
+- Tags: `v0.1.0`, `v0.1.0-amd64`, `v0.1.0-arm64`, `latest`
+
+### Helm Chart Publishing
+
+(To be implemented) Helm charts can be published to GitHub Pages or a Helm repository using GitHub Actions.

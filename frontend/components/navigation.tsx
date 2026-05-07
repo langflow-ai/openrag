@@ -23,6 +23,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { FILES_REGEX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useLoadingStore } from "@/stores/loadingStore";
@@ -193,26 +194,35 @@ export function Navigation({
     }
   };
 
-  const routes = [
+  const { can, canAny } = usePermissions();
+  const allRoutes = [
     {
       label: "Chat",
       icon: MessageSquare,
       href: "/chat",
       active: pathname === "/" || pathname.startsWith("/chat"),
+      visible: can("chat:use"),
     },
     {
       label: "Knowledge",
       icon: Library,
       href: "/knowledge",
       active: pathname.startsWith("/knowledge"),
+      visible: canAny([
+        "knowledge:read:own",
+        "knowledge:read:all",
+        "knowledge:upload",
+      ]),
     },
     {
       label: "Settings",
       icon: Settings2,
       href: "/settings",
       active: pathname.startsWith("/settings"),
+      visible: true, // always — content inside is gated
     },
   ];
+  const routes = allRoutes.filter((r) => r.visible);
 
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");

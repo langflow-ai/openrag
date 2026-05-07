@@ -30,6 +30,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
@@ -72,6 +73,9 @@ export function KnowledgeFilterPanel() {
   const deleteFilterMutation = useDeleteFilter();
   const updateFilterMutation = useUpdateFilter();
   const createFilterMutation = useCreateFilter();
+  const { can, canAny } = usePermissions();
+  const canCreate = can("kf:create");
+  const canEdit = canAny(["kf:edit:own", "kf:edit:any"]);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -492,7 +496,7 @@ export function KnowledgeFilterPanel() {
               Cancel
             </Button>
           )}
-          {!createMode && (
+          {!createMode && canEdit && (
             <Button
               variant="destructive"
               size="sm"
@@ -505,7 +509,12 @@ export function KnowledgeFilterPanel() {
           )}
           <Button
             onClick={handleSaveConfiguration}
-            disabled={isSaving}
+            disabled={isSaving || (createMode ? !canCreate : !canEdit)}
+            title={
+              (createMode ? canCreate : canEdit)
+                ? undefined
+                : "You do not have permission to modify this filter"
+            }
             size="sm"
             className="relative z-10"
           >

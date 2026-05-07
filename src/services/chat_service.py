@@ -19,10 +19,12 @@ class ChatService:
         previous_response_id: str = None,
         stream: bool = False,
         filter_id: str = None,
+        storage_user_id: str = None,
     ):
         """Handle chat requests using the patched OpenAI client"""
         if not prompt:
             raise ValueError("Prompt is required")
+        conversation_user_id = storage_user_id or user_id
 
         # Set authentication context for this request so tools can access it
         if user_id and jwt_token:
@@ -32,7 +34,7 @@ class ChatService:
             return async_chat_stream(
                 clients.patched_llm_client,
                 prompt,
-                user_id,
+                conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
@@ -40,7 +42,7 @@ class ChatService:
             response_text, response_id = await async_chat(
                 clients.patched_llm_client,
                 prompt,
-                user_id,
+                conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
@@ -60,10 +62,12 @@ class ChatService:
         owner: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        storage_user_id: str = None,
     ):
         """Handle Langflow chat requests"""
         if not prompt:
             raise ValueError("Prompt is required")
+        conversation_user_id = storage_user_id or user_id
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError(
@@ -158,7 +162,7 @@ class ChatService:
                 langflow_client,
                 LANGFLOW_CHAT_FLOW_ID,
                 prompt,
-                user_id,
+                conversation_user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
@@ -170,7 +174,7 @@ class ChatService:
                 langflow_client,
                 LANGFLOW_CHAT_FLOW_ID,
                 prompt,
-                user_id,
+                conversation_user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
@@ -190,8 +194,10 @@ class ChatService:
         filters: dict = None,
         limit: int = None,
         score_threshold: float = None,
+        storage_user_id: str = None,
     ):
         """Handle Langflow nudges chat requests with knowledge filters"""
+        conversation_user_id = storage_user_id or user_id
 
         if not LANGFLOW_URL or not NUDGES_FLOW_ID:
             raise ValueError(
@@ -283,7 +289,7 @@ class ChatService:
             from agent import get_conversation_thread
 
             conversation_history = get_conversation_thread(
-                user_id, previous_response_id
+                conversation_user_id, previous_response_id
             )
             if conversation_history:
                 conversation_history = "\n".join(
@@ -302,7 +308,7 @@ class ChatService:
             langflow_client,
             NUDGES_FLOW_ID,
             prompt,
-            user_id,
+            conversation_user_id,
             extra_headers=extra_headers,
             store_conversation=False,
         )
@@ -322,9 +328,11 @@ class ChatService:
         owner: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        storage_user_id: str = None,
     ):
         """Send document content as user message to get proper response_id"""
         document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
+        conversation_user_id = storage_user_id or user_id
 
         if endpoint == "langflow":
             # Prepare extra headers for JWT authentication and embedding model
@@ -368,7 +376,7 @@ class ChatService:
             response_text, response_id = await async_chat(
                 clients.patched_llm_client,
                 document_prompt,
-                user_id,
+                conversation_user_id,
                 previous_response_id=previous_response_id,
             )
 
@@ -382,7 +390,7 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
 
         # Get metadata from persistent storage
-        conversations_dict = get_user_conversations(user_id)
+        conversations_dict = await get_user_conversations(user_id)
 
         # Get in-memory conversations (with function calls)
         in_memory_conversations = active_conversations.get(user_id, {})
@@ -498,7 +506,7 @@ class ChatService:
 
         try:
             # 1. Get local conversation metadata (no actual messages stored here)
-            conversations_dict = get_user_conversations(user_id)
+            conversations_dict = await get_user_conversations(user_id)
             local_metadata = {}
 
             for response_id, conversation_metadata in conversations_dict.items():
@@ -667,8 +675,8 @@ class ChatService:
     async def delete_all_user_sessions(self, user_id: str):
         """Delete all sessions for a user from both local storage and Langflow"""
         from agent import get_user_conversations
-        
-        conversations = get_user_conversations(user_id)
+
+        conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
         
         results = []

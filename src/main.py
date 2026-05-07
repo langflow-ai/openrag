@@ -1,3 +1,4 @@
+import bootstrap  # noqa: F401  — must be first; loads .env + structured logging
 from contextlib import asynccontextmanager
 from utils.version_utils import OPENRAG_VERSION
 import asyncio
@@ -604,7 +605,6 @@ async def _ingest_default_documents_langflow(
         session_id=None,  # No session for default documents
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
-        delete_after_ingest=True,  # Clean up after ingestion
         replace_duplicates=True,
         connector_type=connector_type,
         existing_task_id=existing_task_id,
@@ -1355,14 +1355,15 @@ async def initialize_services():
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START
     )
-    # Generate JWT keys if they don't exist and a JWT signing key isn't specified
-    if not os.getenv("JWT_SIGNING_KEY"):
-        generate_jwt_keys()
-
     from config.settings import IBM_AUTH_ENABLED
 
     if IBM_AUTH_ENABLED:
         logger.info("IBM auth mode enabled — JWT validation delegated to Traefik")
+
+    # Generate JWT keys if they don't exist, a JWT signing key isn't specified,
+    # and IBM auth is not enabled (IBM mode delegates all auth to Traefik)
+    if not os.getenv("JWT_SIGNING_KEY") and not IBM_AUTH_ENABLED:
+        generate_jwt_keys()
 
     # Initialize clients (now async to generate Langflow API key)
     try:
@@ -1379,21 +1380,35 @@ async def initialize_services():
 
     # Initialize services
     models_service = ModelsService()
-    document_service = DocumentService(session_manager=session_manager, models_service=models_service)
+    document_service = DocumentService(
+        session_manager=session_manager,
+        models_service=models_service,
+        docling_service=clients.docling_service,
+    )
     search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
-    task_service = TaskService(document_service, models_service, ingestion_timeout=INGESTION_TIMEOUT)
+    task_service = TaskService(
+        document_service,
+        models_service,
+        ingestion_timeout=INGESTION_TIMEOUT,
+        docling_service=clients.docling_service,
+    )
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
-    langflow_file_service = LangflowFileService(flows_service=flows_service)
+    langflow_file_service = LangflowFileService(
+        flows_service=flows_service,
+        docling_service=clients.docling_service,
+    )
     langflow_mcp_service = LangflowMCPService()
 
     # Initialize both connector services
     langflow_connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
+        flows_service=flows_service,
+        docling_service=clients.docling_service,
     )
     openrag_connector_service = ConnectorService(
         patched_async_client=clients,
@@ -1403,6 +1418,7 @@ async def initialize_services():
         session_manager=session_manager,
         models_service=models_service,
         document_service=document_service,
+        docling_service=clients.docling_service,
     )
 
     # Create connector router that chooses based on configuration
@@ -1448,6 +1464,47 @@ async def initialize_services():
     # API Key service for public API authentication
     api_key_service = APIKeyService(session_manager)
 
+    # ===== RBAC service =====
+    # We do NOT open the SQL engine here. `create_app()` runs inside an
+    # `asyncio.run(...)` whose loop is closed BEFORE uvicorn starts its
+    # own loop — any AsyncEngine bound to this loop would be dead by
+    # then. Instead, RBACService takes a *lazy* session-factory getter
+    # that resolves `db.engine.SessionLocal` at call time — that
+    # attribute is filled in by the lifespan startup event running on
+    # uvicorn's loop. Alembic upgrade is run synchronously from __main__
+    # before `asyncio.run(create_app())` so the schema is in place by
+    # the time the lifespan opens the engine.
+    from db import engine as _db_engine_mod
+    from services.rbac_service import RBACService
+    from services.workspace_config_service import WorkspaceConfigService
+
+    def _lazy_session_factory():
+        sl = _db_engine_mod.SessionLocal
+        if sl is None:
+            raise RuntimeError(
+                "DB engine not yet initialized. RBACService called before lifespan startup."
+            )
+        return sl()
+
+    rbac_service = RBACService(_lazy_session_factory)
+
+    # WorkspaceConfigService — DB-first reads of what config.yaml holds,
+    # with the legacy ConfigManager kept as the yaml fallback during
+    # Phase B (dual-write).
+    workspace_config_service = WorkspaceConfigService(
+        config_manager=config_manager,
+        session_factory=_lazy_session_factory,
+    )
+
+    # Plumb the session factory into the two chat-history services
+    # (session_ownership + conversation_persistence). They lazy-resolve
+    # `db.engine.SessionLocal` as a fallback, but setting it here makes
+    # the wiring explicit and avoids the import path on the hot loop.
+    from services.session_ownership_service import session_ownership_service
+    from services.conversation_persistence_service import conversation_persistence
+    session_ownership_service._session_factory = _lazy_session_factory
+    conversation_persistence._session_factory = _lazy_session_factory
+
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -1463,6 +1520,9 @@ async def initialize_services():
         "session_manager": session_manager,
         "api_key_service": api_key_service,
         "langflow_mcp_service": langflow_mcp_service,
+        "docling_service": clients.docling_service,
+        "rbac_service": rbac_service,
+        "workspace_config_service": workspace_config_service,
     }
 
 
@@ -1556,6 +1616,13 @@ async def lifespan(app: FastAPI):
 
     # 6. Global clients cleanup
     await clients.cleanup()
+
+    # 6b. SQL engine cleanup
+    try:
+        from db.engine import dispose_engine
+        await dispose_engine()
+    except Exception as e:
+        logger.error("Error disposing DB engine", error=str(e))
 
     # 7. Telemetry client cleanup
     from utils.telemetry.client import cleanup_telemetry_client
@@ -2051,6 +2118,15 @@ async def create_app():
         "/docling/health", docling.health, methods=["GET"], tags=["internal"]
     )
 
+    # ===== Users / RBAC Endpoints (JWT auth) =====
+    from api import users as users_api
+    from api.admin import rbac as admin_rbac
+    from api import config as config_api
+    app.include_router(users_api.router)
+    app.include_router(admin_rbac.router)
+    # Public — must work pre-auth so the onboarding wizard can render.
+    app.include_router(config_api.router)
+
     # ===== API Key Management Endpoints (JWT auth for UI) =====
     app.add_api_route(
         "/keys", api_keys.list_keys_endpoint, methods=["GET"], tags=["internal"]
@@ -2194,6 +2270,74 @@ async def create_app():
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
+        # Hard-fail if the operator has configured multiple workers. The
+        # RBAC permission cache and the OAuth-subject→DB-id cache are
+        # both per-process; a second worker silently sees stale
+        # permissions for up to OPENRAG_PERM_CACHE_TTL seconds after
+        # role mutations. Until the cache moves to a shared backend
+        # (Redis), this constraint is real and must be enforced.
+        _workers = int(os.getenv("UVICORN_WORKERS", "1") or "1")
+        if _workers > 1:
+            logger.error(
+                "Multi-worker deployment unsupported until cache is "
+                "shared across processes. Set UVICORN_WORKERS=1.",
+                requested_workers=_workers,
+            )
+            raise RuntimeError("UVICORN_WORKERS>1 is not supported")
+        cache_backend = os.getenv("CACHE_BACKEND", "memory").lower()
+        if cache_backend not in ("memory",):
+            logger.error(
+                "Unsupported CACHE_BACKEND. Only 'memory' is wired.",
+                requested=cache_backend,
+            )
+            raise RuntimeError(f"unsupported CACHE_BACKEND={cache_backend!r}")
+        logger.info(
+            "Permission cache configured",
+            backend=cache_backend,
+            workers=_workers,
+            perm_cache_ttl_s=int(os.getenv("OPENRAG_PERM_CACHE_TTL", "60") or "60"),
+        )
+
+        # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes
+        # every authenticated user effectively admin — log loudly so
+        # operators see it on every boot. Available in all run modes;
+        # the operator owns the trade-off.
+        from services.rbac_service import is_rbac_enforced
+        from utils.run_mode_utils import get_run_mode
+        if is_rbac_enforced():
+            logger.info("RBAC enforcement is ON", run_mode=get_run_mode())
+        else:
+            logger.warning(
+                "RBAC enforcement is DISABLED — every authenticated "
+                "user has full access via the OPENRAG_RBAC_ENFORCE=false "
+                "kill switch.",
+                run_mode=get_run_mode(),
+            )
+
+        # Open the SQL engine on uvicorn's live loop (NOT the one used by
+        # asyncio.run(create_app()) which closed already). All RBAC code
+        # uses RBACService's lazy factory that reads db.engine.SessionLocal
+        # at call time, so it will pick up the binding we set here.
+        try:
+            from db.engine import init_engine
+            init_engine()
+        except Exception as e:
+            logger.error("DB engine init failed at startup", error=str(e))
+            raise
+
+        # One-shot JSON->DB migration + test-fixture cleanup. Runs once
+        # per install, idempotent via migration_status rows.
+        try:
+            from db.engine import SessionLocal as _SL
+            from db.migrations_runtime import run as run_runtime_migration
+            if _SL is not None:
+                async with _SL() as _session:
+                    await run_runtime_migration(_session)
+                    await _session.commit()
+        except Exception as e:
+            logger.error("Runtime DB migration failed", error=str(e))
+            raise
+
         await TelemetryClient.send_event(
             Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED
         )
@@ -2255,6 +2399,17 @@ async def create_app():
             Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN
         )
         logger.info("Application shutdown initiated")
+
+        # Drain any pending workspace_config DB-mirror tasks before we
+        # tear down the engine. Without this, a save_config triggered
+        # right before shutdown can be cancelled mid-write, leaving
+        # yaml and DB out of sync.
+        try:
+            wcs = services.get("workspace_config_service") if isinstance(services, dict) else None
+            if wcs is not None:
+                await wcs.await_pending_mirrors()
+        except Exception as e:  # noqa: BLE001
+            logger.error("Error awaiting pending DB mirrors", error=str(e))
 
         # Gracefully shutdown OpenSearch connection first
         try:
@@ -2337,6 +2492,22 @@ if __name__ == "__main__":
     # TUI check already handled at top of file
     # Register cleanup function
     atexit.register(cleanup)
+
+    # Run Alembic upgrade SYNCHRONOUSLY before the app builds. This
+    # avoids two pitfalls:
+    #   1. Alembic's env.py uses asyncio.run() which collides with a
+    #      live event loop.
+    #   2. Anything done inside `asyncio.run(create_app())` binds to a
+    #      loop that is closed before uvicorn starts — including DB
+    #      engines. Putting the schema migration here keeps the runtime
+    #      `init_engine()` deferred to the lifespan startup, on the
+    #      live uvicorn loop.
+    try:
+        from db.migrations_runtime import run_alembic_upgrade
+        run_alembic_upgrade("head")
+    except Exception as _e:
+        logger.error("Alembic upgrade failed at startup", error=str(_e))
+        raise
 
     # Create app asynchronously
     app = asyncio.run(create_app())
