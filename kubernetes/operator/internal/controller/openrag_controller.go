@@ -162,9 +162,14 @@ func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1
 
 func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	for _, role := range []string{"fe", "be", "lf"} {
+		// Only create ServiceAccount if flag is true
+		if !shouldCreateServiceAccount(o, role) {
+			continue
+		}
+
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      saName(role),
+				Name:      getServiceAccountName(o, role), // Use custom name if specified
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, role),
 			},
@@ -355,7 +360,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Operator-derived values (always set)
-	envVars["LANGFLOW_URL"] = "http://" + resourceName("lf") + ":7860"
+	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
@@ -583,9 +588,14 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 		{"lf", 7860},
 	}
 	for _, d := range defs {
+		// Only create Service if flag is true
+		if !shouldCreateService(o, d.role) {
+			continue
+		}
+
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName(d.role),
+				Name:      getServiceName(o, d.role), // Use custom name if specified
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, d.role),
 			},
@@ -649,7 +659,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("fe"),
+					ServiceAccountName: getServiceAccountName(o, "fe"),
 					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -661,7 +671,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							ImagePullPolicy: spec.ImagePullPolicy,
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 3000}},
 							Env: append([]corev1.EnvVar{
-								{Name: "OPENRAG_BACKEND_HOST", Value: resourceName("be")},
+								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
 							Resources:      spec.Resources,
 							LivenessProbe:  httpProbe("/", 3000, 30, 10),
@@ -740,7 +750,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("be"),
+					ServiceAccountName: getServiceAccountName(o, "be"),
 					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -914,7 +924,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("lf"),
+					ServiceAccountName: getServiceAccountName(o, "lf"),
 					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
@@ -1162,6 +1172,80 @@ func resourceName(role string) string {
 // Since each namespace is tenant-exclusive, we don't need to include the CR name.
 func saName(role string) string {
 	return "openrag-" + role
+}
+
+// getServiceAccountName returns the ServiceAccount name for a component.
+// If a custom name is specified in the spec, returns that; otherwise returns the default.
+func getServiceAccountName(o *openragv1alpha1.OpenRAG, role string) string {
+	var customName string
+	switch role {
+	case "fe":
+		customName = o.Spec.Frontend.ServiceAccountName
+	case "be":
+		customName = o.Spec.Backend.ServiceAccountName
+	case "lf":
+		customName = o.Spec.Langflow.ServiceAccountName
+	}
+	if customName != "" {
+		return customName
+	}
+	return saName(role)
+}
+
+// shouldCreateServiceAccount returns true if the operator should create the ServiceAccount.
+// Checks the CreateServiceAccount boolean flag (defaults to true if not specified).
+func shouldCreateServiceAccount(o *openragv1alpha1.OpenRAG, role string) bool {
+	var createFlag *bool
+	switch role {
+	case "fe":
+		createFlag = o.Spec.Frontend.CreateServiceAccount
+	case "be":
+		createFlag = o.Spec.Backend.CreateServiceAccount
+	case "lf":
+		createFlag = o.Spec.Langflow.CreateServiceAccount
+	}
+	// Default to true if not specified
+	if createFlag == nil {
+		return true
+	}
+	return *createFlag
+}
+
+// getServiceName returns the Service name for a component.
+// If a custom name is specified in the spec, returns that; otherwise returns the default.
+func getServiceName(o *openragv1alpha1.OpenRAG, role string) string {
+	var customName string
+	switch role {
+	case "fe":
+		customName = o.Spec.Frontend.ServiceName
+	case "be":
+		customName = o.Spec.Backend.ServiceName
+	case "lf":
+		customName = o.Spec.Langflow.ServiceName
+	}
+	if customName != "" {
+		return customName
+	}
+	return resourceName(role)
+}
+
+// shouldCreateService returns true if the operator should create the Service.
+// Checks the CreateService boolean flag (defaults to true if not specified).
+func shouldCreateService(o *openragv1alpha1.OpenRAG, role string) bool {
+	var createFlag *bool
+	switch role {
+	case "fe":
+		createFlag = o.Spec.Frontend.CreateService
+	case "be":
+		createFlag = o.Spec.Backend.CreateService
+	case "lf":
+		createFlag = o.Spec.Langflow.CreateService
+	}
+	// Default to true if not specified
+	if createFlag == nil {
+		return true
+	}
+	return *createFlag
 }
 
 func componentLabels(crName, role string) map[string]string {
