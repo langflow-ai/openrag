@@ -26,6 +26,7 @@ class User:
     jwt_token: Optional[str] = None
     opensearch_username: Optional[str] = None
     opensearch_credentials: Optional[str] = None  # Raw base64 credentials (without "Basic " prefix)
+    db_user_id: Optional[str] = None  # Internal OpenRAG users.id
 
     def __post_init__(self):
         if self.created_at is None:

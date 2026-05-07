@@ -2301,6 +2301,7 @@ async def create_app():
                     await _session.commit()
         except Exception as e:
             logger.error("Runtime DB migration failed", error=str(e))
+            raise
 
         await TelemetryClient.send_event(
             Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED

@@ -68,12 +68,12 @@ class SessionOwnershipRepo:
         user_id: str,
         created_at: Optional[datetime] = None,
         last_accessed: Optional[datetime] = None,
-    ) -> None:
+    ) -> bool:
         """Used by the runtime migration to copy JSON rows verbatim
-        without overwriting timestamps."""
+        without overwriting timestamps. Returns True when a row was inserted."""
         existing = await self.get(response_id)
         if existing is not None:
-            return
+            return False
         row = SessionOwnership(
             response_id=response_id,
             user_id=user_id,
@@ -82,3 +82,4 @@ class SessionOwnershipRepo:
         )
         self.session.add(row)
         await self.session.flush()
+        return True

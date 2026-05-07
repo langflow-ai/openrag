@@ -42,6 +42,10 @@ CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 
 
+class RuntimeMigrationError(RuntimeError):
+    """Raised when a required startup data migration fails."""
+
+
 async def _already_done(session: AsyncSession, name: str) -> bool:
     row = await session.get(MigrationStatus, name)
     return row is not None
@@ -227,13 +231,14 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                 )
             except Exception:  # noqa: BLE001
                 last = None
-            await repo.upsert_raw(
+            inserted = await repo.upsert_raw(
                 response_id=str(sid),
                 user_id=str(uid),
                 created_at=created,
                 last_accessed=last,
             )
-            stats["sessions_inserted"] += 1
+            if inserted:
+                stats["sessions_inserted"] += 1
 
     # --- conversations.json -------------------------------------------
     conv_payload = await _read_json(get_data_file("conversations.json"))
@@ -286,8 +291,8 @@ async def run(session: AsyncSession) -> None:
         try:
             inserted = await migrate_legacy_users(session)
         except Exception as exc:  # noqa: BLE001
-            logger.error("JSON->DB migration failed; will retry on next boot", error=str(exc))
-            return
+            logger.error("JSON->DB migration failed; aborting startup", error=str(exc))
+            raise RuntimeMigrationError(f"{JSON_TO_DB_V1} failed") from exc
         await _mark_done(session, JSON_TO_DB_V1, notes=f"legacy_users_inserted={inserted}")
         logger.info("JSON->DB migration completed", inserted=inserted)
 
@@ -295,8 +300,8 @@ async def run(session: AsyncSession) -> None:
         try:
             written = await migrate_config_yaml_to_db(session)
         except Exception as exc:  # noqa: BLE001
-            logger.error("config_yaml_to_db_v1 failed; will retry on next boot", error=str(exc))
-            return
+            logger.error("config_yaml_to_db_v1 failed; aborting startup", error=str(exc))
+            raise RuntimeMigrationError(f"{CONFIG_YAML_TO_DB_V1} failed") from exc
         await _mark_done(
             session, CONFIG_YAML_TO_DB_V1, notes=f"sections_written={written}"
         )
@@ -307,10 +312,10 @@ async def run(session: AsyncSession) -> None:
             stats = await migrate_chat_history_json_to_db(session)
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "chat_history_json_to_db_v1 failed; will retry on next boot",
+                "chat_history_json_to_db_v1 failed; aborting startup",
                 error=str(exc),
             )
-            return
+            raise RuntimeMigrationError(f"{CHAT_HISTORY_JSON_TO_DB_V1} failed") from exc
         notes = (
             f"sessions={stats['sessions_inserted']},"
             f"conversations={stats['conversations_inserted']}"

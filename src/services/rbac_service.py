@@ -108,12 +108,13 @@ class RBACService:
         """
         if not is_rbac_enforced():
             return
-        perms = await self.get_user_permissions(user.user_id, role_override)
+        actor_user_id = getattr(user, "db_user_id", None) or user.user_id
+        perms = await self.get_user_permissions(actor_user_id, role_override)
         if any_perm in perms:
             return
-        if owner_id == user.user_id and owned_perm in perms:
+        if owner_id == actor_user_id and owned_perm in perms:
             return
-        await self.audit_denied(user.user_id, f"({owned_perm}|{any_perm})")
+        await self.audit_denied(actor_user_id, f"({owned_perm}|{any_perm})")
         raise HTTPException(
             status_code=403,
             detail={"error": "permission_denied", "required": [owned_perm, any_perm]},

@@ -118,8 +118,8 @@ async def test_migration_is_idempotent(staged_files, session_factory):
     assert first["sessions_inserted"] == 2
     assert first["conversations_inserted"] == 2
     # Second pass: rows already there, no new inserts
-    assert second["sessions_inserted"] == 2  # upsert_raw is no-op when present
-    assert second["conversations_inserted"] == 0  # repo.get short-circuits
+    assert second["sessions_inserted"] == 0
+    assert second["conversations_inserted"] == 0
 
 
 @pytest.mark.asyncio

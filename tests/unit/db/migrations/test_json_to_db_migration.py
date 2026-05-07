@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.migrations_runtime import run as run_migration  # noqa: E402
+from db.migrations_runtime import RuntimeMigrationError, run as run_migration  # noqa: E402
 from db.models import MigrationStatus, User as UserRow  # noqa: E402
 
 
@@ -127,3 +127,19 @@ async def test_partial_collision_keeps_other_legacy_inserts(session_in_temp_data
     assert legacy == {"user-aaa", "user-bbb", "user-ccc", "user-ddd"}
     # user-aaa was a duplicate, so insert count is 3.
     assert inserted == 3
+
+
+@pytest.mark.asyncio
+async def test_run_aborts_when_required_step_fails(session_in_temp_data, monkeypatch):
+    s = session_in_temp_data
+
+    async def _boom(session):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("db.migrations_runtime.migrate_legacy_users", _boom)
+
+    with pytest.raises(RuntimeMigrationError):
+        await run_migration(s)
+
+    status = await s.get(MigrationStatus, "json_to_db_v1")
+    assert status is None

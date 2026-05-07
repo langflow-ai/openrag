@@ -7,7 +7,7 @@ Uses API key authentication. Routes through Langflow (chat_service.langflow_chat
 import json
 from typing import Optional, Any, Dict
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
@@ -16,6 +16,10 @@ from dependencies import get_chat_service, get_session_manager, get_api_key_user
 from session_manager import User
 
 logger = get_logger(__name__)
+
+
+def _openrag_user_id(user: User) -> str:
+    return getattr(user, "db_user_id", None) or user.user_id
 
 
 class ChatV1Body(BaseModel):
@@ -112,7 +116,11 @@ async def chat_create_endpoint(
         return JSONResponse({"error": "Message is required"}, status_code=400)
 
     user_id = user.user_id
+    storage_user_id = _openrag_user_id(user)
     jwt_token = user.jwt_token
+    if body.chat_id:
+        from api.chat import _assert_owns
+        await _assert_owns(body.chat_id, storage_user_id)
 
     if body.filters:
         set_search_filters(body.filters)
@@ -131,6 +139,7 @@ async def chat_create_endpoint(
             owner=user.user_id,
             owner_name=user.name,
             owner_email=user.email,
+            storage_user_id=storage_user_id,
         )
         chat_id_container = {}
         return StreamingResponse(
@@ -149,6 +158,7 @@ async def chat_create_endpoint(
             owner=user.user_id,
             owner_name=user.name,
             owner_email=user.email,
+            storage_user_id=storage_user_id,
         )
         return JSONResponse({
             "response": result.get("response", ""),
@@ -163,7 +173,7 @@ async def chat_list_endpoint(
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
-        history = await chat_service.get_langflow_history(user.user_id)
+        history = await chat_service.get_langflow_history(_openrag_user_id(user))
         conversations = [
             {
                 "chat_id": conv.get("response_id"),
@@ -187,7 +197,7 @@ async def chat_get_endpoint(
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
-        history = await chat_service.get_langflow_history(user.user_id)
+        history = await chat_service.get_langflow_history(_openrag_user_id(user))
 
         conversation = None
         for conv in history.get("conversations", []):
@@ -231,7 +241,10 @@ async def chat_delete_endpoint(
 ):
     """Delete a conversation. DELETE /v1/chat/{chat_id}"""
     try:
-        result = await chat_service.delete_session(user.user_id, chat_id)
+        from api.chat import _assert_owns
+        storage_user_id = _openrag_user_id(user)
+        await _assert_owns(chat_id, storage_user_id)
+        result = await chat_service.delete_session(storage_user_id, chat_id)
         if result.get("not_found"):
             return JSONResponse({"error": "Conversation not found"}, status_code=404)
         if result.get("success"):
@@ -241,6 +254,8 @@ async def chat_delete_endpoint(
                 {"error": result.get("error", "Failed to delete conversation")},
                 status_code=500,
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id)
         return JSONResponse({"error": f"Failed to delete conversation: {str(e)}"}, status_code=500)
