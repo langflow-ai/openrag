@@ -84,6 +84,95 @@ async def get_synced_file_ids_for_connector(
         return [], []
 
 
+async def reconcile_orphans_for_connector_type(
+    connector_type: str,
+    user_id: str,
+    connector_service,
+    session_manager,
+    jwt_token: Optional[str],
+    existing_file_ids: List[str],
+) -> int:
+    """Delete OpenSearch chunks whose document_id is no longer present in the
+    union of remote file IDs across all active connections of this connector_type
+    for this user.
+
+    Strict gating: returns 0 (no deletes) if any active connection cannot be
+    listed cleanly — an unauthenticated connector or a listing exception aborts
+    the pass to avoid false-positive deletions.
+    """
+    if not existing_file_ids:
+        return 0
+
+    connections = await connector_service.connection_manager.list_connections(
+        user_id=user_id, connector_type=connector_type
+    )
+    active = [c for c in connections if c.is_active]
+    if not active:
+        logger.info(
+            "Skipping orphan reconcile — no active connections",
+            connector_type=connector_type,
+        )
+        return 0
+
+    remote_ids: set = set()
+    for conn in active:
+        try:
+            connector = await connector_service.get_connector(conn.connection_id)
+            if not connector or not connector.is_authenticated:
+                logger.info(
+                    "Skipping orphan reconcile — connection unauthenticated",
+                    connector_type=connector_type,
+                    connection_id=conn.connection_id,
+                )
+                return 0
+            page_token = None
+            while True:
+                page = await connector.list_files(page_token=page_token)
+                for f in page.get("files", []):
+                    fid = f.get("id")
+                    if fid:
+                        remote_ids.add(fid)
+                page_token = page.get("nextPageToken") or page.get("next_page_token")
+                if not page_token:
+                    break
+        except Exception as e:
+            logger.warning(
+                "Skipping orphan reconcile — listing failed",
+                connector_type=connector_type,
+                connection_id=conn.connection_id,
+                error=str(e),
+            )
+            return 0
+
+    orphans = [fid for fid in existing_file_ids if fid not in remote_ids]
+    if not orphans:
+        return 0
+
+    from .documents import delete_chunks_by_document_ids
+
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(
+            user_id, jwt_token
+        )
+        deleted = await delete_chunks_by_document_ids(
+            orphans, opensearch_client, get_index_name()
+        )
+        logger.info(
+            "Orphan reconcile complete",
+            connector_type=connector_type,
+            orphan_count=len(orphans),
+            deleted_chunks=deleted,
+        )
+        return deleted
+    except Exception as e:
+        logger.error(
+            "Orphan reconcile delete failed",
+            connector_type=connector_type,
+            orphan_count=len(orphans),
+            error=str(e),
+        )
+        return 0
+
 
 class ConnectorSyncBody(BaseModel):
     max_files: Optional[int] = None
@@ -281,6 +370,18 @@ async def connector_sync(
                     connector_type=connector_type,
                     file_count=len(existing_file_ids),
                 )
+                # Reconcile orphans (files deleted at the source) before re-syncing.
+                # Strict gating: skip when sync is capped — we'd see a partial remote
+                # listing and delete legitimate files.
+                if body.max_files is None:
+                    await reconcile_orphans_for_connector_type(
+                        connector_type=connector_type,
+                        user_id=user.user_id,
+                        connector_service=connector_service,
+                        session_manager=session_manager,
+                        jwt_token=jwt_token,
+                        existing_file_ids=existing_file_ids,
+                    )
                 task_id = await connector_service.sync_specific_files(
                     working_connection.connection_id,
                     user.user_id,
@@ -733,6 +834,17 @@ async def sync_all_connectors(
                         "Syncing specific files by document_id",
                         connector_type=connector_type,
                         file_count=len(existing_file_ids),
+                    )
+                    # Reconcile orphans (files deleted at the source) before re-syncing.
+                    # sync_all_connectors has no caps or filters, so gating reduces
+                    # to the strict checks inside the helper.
+                    await reconcile_orphans_for_connector_type(
+                        connector_type=connector_type,
+                        user_id=user.user_id,
+                        connector_service=connector_service,
+                        session_manager=session_manager,
+                        jwt_token=jwt_token,
+                        existing_file_ids=existing_file_ids,
                     )
                     task_id = await connector_service.sync_specific_files(
                         working_connection.connection_id,

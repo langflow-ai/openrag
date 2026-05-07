@@ -99,6 +99,21 @@ async def delete_documents_by_filename_core(
         )
 
 
+async def delete_chunks_by_document_ids(
+    document_ids: list[str],
+    opensearch_client,
+    index_name: str,
+) -> int:
+    """Bulk delete OpenSearch chunks by document_id. Returns deleted count."""
+    if not document_ids:
+        return 0
+    body = {"query": {"terms": {"document_id": document_ids}}}
+    res = await opensearch_client.delete_by_query(
+        index=index_name, body=body, conflicts="proceed"
+    )
+    return res.get("deleted", 0)
+
+
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
     from main import init_index

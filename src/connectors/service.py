@@ -141,6 +141,9 @@ class ConnectorService:
                         "source": """
                             ctx._source.source_url = params.source_url;
                             ctx._source.connector_type = params.connector_type;
+                            if (params.filename != null) {
+                                ctx._source.filename = params.filename;
+                            }
                             if (params.created_time != null) {
                                 ctx._source.created_time = params.created_time;
                             }
@@ -154,6 +157,7 @@ class ConnectorService:
                         "params": {
                             "source_url": document.source_url,
                             "connector_type": connector_type,
+                            "filename": document.filename,
                             "created_time": document.created_time.isoformat()
                             if document.created_time
                             else None,
