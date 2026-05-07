@@ -403,8 +403,15 @@ class ConnectorService:
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")
-            # Fallback to original file_ids if expansion fails
-            expanded_file_ids = file_ids
+            # Preserve intentional validation failures (e.g., folders-only selection)
+            if isinstance(e, ValueError):
+                raise
+            # Fallback path: still exclude known folders when metadata is available
+            if file_infos:
+                non_folder_ids = [f["id"] for f in file_infos if f.get("id") and not f.get("isFolder")]
+                expanded_file_ids = non_folder_ids or file_ids
+            else:
+                expanded_file_ids = file_ids
         finally:
             # Restore original config values
             if hasattr(connector, "cfg"):
