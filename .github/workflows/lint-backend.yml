@@ -14,6 +14,13 @@ concurrency:
   group: lint-backend-${{ github.ref }}
   cancel-in-progress: true
 
+# autofix.ci's GitHub App handles writes to the PR branch independently of
+# the workflow token, so the job itself only needs read access. Setup:
+# install https://github.com/apps/autofix-ci on the repo (free for public
+# repos) and enable auto-apply in the autofix.ci dashboard.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Ruff and mypy on changed files
@@ -55,13 +62,29 @@ jobs:
           # Pass as a single space-separated string to subsequent steps.
           echo "files=${files[*]}" >> "$GITHUB_OUTPUT"
 
-      - name: Ruff (auto-fix dry run + format check)
+      - name: Ruff format (in-place)
+        if: steps.changed.outputs.files != ''
+        run: uv run ruff format ${{ steps.changed.outputs.files }}
+
+      # Hands any working-tree changes from the previous step to autofix.ci.
+      # In auto-apply mode the App pushes a commit back to the PR branch;
+      # the action exits non-zero on the run that produced the diff, then
+      # the App's commit triggers a fresh CI cycle that passes.
+      - name: Apply ruff format autofix via autofix.ci
+        if: steps.changed.outputs.files != ''
+        uses: autofix-ci/action@v1.3.1
+        with:
+          commit-message: "style: ruff format (auto)"
+
+      - name: Ruff lint (no autofix)
         if: steps.changed.outputs.files != ''
         run: |
-          # `--no-fix` reports the same set of issues that `--fix` would
-          # apply, so the developer sees what to run locally to clean up.
+          # Lint violations still fail the build. Auto-fixing lint
+          # ("ruff check --fix") is intentionally NOT enabled here —
+          # safe-classified fixes still include things like F401 (unused
+          # imports), which can break side-effect imports used by the
+          # connector registration pattern.
           uv run ruff check --no-fix --output-format=github ${{ steps.changed.outputs.files }}
-          uv run ruff format --check ${{ steps.changed.outputs.files }}
 
       - name: Mypy
         if: steps.changed.outputs.files != ''
