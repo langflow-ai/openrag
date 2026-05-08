@@ -218,7 +218,11 @@ export function IngestSettingsSection() {
     const computed = settings.ingest_flow_id
       ? `${base}/flow/${settings.ingest_flow_id}`
       : base;
-    window.open(settings.langflow_ingest_edit_url || computed, "_blank");
+    window.open(
+      settings.langflow_ingest_edit_url || computed,
+      "_blank",
+      "noopener,noreferrer",
+    );
     closeDialog();
   };
 
@@ -231,9 +235,9 @@ export function IngestSettingsSection() {
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
-        setTableStructure(false);
-        setOcr(false);
-        setPictureDescriptions(false);
+        setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
+        setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
+        setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setChunkValidationError(null);
         closeDialog();
       })
