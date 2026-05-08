@@ -52,10 +52,12 @@ export function parseOpenAIChatChunk(
           typeof toolCall.index === "number"
             ? (toolCall.index as number)
             : undefined;
-        const target =
-          idx !== undefined && idx >= 0 && idx < calls.length
-            ? calls[idx]
-            : calls[calls.length - 1];
+        let target: FunctionCall | undefined;
+        if (idx === undefined) {
+          target = calls[calls.length - 1];
+        } else if (idx >= 0 && idx < calls.length) {
+          target = calls[idx];
+        }
         if (target) {
           target.argumentsString =
             (target.argumentsString ?? "") + (fn.arguments as string);
