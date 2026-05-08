@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -798,4 +799,468 @@ func TestReconcile_UUIDNameDNS1035Compliance(t *testing.T) {
 	assert.Equal(t, uuidName, feDeploy.Labels["app.kubernetes.io/instance"])
 	assert.Equal(t, uuidName, beDeploy.Labels["app.kubernetes.io/instance"])
 	assert.Equal(t, uuidName, lfDeploy.Labels["app.kubernetes.io/instance"])
+}
+
+// ---------------------------------------------------------------------------
+// ImagePullSecrets tests
+// ---------------------------------------------------------------------------
+
+func TestMergeImagePullSecrets_BothEmpty(t *testing.T) {
+	result := mergeImagePullSecrets(nil, nil)
+	assert.Nil(t, result)
+}
+
+func TestMergeImagePullSecrets_OnlyGlobal(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	result := mergeImagePullSecrets(global, nil)
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}}, result)
+}
+
+func TestMergeImagePullSecrets_OnlyComponent(t *testing.T) {
+	component := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+	}
+	result := mergeImagePullSecrets(nil, component)
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "component-secret"}}, result)
+}
+
+func TestMergeImagePullSecrets_BothPresent(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	component := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+	}
+	result := mergeImagePullSecrets(global, component)
+	expected := []corev1.LocalObjectReference{
+		{Name: "component-secret"},
+		{Name: "global-secret"},
+	}
+	assert.Equal(t, expected, result)
+}
+
+func TestMergeImagePullSecrets_Deduplication(t *testing.T) {
+	global := []corev1.LocalObjectReference{
+		{Name: "shared-secret"},
+		{Name: "global-only"},
+	}
+	component := []corev1.LocalObjectReference{
+		{Name: "component-only"},
+		{Name: "shared-secret"}, // Duplicate
+	}
+	result := mergeImagePullSecrets(global, component)
+	// Component secrets come first, dedup keeps first occurrence
+	expected := []corev1.LocalObjectReference{
+		{Name: "component-only"},
+		{Name: "shared-secret"}, // From component (first occurrence)
+		{Name: "global-only"},
+	}
+	assert.Equal(t, expected, result)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Frontend(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Frontend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "frontend-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Backend(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Backend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "backend-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_ComponentImagePullSecrets_Langflow(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Langflow.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, deploy))
+
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "langflow-secret"}},
+		deploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_GlobalAndComponentImagePullSecrets(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	// Set global secrets
+	cr.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+	// Set component-specific secrets
+	cr.Spec.Frontend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+	}
+	cr.Spec.Backend.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+	}
+	cr.Spec.Langflow.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Check frontend: should have both frontend-specific and global
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, feDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "frontend-secret"},
+		{Name: "global-secret"},
+	}, feDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	// Check backend: should have both backend-specific and global
+	beDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, beDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "backend-secret"},
+		{Name: "global-secret"},
+	}, beDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	// Check langflow: should have both langflow-specific and global
+	lfDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, lfDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{
+		{Name: "langflow-secret"},
+		{Name: "global-secret"},
+	}, lfDeploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+func TestReconcile_OnlyGlobalImagePullSecrets(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "global-secret"},
+	}
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// All components should use the global secret
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, feDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		feDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	beDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, beDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		beDeploy.Spec.Template.Spec.ImagePullSecrets)
+
+	lfDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, lfDeploy))
+	assert.Equal(t, []corev1.LocalObjectReference{{Name: "global-secret"}},
+		lfDeploy.Spec.Template.Spec.ImagePullSecrets)
+}
+
+// ---------------------------------------------------------------------------
+// Custom ServiceAccount and Service Name tests
+// ---------------------------------------------------------------------------
+
+func TestReconcile_CustomServiceAccountName_OperatorCreates(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Frontend.ServiceAccountName = "my-custom-sa"
+	// CreateServiceAccount defaults to true, so operator will create it
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Verify operator created the SA with custom name
+	customSA := &corev1.ServiceAccount{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "my-custom-sa", Namespace: "test-ns"}, customSA))
+
+	// Verify deployment uses the custom SA
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+	assert.Equal(t, "my-custom-sa", deploy.Spec.Template.Spec.ServiceAccountName)
+
+	// Verify operator did NOT create the default SA
+	defaultSA := &corev1.ServiceAccount{}
+	err := c.Get(context.Background(),
+		types.NamespacedName{Name: saName("fe"), Namespace: "test-ns"}, defaultSA)
+	assert.True(t, errors.IsNotFound(err), "Default SA should not be created when custom name is specified")
+}
+
+func TestReconcile_CustomServiceAccountName_UserManaged(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Frontend.ServiceAccountName = "my-custom-sa"
+	createSA := false
+	cr.Spec.Frontend.CreateServiceAccount = &createSA // User manages the SA
+
+	// Pre-create the user-managed service account
+	customSA := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-custom-sa",
+			Namespace: "test-ns",
+		},
+	}
+
+	r, c := reconciler(s, cr, customSA)
+	reconcileOnce(t, r, cr)
+
+	// Verify deployment uses the custom SA
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+	assert.Equal(t, "my-custom-sa", deploy.Spec.Template.Spec.ServiceAccountName)
+
+	// Verify the SA still exists and wasn't recreated (check it's the pre-created one)
+	sa := &corev1.ServiceAccount{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "my-custom-sa", Namespace: "test-ns"}, sa))
+}
+
+func TestReconcile_DefaultServiceAccountName(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	// No custom SA specified
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Verify operator creates the default SA
+	defaultSA := &corev1.ServiceAccount{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: saName("fe"), Namespace: "test-ns"}, defaultSA))
+
+	// Verify deployment uses the default SA
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+	assert.Equal(t, saName("fe"), deploy.Spec.Template.Spec.ServiceAccountName)
+}
+
+func TestReconcile_CustomServiceName_OperatorCreates(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Backend.ServiceName = "my-backend-svc"
+	// CreateService defaults to true, so operator will create it
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Verify operator created the Service with custom name
+	customSvc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "my-backend-svc", Namespace: "test-ns"}, customSvc))
+	assert.Equal(t, int32(8000), customSvc.Spec.Ports[0].Port)
+
+	// Verify operator did NOT create the default Service
+	defaultSvc := &corev1.Service{}
+	err := c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, defaultSvc)
+	assert.True(t, errors.IsNotFound(err), "Default Service should not be created when custom name is specified")
+
+	// Verify backend env secret references the custom service name
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be-env"), Namespace: "test-ns"}, secret))
+
+	envContent := string(secret.Data[".env"])
+	if envContent == "" && secret.StringData != nil {
+		envContent = secret.StringData[".env"]
+	}
+	assert.Contains(t, envContent, "LANGFLOW_URL=http://"+resourceName("lf")+":7860",
+		"Backend env should reference default langflow service")
+}
+
+func TestReconcile_CustomServiceName_UserManaged(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Backend.ServiceName = "my-backend-svc"
+	createSvc := false
+	cr.Spec.Backend.CreateService = &createSvc // User manages the Service
+
+	// Pre-create the user-managed service
+	customSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-backend-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 8000, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+
+	r, c := reconciler(s, cr, customSvc)
+	reconcileOnce(t, r, cr)
+
+	// Verify the Service still exists and wasn't recreated
+	svc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "my-backend-svc", Namespace: "test-ns"}, svc))
+
+	// Verify operator did NOT create the default Service
+	defaultSvc := &corev1.Service{}
+	err := c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, defaultSvc)
+	assert.True(t, errors.IsNotFound(err), "Default Service should not be created when custom name is specified")
+}
+
+func TestReconcile_CustomServiceName_UsedInFrontendEnv(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Backend.ServiceName = "custom-be-svc"
+
+	// Pre-create the custom service
+	customSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-be-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 8000, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+
+	r, c := reconciler(s, cr, customSvc)
+	reconcileOnce(t, r, cr)
+
+	// Verify frontend deployment references the custom backend service name
+	deploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, deploy))
+
+	var backendHost string
+	for _, env := range deploy.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == "OPENRAG_BACKEND_HOST" {
+			backendHost = env.Value
+			break
+		}
+	}
+	assert.Equal(t, "custom-be-svc", backendHost,
+		"Frontend should reference custom backend service name")
+}
+
+func TestReconcile_CustomServiceName_Langflow_UsedInBackendEnv(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+	cr.Spec.Langflow.ServiceName = "custom-lf-svc"
+
+	// Pre-create the custom service
+	customSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-lf-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 7860, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+
+	r, c := reconciler(s, cr, customSvc)
+	reconcileOnce(t, r, cr)
+
+	// Verify backend env secret references the custom langflow service name
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be-env"), Namespace: "test-ns"}, secret))
+
+	envContent := string(secret.Data[".env"])
+	if envContent == "" && secret.StringData != nil {
+		envContent = secret.StringData[".env"]
+	}
+	assert.Contains(t, envContent, "LANGFLOW_URL=http://custom-lf-svc:7860",
+		"Backend env should reference custom langflow service name")
+}
+
+func TestReconcile_AllComponentsWithCustomNames_OperatorCreates(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-cr", "test-ns")
+
+	// Set custom names for all components (operator will create them by default)
+	cr.Spec.Frontend.ServiceAccountName = "custom-fe-sa"
+	cr.Spec.Frontend.ServiceName = "custom-fe-svc"
+	cr.Spec.Backend.ServiceAccountName = "custom-be-sa"
+	cr.Spec.Backend.ServiceName = "custom-be-svc"
+	cr.Spec.Langflow.ServiceAccountName = "custom-lf-sa"
+	cr.Spec.Langflow.ServiceName = "custom-lf-svc"
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Verify operator created all custom SAs
+	for _, name := range []string{"custom-fe-sa", "custom-be-sa", "custom-lf-sa"} {
+		sa := &corev1.ServiceAccount{}
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: name, Namespace: "test-ns"}, sa),
+			"Operator should create SA %s", name)
+	}
+
+	// Verify operator created all custom Services
+	for _, name := range []string{"custom-fe-svc", "custom-be-svc", "custom-lf-svc"} {
+		svc := &corev1.Service{}
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: name, Namespace: "test-ns"}, svc),
+			"Operator should create Service %s", name)
+	}
+
+	// Verify all deployments use custom names
+	feDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("fe"), Namespace: "test-ns"}, feDeploy))
+	assert.Equal(t, "custom-fe-sa", feDeploy.Spec.Template.Spec.ServiceAccountName)
+
+	// Verify no default SAs or Services were created
+	for _, role := range []string{"fe", "be", "lf"} {
+		defaultSA := &corev1.ServiceAccount{}
+		err := c.Get(context.Background(),
+			types.NamespacedName{Name: saName(role), Namespace: "test-ns"}, defaultSA)
+		assert.True(t, errors.IsNotFound(err), "Default SA for %s should not be created", role)
+
+		defaultSvc := &corev1.Service{}
+		err = c.Get(context.Background(),
+			types.NamespacedName{Name: resourceName(role), Namespace: "test-ns"}, defaultSvc)
+		assert.True(t, errors.IsNotFound(err), "Default Service for %s should not be created", role)
+	}
 }
