@@ -25,8 +25,10 @@ import (
 )
 
 const (
-	finalizer          = "openr.ag/namespace-cleanup"
-	specHashAnnotation = "openr.ag/spec-hash"
+	finalizer           = "openr.ag/namespace-cleanup"
+	envSecretFinalizer  = "openr.ag/env-secret-protection"
+	specHashAnnotation  = "openr.ag/spec-hash"
+	immutableAnnotation = "openr.ag/immutable"
 )
 
 // OpenRAGReconciler reconciles an OpenRAG object.
@@ -121,6 +123,24 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	}
 
 	targetNS := targetNamespace(o)
+
+	// Remove finalizers from .env secrets so they can be deleted
+	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
+		envSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
+				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
+				if err := r.Update(ctx, envSecret); err != nil {
+					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
+		}
+	}
+
+	// Delete managed namespace if it exists
 	ns := &corev1.Namespace{}
 	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
 	if err != nil && !errors.IsNotFound(err) {
@@ -227,6 +247,10 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 				Name:      d.name,
 				Namespace: targetNS,
 				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+				Annotations: map[string]string{
+					immutableAnnotation: "true",
+				},
+				Finalizers: []string{envSecretFinalizer},
 			},
 			StringData: map[string]string{".env": d.content},
 		}
