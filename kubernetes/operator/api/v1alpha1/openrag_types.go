@@ -21,6 +21,7 @@ type ComponentSpec struct {
 	// ImagePullSecrets for private registries, specific to this component.
 	// These are merged with the global imagePullSecrets from the OpenRAG spec.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
 	// +optional
@@ -300,6 +301,7 @@ type OpenRAGSpec struct {
 
 	// ImagePullSecrets for private registries, applied to all component pods.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
 	// Frontend configures the OpenRAG Next.js frontend.

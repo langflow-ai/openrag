@@ -1181,6 +1181,9 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   jwtSigningKeySecret:
                     description: JWTSigningKeySecret references the Secret key that
                       holds the JWT signing key.
@@ -2573,6 +2576,9 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   labels:
                     additionalProperties:
                       type: string
@@ -2746,6 +2752,9 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+                x-kubernetes-validations:
+                - message: imagePullSecret name cannot be empty
+                  rule: self.all(x, x.name != '')
               langflow:
                 description: Langflow configures the Langflow workflow engine.
                 properties:
@@ -3853,6 +3862,9 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   labels:
                     additionalProperties:
                       type: string
