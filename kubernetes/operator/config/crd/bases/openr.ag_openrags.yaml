@@ -986,17 +986,22 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                  createService:
+                    default: true
+                    description: |-
+                      CreateService indicates whether the operator should create the Service.
+                      If true (default), the operator creates a Service with the name specified in ServiceName.
+                      If false, the operator assumes the Service already exists and will only reference it.
+                    type: boolean
+                  createServiceAccount:
+                    default: true
+                    description: |-
+                      CreateServiceAccount indicates whether the operator should create the ServiceAccount.
+                      If true (default), the operator creates a ServiceAccount with the name specified in ServiceAccountName.
+                      If false, the operator assumes the ServiceAccount already exists and will only reference it.
+                    type: boolean
                   encryptionKeySecret:
                     description: |-
                       EncryptionKeySecret references the Secret key for OPENRAG_ENCRYPTION_KEY.
@@ -1155,6 +1160,30 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
+                  imagePullSecrets:
+                    description: |-
+                      ImagePullSecrets for private registries, specific to this component.
+                      These are merged with the global imagePullSecrets from the OpenRAG spec.
+                    items:
+                      description: |-
+                        LocalObjectReference contains enough information to let you locate the
+                        referenced object inside the same namespace.
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   jwtSigningKeySecret:
                     description: JWTSigningKeySecret references the Secret key that
                       holds the JWT signing key.
@@ -1187,20 +1216,8 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -1282,17 +1299,8 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -1302,20 +1310,8 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
@@ -1381,6 +1377,20 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
+                      When CreateServiceAccount is true, the operator will create a ServiceAccount with this name.
+                      When CreateServiceAccount is false, the ServiceAccount must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
+                  serviceName:
+                    description: |-
+                      ServiceName is the name of the Service to use for this component.
+                      When CreateService is true, the operator will create a Service with this name.
+                      When CreateService is false, the Service must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
                   storage:
                     description: Storage configures a PVC mounted at /app/backend-data.
                     properties:
@@ -2400,17 +2410,22 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                  createService:
+                    default: true
+                    description: |-
+                      CreateService indicates whether the operator should create the Service.
+                      If true (default), the operator creates a Service with the name specified in ServiceName.
+                      If false, the operator assumes the Service already exists and will only reference it.
+                    type: boolean
+                  createServiceAccount:
+                    default: true
+                    description: |-
+                      CreateServiceAccount indicates whether the operator should create the ServiceAccount.
+                      If true (default), the operator creates a ServiceAccount with the name specified in ServiceAccountName.
+                      If false, the operator assumes the ServiceAccount already exists and will only reference it.
+                    type: boolean
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -2540,6 +2555,30 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
+                  imagePullSecrets:
+                    description: |-
+                      ImagePullSecrets for private registries, specific to this component.
+                      These are merged with the global imagePullSecrets from the OpenRAG spec.
+                    items:
+                      description: |-
+                        LocalObjectReference contains enough information to let you locate the
+                        referenced object inside the same namespace.
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   labels:
                     additionalProperties:
                       type: string
@@ -2547,20 +2586,8 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -2572,17 +2599,8 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -2592,20 +2610,8 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
@@ -2671,6 +2677,20 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
+                      When CreateServiceAccount is true, the operator will create a ServiceAccount with this name.
+                      When CreateServiceAccount is false, the ServiceAccount must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
+                  serviceName:
+                    description: |-
+                      ServiceName is the name of the Service to use for this component.
+                      When CreateService is true, the operator will create a Service with this name.
+                      When CreateService is false, the Service must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
                   tolerations:
                     items:
                       description: |-
@@ -2732,6 +2752,9 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+                x-kubernetes-validations:
+                - message: imagePullSecret name cannot be empty
+                  rule: self.all(x, x.name != '')
               langflow:
                 description: Langflow configures the Langflow workflow engine.
                 properties:
@@ -3661,17 +3684,22 @@ spec:
                       Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
                       These annotations appear on the workload resource itself, not the pods.
                       Useful for GitOps metadata, deployment tracking, and automation tools.
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
+                  createService:
+                    default: true
+                    description: |-
+                      CreateService indicates whether the operator should create the Service.
+                      If true (default), the operator creates a Service with the name specified in ServiceName.
+                      If false, the operator assumes the Service already exists and will only reference it.
+                    type: boolean
+                  createServiceAccount:
+                    default: true
+                    description: |-
+                      CreateServiceAccount indicates whether the operator should create the ServiceAccount.
+                      If true (default), the operator creates a ServiceAccount with the name specified in ServiceAccountName.
+                      If false, the operator assumes the ServiceAccount already exists and will only reference it.
+                    type: boolean
                   env:
                     description: Additional environment variables injected into the
                       container.
@@ -3813,6 +3841,30 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
+                  imagePullSecrets:
+                    description: |-
+                      ImagePullSecrets for private registries, specific to this component.
+                      These are merged with the global imagePullSecrets from the OpenRAG spec.
+                    items:
+                      description: |-
+                        LocalObjectReference contains enough information to let you locate the
+                        referenced object inside the same namespace.
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                    x-kubernetes-validations:
+                    - message: imagePullSecret name cannot be empty
+                      rule: self.all(x, x.name != '')
                   labels:
                     additionalProperties:
                       type: string
@@ -3820,20 +3872,8 @@ spec:
                       Labels are custom labels to add to the Deployment/StatefulSet object metadata.
                       These labels appear on the workload resource itself, not the pods.
                       Useful for querying and grouping Deployment/StatefulSet objects.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -3845,17 +3885,8 @@ spec:
                       PodAnnotations are custom annotations to add to the pod template.
                       These annotations appear on the actual pods created by the Deployment/StatefulSet.
                       Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
-                      Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-                      Annotation values can be arbitrary strings.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: annotation keys must be valid Kubernetes annotation
-                        keys (prefix/name or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
                   podLabels:
                     additionalProperties:
                       type: string
@@ -3865,20 +3896,8 @@ spec:
                       Useful for pod selectors, monitoring queries, network policies, and service mesh.
                       Merged with operator-managed labels (app.kubernetes.io/*).
                       Cannot override operator-managed labels.
-                      Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-                      Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
                     maxProperties: 64
                     type: object
-                    x-kubernetes-validations:
-                    - message: label keys must be valid Kubernetes label keys (prefix/name
-                        or name)
-                      rule: 'self.all(key, size(key) <= 253 && (key.contains(''/'')
-                        ? key.split(''/'')[0].matches(''^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'')
-                        && key.split(''/'')[1].matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')
-                        : key.matches(''^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$'')))'
-                    - message: label values must be 63 characters or less and match
-                        regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
-                      rule: self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))
                   replicas:
                     default: 1
                     format: int32
@@ -3971,6 +3990,20 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
+                      When CreateServiceAccount is true, the operator will create a ServiceAccount with this name.
+                      When CreateServiceAccount is false, the ServiceAccount must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
+                  serviceName:
+                    description: |-
+                      ServiceName is the name of the Service to use for this component.
+                      When CreateService is true, the operator will create a Service with this name.
+                      When CreateService is false, the Service must already exist in the target namespace.
+                      If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+                    type: string
                   storage:
                     description: Storage configures a PVC mounted at /app/data (Langflow
                       SQLite + flows).
