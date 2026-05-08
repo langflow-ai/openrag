@@ -280,6 +280,88 @@ type DoclingSpec struct {
 	Scheme string `json:"scheme,omitempty"`
 }
 
+// DoclingServeSpec configures the Docling serve component (API server).
+type DoclingServeSpec struct {
+	ComponentSpec `json:",inline"`
+
+	// Storage configures a PVC for model cache and temporary files.
+	// +optional
+	Storage *PersistenceSpec `json:"storage,omitempty"`
+
+	// Port for the HTTP API.
+	// +optional
+	// +kubebuilder:default=5001
+	Port int32 `json:"port,omitempty"`
+}
+
+// DoclingWorkerSpec configures the Docling worker component (document processing).
+type DoclingWorkerSpec struct {
+	ComponentSpec `json:",inline"`
+
+	// Storage configures a PVC for processing workspace.
+	// +optional
+	Storage *PersistenceSpec `json:"storage,omitempty"`
+
+	// QueueURL for worker communication (e.g., Redis, RabbitMQ).
+	// +optional
+	QueueURL string `json:"queueUrl,omitempty"`
+
+	// QueueURLSecret references a Secret key for the queue connection string.
+	// +optional
+	QueueURLSecret *corev1.SecretKeySelector `json:"queueUrlSecret,omitempty"`
+}
+
+// DoclingHPASpec configures HorizontalPodAutoscaler for docling components.
+type DoclingHPASpec struct {
+	// Enabled controls whether HPA is created.
+	// +optional
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// MinReplicas is the lower limit for the number of replicas.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	MinReplicas *int32 `json:"minReplicas,omitempty"`
+
+	// MaxReplicas is the upper limit for the number of replicas.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum=1
+	MaxReplicas int32 `json:"maxReplicas"`
+
+	// TargetCPUUtilizationPercentage is the target average CPU utilization.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	TargetCPUUtilizationPercentage *int32 `json:"targetCPUUtilizationPercentage,omitempty"`
+
+	// TargetMemoryUtilizationPercentage is the target average memory utilization.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	TargetMemoryUtilizationPercentage *int32 `json:"targetMemoryUtilizationPercentage,omitempty"`
+}
+
+// DoclingComponentsSpec aggregates all docling-related components.
+type DoclingComponentsSpec struct {
+	// Enabled controls whether docling components are deployed.
+	// +optional
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Serve configures the docling-serve deployment.
+	// +optional
+	Serve *DoclingServeSpec `json:"serve,omitempty"`
+
+	// Worker configures the docling-worker deployment.
+	// +optional
+	Worker *DoclingWorkerSpec `json:"worker,omitempty"`
+
+	// HPA configures autoscaling for docling components.
+	// +optional
+	HPA *DoclingHPASpec `json:"hpa,omitempty"`
+}
+
 // NetworkPolicySpec controls whether the operator creates a NetworkPolicy for Langflow.
 type NetworkPolicySpec struct {
 	// +optional
@@ -332,7 +414,13 @@ type OpenRAGSpec struct {
 	// +optional
 	OpenSearch *OpenSearchSpec `json:"opensearch,omitempty"`
 
-	// Docling configures an optional external document-conversion service.
+	// DoclingComponents configures optional docling document-processing components.
+	// When enabled, deploys docling-serve and docling-worker alongside OpenRAG.
+	// +optional
+	DoclingComponents *DoclingComponentsSpec `json:"doclingComponents,omitempty"`
+
+	// Docling configures an optional external document-conversion service (legacy).
+	// Use DoclingComponents to deploy docling within the operator.
 	// +optional
 	Docling *DoclingSpec `json:"docling,omitempty"`
 
