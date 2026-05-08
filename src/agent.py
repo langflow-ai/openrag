@@ -514,7 +514,7 @@ async def async_chat_stream(
             if chunk_data.get("type") == "response.completed":
                 response_obj = chunk_data.get("response", {})
                 usage_data = response_obj.get("usage")
-        except:
+        except Exception:
             pass
         yield chunk
 
@@ -787,7 +787,7 @@ async def async_langflow_chat_stream(
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
                     usage_data = response_obj.get("usage")
-            except:
+            except Exception:
                 pass
             yield chunk
 

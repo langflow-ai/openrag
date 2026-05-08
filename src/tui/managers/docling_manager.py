@@ -369,7 +369,7 @@ class DoclingManager:
                         )
                         self._starting = False
                         break
-                except:
+                except Exception:
                     pass
 
                 if (i + 1) % 10 == 0:
