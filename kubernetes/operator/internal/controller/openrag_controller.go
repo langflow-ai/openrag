@@ -1300,4 +1300,3 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 
 	return newSecret, nil
 }
-
