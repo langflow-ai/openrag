@@ -19,6 +19,35 @@ const VALID_TABS = [
 
 type Tab = (typeof VALID_TABS)[number];
 
+async function getTabAuthContext() {
+  try {
+    const [authRes, meRes] = await Promise.all([
+      fetchFromBackend("auth/me"),
+      fetchFromBackend("users/me"),
+    ]);
+    const authData = authRes.ok ? await authRes.json() : {};
+    const meData = meRes.ok ? await meRes.json() : {};
+    return {
+      isNoAuthMode: Boolean(authData.no_auth_mode),
+      isIbmAuthMode: Boolean(authData.ibm_auth_mode),
+      isAuthenticated: Boolean(authData.authenticated),
+      rbacEnforced:
+        typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true,
+      permissions: new Set<string>(
+        Array.isArray(meData.permissions) ? meData.permissions : [],
+      ),
+    };
+  } catch {
+    return {
+      isNoAuthMode: false,
+      isIbmAuthMode: false,
+      isAuthenticated: false,
+      rbacEnforced: true,
+      permissions: new Set<string>(),
+    };
+  }
+}
+
 export default async function SettingsTabPage({
   params,
 }: {
@@ -27,6 +56,35 @@ export default async function SettingsTabPage({
   const { tab } = await params;
 
   if (!VALID_TABS.includes(tab as Tab)) {
+    redirect("/settings/connectors");
+  }
+
+  const {
+    isNoAuthMode,
+    isIbmAuthMode,
+    isAuthenticated,
+    rbacEnforced,
+    permissions,
+  } = await getTabAuthContext();
+
+  // Mirror the visibility logic from settings-nav.tsx
+  if (
+    tab === "roles" &&
+    (!rbacEnforced || (!isNoAuthMode && !permissions.has("users:list")))
+  ) {
+    redirect("/settings/connectors");
+  }
+  if (
+    tab === "api-keys" &&
+    (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
+  ) {
+    redirect("/settings/connectors");
+  }
+  if (
+    tab === "providers" &&
+    !isNoAuthMode &&
+    !permissions.has("providers:write")
+  ) {
     redirect("/settings/connectors");
   }
 
