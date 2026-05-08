@@ -73,7 +73,8 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
-	if instance.Spec.TargetNamespace != "" && instance.Spec.TargetNamespace != instance.Namespace {
+	targetNS := targetNamespace(instance)
+	if targetNS != instance.Namespace {
 		if !controllerutil.ContainsFinalizer(instance, finalizer) {
 			controllerutil.AddFinalizer(instance, finalizer)
 			if err := r.Update(ctx, instance); err != nil {
@@ -85,8 +86,6 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, nil
 		}
 	}
-
-	targetNS := targetNamespace(instance)
 
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
@@ -121,8 +120,9 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 		return nil
 	}
 
+	targetNS := targetNamespace(o)
 	ns := &corev1.Namespace{}
-	err := r.Get(ctx, client.ObjectKey{Name: o.Spec.TargetNamespace}, ns)
+	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}
@@ -162,9 +162,14 @@ func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1
 
 func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	for _, role := range []string{"fe", "be", "lf"} {
+		// Only create ServiceAccount if flag is true
+		if !shouldCreateServiceAccount(o, role) {
+			continue
+		}
+
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      saName(role),
+				Name:      getServiceAccountName(o, role), // Use custom name if specified
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, role),
 			},
@@ -192,132 +197,20 @@ func parseEnvValue(envContent, key string) string {
 	return ""
 }
 
-// getOrCreateEncryptionKey retrieves the OPENRAG_ENCRYPTION_KEY from:
-// 1. Existing .env secret (highest priority - never regenerate)
-// 2. Dedicated kubernetes secret (secretName)
-// 3. Generate new key and store in dedicated secret
-func (r *OpenRAGReconciler) getOrCreateEncryptionKey(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS, secretName, keyName, envSecretName string) (string, error) {
-	// First check if key exists in the existing .env secret
-	existingEnvSecret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
-	if err == nil {
-		// Parse the .env file content
-		envContent := string(existingEnvSecret.Data[".env"])
-		if envContent == "" && existingEnvSecret.StringData != nil {
-			envContent = existingEnvSecret.StringData[".env"]
-		}
-		if value := parseEnvValue(envContent, keyName); value != "" {
-			return value, nil // Never regenerate existing key
-		}
-	}
-
-	// Check if key exists in dedicated kubernetes secret
-	dedicatedSecret := &corev1.Secret{}
-	err = r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, dedicatedSecret)
-	if err == nil {
-		if key, ok := dedicatedSecret.Data[keyName]; ok && len(key) > 0 {
-			return string(key), nil
-		}
-		if dedicatedSecret.StringData != nil {
-			if key, ok := dedicatedSecret.StringData[keyName]; ok && key != "" {
-				return key, nil
-			}
-		}
-	}
-
-	// Generate new key and store in dedicated secret
-	newKey, err := GenerateAESKeyString32()
-	if err != nil {
-		return "", fmt.Errorf("failed to generate encryption key: %w", err)
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNS,
-			Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
-		},
-		StringData: map[string]string{keyName: newKey},
-	}
-	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-		return "", err
-	}
-	if err := r.createOrUpdate(ctx, secret); err != nil {
-		return "", err
-	}
-
-	return newKey, nil
-}
-
-// getOrCreateLangflowSecretKey retrieves the LANGFLOW_SECRET_KEY from:
-// 1. Existing .env secret (highest priority - never regenerate)
-// 2. Dedicated kubernetes secret (secretName)
-// 3. Generate new key and store in dedicated secret
-func (r *OpenRAGReconciler) getOrCreateLangflowSecretKey(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS, secretName, keyName, envSecretName string) (string, error) {
-	// First check if key exists in the existing .env secret
-	existingEnvSecret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
-	if err == nil {
-		// Parse the .env file content
-		envContent := string(existingEnvSecret.Data[".env"])
-		if envContent == "" && existingEnvSecret.StringData != nil {
-			envContent = existingEnvSecret.StringData[".env"]
-		}
-		if value := parseEnvValue(envContent, keyName); value != "" {
-			return value, nil // Never regenerate existing key
-		}
-	}
-
-	// Check if key exists in dedicated kubernetes secret
-	dedicatedSecret := &corev1.Secret{}
-	err = r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, dedicatedSecret)
-	if err == nil {
-		if key, ok := dedicatedSecret.Data[keyName]; ok && len(key) > 0 {
-			return string(key), nil
-		}
-		if dedicatedSecret.StringData != nil {
-			if key, ok := dedicatedSecret.StringData[keyName]; ok && key != "" {
-				return key, nil
-			}
-		}
-	}
-
-	// Generate new key and store in dedicated secret
-	newKey, err := generateBase64SecretKey()
-	if err != nil {
-		return "", fmt.Errorf("failed to generate langflow secret key: %w", err)
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNS,
-			Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
-		},
-		StringData: map[string]string{keyName: newKey},
-	}
-	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-		return "", err
-	}
-	if err := r.createOrUpdate(ctx, secret); err != nil {
-		return "", err
-	}
-
-	return newKey, nil
-}
-
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
+// All sensitive values (whether user-provided or generated) are consolidated into .env files.
 func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	// Get or create encryption keys
-	backendEncryptionKey, err := r.getOrCreateEncryptionKey(ctx, o, targetNS, "openrag-be-encryption-key", "OPENRAG_ENCRYPTION_KEY", resourceName("be-env"))
+	// Build backend .env content with all secrets consolidated
+	backendEnvContent, err := r.buildBackendEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to get backend encryption key: %w", err)
+		return fmt.Errorf("failed to build backend env: %w", err)
 	}
 
-	langflowSecretKey, err := r.getOrCreateLangflowSecretKey(ctx, o, targetNS, "langflow-secret-key", "LANGFLOW_SECRET_KEY", resourceName("lf-env"))
+	// Build langflow .env content with all secrets consolidated
+	langflowEnvContent, err := r.buildLangflowEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to get langflow secret key: %w", err)
+		return fmt.Errorf("failed to build langflow env: %w", err)
 	}
 
 	type envDef struct {
@@ -325,8 +218,8 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 		content string
 	}
 	defs := []envDef{
-		{resourceName("be-env"), r.buildBackendEnv(o, backendEncryptionKey)},
-		{resourceName("lf-env"), r.buildLangflowEnv(o, langflowSecretKey)},
+		{resourceName("be-env"), backendEnvContent},
+		{resourceName("lf-env"), langflowEnvContent},
 	}
 	for _, d := range defs {
 		secret := &corev1.Secret{
@@ -347,15 +240,27 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 	return nil
 }
 
-func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encryptionKey string) string {
+func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
 	envVars := r.EnvVarManager.GetBackendEnvVars(o.Spec.Backend.Env)
 
-	// Set encryption key (always preserved, never regenerated)
+	// Get or generate encryption key (AES-256)
+	// Priority: 1) User-provided secret in CR, 2) Existing value in .env, 3) Generate new
+	encryptionKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.EncryptionKeySecret, "OPENRAG_ENCRYPTION_KEY", resourceName("be-env"), GenerateAESKeyString32)
+	if err != nil {
+		return "", fmt.Errorf("failed to get encryption key: %w", err)
+	}
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
+	// Get or generate JWT signing key (base64 secret)
+	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_PRIVATE_KEY", resourceName("be-env"), generateBase64SecretKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
+	}
+	envVars["JWT_PRIVATE_KEY"] = jwtSigningKey
+
 	// Operator-derived values (always set)
-	envVars["LANGFLOW_URL"] = "http://" + resourceName("lf") + ":7860"
+	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
@@ -378,9 +283,36 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 		if os.IndexName != "" {
 			envVars["OPENSEARCH_INDEX_NAME"] = os.IndexName
 		}
-		// Username injected as env var from credentials secret when set;
-		// fall back to the common default.
-		if os.CredentialsSecret == "" {
+
+		// Read OpenSearch credentials from user-provided secret
+		if os.CredentialsSecret != "" {
+			// Read username
+			usernameSecret := &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: os.CredentialsSecret},
+				Key:                  "username",
+			}
+			username, err := r.readSecretValue(ctx, targetNS, usernameSecret)
+			if err != nil {
+				return "", fmt.Errorf("failed to read OpenSearch username: %w", err)
+			}
+			if username != "" {
+				envVars["OPENSEARCH_USERNAME"] = username
+			}
+
+			// Read password
+			passwordSecret := &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: os.CredentialsSecret},
+				Key:                  "password",
+			}
+			password, err := r.readSecretValue(ctx, targetNS, passwordSecret)
+			if err != nil {
+				return "", fmt.Errorf("failed to read OpenSearch password: %w", err)
+			}
+			if password != "" {
+				envVars["OPENSEARCH_PASSWORD"] = password
+			}
+		} else {
+			// Default username when no credentials secret is provided
 			envVars["OPENSEARCH_USERNAME"] = "admin"
 		}
 	}
@@ -392,6 +324,17 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 		}
 		if wx.ProjectID != "" {
 			envVars["WATSONX_PROJECT_ID"] = wx.ProjectID
+		}
+
+		// Read WatsonX API key from user-provided secret
+		if wx.APIKeySecret != nil {
+			apiKey, err := r.readSecretValue(ctx, targetNS, wx.APIKeySecret)
+			if err != nil {
+				return "", fmt.Errorf("failed to read WatsonX API key: %w", err)
+			}
+			if apiKey != "" {
+				envVars["WATSONX_API_KEY"] = apiKey
+			}
 		}
 	}
 
@@ -423,11 +366,36 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 		envVars["OAUTH_BROKER_URL"] = o.Spec.Backend.OAuthBrokerURL
 	}
 	if oa := o.Spec.Backend.OAuth; oa != nil {
-		if oa.Google != nil && oa.Google.ClientID != "" {
-			envVars["GOOGLE_OAUTH_CLIENT_ID"] = oa.Google.ClientID
+		// Google OAuth
+		if oa.Google != nil {
+			if oa.Google.ClientID != "" {
+				envVars["GOOGLE_OAUTH_CLIENT_ID"] = oa.Google.ClientID
+			}
+			if oa.Google.ClientSecret != nil {
+				clientSecret, err := r.readSecretValue(ctx, targetNS, oa.Google.ClientSecret)
+				if err != nil {
+					return "", fmt.Errorf("failed to read Google OAuth client secret: %w", err)
+				}
+				if clientSecret != "" {
+					envVars["GOOGLE_OAUTH_CLIENT_SECRET"] = clientSecret
+				}
+			}
 		}
-		if oa.Microsoft != nil && oa.Microsoft.ClientID != "" {
-			envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_ID"] = oa.Microsoft.ClientID
+
+		// Microsoft OAuth
+		if oa.Microsoft != nil {
+			if oa.Microsoft.ClientID != "" {
+				envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_ID"] = oa.Microsoft.ClientID
+			}
+			if oa.Microsoft.ClientSecret != nil {
+				clientSecret, err := r.readSecretValue(ctx, targetNS, oa.Microsoft.ClientSecret)
+				if err != nil {
+					return "", fmt.Errorf("failed to read Microsoft OAuth client secret: %w", err)
+				}
+				if clientSecret != "" {
+					envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"] = clientSecret
+				}
+			}
 		}
 	}
 
@@ -445,15 +413,19 @@ func (r *OpenRAGReconciler) buildBackendEnv(o *openragv1alpha1.OpenRAG, encrypti
 	}
 
 	// Convert map to .env file format
-	return r.EnvVarManager.BuildEnvFileContent(envVars)
+	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
 }
 
-func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG, secretKey string) string {
+func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
 	envVars := r.EnvVarManager.GetLangflowEnvVars(o.Spec.Langflow.Env)
 
-	// Set secret key (always preserved, never regenerated)
-	envVars["LANGFLOW_SECRET_KEY"] = secretKey
+	// Get or generate Langflow secret key (Fernet key - base64, shared with backend)
+	langflowSecretKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Langflow.SecretKeySecret, "LANGFLOW_SECRET_KEY", resourceName("lf-env"), generateBase64SecretKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get langflow secret key: %w", err)
+	}
+	envVars["LANGFLOW_SECRET_KEY"] = langflowSecretKey
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
@@ -522,7 +494,7 @@ func (r *OpenRAGReconciler) buildLangflowEnv(o *openragv1alpha1.OpenRAG, secretK
 	}
 
 	// Convert map to .env file format
-	return r.EnvVarManager.BuildEnvFileContent(envVars)
+	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
 }
 
 func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
@@ -583,9 +555,14 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 		{"lf", 7860},
 	}
 	for _, d := range defs {
+		// Only create Service if flag is true
+		if !shouldCreateService(o, d.role) {
+			continue
+		}
+
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName(d.role),
+				Name:      getServiceName(o, d.role), // Use custom name if specified
 				Namespace: targetNS,
 				Labels:    componentLabels(o.Name, d.role),
 			},
@@ -649,8 +626,8 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("fe"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ServiceAccountName: getServiceAccountName(o, "fe"),
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -661,7 +638,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							ImagePullPolicy: spec.ImagePullPolicy,
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 3000}},
 							Env: append([]corev1.EnvVar{
-								{Name: "OPENRAG_BACKEND_HOST", Value: resourceName("be")},
+								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
 							Resources:      spec.Resources,
 							LivenessProbe:  httpProbe("/", 3000, 30, 10),
@@ -709,14 +686,9 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 		mounts = append(mounts, corev1.VolumeMount{Name: "backend-data", MountPath: "/app/backend-data"})
 	}
 
-	envVars := r.backendSensitiveEnvVars(o)
-	if spec.JWTSigningKeySecret != nil {
-		envVars = append(envVars, corev1.EnvVar{
-			Name:      "JWT_SIGNING_KEY",
-			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: spec.JWTSigningKeySecret},
-		})
-	}
-	envVars = append(envVars, spec.Env...)
+	// All sensitive values are now consolidated in the .env file
+	// Only use additional env vars from the CR spec
+	envVars := spec.Env
 
 	baseLabels := componentLabels(o.Name, "be")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
@@ -740,8 +712,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("be"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ServiceAccountName: getServiceAccountName(o, "be"),
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -769,62 +741,6 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 			},
 		},
 	}
-}
-
-// backendSensitiveEnvVars returns env vars sourced from Secrets for the backend pod.
-// These override any matching keys in the mounted .env file.
-func (r *OpenRAGReconciler) backendSensitiveEnvVars(o *openragv1alpha1.OpenRAG) []corev1.EnvVar {
-	var ev []corev1.EnvVar
-
-	// LANGFLOW_SECRET_KEY - reference the secret, don't embed the value
-	if o.Spec.Langflow.SecretKeySecret != nil {
-		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", o.Spec.Langflow.SecretKeySecret))
-	} else {
-		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: "langflow-secret-key"},
-			Key:                  "LANGFLOW_SECRET_KEY",
-		}))
-	}
-
-	// OPENRAG_ENCRYPTION_KEY - reference the secret, don't embed the value
-	if o.Spec.Backend.EncryptionKeySecret != nil {
-		ev = append(ev, secretEnvVar("OPENRAG_ENCRYPTION_KEY", o.Spec.Backend.EncryptionKeySecret))
-	} else {
-		ev = append(ev, secretEnvVar("OPENRAG_ENCRYPTION_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: "openrag-be-encryption-key"},
-			Key:                  "OPENRAG_ENCRYPTION_KEY",
-		}))
-	}
-
-	// OpenSearch credentials
-	if o.Spec.OpenSearch != nil && o.Spec.OpenSearch.CredentialsSecret != "" {
-		cred := o.Spec.OpenSearch.CredentialsSecret
-		ev = append(ev,
-			secretEnvVar("OPENSEARCH_USERNAME", &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: cred}, Key: "username",
-			}),
-			secretEnvVar("OPENSEARCH_PASSWORD", &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: cred}, Key: "password",
-			}),
-		)
-	}
-
-	// WatsonX API key
-	if o.Spec.WatsonX != nil && o.Spec.WatsonX.APIKeySecret != nil {
-		ev = append(ev, secretEnvVar("WATSONX_API_KEY", o.Spec.WatsonX.APIKeySecret))
-	}
-
-	// OAuth secrets
-	if oa := o.Spec.Backend.OAuth; oa != nil {
-		if oa.Google != nil && oa.Google.ClientSecret != nil {
-			ev = append(ev, secretEnvVar("GOOGLE_OAUTH_CLIENT_SECRET", oa.Google.ClientSecret))
-		}
-		if oa.Microsoft != nil && oa.Microsoft.ClientSecret != nil {
-			ev = append(ev, secretEnvVar("MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET", oa.Microsoft.ClientSecret))
-		}
-	}
-
-	return ev
 }
 
 func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
@@ -889,8 +805,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		}
 	}
 
-	envVars := r.langflowSensitiveEnvVars(o)
-	envVars = append(envVars, spec.Env...)
+	// All sensitive values are now consolidated in the .env file
+	// Only use additional env vars from the CR spec
+	envVars := spec.Env
 
 	baseLabels := componentLabels(o.Name, "lf")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
@@ -914,8 +831,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: saName("lf"),
-					ImagePullSecrets:   o.Spec.ImagePullSecrets,
+					ServiceAccountName: getServiceAccountName(o, "lf"),
+					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
@@ -946,41 +863,6 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 			},
 		},
 	}
-}
-
-// langflowSensitiveEnvVars returns env vars sourced from Secrets for the Langflow pod.
-func (r *OpenRAGReconciler) langflowSensitiveEnvVars(o *openragv1alpha1.OpenRAG) []corev1.EnvVar {
-	var ev []corev1.EnvVar
-
-	// LANGFLOW_SECRET_KEY - reference the secret, don't embed the value
-	if o.Spec.Langflow.SecretKeySecret != nil {
-		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", o.Spec.Langflow.SecretKeySecret))
-	} else {
-		ev = append(ev, secretEnvVar("LANGFLOW_SECRET_KEY", &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: "langflow-secret-key"},
-			Key:                  "LANGFLOW_SECRET_KEY",
-		}))
-	}
-
-	// OpenSearch credentials
-	if o.Spec.OpenSearch != nil && o.Spec.OpenSearch.CredentialsSecret != "" {
-		cred := o.Spec.OpenSearch.CredentialsSecret
-		ev = append(ev,
-			secretEnvVar("OPENSEARCH_USERNAME", &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: cred}, Key: "username",
-			}),
-			secretEnvVar("OPENSEARCH_PASSWORD", &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: cred}, Key: "password",
-			}),
-		)
-	}
-
-	// WatsonX API key
-	if o.Spec.WatsonX != nil && o.Spec.WatsonX.APIKeySecret != nil {
-		ev = append(ev, secretEnvVar("WATSONX_API_KEY", o.Spec.WatsonX.APIKeySecret))
-	}
-
-	return ev
 }
 
 func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
@@ -1164,6 +1046,80 @@ func saName(role string) string {
 	return "openrag-" + role
 }
 
+// getServiceAccountName returns the ServiceAccount name for a component.
+// If a custom name is specified in the spec, returns that; otherwise returns the default.
+func getServiceAccountName(o *openragv1alpha1.OpenRAG, role string) string {
+	var customName string
+	switch role {
+	case "fe":
+		customName = o.Spec.Frontend.ServiceAccountName
+	case "be":
+		customName = o.Spec.Backend.ServiceAccountName
+	case "lf":
+		customName = o.Spec.Langflow.ServiceAccountName
+	}
+	if customName != "" {
+		return customName
+	}
+	return saName(role)
+}
+
+// shouldCreateServiceAccount returns true if the operator should create the ServiceAccount.
+// Checks the CreateServiceAccount boolean flag (defaults to true if not specified).
+func shouldCreateServiceAccount(o *openragv1alpha1.OpenRAG, role string) bool {
+	var createFlag *bool
+	switch role {
+	case "fe":
+		createFlag = o.Spec.Frontend.CreateServiceAccount
+	case "be":
+		createFlag = o.Spec.Backend.CreateServiceAccount
+	case "lf":
+		createFlag = o.Spec.Langflow.CreateServiceAccount
+	}
+	// Default to true if not specified
+	if createFlag == nil {
+		return true
+	}
+	return *createFlag
+}
+
+// getServiceName returns the Service name for a component.
+// If a custom name is specified in the spec, returns that; otherwise returns the default.
+func getServiceName(o *openragv1alpha1.OpenRAG, role string) string {
+	var customName string
+	switch role {
+	case "fe":
+		customName = o.Spec.Frontend.ServiceName
+	case "be":
+		customName = o.Spec.Backend.ServiceName
+	case "lf":
+		customName = o.Spec.Langflow.ServiceName
+	}
+	if customName != "" {
+		return customName
+	}
+	return resourceName(role)
+}
+
+// shouldCreateService returns true if the operator should create the Service.
+// Checks the CreateService boolean flag (defaults to true if not specified).
+func shouldCreateService(o *openragv1alpha1.OpenRAG, role string) bool {
+	var createFlag *bool
+	switch role {
+	case "fe":
+		createFlag = o.Spec.Frontend.CreateService
+	case "be":
+		createFlag = o.Spec.Backend.CreateService
+	case "lf":
+		createFlag = o.Spec.Langflow.CreateService
+	}
+	// Default to true if not specified
+	if createFlag == nil {
+		return true
+	}
+	return *createFlag
+}
+
 func componentLabels(crName, role string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "openrag",
@@ -1185,6 +1141,36 @@ func mergeLabels(baseLabels, customLabels map[string]string) map[string]string {
 	for k, v := range baseLabels {
 		merged[k] = v
 	}
+	return merged
+}
+
+// mergeImagePullSecrets merges global and component-specific imagePullSecrets.
+// Component-level secrets are added first, followed by global secrets.
+// Duplicates (same name) are automatically deduplicated, keeping the first occurrence.
+func mergeImagePullSecrets(global, component []corev1.LocalObjectReference) []corev1.LocalObjectReference {
+	if len(component) == 0 && len(global) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var merged []corev1.LocalObjectReference
+
+	// Add component secrets first
+	for _, secret := range component {
+		if !seen[secret.Name] {
+			merged = append(merged, secret)
+			seen[secret.Name] = true
+		}
+	}
+
+	// Add global secrets
+	for _, secret := range global {
+		if !seen[secret.Name] {
+			merged = append(merged, secret)
+			seen[secret.Name] = true
+		}
+	}
+
 	return merged
 }
 
@@ -1254,9 +1240,70 @@ func udpPort(p int32) networkingv1.NetworkPolicyPort {
 	return networkingv1.NetworkPolicyPort{Port: &v, Protocol: &proto}
 }
 
-func secretEnvVar(name string, sel *corev1.SecretKeySelector) corev1.EnvVar {
-	return corev1.EnvVar{
-		Name:      name,
-		ValueFrom: &corev1.EnvVarSource{SecretKeyRef: sel},
+// readSecretValue reads a secret value from a Kubernetes secret.
+// Returns the value and nil error if found, empty string and error otherwise.
+func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace string, sel *corev1.SecretKeySelector) (string, error) {
+	if sel == nil {
+		return "", nil
 	}
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sel.Name}, secret)
+	if err != nil {
+		return "", err
+	}
+
+	value, ok := secret.Data[sel.Key]
+	if !ok {
+		return "", fmt.Errorf("key %s not found in secret %s", sel.Key, sel.Name)
+	}
+
+	return string(value), nil
+}
+
+// getOrGenerateSecret retrieves a secret value following this priority:
+// 1. If userSecretRef is provided in CR, read from that secret
+// 2. If value exists in existing .env secret, use that (for stability - never regenerate)
+// 3. Generate a new secret using the appropriate generation function
+// This consolidates all secrets into .env files without creating separate Kubernetes secrets.
+func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, userSecretRef *corev1.SecretKeySelector, envKeyName, envSecretName string, genFunc func() (string, error)) (string, error) {
+	// Priority 1: User-provided secret in CR
+	if userSecretRef != nil {
+		value, err := r.readSecretValue(ctx, targetNS, userSecretRef)
+		if err != nil {
+			return "", fmt.Errorf("failed to read user-provided secret for %s: %w", envKeyName, err)
+		}
+		if value != "" {
+			return value, nil
+		}
+	}
+
+	// Priority 2: Check if key exists in the existing .env secret (for stability)
+	existingEnvSecret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
+	switch {
+	case err == nil:
+		if value := parseEnvValue(string(existingEnvSecret.Data[".env"]), envKeyName); value != "" {
+			return value, nil // Never regenerate existing key
+		}
+	case !errors.IsNotFound(err):
+		return "", fmt.Errorf("failed to read existing env secret %s for %s: %w", envSecretName, envKeyName, err)
+	}
+
+	// Priority 3: Generate new secret using the provided generation function
+	newSecret, err := genFunc()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate secret for %s: %w", envKeyName, err)
+	}
+
+	// Log the secret generation for auditing and debugging
+	logger := log.FromContext(ctx)
+	logger.Info("Generated new secret",
+		"secretKey", envKeyName,
+		"openragName", o.Name,
+		"namespace", o.Namespace,
+		"tenantId", o.Spec.TenantID,
+		"targetNamespace", targetNS)
+
+	return newSecret, nil
 }
