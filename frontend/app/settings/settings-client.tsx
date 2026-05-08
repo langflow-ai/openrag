@@ -26,6 +26,7 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { ProtectedRoute } from "@/components/protected-route";
+import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,13 +61,15 @@ import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMut
 import { ModelSelector } from "../onboarding/_components/model-selector";
 import ConnectorCards from "./_components/connector-cards";
 import ModelProviders from "./_components/model-providers";
+import { UsersAndRolesSection } from "./_components/users-and-roles-section";
 import { getModelLogo, type ModelProvider } from "./_helpers/model-helpers";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
 function KnowledgeSourcesPage() {
   const isCloudBrand = useIsCloudBrand();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, rbacEnforced } =
+    useAuth();
   const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -690,20 +693,22 @@ function KnowledgeSourcesPage() {
         <ConnectorCards />
       </div>
 
-      {/* Model Providers Section */}
-      <div className="space-y-6">
-        <div>
-          <h2
-            className={cn(
-              "mb-2 text-lg font-semibold tracking-tight",
-              isCloudBrand && "ibm-settings-section-title",
-            )}
-          >
-            Model Providers
-          </h2>
+      {/* Model Providers Section — admin only (workspace-level provider keys) */}
+      <RequirePermission perm="providers:write">
+        <div className="space-y-6">
+          <div>
+            <h2
+              className={cn(
+                "mb-2 text-lg font-semibold tracking-tight",
+                isCloudBrand && "ibm-settings-section-title",
+              )}
+            >
+              Model Providers
+            </h2>
+          </div>
+          <ModelProviders />
         </div>
-        <ModelProviders />
-      </div>
+      </RequirePermission>
 
       {/* Agent Behavior Section */}
       <Card id="agent-card">
@@ -717,71 +722,74 @@ function KnowledgeSourcesPage() {
             >
               Agent
             </CardTitle>
-            <div className="flex gap-2">
-              <ConfirmationDialog
-                trigger={
-                  <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
-                  </Button>
-                }
-                title="Restore default Agent flow"
-                description="This restores defaults and discards all custom settings and overrides. This can’t be undone."
-                confirmText="Restore"
-                variant="destructive"
-                onConfirm={handleRestoreRetrievalFlow}
-              />
-              <ConfirmationDialog
-                trigger={
-                  <Button>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="22"
-                      viewBox="0 0 24 22"
-                      className="h-4 w-4 mr-2"
-                      aria-label="Langflow icon"
-                    >
-                      <title>Langflow icon</title>
-                      <path
-                        fill="currentColor"
-                        d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
-                      ></path>
-                    </svg>
-                    Edit in Langflow
-                  </Button>
-                }
-                title="Edit Agent flow in Langflow"
-                description={
-                  <>
-                    <p className="mb-2">
-                      You&apos;re entering Langflow. You can edit the{" "}
-                      <b>Agent flow</b> and other underlying flows. Manual
-                      changes to components, wiring, or I/O can break this
-                      experience.
-                    </p>
-                    <p className="mb-2">
-                      To enable editing, you need to unlock the flow by clicking
-                      on its name and disabling the <b>Lock flow</b> option.
-                    </p>
-                    <p>You can restore this flow from Settings.</p>
-                  </>
-                }
-                confirmText="Proceed"
-                confirmIcon={<ArrowUpRight />}
-                onConfirm={(closeDialog) =>
-                  handleEditInLangflow("chat", closeDialog)
-                }
-                variant="warning"
-              />
-            </div>
+            <RequirePermission perm="flows:edit">
+              <div className="flex gap-2">
+                <ConfirmationDialog
+                  trigger={
+                    <Button ignoreTitleCase={true} variant="outline">
+                      Restore flow
+                    </Button>
+                  }
+                  title="Restore default Agent flow"
+                  description="This restores defaults and discards all custom settings and overrides. This can’t be undone."
+                  confirmText="Restore"
+                  variant="destructive"
+                  onConfirm={handleRestoreRetrievalFlow}
+                />
+                <ConfirmationDialog
+                  trigger={
+                    <Button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="22"
+                        viewBox="0 0 24 22"
+                        className="h-4 w-4 mr-2"
+                        aria-label="Langflow icon"
+                      >
+                        <title>Langflow icon</title>
+                        <path
+                          fill="currentColor"
+                          d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
+                        ></path>
+                        <path
+                          fill="currentColor"
+                          d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
+                        ></path>
+                        <path
+                          fill="currentColor"
+                          d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
+                        ></path>
+                      </svg>
+                      Edit in Langflow
+                    </Button>
+                  }
+                  title="Edit Agent flow in Langflow"
+                  description={
+                    <>
+                      <p className="mb-2">
+                        You&apos;re entering Langflow. You can edit the{" "}
+                        <b>Agent flow</b> and other underlying flows. Manual
+                        changes to components, wiring, or I/O can break this
+                        experience.
+                      </p>
+                      <p className="mb-2">
+                        To enable editing, you need to unlock the flow by
+                        clicking on its name and disabling the <b>Lock flow</b>{" "}
+                        option.
+                      </p>
+                      <p>You can restore this flow from Settings.</p>
+                    </>
+                  }
+                  confirmText="Proceed"
+                  confirmIcon={<ArrowUpRight />}
+                  onConfirm={(closeDialog) =>
+                    handleEditInLangflow("chat", closeDialog)
+                  }
+                  variant="warning"
+                />
+              </div>
+            </RequirePermission>
           </div>
           <CardDescription>
             This Agent retrieves from your knowledge and generates chat
@@ -872,71 +880,74 @@ function KnowledgeSourcesPage() {
             >
               Knowledge Ingest
             </CardTitle>
-            <div className="flex gap-2">
-              <ConfirmationDialog
-                trigger={
-                  <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
-                  </Button>
-                }
-                title="Restore default Ingest flow"
-                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-                confirmText="Restore"
-                variant="destructive"
-                onConfirm={handleRestoreIngestFlow}
-              />
-              <ConfirmationDialog
-                trigger={
-                  <Button>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="22"
-                      viewBox="0 0 24 22"
-                      className="h-4 w-4 mr-2"
-                      aria-label="Langflow icon"
-                    >
-                      <title>Langflow icon</title>
-                      <path
-                        fill="currentColor"
-                        d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
-                      ></path>
-                    </svg>
-                    Edit in Langflow
-                  </Button>
-                }
-                title="Edit Ingest flow in Langflow"
-                description={
-                  <>
-                    <p className="mb-2">
-                      You&apos;re entering Langflow. You can edit the{" "}
-                      <b>Ingest flow</b> and other underlying flows. Manual
-                      changes to components, wiring, or I/O can break this
-                      experience.
-                    </p>
-                    <p className="mb-2">
-                      To enable editing, you need to unlock the flow by clicking
-                      on its name and disabling the <b>Lock flow</b> option.
-                    </p>
-                    <p>You can restore this flow from Settings.</p>
-                  </>
-                }
-                confirmText="Proceed"
-                confirmIcon={<ArrowUpRight />}
-                variant="warning"
-                onConfirm={(closeDialog) =>
-                  handleEditInLangflow("ingest", closeDialog)
-                }
-              />
-            </div>
+            <RequirePermission perm="flows:edit">
+              <div className="flex gap-2">
+                <ConfirmationDialog
+                  trigger={
+                    <Button ignoreTitleCase={true} variant="outline">
+                      Restore flow
+                    </Button>
+                  }
+                  title="Restore default Ingest flow"
+                  description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                  confirmText="Restore"
+                  variant="destructive"
+                  onConfirm={handleRestoreIngestFlow}
+                />
+                <ConfirmationDialog
+                  trigger={
+                    <Button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="22"
+                        viewBox="0 0 24 22"
+                        className="h-4 w-4 mr-2"
+                        aria-label="Langflow icon"
+                      >
+                        <title>Langflow icon</title>
+                        <path
+                          fill="currentColor"
+                          d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
+                        ></path>
+                        <path
+                          fill="currentColor"
+                          d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
+                        ></path>
+                        <path
+                          fill="currentColor"
+                          d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
+                        ></path>
+                      </svg>
+                      Edit in Langflow
+                    </Button>
+                  }
+                  title="Edit Ingest flow in Langflow"
+                  description={
+                    <>
+                      <p className="mb-2">
+                        You&apos;re entering Langflow. You can edit the{" "}
+                        <b>Ingest flow</b> and other underlying flows. Manual
+                        changes to components, wiring, or I/O can break this
+                        experience.
+                      </p>
+                      <p className="mb-2">
+                        To enable editing, you need to unlock the flow by
+                        clicking on its name and disabling the <b>Lock flow</b>{" "}
+                        option.
+                      </p>
+                      <p>You can restore this flow from Settings.</p>
+                    </>
+                  }
+                  confirmText="Proceed"
+                  confirmIcon={<ArrowUpRight />}
+                  variant="warning"
+                  onConfirm={(closeDialog) =>
+                    handleEditInLangflow("ingest", closeDialog)
+                  }
+                />
+              </div>
+            </RequirePermission>
           </div>
           <CardDescription>
             Configure how files are ingested and stored for retrieval. The
@@ -1156,10 +1167,12 @@ function KnowledgeSourcesPage() {
               >
                 API Keys
               </CardTitle>
-              <Button onClick={() => setCreateKeyDialogOpen(true)} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Key
-              </Button>
+              <RequirePermission perm="apikeys:create:self">
+                <Button onClick={() => setCreateKeyDialogOpen(true)} size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Key
+                </Button>
+              </RequirePermission>
             </div>
             <CardDescription>
               API keys allow programmatic access to OpenRAG via the public API.
@@ -1249,18 +1262,32 @@ function KnowledgeSourcesPage() {
                 <p className="text-muted-foreground mb-4">
                   No API keys yet. Create one to get started.
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateKeyDialogOpen(true)}
-                  size="sm"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create your first API key
-                </Button>
+                <RequirePermission perm="apikeys:create:self">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCreateKeyDialogOpen(true)}
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create your first API key
+                  </Button>
+                </RequirePermission>
               </div>
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Users & Roles — admin-only, AND only when RBAC is enforced.
+          When OPENRAG_RBAC_ENFORCE=false the system has no real role
+          model (every authenticated user is effectively admin), so
+          rendering this UI would be misleading. */}
+      {rbacEnforced && (
+        <RequirePermission perm="users:list">
+          <div className="space-y-4">
+            <UsersAndRolesSection />
+          </div>
+        </RequirePermission>
       )}
 
       {/* Create API Key Dialog */}

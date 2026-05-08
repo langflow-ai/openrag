@@ -11,9 +11,9 @@ from services.conversation_persistence_service import conversation_persistence
 active_conversations = {}
 
 
-def get_user_conversations(user_id: str):
-    """Get conversation metadata for a user from persistent storage"""
-    return conversation_persistence.get_user_conversations(user_id)
+async def get_user_conversations(user_id: str):
+    """Get conversation metadata for a user from persistent storage."""
+    return await conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
@@ -92,8 +92,12 @@ def get_user_conversation(user_id: str):
         )
         return active_conversations[user_id][latest_response_id]
 
-    # Fallback to metadata-only conversations
-    conversations = get_user_conversations(user_id)
+    # Fallback to metadata-only conversations. This is a SYNC legacy
+    # caller, so we read the eagerly-loaded JSON cache directly instead
+    # of awaiting the async service. The dict is populated in the
+    # service's __init__ for all storage modes; in `db` mode it stays
+    # empty but `active_conversations` above already covered fresh data.
+    conversations = conversation_persistence._conversations.get(user_id, {})
     if not conversations:
         return get_conversation_thread(user_id)
 
@@ -449,7 +453,7 @@ async def async_chat(
         )
 
         # Debug: Check what's in user_conversations now
-        conversations = get_user_conversations(user_id)
+        conversations = await get_user_conversations(user_id)
         logger.debug(
             "User conversations updated",
             user_id=user_id,
@@ -688,7 +692,7 @@ async def async_langflow_chat(
         try:
             from services.session_ownership_service import session_ownership_service
 
-            session_ownership_service.claim_session(user_id, response_id)
+            await session_ownership_service.claim_session(user_id, response_id)
             logger.debug(f"Claimed session {response_id} for user {user_id}")
         except Exception as e:
             logger.warning(f"Failed to claim session ownership: {e}")
@@ -703,7 +707,7 @@ async def async_langflow_chat(
         )
 
         # Debug: Check what's in user_conversations now
-        conversations = get_user_conversations(user_id)
+        conversations = await get_user_conversations(user_id)
         logger.debug(
             "User conversations updated",
             user_id=user_id,
@@ -788,32 +792,31 @@ async def async_langflow_chat_stream(
             yield chunk
 
         # Add the complete assistant response to message history with response_id, timestamp, and function call data
-        assistant_message = {
-            "role": "assistant",
-            "content": full_response,
-            "response_id": response_id,
-            "timestamp": datetime.now(),
-            "chunks": collected_chunks,  # Store complete chunk data for function calls
-            "error": error_occurred,  # Mark if this was an error response
-        }
-        # Store usage data if available (from response.completed event)
-        if usage_data:
-            assistant_message["response_data"] = {"usage": usage_data}
-        conversation_state["messages"].append(assistant_message)
+        if full_response:
+            assistant_message = {
+                "role": "assistant",
+                "content": full_response,
+                "response_id": response_id,
+                "timestamp": datetime.now(),
+                "chunks": collected_chunks,
+                "error": error_occurred,
+            }
+            if usage_data:
+                assistant_message["response_data"] = {"usage": usage_data}
+            conversation_state["messages"].append(assistant_message)
 
         # Store the conversation thread with its response_id
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             await store_conversation_thread(user_id, response_id, conversation_state)
 
-            # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
+            try:
+                from services.session_ownership_service import session_ownership_service
 
-            session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
+                await session_ownership_service.claim_session(user_id, response_id)
+                logger.debug(f"Claimed session {response_id} for user {user_id}")
+            except Exception as e:
+                logger.warning(f"Failed to claim session ownership: {e}")
 
             logger.debug(
                 f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
@@ -876,7 +879,7 @@ async def delete_user_conversation(user_id: str, response_id: str) -> bool:
     # Release session ownership (best-effort; never masks storage errors above)
     try:
         from services.session_ownership_service import session_ownership_service
-        session_ownership_service.release_session(user_id, response_id)
+        await session_ownership_service.release_session(user_id, response_id)
         logger.debug(f"Released session ownership for {response_id} for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to release session ownership: {e}")

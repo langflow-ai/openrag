@@ -15,15 +15,56 @@ Usage:
         ...
 """
 
+import asyncio
 import dataclasses
-from typing import Optional
+from typing import AsyncIterator, Optional, Sequence
 
+from cachetools import TTLCache
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Maps composite "{provider}:{subject}" -> SQL users.id. Doubles as the
+# "we've already ensured a DB row for this user" cache so we don't pay
+# the round-trip on every authenticated request. Cleared on user/role
+# mutations via the rbac service invalidation hook.
+#
+# Necessary because legacy-migrated rows have id == user_id while older
+# Phase-1 new rows had id == uuid4(); permission lookups need the SQL id,
+# not the OAuth subject.
+#
+# The key is composite (provider, subject), NOT just user_id, because the
+# OAuth subject string alone is not unique across providers — e.g. the
+# synthetic `AnonymousUser` (provider="none", user_id="anonymous") must
+# not collide with a hypothetical real user whose IdP issued the same
+# subject string. Identity in this codebase is the (provider, subject)
+# pair (see `ensure_user_row` and the `(oauth_provider, oauth_subject)`
+# UNIQUE constraint on the users table).
+_ENSURED_USER_IDS: TTLCache[str, str] = TTLCache(maxsize=4096, ttl=300)
+
+# Per-(provider, subject) asyncio.Lock used to serialize concurrent
+# first-time `_ensure_db_user` calls for the SAME identity. Without
+# this, two requests racing through the cache miss → INSERT path both
+# observe an empty users table, both attempt INSERT, and the second
+# fails with `UNIQUE constraint failed: users.email_lookup_hash`. The
+# lock is scoped per-identity so unrelated logins never block each
+# other (and so two providers issuing the same subject string don't
+# share a lock).
+_ENSURE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _user_cache_key(user: User) -> str:
+    """Composite cache/lock key for a `User`.
+
+    Mirrors the (oauth_provider, oauth_subject) UNIQUE constraint in
+    the users table. The fallback to "unknown" matches `ensure_user_row`'s
+    behavior when `user.provider` is empty.
+    """
+    return f"{user.provider or 'unknown'}:{user.user_id}"
 
 
 # ─────────────────────────────────────────────
@@ -89,6 +130,206 @@ def get_flows_service(services: dict = Depends(get_services)):
 
 def get_docling_service(services: dict = Depends(get_services)):
     return services["docling_service"]
+def get_rbac_service(services: dict = Depends(get_services)):
+    return services["rbac_service"]
+
+
+def get_workspace_config_service(services: dict = Depends(get_services)):
+    return services["workspace_config_service"]
+
+
+# ─────────────────────────────────────────────
+# Database session
+# ─────────────────────────────────────────────
+
+
+async def get_db_session() -> AsyncIterator[AsyncSession]:
+    """Yield an async DB session for the duration of a request."""
+    from db.engine import SessionLocal, init_engine
+
+    if SessionLocal is None:
+        init_engine()
+    from db.engine import SessionLocal as _SessionLocal
+    assert _SessionLocal is not None
+    async with _SessionLocal() as session:
+        yield session
+
+
+async def _ensure_db_user(user: User) -> Optional[str]:
+    """Best-effort DB upsert for the authenticated user. Returns the SQL
+    `users.id` for this user (so callers can cache the OAuth-sub → DB-id
+    mapping). Returns None on failure.
+
+    No-ops for anonymous users in no-auth mode beyond the very first call
+    (which does set up the synthetic anonymous row + role). Failures are
+    logged but never block the request.
+    """
+    if not user or not user.user_id:
+        return None
+    cache_key = _user_cache_key(user)
+    cached_db_id = _ENSURED_USER_IDS.get(cache_key)
+    if cached_db_id is not None:
+        return cached_db_id
+
+    # Serialize concurrent first-time ensures for the SAME identity so a
+    # second caller observes the first's committed row instead of
+    # racing through the cache miss → INSERT path. Per-(provider,
+    # subject) lock so unrelated users never block each other.
+    lock = _ENSURE_LOCKS.setdefault(cache_key, asyncio.Lock())
+    async with lock:
+        # Re-check the cache inside the lock; the previous holder may
+        # have just populated it.
+        cached_db_id = _ENSURED_USER_IDS.get(cache_key)
+        if cached_db_id is not None:
+            return cached_db_id
+        try:
+            from db.engine import SessionLocal, init_engine
+            from services.user_service import ensure_user_row
+
+            if SessionLocal is None:
+                init_engine()
+            from db.engine import SessionLocal as _SessionLocal
+            if _SessionLocal is None:
+                return None
+            async with _SessionLocal() as session:
+                db_row = await ensure_user_row(session, user)
+                await session.commit()
+            _ENSURED_USER_IDS[cache_key] = db_row.id
+            return db_row.id
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ensure_user_row failed", user_id=user.user_id, error=str(exc))
+            return None
+
+
+async def _resolve_db_user_id(user: User) -> str:
+    """Translate an authenticated `User` (which carries the JWT/OAuth
+    subject) to the SQL `users.id` used by the RBAC tables. Falls back to
+    `user.user_id` if no DB row can be resolved (no-auth mode, transient
+    DB error, etc.) so caller behavior degrades gracefully.
+    """
+    if not user or not user.user_id:
+        return ""
+    cached = _ENSURED_USER_IDS.get(_user_cache_key(user))
+    if cached is not None:
+        return cached
+    resolved = await _ensure_db_user(user)
+    return resolved or user.user_id
+
+
+async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional[User]:
+    """Attach the internal SQL users.id to the request user.
+
+    `User.user_id` remains the external auth subject used in JWT/OpenSearch
+    flows. `User.db_user_id` is the OpenRAG owner id used by SQL-backed
+    RBAC and ownership tables.
+    """
+    if user is None:
+        request.state.db_user_id = None
+        request.state.user = None
+        return None
+    db_user_id = await _resolve_db_user_id(user)
+    user_with_db_id = dataclasses.replace(user, db_user_id=db_user_id)
+    request.state.db_user_id = db_user_id
+    request.state.user = user_with_db_id
+    return user_with_db_id
+
+
+def invalidate_user_ensured_cache(
+    oauth_provider: Optional[str] = None,
+    oauth_subject: Optional[str] = None,
+) -> None:
+    """Pop the ensure-cache + lock for a single identity, or clear all
+    if neither argument is provided.
+
+    Called after admin mutations so role changes are picked up promptly.
+    Identity is the (oauth_provider, oauth_subject) composite — the same
+    shape used as the cache key.
+    """
+    if oauth_provider is None or oauth_subject is None:
+        _ENSURED_USER_IDS.clear()
+        _ENSURE_LOCKS.clear()
+        return
+    key = f"{oauth_provider or 'unknown'}:{oauth_subject}"
+    _ENSURED_USER_IDS.pop(key, None)
+    _ENSURE_LOCKS.pop(key, None)
+
+
+# ─────────────────────────────────────────────
+# Permission enforcement
+# ─────────────────────────────────────────────
+
+
+def require_permission(perm: str):
+    """FastAPI dependency factory enforcing a permission on the current user.
+
+    Raises HTTP 403 with `{required: <perm>}` when the user lacks it.
+    Honors API key role snapshots via `request.state.api_key_role_ids`.
+
+    When ``OPENRAG_RBAC_ENFORCE=false`` the check is skipped and the
+    authenticated user is returned unconditionally. The startup event
+    in ``src/main.py`` refuses to boot when this flag is combined with
+    a ``saas`` or ``on_prem`` run mode, so the bypass cannot silently
+    land in production.
+    """
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_current_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            # RBAC kill-switch: still resolve the DB id so downstream
+            # ownership checks that compare against it keep working.
+            return await _attach_db_user_id(request, user)
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        db_user_id = await _resolve_db_user_id(user)
+        user = dataclasses.replace(user, db_user_id=db_user_id)
+        request.state.db_user_id = db_user_id
+        request.state.user = user
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        if perm not in perms:
+            await rbac.audit_denied(db_user_id, perm)
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": perm},
+            )
+        return user
+
+    return _dep
+
+
+def require_all_permissions(required_perms: Sequence[str]):
+    """FastAPI dependency factory enforcing all listed permissions."""
+    required = tuple(required_perms)
+    if not required:
+        raise ValueError("require_all_permissions requires at least one permission")
+
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_current_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            return await _attach_db_user_id(request, user)
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        db_user_id = await _resolve_db_user_id(user)
+        user = dataclasses.replace(user, db_user_id=db_user_id)
+        request.state.db_user_id = db_user_id
+        request.state.user = user
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        missing = [perm for perm in required if perm not in perms]
+        if missing:
+            await rbac.audit_denied(db_user_id, ",".join(missing))
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": list(required)},
+            )
+        return user
+
+    return _dep
 
 
 # ─────────────────────────────────────────────
@@ -266,14 +507,13 @@ async def get_current_user(
         user = await _get_ibm_user(request, required=True)
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
-        return user
+        return await _attach_db_user_id(request, user)
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        request.state.user = user
         effective_token = session_manager.get_effective_jwt_token(None, None)
         user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        return user_with_token
+        return await _attach_db_user_id(request, user_with_token)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -287,8 +527,7 @@ async def get_current_user(
     effective_token = session_manager.get_effective_jwt_token(user.user_id, auth_token)
     user_with_token = dataclasses.replace(user, jwt_token=effective_token)
 
-    request.state.user = user_with_token
-    return user_with_token
+    return await _attach_db_user_id(request, user_with_token)
 
 
 async def get_optional_user(
@@ -310,14 +549,16 @@ async def get_optional_user(
         user = await _get_ibm_user(request, required=False)
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
-        return user
+        if user:
+            return await _attach_db_user_id(request, user)
+        request.state.db_user_id = None
+        return None
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        request.state.user = user
         effective_token = session_manager.get_effective_jwt_token(None, None)
         user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        return user_with_token
+        return await _attach_db_user_id(request, user_with_token)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -335,8 +576,11 @@ async def get_optional_user(
         dataclasses.replace(user, jwt_token=effective_token) if user else None
     )
 
-    request.state.user = user_with_token
-    return user_with_token
+    if user_with_token:
+        return await _attach_db_user_id(request, user_with_token)
+    request.state.user = None
+    request.state.db_user_id = None
+    return None
 
 
 async def get_api_key_user_async(
@@ -371,8 +615,7 @@ async def get_api_key_user_async(
                 opensearch_username=ibm_username,
                 opensearch_credentials=ibm_api_key,
             )
-            request.state.user = user
-            return user
+            return await _attach_db_user_id(request, user)
 
     # API key path
     api_key = request.headers.get("X-API-Key")
@@ -417,7 +660,12 @@ async def get_api_key_user_async(
     effective_token = session_manager.get_effective_jwt_token(user.user_id, None)
     user_with_token = dataclasses.replace(user, jwt_token=effective_token)
 
-    request.state.user = user_with_token
     request.state.api_key_id = user_info["key_id"]
+    # Phase 2 will populate api_key_role_ids from the SQL api_keys table.
+    # In Phase 1 we leave it unset so require_permission falls back to the
+    # user's live role membership (no privilege escalation possible).
+    request.state.api_key_role_ids = getattr(
+        request.state, "api_key_role_ids", None
+    )
 
-    return user_with_token
+    return await _attach_db_user_id(request, user_with_token)
