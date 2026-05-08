@@ -164,9 +164,9 @@ async def wait_for_opensearch(opensearch_client=None):
 
 async def configure_alerting_security():
     """Configure OpenSearch alerting plugin security settings"""
-    from config.settings import PLATFORM_AUTH_DEV_MODE, IBM_AUTH_ENABLED
-    if IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE:
-        logger.info("Skipping alerting security configuration in IBM dev mode.")
+    from config.settings import PLATFORM_AUTH_DEV_MODE
+    if PLATFORM_AUTH_DEV_MODE:
+        logger.info("Skipping alerting security configuration in platform dev mode.")
         return
 
     try:
@@ -260,8 +260,8 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
-            from config.settings import PLATFORM_AUTH_DEV_MODE, IBM_AUTH_ENABLED
-            if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
+            from config.settings import PLATFORM_AUTH_DEV_MODE
+            if not PLATFORM_AUTH_DEV_MODE:
                 # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
                 try:
                     current = await os_client.indices.get_settings(index=index_name)
@@ -323,8 +323,8 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 index_name=knowledge_filter_index_name,
             )
 
-            from config.settings import PLATFORM_AUTH_DEV_MODE, IBM_AUTH_ENABLED
-            if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
+            from config.settings import PLATFORM_AUTH_DEV_MODE
+            if not PLATFORM_AUTH_DEV_MODE:
                 try:
                     current = await os_client.indices.get_settings(index=knowledge_filter_index_name)
                     current_replicas = int(
