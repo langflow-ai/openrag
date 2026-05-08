@@ -123,12 +123,12 @@ export function IngestSettingsSection() {
   });
 
   useEffect(() => {
-    if (settings.knowledge?.chunk_size)
+    if (settings.knowledge?.chunk_size !== undefined)
       setChunkSize(settings.knowledge.chunk_size);
   }, [settings.knowledge?.chunk_size]);
 
   useEffect(() => {
-    if (settings.knowledge?.chunk_overlap)
+    if (settings.knowledge?.chunk_overlap !== undefined)
       setChunkOverlap(settings.knowledge.chunk_overlap);
   }, [settings.knowledge?.chunk_overlap]);
 
