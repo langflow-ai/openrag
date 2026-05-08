@@ -185,7 +185,11 @@ export function AgentSettingsSection() {
     const computed = settings.flow_id
       ? `${base}/flow/${settings.flow_id}`
       : base;
-    window.open(settings.langflow_edit_url || computed, "_blank");
+    window.open(
+      settings.langflow_edit_url || computed,
+      "_blank",
+      "noopener,noreferrer",
+    );
     closeDialog();
   };
 
