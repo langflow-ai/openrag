@@ -70,20 +70,28 @@ func NewEnvVarManager() *EnvVarManager {
 			"SELECTED_EMBEDDING_MODEL": "",
 
 			// Provider API keys (defaults to None, overridden by CR spec)
-			"OPENAI_API_KEY":    "None",
-			"ANTHROPIC_API_KEY": "None",
-			"WATSONX_API_KEY":   "None",
-			"OLLAMA_BASE_URL":   "None",
+			"OPENAI_API_KEY":     "None",
+			"ANTHROPIC_API_KEY":  "None",
+			"WATSONX_API_KEY":    "None",
+			"OLLAMA_BASE_URL":    "None",
+			"WATSONX_ENDPOINT":   "https://us-south.ml.cloud.ibm.com",
+			"WATSONX_PROJECT_ID": "None",
+			"LLM_MODEL":          "ibm/granite-3-2-8b-instruct",
+			"LLM_PROVIDER":       "watsonx",
 		},
 		DefaultOpenRagBEEnvVars: map[string]string{
 			// Langflow connection
-			"LANGFLOW_URL":             "http://langflow:7860",
-			"LANGFLOW_TIMEOUT":         "2400",
-			"LANGFLOW_CONNECT_TIMEOUT": "30",
-			"LANGFLOW_AUTO_LOGIN":      "true",
-			"LANGFLOW_KEY_RETRIES":     "15",
-			"LANGFLOW_KEY_RETRY_DELAY": "2",
-			"LANGFLOW_KEY":             "",
+			"LANGFLOW_URL":                "http://langflow:7860",
+			"LANGFLOW_TIMEOUT":            "2400",
+			"LANGFLOW_CONNECT_TIMEOUT":    "30",
+			"LANGFLOW_AUTO_LOGIN":         "true",
+			"LANGFLOW_KEY_RETRIES":        "15",
+			"LANGFLOW_KEY_RETRY_DELAY":    "2",
+			"LANGFLOW_KEY":                "",
+			"LANGFLOW_INGEST_FLOW_ID":     "",
+			"LANGFLOW_URL_INGEST_FLOW_ID": "",
+			"LANGFLOW_CHAT_FLOW_ID":       "",
+			"NUDGES_FLOW_ID":              "",
 
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
@@ -114,6 +122,14 @@ func NewEnvVarManager() *EnvVarManager {
 
 			// Segment analytics (default empty, set via CR or operator env)
 			"SEGMENT_WRITE_KEY": "",
+
+			// Embedding model configuration
+			"EMBEDDING_MODEL":    "",
+			"EMBEDDING_PROVIDER": "",
+
+			"WATSONX_API_KEY":    "",
+			"WATSONX_ENDPOINT":   "",
+			"WATSONX_PROJECT_ID": "",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here
