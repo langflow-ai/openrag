@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Loader2 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -40,6 +40,7 @@ export function AgentSettingsSection() {
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
   const focusLlmModel = searchParams.get("focusLlmModel") === "true";
   const [openLlmSelector, setOpenLlmSelector] = useState(false);
@@ -146,10 +147,10 @@ export function AgentSettingsSection() {
         agentCard.scrollIntoView({ behavior: "smooth", block: "start" });
       const newParams = new URLSearchParams(searchParams.toString());
       newParams.delete("focusLlmModel");
-      router.replace(`/settings?${newParams.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
       setTimeout(() => setOpenLlmSelector(false), 100);
     }
-  }, [focusLlmModel, searchParams, router]);
+  }, [focusLlmModel, searchParams, router, pathname]);
 
   const handleModelChange = (newModel: string, provider?: string) => {
     if (newModel && provider) {
