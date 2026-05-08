@@ -1286,7 +1286,7 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 		if value := parseEnvValue(string(existingEnvSecret.Data[".env"]), envKeyName); value != "" {
 			return value, nil // Never regenerate existing key
 		}
-    case !errors.IsNotFound(err):
+	case !errors.IsNotFound(err):
 		return "", fmt.Errorf("failed to read existing env secret %s for %s: %w", envSecretName, envKeyName, err)
 	}
 
