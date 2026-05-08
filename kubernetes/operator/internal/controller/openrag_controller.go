@@ -1281,15 +1281,13 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 	// Priority 2: Check if key exists in the existing .env secret (for stability)
 	existingEnvSecret := &corev1.Secret{}
 	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
-	if err == nil {
-		// Parse the .env file content
-		envContent := string(existingEnvSecret.Data[".env"])
-		if envContent == "" && existingEnvSecret.StringData != nil {
-			envContent = existingEnvSecret.StringData[".env"]
-		}
-		if value := parseEnvValue(envContent, envKeyName); value != "" {
+	switch {
+	case err == nil:
+		if value := parseEnvValue(string(existingEnvSecret.Data[".env"]), envKeyName); value != "" {
 			return value, nil // Never regenerate existing key
 		}
+    case !errors.IsNotFound(err):
+		return "", fmt.Errorf("failed to read existing env secret %s for %s: %w", envSecretName, envKeyName, err)
 	}
 
 	// Priority 3: Generate new secret using the provided generation function
@@ -1297,6 +1295,15 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 	if err != nil {
 		return "", fmt.Errorf("failed to generate secret for %s: %w", envKeyName, err)
 	}
+
+	// Log the secret generation for auditing and debugging
+	logger := log.FromContext(ctx)
+	logger.Info("Generated new secret",
+		"secretKey", envKeyName,
+		"openragName", o.Name,
+		"namespace", o.Namespace,
+		"tenantId", o.Spec.TenantID,
+		"targetNamespace", targetNS)
 
 	return newSecret, nil
 }
