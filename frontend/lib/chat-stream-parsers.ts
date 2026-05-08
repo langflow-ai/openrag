@@ -48,14 +48,21 @@ export function parseOpenAIChatChunk(
           argumentsString: (fn.arguments as string) || "",
         });
       } else if (fn.arguments) {
-        const last = calls[calls.length - 1];
-        if (last) {
-          last.argumentsString =
-            (last.argumentsString ?? "") + (fn.arguments as string);
-          if (last.argumentsString.includes("}")) {
+        const idx =
+          typeof toolCall.index === "number"
+            ? (toolCall.index as number)
+            : undefined;
+        const target =
+          idx !== undefined && idx >= 0 && idx < calls.length
+            ? calls[idx]
+            : calls[calls.length - 1];
+        if (target) {
+          target.argumentsString =
+            (target.argumentsString ?? "") + (fn.arguments as string);
+          if (target.argumentsString.includes("}")) {
             try {
-              last.arguments = JSON.parse(last.argumentsString);
-              last.status = "completed";
+              target.arguments = JSON.parse(target.argumentsString);
+              target.status = "completed";
             } catch {
               // arguments not yet complete
             }
@@ -292,28 +299,30 @@ export function detectImplicitToolCall(
   }
 
   const data = c.data as Chunk | undefined;
+
+  const nonEmpty = (v: unknown): v is unknown[] =>
+    Array.isArray(v) && (v as unknown[]).length > 0;
+
   const hasImplicitToolCall =
-    (c.results &&
-      Array.isArray(c.results) &&
-      (c.results as unknown[]).length > 0) ||
-    (c.outputs &&
-      Array.isArray(c.outputs) &&
-      (c.outputs as unknown[]).length > 0) ||
-    c.retrieved_documents ||
-    c.retrieval_results ||
+    nonEmpty(c.results) ||
+    nonEmpty(c.outputs) ||
+    nonEmpty(c.retrieved_documents) ||
+    nonEmpty(c.retrieval_results) ||
     (data &&
-      (data.results || data.retrieved_documents || data.retrieval_results));
+      (nonEmpty(data.results) ||
+        nonEmpty(data.retrieved_documents) ||
+        nonEmpty(data.retrieval_results)));
 
   if (!hasImplicitToolCall) return;
 
   console.log("[Heuristic Detection] Detected implicit tool call:", chunk);
   const results =
-    c.results ||
-    c.outputs ||
-    c.retrieved_documents ||
-    c.retrieval_results ||
-    data?.results ||
-    data?.retrieved_documents ||
+    (nonEmpty(c.results) && c.results) ||
+    (nonEmpty(c.outputs) && c.outputs) ||
+    (nonEmpty(c.retrieved_documents) && c.retrieved_documents) ||
+    (nonEmpty(c.retrieval_results) && c.retrieval_results) ||
+    (nonEmpty(data?.results) && data?.results) ||
+    (nonEmpty(data?.retrieved_documents) && data?.retrieved_documents) ||
     [];
 
   calls.push({

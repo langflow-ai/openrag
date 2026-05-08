@@ -185,9 +185,14 @@ export function useChatStreaming({
                   newResponseId = chunk.response_id;
                 }
 
-                parseOpenAIChatChunk(chunk, content, currentFunctionCalls);
-                parseRealtimeChunk(chunk, content, currentFunctionCalls, usage);
-                parseOpenRAGChunk(chunk, content);
+                parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||
+                  parseRealtimeChunk(
+                    chunk,
+                    content,
+                    currentFunctionCalls,
+                    usage,
+                  ) ||
+                  parseOpenRAGChunk(chunk, content);
                 detectImplicitToolCall(chunk, currentFunctionCalls);
 
                 if (
