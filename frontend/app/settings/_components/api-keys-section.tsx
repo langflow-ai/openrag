@@ -84,8 +84,12 @@ export function ApiKeysSection() {
 
   const handleCopyApiKey = async () => {
     if (newlyCreatedKey) {
-      await navigator.clipboard.writeText(newlyCreatedKey);
-      toast.success("API key copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(newlyCreatedKey);
+        toast.success("API key copied to clipboard");
+      } catch {
+        toast.error("Failed to copy API key to clipboard");
+      }
     }
   };
 
