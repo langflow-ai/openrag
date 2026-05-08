@@ -20,32 +20,30 @@ const VALID_TABS = [
 type Tab = (typeof VALID_TABS)[number];
 
 async function getTabAuthContext() {
-  try {
-    const [authRes, meRes] = await Promise.all([
-      fetchFromBackend("auth/me"),
-      fetchFromBackend("users/me"),
-    ]);
-    const authData = authRes.ok ? await authRes.json() : {};
-    const meData = meRes.ok ? await meRes.json() : {};
-    return {
-      isNoAuthMode: Boolean(authData.no_auth_mode),
-      isIbmAuthMode: Boolean(authData.ibm_auth_mode),
-      isAuthenticated: Boolean(authData.authenticated),
-      rbacEnforced:
-        typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true,
-      permissions: new Set<string>(
-        Array.isArray(meData.permissions) ? meData.permissions : [],
-      ),
-    };
-  } catch {
-    return {
-      isNoAuthMode: false,
-      isIbmAuthMode: false,
-      isAuthenticated: false,
-      rbacEnforced: true,
-      permissions: new Set<string>(),
-    };
-  }
+  const [authRes, meRes] = await Promise.allSettled([
+    fetchFromBackend("auth/me"),
+    fetchFromBackend("users/me"),
+  ]);
+
+  const authData =
+    authRes.status === "fulfilled" && authRes.value.ok
+      ? await authRes.value.json()
+      : {};
+  const meData =
+    meRes.status === "fulfilled" && meRes.value.ok
+      ? await meRes.value.json()
+      : {};
+
+  return {
+    isNoAuthMode: Boolean(authData.no_auth_mode),
+    isIbmAuthMode: Boolean(authData.ibm_auth_mode),
+    isAuthenticated: Boolean(authData.authenticated),
+    rbacEnforced:
+      typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true,
+    permissions: new Set<string>(
+      Array.isArray(meData.permissions) ? meData.permissions : [],
+    ),
+  };
 }
 
 export default async function SettingsTabPage({
@@ -98,7 +96,12 @@ export default async function SettingsTabPage({
         return res.json();
       },
     });
-    if (tab === "api-keys") {
+  } catch {
+    // Backend unavailable — client handles loading normally
+  }
+
+  if (tab === "api-keys") {
+    try {
       await queryClient.prefetchQuery({
         queryKey: ["api-keys"],
         queryFn: async () => {
@@ -107,9 +110,9 @@ export default async function SettingsTabPage({
           return res.json();
         },
       });
+    } catch {
+      // Backend unavailable — client handles loading normally
     }
-  } catch {
-    // Backend unavailable — client handles loading normally
   }
 
   return (
