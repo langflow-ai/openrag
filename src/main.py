@@ -1972,18 +1972,6 @@ async def create_app():
         methods=["GET"],
         tags=["internal"],
     )
-    app.add_api_route(
-        "/documents/acl/share",
-        acl.share_document,
-        methods=["POST"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/documents/acl/unshare",
-        acl.unshare_document,
-        methods=["POST"],
-        tags=["internal"],
-    )
 
     # Document endpoints
     app.add_api_route(
