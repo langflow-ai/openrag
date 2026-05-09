@@ -27,6 +27,7 @@ import (
 const (
 	finalizer           = "openr.ag/namespace-cleanup"
 	envSecretFinalizer  = "openr.ag/env-secret-protection"
+	userSecretFinalizer = "openr.ag/user-secret-protection"
 	specHashAnnotation  = "openr.ag/spec-hash"
 	immutableAnnotation = "openr.ag/immutable"
 )
@@ -137,6 +138,23 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 			}
 		} else if !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
+		}
+	}
+
+	// Remove finalizers from user-provided secrets so they can be deleted
+	userSecretRefs := collectProtectedSecrets(o)
+	for _, secretRef := range userSecretRefs {
+		userSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
+				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
+				if err := r.Update(ctx, userSecret); err != nil {
+					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
 		}
 	}
 
@@ -1264,7 +1282,9 @@ func udpPort(p int32) networkingv1.NetworkPolicyPort {
 	return networkingv1.NetworkPolicyPort{Port: &v, Protocol: &proto}
 }
 
-// readSecretValue reads a secret value from a Kubernetes secret.
+// readSecretValue reads a secret value from a Kubernetes secret without protection.
+// Use this for non-critical secrets like external service credentials (OpenSearch, OAuth, etc.)
+// that users may need to rotate or update.
 // Returns the value and nil error if found, empty string and error otherwise.
 func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace string, sel *corev1.SecretKeySelector) (string, error) {
 	if sel == nil {
@@ -1285,6 +1305,67 @@ func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace strin
 	return string(value), nil
 }
 
+// readSecretRequiredProtection reads a secret value from a Kubernetes secret with protection.
+// Use this for critical security-sensitive secrets (JWT, encryption, and Langflow secret keys).
+// It enforces that the secret must be immutable and adds a finalizer to prevent accidental deletion.
+// Returns the value and nil error if found, error otherwise.
+func (r *OpenRAGReconciler) readSecretRequiredProtection(ctx context.Context, namespace string, sel *corev1.SecretKeySelector) (string, error) {
+	if sel == nil {
+		return "", nil
+	}
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sel.Name}, secret)
+	if err != nil {
+		return "", err
+	}
+
+	// Validate that security-sensitive secrets are immutable
+	if secret.Immutable == nil || !*secret.Immutable {
+		return "", fmt.Errorf("secret %s/%s must be immutable (set immutable: true) to prevent accidental modification of critical security keys", namespace, sel.Name)
+	}
+
+	// Add finalizer to prevent deletion (immutable only prevents modification, not deletion)
+	needsUpdate := false
+	if !controllerutil.ContainsFinalizer(secret, userSecretFinalizer) {
+		controllerutil.AddFinalizer(secret, userSecretFinalizer)
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		if err := r.Update(ctx, secret); err != nil {
+			return "", fmt.Errorf("failed to add protection finalizer to secret %s/%s: %w", namespace, sel.Name, err)
+		}
+	}
+
+	value, ok := secret.Data[sel.Key]
+	if !ok {
+		return "", fmt.Errorf("key %s not found in secret %s", sel.Key, sel.Name)
+	}
+
+	return string(value), nil
+}
+
+// collectProtectedSecrets gathers all user-provided secret references from the OpenRAG CR
+func collectProtectedSecrets(o *openragv1alpha1.OpenRAG) []*corev1.SecretKeySelector {
+	var refs []*corev1.SecretKeySelector
+
+	// Backend secrets
+	if o.Spec.Backend.JWTSigningKeySecret != nil {
+		refs = append(refs, o.Spec.Backend.JWTSigningKeySecret)
+	}
+	if o.Spec.Backend.EncryptionKeySecret != nil {
+		refs = append(refs, o.Spec.Backend.EncryptionKeySecret)
+	}
+
+	// Langflow secret
+	if o.Spec.Langflow.SecretKeySecret != nil {
+		refs = append(refs, o.Spec.Langflow.SecretKeySecret)
+	}
+
+	return refs
+}
+
 // getOrGenerateSecret retrieves a secret value following this priority:
 // 1. If userSecretRef is provided in CR, read from that secret
 // 2. If value exists in existing .env secret, use that (for stability - never regenerate)
@@ -1293,7 +1374,7 @@ func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace strin
 func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, userSecretRef *corev1.SecretKeySelector, envKeyName, envSecretName string, genFunc func() (string, error)) (string, error) {
 	// Priority 1: User-provided secret in CR
 	if userSecretRef != nil {
-		value, err := r.readSecretValue(ctx, targetNS, userSecretRef)
+		value, err := r.readSecretRequiredProtection(ctx, targetNS, userSecretRef)
 		if err != nil {
 			return "", fmt.Errorf("failed to read user-provided secret for %s: %w", envKeyName, err)
 		}
