@@ -373,7 +373,7 @@ class ConnectionManager:
                     and connector.webhook_channel_id
                 ):
                     await connector.cleanup_subscription(connector.webhook_channel_id)
-            except:
+            except Exception:
                 pass  # Best effort cleanup
 
             del self.active_connectors[connection_id]

@@ -320,7 +320,7 @@ class WelcomeScreen(Screen):
                 self.query_one("#advanced-setup-btn").focus()
             else:
                 self.query_one("#basic-setup-btn").focus()
-        except:
+        except Exception:
             pass  # Button might not exist
 
     async def on_screen_resume(self) -> None:
