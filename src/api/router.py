@@ -50,6 +50,7 @@ async def upload_ingest_router(
         logger.debug("Routing to traditional OpenRAG upload")
         # Route to traditional upload — just take the first file
         from api.upload import upload as traditional_upload_fn
+
         return await traditional_upload_fn(
             file=file[0] if file else None,
             document_service=document_service,
@@ -154,6 +155,7 @@ async def _langflow_upload_ingest_task(
 
         except Exception:
             from utils.file_utils import safe_unlink
+
             for temp_path in temp_file_paths:
                 safe_unlink(temp_path)
             raise
@@ -161,6 +163,7 @@ async def _langflow_upload_ingest_task(
     except Exception as e:
         logger.error("Task-based langflow upload_ingest failed", error=str(e))
         import traceback
+
         logger.error("Full traceback", traceback=traceback.format_exc())
         error_msg = str(e)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():

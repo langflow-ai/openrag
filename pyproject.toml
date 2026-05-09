@@ -97,8 +97,25 @@ exclude = ["flows/components"]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]  # line-length handled by formatter
 
+# FastAPI's idiomatic dependency-injection pattern uses `Depends(...)` and
+# our `require_permission(...)` as call expressions in default-argument
+# position. B008 flags these as bugs ("function call in argument default")
+# but for FastAPI they are by design — the framework introspects them at
+# request time. Whitelist the call sites instead of sprinkling noqa
+# comments across every handler.
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends", "Depends"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+    "dependencies.require_permission",
+]
 
 # `bootstrap` must be the first import in any module that uses it
 # (it loads .env and configures structlog before anything else can
@@ -124,5 +141,15 @@ ignore_missing_imports = true
 no_strict_optional = true
 warn_unused_ignores = true
 exclude = ["flows/components"]
+
+# FastAPI handlers in this module declare a Pydantic response model as
+# their return type but legitimately return `JSONResponse(...)` on error
+# paths. The runtime accepts both, but the annotation can't be widened to
+# `SomeResponse | JSONResponse` because FastAPI then tries to derive an
+# OpenAPI schema from the union and fails. Suppress only the resulting
+# return-value mismatches in this one file.
+[[tool.mypy.overrides]]
+module = "api.settings.endpoints"
+disable_error_code = ["return-value"]
 
 
