@@ -33,7 +33,7 @@ class AuthService:
     ):
         self.session_manager = session_manager
         self.connector_service = connector_service
-        self.used_auth_codes = set()  # Track used authorization codes
+        self.used_auth_codes: set[str] = set()  # Track used authorization codes
         self.flows_service = flows_service
         self.langflow_mcp_service = langflow_mcp_service
 
@@ -125,16 +125,21 @@ class AuthService:
         if not connector_class or not oauth_class:
             raise ValueError(f"No classes found for connector type: {connector_type}")
 
+        # Cast to Any to satisfy mypy for class attribute access
+        from typing import Any
+        oauth_class_any: Any = oauth_class
+        connector_class_any: Any = connector_class
+
         # Get scopes from OAuth class
-        scopes = oauth_class.SCOPES
+        scopes = oauth_class_any.SCOPES
 
         # Get endpoints from OAuth class
-        auth_endpoint = oauth_class.AUTH_ENDPOINT
-        token_endpoint = oauth_class.TOKEN_ENDPOINT
+        auth_endpoint = oauth_class_any.AUTH_ENDPOINT
+        token_endpoint = oauth_class_any.TOKEN_ENDPOINT
 
         # src/services/auth_service.py
-        client_key = getattr(connector_class, "CLIENT_ID_ENV_VAR", None)
-        secret_key = getattr(connector_class, "CLIENT_SECRET_ENV_VAR", None)
+        client_key = getattr(connector_class_any, "CLIENT_ID_ENV_VAR", None)
+        secret_key = getattr(connector_class_any, "CLIENT_SECRET_ENV_VAR", None)
 
         def _assert_env_key(name, val):
             if not isinstance(val, str) or not val.strip():
@@ -258,7 +263,9 @@ class AuthService:
             if not connector_class or not oauth_class:
                 raise ValueError(f"No classes found for connector type: {connector_type}")
 
-            token_url = oauth_class.TOKEN_ENDPOINT
+            from typing import Any
+            oauth_class_any: Any = oauth_class
+            token_url = oauth_class_any.TOKEN_ENDPOINT
 
             token_payload = {
                 "code": authorization_code,

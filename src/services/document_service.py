@@ -38,7 +38,7 @@ def chunk_texts_for_embeddings(
         return [texts]
 
     batches = []
-    current_batch = []
+    current_batch: list[str] = []
     current_tokens = 0
 
     for text in texts:

@@ -67,6 +67,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
+        return False
 
     async def check_filename_exists(
         self,
@@ -138,6 +139,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
+        return False
 
     async def delete_document_by_filename(
         self,
@@ -906,7 +908,7 @@ class LangflowFileProcessor(TaskProcessor):
         except Exception as e:
             # Update task with failure
             file_task.status = TaskStatus.FAILED
-            file_task.error_message = str(e)
+            file_task.error = str(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
