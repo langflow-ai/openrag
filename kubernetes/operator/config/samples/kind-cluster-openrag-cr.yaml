@@ -56,7 +56,42 @@ spec:
   #   indexName: documents
   #   credentialsSecret: opensearch-credentials   # keys: username, password
 
-  # External Docling — optional document conversion
+  # Operator-managed Docling components — optional document processing
+  # doclingComponents:
+  #   enabled: true
+  #   serve:
+  #     image: langflowai/docling-serve:latest
+  #     replicas: 1
+  #     resources:
+  #       requests:
+  #         cpu: "500m"
+  #         memory: "1Gi"
+  #       limits:
+  #         cpu: "1"
+  #         memory: "2Gi"
+  #     storage:
+  #       enabled: true
+  #       size: "10Gi"
+  #     hpa:
+  #       enabled: false
+  #   worker:
+  #     image: langflowai/docling-worker:latest
+  #     replicas: 1
+  #     resources:
+  #       requests:
+  #         cpu: "500m"
+  #         memory: "1Gi"
+  #       limits:
+  #         cpu: "1"
+  #         memory: "2Gi"
+  #     storage:
+  #       enabled: true
+  #       size: "10Gi"
+  #     queueUrl: "redis://redis-master.redis.svc.cluster.local:6379/0"
+  #     hpa:
+  #       enabled: false
+
+  # External Docling — optional external document conversion service (legacy)
   # docling:
   #   host: docling-serve.docling.svc.cluster.local
   #   port: 5001

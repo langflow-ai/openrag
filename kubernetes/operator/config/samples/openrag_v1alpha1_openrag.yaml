@@ -75,7 +75,87 @@ spec:
   #   indexName: documents
   #   credentialsSecret: opensearch-credentials   # keys: username, password
 
-  # External Docling — optional document conversion
+  # Operator-managed Docling components — optional document processing
+  # doclingComponents:
+  #   enabled: true
+  #   serve:
+  #     image: langflowai/docling-serve:latest
+  #     replicas: 2
+  #     port: 5001
+  #     resources:
+  #       requests:
+  #         cpu: "1"
+  #         memory: "2Gi"
+  #       limits:
+  #         cpu: "2"
+  #         memory: "4Gi"
+  #     storage:
+  #       enabled: true
+  #       size: "20Gi"
+  #       storageClassName: "fast-ssd"
+  #     nodeSelector:
+  #       workload: "cpu-intensive"
+  #     tolerations:
+  #       - key: "docling"
+  #         operator: "Equal"
+  #         value: "true"
+  #         effect: "NoSchedule"
+  #     labels:
+  #       team: "ml-ops"
+  #     annotations:
+  #       prometheus.io/scrape: "true"
+  #       prometheus.io/port: "5001"
+  #     podLabels:
+  #       app.kubernetes.io/component: "document-processor"
+  #     podAnnotations:
+  #       sidecar.istio.io/inject: "true"
+  #     hpa:
+  #       enabled: true
+  #       minReplicas: 1
+  #       maxReplicas: 5
+  #       targetCPUUtilizationPercentage: 70
+  #       targetMemoryUtilizationPercentage: 80
+  #   worker:
+  #     image: langflowai/docling-worker:latest
+  #     replicas: 3
+  #     resources:
+  #       requests:
+  #         cpu: "2"
+  #         memory: "4Gi"
+  #       limits:
+  #         cpu: "4"
+  #         memory: "8Gi"
+  #     storage:
+  #       enabled: true
+  #       size: "50Gi"
+  #       storageClassName: "standard"
+  #     queueUrl: "redis://redis-master.redis.svc.cluster.local:6379/0"
+  #     # Or use secret:
+  #     # queueUrlSecret:
+  #     #   name: docling-queue-creds
+  #     #   key: QUEUE_URL
+  #     nodeSelector:
+  #       workload: "cpu-intensive"
+  #     tolerations:
+  #       - key: "docling"
+  #         operator: "Equal"
+  #         value: "true"
+  #         effect: "NoSchedule"
+  #     labels:
+  #       team: "ml-ops"
+  #     annotations:
+  #       prometheus.io/scrape: "true"
+  #     podLabels:
+  #       app.kubernetes.io/component: "document-worker"
+  #     hpa:
+  #       enabled: true
+  #       minReplicas: 2
+  #       maxReplicas: 10
+  #       targetCPUUtilizationPercentage: 70
+  #       targetMemoryUtilizationPercentage: 80
+
+  # External Docling — optional external document conversion service (legacy)
+  # Use doclingComponents above to deploy docling within the operator
   # docling:
   #   host: docling-serve.docling.svc.cluster.local
   #   port: 5001

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -52,6 +53,7 @@ func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openr.ag,resources=openrags/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -108,6 +110,9 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
 		return ctrl.Result{}, fmt.Errorf("deployments: %w", err)
+	}
+	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
+		return ctrl.Result{}, fmt.Errorf("docling components: %w", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
@@ -465,7 +470,16 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 	}
 
 	// Docling configuration from CR spec
-	if d := o.Spec.Docling; d != nil {
+	// Priority: DoclingComponents (operator-managed) > Docling (external)
+	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
+		// Use operator-managed docling-serve
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port)
+	} else if d := o.Spec.Docling; d != nil {
+		// Use external docling service
 		scheme := d.Scheme
 		if scheme == "" {
 			scheme = "http"
@@ -575,6 +589,12 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 		if d.storage == nil || !d.storage.Enabled || d.storage.ExistingClaim != "" {
 			continue
 		}
+		// Default to ReadWriteOnce if not specified
+		accessModes := d.storage.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		}
+
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      d.name,
@@ -582,7 +602,7 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				AccessModes:      accessModes,
 				StorageClassName: d.storage.StorageClassName,
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
@@ -930,6 +950,1085 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 }
 
+// reconcileDoclingComponents orchestrates docling deployment and HPA.
+func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+	if o.Spec.DoclingComponents == nil || !o.Spec.DoclingComponents.Enabled {
+		return nil
+	}
+
+	dc := o.Spec.DoclingComponents
+
+	// Deploy Valkey first if enabled
+	if dc.Valkey != nil {
+		if err := r.reconcileValkey(ctx, o, targetNS); err != nil {
+			return fmt.Errorf("valkey: %w", err)
+		}
+	}
+
+	// Reconcile service accounts for docling components
+	if dc.Serve != nil && shouldCreateServiceAccount(o, "ds") {
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getServiceAccountName(o, "ds"),
+				Namespace: targetNS,
+				Labels:    componentLabels(o.Name, "ds"),
+			},
+		}
+		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, sa); err != nil {
+			return fmt.Errorf("docling-serve serviceaccount: %w", err)
+		}
+	}
+
+	if dc.Worker != nil && shouldCreateServiceAccount(o, "dw") {
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getServiceAccountName(o, "dw"),
+				Namespace: targetNS,
+				Labels:    componentLabels(o.Name, "dw"),
+			},
+		}
+		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, sa); err != nil {
+			return fmt.Errorf("docling-worker serviceaccount: %w", err)
+		}
+	}
+
+	// Reconcile PVCs for docling components
+	if dc.Serve != nil && dc.Serve.Storage != nil && dc.Serve.Storage.Enabled {
+		pvcName := resourceName("ds-data")
+		if dc.Serve.Storage.ExistingClaim == "" {
+			// Default to ReadWriteOnce if not specified
+			accessModes := dc.Serve.Storage.AccessModes
+			if len(accessModes) == 0 {
+				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+			}
+
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pvcName,
+					Namespace: targetNS,
+					Labels:    componentLabels(o.Name, "ds"),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: accessModes,
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: dc.Serve.Storage.Size,
+						},
+					},
+					StorageClassName: dc.Serve.Storage.StorageClassName,
+				},
+			}
+			if err := r.setOwnerOrLabel(o, pvc, targetNS); err != nil {
+				return err
+			}
+			if err := r.createOrUpdate(ctx, pvc); err != nil {
+				return fmt.Errorf("docling-serve pvc: %w", err)
+			}
+		}
+	}
+
+	if dc.Worker != nil && dc.Worker.Storage != nil && dc.Worker.Storage.Enabled {
+		pvcName := resourceName("dw-data")
+		if dc.Worker.Storage.ExistingClaim == "" {
+			// Default to ReadWriteOnce if not specified
+			accessModes := dc.Worker.Storage.AccessModes
+			if len(accessModes) == 0 {
+				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+			}
+
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pvcName,
+					Namespace: targetNS,
+					Labels:    componentLabels(o.Name, "dw"),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: accessModes,
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: dc.Worker.Storage.Size,
+						},
+					},
+					StorageClassName: dc.Worker.Storage.StorageClassName,
+				},
+			}
+			if err := r.setOwnerOrLabel(o, pvc, targetNS); err != nil {
+				return err
+			}
+			if err := r.createOrUpdate(ctx, pvc); err != nil {
+				return fmt.Errorf("docling-worker pvc: %w", err)
+			}
+		}
+	}
+
+	// Reconcile service for docling-serve
+	if dc.Serve != nil && shouldCreateService(o, "ds") {
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+
+		// Default to ClusterIP if not specified
+		serviceType := dc.Serve.ServiceType
+		if serviceType == "" {
+			serviceType = corev1.ServiceTypeClusterIP
+		}
+
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        getServiceName(o, "ds"),
+				Namespace:   targetNS,
+				Labels:      componentLabels(o.Name, "ds"),
+				Annotations: dc.Serve.ServiceAnnotations,
+			},
+			Spec: corev1.ServiceSpec{
+				Type:     serviceType,
+				Selector: componentLabels(o.Name, "ds"),
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: port, TargetPort: intstr.FromInt32(port), Protocol: corev1.ProtocolTCP},
+				},
+			},
+		}
+		if err := r.setOwnerOrLabel(o, svc, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, svc); err != nil {
+			return fmt.Errorf("docling-serve service: %w", err)
+		}
+	}
+
+	// Reconcile deployments
+	if dc.Serve != nil {
+		deploy := r.doclingServeDeployment(o, targetNS)
+		if err := r.setOwnerOrLabel(o, deploy, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, deploy); err != nil {
+			return fmt.Errorf("docling-serve deployment: %w", err)
+		}
+	}
+
+	if dc.Worker != nil {
+		deploy := r.doclingWorkerDeployment(o, targetNS)
+		if err := r.setOwnerOrLabel(o, deploy, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, deploy); err != nil {
+			return fmt.Errorf("docling-worker deployment: %w", err)
+		}
+	}
+
+	// Reconcile HPA for docling-serve
+	if dc.Serve != nil && dc.Serve.HPA != nil && dc.Serve.HPA.Enabled {
+		hpa := r.doclingServeHPA(o, targetNS)
+		if err := r.setOwnerOrLabel(o, hpa, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, hpa); err != nil {
+			return fmt.Errorf("docling-serve hpa: %w", err)
+		}
+	} else {
+		// Delete HPA if it exists but is now disabled
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName("ds-hpa"),
+				Namespace: targetNS,
+			},
+		}
+		if err := r.deleteIfExists(ctx, hpa); err != nil {
+			return fmt.Errorf("delete docling-serve hpa: %w", err)
+		}
+	}
+
+	// Reconcile HPA for docling-worker
+	if dc.Worker != nil && dc.Worker.HPA != nil && dc.Worker.HPA.Enabled {
+		hpa := r.doclingWorkerHPA(o, targetNS)
+		if err := r.setOwnerOrLabel(o, hpa, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, hpa); err != nil {
+			return fmt.Errorf("docling-worker hpa: %w", err)
+		}
+	} else {
+		// Delete HPA if it exists but is now disabled
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName("dw-hpa"),
+				Namespace: targetNS,
+			},
+		}
+		if err := r.deleteIfExists(ctx, hpa); err != nil {
+			return fmt.Errorf("delete docling-worker hpa: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// buildDoclingConfigEnv converts DoclingConfig to environment variables
+func buildDoclingConfigEnv(config *openragv1alpha1.DoclingConfig) []corev1.EnvVar {
+	if config == nil {
+		return nil
+	}
+
+	envVars := []corev1.EnvVar{}
+
+	// OCR configuration
+	if config.OCR != nil {
+		if config.OCR.Enabled != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_OCR_ENABLED",
+				Value: fmt.Sprintf("%t", *config.OCR.Enabled),
+			})
+		}
+		if config.OCR.Engine != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_OCR_ENGINE",
+				Value: config.OCR.Engine,
+			})
+		}
+		if len(config.OCR.Languages) > 0 {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_OCR_LANGUAGES",
+				Value: strings.Join(config.OCR.Languages, ","),
+			})
+		}
+		if config.OCR.ForceFullPageOCR != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_OCR_FORCE_FULL_PAGE",
+				Value: fmt.Sprintf("%t", *config.OCR.ForceFullPageOCR),
+			})
+		}
+	}
+
+	// Table structure configuration
+	if config.TableStructure != nil {
+		if config.TableStructure.Enabled != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_TABLE_STRUCTURE_ENABLED",
+				Value: fmt.Sprintf("%t", *config.TableStructure.Enabled),
+			})
+		}
+		if config.TableStructure.Mode != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_TABLE_MODE",
+				Value: config.TableStructure.Mode,
+			})
+		}
+		if config.TableStructure.MinConfidencePercent != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_TABLE_MIN_CONFIDENCE",
+				Value: fmt.Sprintf("%d", *config.TableStructure.MinConfidencePercent),
+			})
+		}
+	}
+
+	// Performance configuration
+	if config.Performance != nil {
+		if config.Performance.BatchSize != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_BATCH_SIZE",
+				Value: fmt.Sprintf("%d", *config.Performance.BatchSize),
+			})
+		}
+		if config.Performance.MaxWorkers != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_MAX_WORKERS",
+				Value: fmt.Sprintf("%d", *config.Performance.MaxWorkers),
+			})
+		}
+		if config.Performance.TimeoutSeconds != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_TIMEOUT",
+				Value: fmt.Sprintf("%d", *config.Performance.TimeoutSeconds),
+			})
+		}
+		if config.Performance.EnableGPU != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_ENABLE_GPU",
+				Value: fmt.Sprintf("%t", *config.Performance.EnableGPU),
+			})
+		}
+	}
+
+	// Models configuration
+	if config.Models != nil {
+		if config.Models.LayoutModel != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_LAYOUT_MODEL",
+				Value: config.Models.LayoutModel,
+			})
+		}
+		if config.Models.OCRModel != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_OCR_MODEL",
+				Value: config.Models.OCRModel,
+			})
+		}
+		if config.Models.TableModel != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_TABLE_MODEL",
+				Value: config.Models.TableModel,
+			})
+		}
+		if config.Models.ModelCachePath != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_MODEL_CACHE_PATH",
+				Value: config.Models.ModelCachePath,
+			})
+		}
+	}
+
+	// Add extra environment variables
+	envVars = append(envVars, config.ExtraEnv...)
+
+	return envVars
+}
+
+func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+	spec := o.Spec.DoclingComponents.Serve
+	replicas := replicasOrDefault(spec.Replicas)
+	port := int32(5001)
+	if spec.Port > 0 {
+		port = spec.Port
+	}
+
+	volumes := []corev1.Volume{
+		{
+			Name:         "docling-serve-temp",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		},
+	}
+	mounts := []corev1.VolumeMount{
+		{Name: "docling-serve-temp", MountPath: "/tmp"},
+	}
+
+	if spec.Storage != nil && spec.Storage.Enabled {
+		pvcName := resourceName("ds-data")
+		if spec.Storage.ExistingClaim != "" {
+			pvcName = spec.Storage.ExistingClaim
+		}
+		volumes = append(volumes, corev1.Volume{
+			Name: "docling-serve-data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName},
+			},
+		})
+		mounts = append(mounts, corev1.VolumeMount{Name: "docling-serve-data", MountPath: "/app/cache"})
+	}
+
+	envVars := []corev1.EnvVar{
+		{Name: "DOCLING_PORT", Value: fmt.Sprintf("%d", port)},
+		{Name: "DOCLING_CACHE_DIR", Value: "/app/cache"},
+	}
+	// Add docling configuration environment variables
+	envVars = append(envVars, buildDoclingConfigEnv(spec.Config)...)
+	// Add user-specified environment variables
+	envVars = append(envVars, spec.Env...)
+
+	baseLabels := componentLabels(o.Name, "ds")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+
+	deploymentSpec := appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
+		Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels:      podLabels,
+				Annotations: podAnnotations,
+			},
+			Spec: corev1.PodSpec{
+				ServiceAccountName:        getServiceAccountName(o, "ds"),
+				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:           spec.PodSecurityContext,
+				NodeSelector:              spec.NodeSelector,
+				Tolerations:               spec.Tolerations,
+				Affinity:                  spec.Affinity,
+				TopologySpreadConstraints: spec.TopologySpreadConstraints,
+				Volumes:                   volumes,
+				Containers: []corev1.Container{
+					{
+						Name:            "docling-serve",
+						Image:           spec.Image,
+						ImagePullPolicy: spec.ImagePullPolicy,
+						Command:         spec.Command,
+						Args:            spec.Args,
+						Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: port}},
+						Env:             envVars,
+						Resources:       spec.Resources,
+						VolumeMounts:    mounts,
+						SecurityContext: spec.SecurityContext,
+						LivenessProbe:   probeOrDefault(spec.LivenessProbe, httpProbe("/health", port, 30, 10)),
+						ReadinessProbe:  probeOrDefault(spec.ReadinessProbe, httpProbe("/health", port, 10, 5)),
+					},
+				},
+			},
+		},
+	}
+
+	// Only set Replicas if HPA is not enabled
+	// When HPA is active, it controls the replica count
+	if spec.HPA == nil || !spec.HPA.Enabled {
+		deploymentSpec.Replicas = &replicas
+	}
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        resourceName("ds"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
+		},
+		Spec: deploymentSpec,
+	}
+}
+
+func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+	spec := o.Spec.DoclingComponents.Worker
+	replicas := replicasOrDefault(spec.Replicas)
+
+	volumes := []corev1.Volume{
+		{
+			Name:         "docling-worker-temp",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		},
+	}
+	mounts := []corev1.VolumeMount{
+		{Name: "docling-worker-temp", MountPath: "/tmp"},
+	}
+
+	if spec.Storage != nil && spec.Storage.Enabled {
+		pvcName := resourceName("dw-data")
+		if spec.Storage.ExistingClaim != "" {
+			pvcName = spec.Storage.ExistingClaim
+		}
+		volumes = append(volumes, corev1.Volume{
+			Name: "docling-worker-data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName},
+			},
+		})
+		mounts = append(mounts, corev1.VolumeMount{Name: "docling-worker-data", MountPath: "/app/workspace"})
+	}
+
+	// Build environment variables
+	envVars := []corev1.EnvVar{
+		{Name: "DOCLING_WORKSPACE_DIR", Value: "/app/workspace"},
+	}
+
+	// Add DOCLING_SERVE_URL if serve component is enabled
+	if o.Spec.DoclingComponents.Serve != nil {
+		port := int32(5001)
+		if o.Spec.DoclingComponents.Serve.Port > 0 {
+			port = o.Spec.DoclingComponents.Serve.Port
+		}
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "DOCLING_SERVE_URL",
+			Value: fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port),
+		})
+	}
+
+	// Add queue URL - Priority: Valkey > spec.QueueURL > spec.QueueURLSecret
+	if o.Spec.DoclingComponents.Valkey != nil {
+		// Use operator-managed Valkey
+		valkeySpec := o.Spec.DoclingComponents.Valkey
+		port := int32(6379)
+		if valkeySpec.Port > 0 {
+			port = valkeySpec.Port
+		}
+		database := int32(0)
+		if valkeySpec.Database > 0 {
+			database = valkeySpec.Database
+		}
+
+		serviceName := getServiceName(o, "valkey")
+		// If password is provided directly (not via secret), include it in URL
+		if valkeySpec.Password != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "QUEUE_URL",
+				Value: fmt.Sprintf("redis://:%s@%s.%s.svc.cluster.local:%d/%d", valkeySpec.Password, serviceName, targetNS, port, database),
+			})
+		} else if valkeySpec.PasswordSecret != nil {
+			// Use secret reference for password
+			envVars = append(envVars, corev1.EnvVar{
+				Name: "VALKEY_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: valkeySpec.PasswordSecret,
+				},
+			})
+			// Build URL with password placeholder - app must construct final URL
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "QUEUE_URL",
+				Value: fmt.Sprintf("redis://:$(VALKEY_PASSWORD)@%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database),
+			})
+		} else {
+			// No password
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "QUEUE_URL",
+				Value: fmt.Sprintf("redis://%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database),
+			})
+		}
+	} else if spec.QueueURL != "" {
+		// Use user-provided queue URL
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "QUEUE_URL",
+			Value: spec.QueueURL,
+		})
+	} else if spec.QueueURLSecret != nil {
+		// Use secret reference
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "QUEUE_URL",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: spec.QueueURLSecret,
+			},
+		})
+	}
+
+	// Add concurrency setting
+	if spec.Concurrency != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "DOCLING_WORKER_CONCURRENCY",
+			Value: fmt.Sprintf("%d", *spec.Concurrency),
+		})
+	}
+
+	// Add docling configuration environment variables
+	envVars = append(envVars, buildDoclingConfigEnv(spec.Config)...)
+
+	// Append additional env vars from spec
+	envVars = append(envVars, spec.Env...)
+
+	baseLabels := componentLabels(o.Name, "dw")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+
+	deploymentSpec := appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
+		Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels:      podLabels,
+				Annotations: podAnnotations,
+			},
+			Spec: corev1.PodSpec{
+				ServiceAccountName:        getServiceAccountName(o, "dw"),
+				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:           spec.PodSecurityContext,
+				NodeSelector:              spec.NodeSelector,
+				Tolerations:               spec.Tolerations,
+				Affinity:                  spec.Affinity,
+				TopologySpreadConstraints: spec.TopologySpreadConstraints,
+				Volumes:                   volumes,
+				Containers: []corev1.Container{
+					{
+						Name:            "docling-worker",
+						Image:           spec.Image,
+						ImagePullPolicy: spec.ImagePullPolicy,
+						Command:         spec.Command,
+						Args:            spec.Args,
+						Env:             envVars,
+						Resources:       spec.Resources,
+						VolumeMounts:    mounts,
+						SecurityContext: spec.SecurityContext,
+						LivenessProbe:   spec.LivenessProbe,
+						ReadinessProbe:  spec.ReadinessProbe,
+					},
+				},
+			},
+		},
+	}
+
+	// Only set Replicas if HPA is not enabled
+	// When HPA is active, it controls the replica count
+	if spec.HPA == nil || !spec.HPA.Enabled {
+		deploymentSpec.Replicas = &replicas
+	}
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        resourceName("dw"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
+		},
+		Spec: deploymentSpec,
+	}
+}
+
+func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
+	hpaSpec := o.Spec.DoclingComponents.Serve.HPA
+	minReplicas := ptr.To(int32(1))
+	if hpaSpec.MinReplicas != nil {
+		minReplicas = hpaSpec.MinReplicas
+	}
+
+	metrics := []autoscalingv2.MetricSpec{}
+	if hpaSpec.TargetCPUUtilizationPercentage != nil {
+		metrics = append(metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceCPU,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: hpaSpec.TargetCPUUtilizationPercentage,
+				},
+			},
+		})
+	}
+	if hpaSpec.TargetMemoryUtilizationPercentage != nil {
+		metrics = append(metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceMemory,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: hpaSpec.TargetMemoryUtilizationPercentage,
+				},
+			},
+		})
+	}
+
+	baseLabels := componentLabels(o.Name, "ds")
+	return &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resourceName("ds-hpa"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       resourceName("ds"),
+			},
+			MinReplicas: minReplicas,
+			MaxReplicas: hpaSpec.MaxReplicas,
+			Metrics:     metrics,
+			Behavior:    hpaSpec.Behavior,
+		},
+	}
+}
+
+func (r *OpenRAGReconciler) doclingWorkerHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
+	hpaSpec := o.Spec.DoclingComponents.Worker.HPA
+	minReplicas := ptr.To(int32(1))
+	if hpaSpec.MinReplicas != nil {
+		minReplicas = hpaSpec.MinReplicas
+	}
+
+	metrics := []autoscalingv2.MetricSpec{}
+	if hpaSpec.TargetCPUUtilizationPercentage != nil {
+		metrics = append(metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceCPU,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: hpaSpec.TargetCPUUtilizationPercentage,
+				},
+			},
+		})
+	}
+	if hpaSpec.TargetMemoryUtilizationPercentage != nil {
+		metrics = append(metrics, autoscalingv2.MetricSpec{
+			Type: autoscalingv2.ResourceMetricSourceType,
+			Resource: &autoscalingv2.ResourceMetricSource{
+				Name: corev1.ResourceMemory,
+				Target: autoscalingv2.MetricTarget{
+					Type:               autoscalingv2.UtilizationMetricType,
+					AverageUtilization: hpaSpec.TargetMemoryUtilizationPercentage,
+				},
+			},
+		})
+	}
+
+	baseLabels := componentLabels(o.Name, "dw")
+	return &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resourceName("dw-hpa"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       resourceName("dw"),
+			},
+			MinReplicas: minReplicas,
+			MaxReplicas: hpaSpec.MaxReplicas,
+			Metrics:     metrics,
+			Behavior:    hpaSpec.Behavior,
+		},
+	}
+}
+
+// reconcileValkey deploys Valkey StatefulSet, Service, ConfigMap, and optional Secret.
+func (r *OpenRAGReconciler) reconcileValkey(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+	valkeySpec := o.Spec.DoclingComponents.Valkey
+
+	// Reconcile ServiceAccount
+	if shouldCreateServiceAccount(o, "valkey") {
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getServiceAccountName(o, "valkey"),
+				Namespace: targetNS,
+				Labels:    componentLabels(o.Name, "valkey"),
+			},
+		}
+		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, sa); err != nil {
+			return fmt.Errorf("valkey serviceaccount: %w", err)
+		}
+	}
+
+	// Reconcile ConfigMap
+	cm := r.valkeyConfigMap(o, targetNS)
+	if err := r.setOwnerOrLabel(o, cm, targetNS); err != nil {
+		return err
+	}
+	if err := r.createOrUpdate(ctx, cm); err != nil {
+		return fmt.Errorf("valkey configmap: %w", err)
+	}
+
+	// Reconcile Secret (if password is configured)
+	if valkeySpec.Password != "" || valkeySpec.PasswordSecret != nil {
+		secret, err := r.valkeySecret(ctx, o, targetNS)
+		if err != nil {
+			return fmt.Errorf("valkey secret: %w", err)
+		}
+		if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, secret); err != nil {
+			return fmt.Errorf("valkey secret create: %w", err)
+		}
+	}
+
+	// Reconcile headless Service (for StatefulSet)
+	headlessSvc := r.valkeyHeadlessService(o, targetNS)
+	if err := r.setOwnerOrLabel(o, headlessSvc, targetNS); err != nil {
+		return err
+	}
+	if err := r.createOrUpdate(ctx, headlessSvc); err != nil {
+		return fmt.Errorf("valkey headless service: %w", err)
+	}
+
+	// Reconcile Service
+	if shouldCreateService(o, "valkey") {
+		svc := r.valkeyService(o, targetNS)
+		if err := r.setOwnerOrLabel(o, svc, targetNS); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, svc); err != nil {
+			return fmt.Errorf("valkey service: %w", err)
+		}
+	}
+
+	// Reconcile StatefulSet
+	sts := r.valkeyStatefulSet(o, targetNS)
+	if err := r.setOwnerOrLabel(o, sts, targetNS); err != nil {
+		return err
+	}
+	if err := r.createOrUpdate(ctx, sts); err != nil {
+		return fmt.Errorf("valkey statefulset: %w", err)
+	}
+
+	return nil
+}
+
+func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.StatefulSet {
+	spec := o.Spec.DoclingComponents.Valkey
+	replicas := replicasOrDefault(spec.Replicas)
+	port := int32(6379)
+	if spec.Port > 0 {
+		port = spec.Port
+	}
+
+	volumes := []corev1.Volume{
+		{
+			Name: "valkey-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: resourceName("valkey-config")},
+				},
+			},
+		},
+	}
+	mounts := []corev1.VolumeMount{
+		{Name: "valkey-config", MountPath: "/etc/valkey", ReadOnly: true},
+		{Name: "valkey-data", MountPath: "/data"},
+	}
+
+	// Add password volume if configured
+	if spec.Password != "" || spec.PasswordSecret != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: "valkey-auth",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: resourceName("valkey-auth"),
+				},
+			},
+		})
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      "valkey-auth",
+			MountPath: "/etc/valkey-auth",
+			ReadOnly:  true,
+		})
+	}
+
+	baseLabels := componentLabels(o.Name, "valkey")
+	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
+	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
+	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
+	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+
+	// Build command
+	command := []string{"valkey-server", "/etc/valkey/valkey.conf"}
+	if spec.Password != "" || spec.PasswordSecret != nil {
+		command = append(command, "--requirepass", "$(cat /etc/valkey-auth/password)")
+	}
+
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        resourceName("valkey"),
+			Namespace:   targetNS,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			ServiceName: resourceName("valkey-headless"),
+			Replicas:    &replicas,
+			Selector:    &metav1.LabelSelector{MatchLabels: baseLabels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName:        getServiceAccountName(o, "valkey"),
+					ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+					NodeSelector:              spec.NodeSelector,
+					Tolerations:               spec.Tolerations,
+					Affinity:                  spec.Affinity,
+					SecurityContext:           spec.PodSecurityContext,
+					TopologySpreadConstraints: spec.TopologySpreadConstraints,
+					Volumes:                   volumes,
+					Containers: []corev1.Container{
+						{
+							Name:            "valkey",
+							Image:           spec.Image,
+							ImagePullPolicy: spec.ImagePullPolicy,
+							Command:         []string{"/bin/sh", "-c"},
+							Args:            []string{strings.Join(command, " ")},
+							Ports:           []corev1.ContainerPort{{Name: "valkey", ContainerPort: port}},
+							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
+							VolumeMounts:    mounts,
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"valkey-cli", "ping"},
+									},
+								},
+								InitialDelaySeconds: 30,
+								PeriodSeconds:       10,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"valkey-cli", "ping"},
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Add VolumeClaimTemplate if storage is enabled
+	if spec.Storage != nil && spec.Storage.Enabled && spec.Storage.ExistingClaim == "" {
+		// Default to ReadWriteOnce if not specified
+		accessModes := spec.Storage.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		}
+
+		sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "valkey-data",
+					Labels: baseLabels,
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: accessModes,
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: spec.Storage.Size,
+						},
+					},
+					StorageClassName: spec.Storage.StorageClassName,
+				},
+			},
+		}
+	} else if spec.Storage != nil && spec.Storage.ExistingClaim != "" {
+		// Use existing PVC
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "valkey-data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: spec.Storage.ExistingClaim,
+				},
+			},
+		})
+	} else {
+		// Use emptyDir if storage is not enabled
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name:         "valkey-data",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+	}
+
+	return sts
+}
+
+func (r *OpenRAGReconciler) valkeyService(o *openragv1alpha1.OpenRAG, targetNS string) *corev1.Service {
+	spec := o.Spec.DoclingComponents.Valkey
+	port := int32(6379)
+	if spec.Port > 0 {
+		port = spec.Port
+	}
+
+	baseLabels := componentLabels(o.Name, "valkey")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getServiceName(o, "valkey"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: baseLabels,
+			Ports: []corev1.ServicePort{
+				{Name: "valkey", Port: port, TargetPort: intstr.FromInt32(port), Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+}
+
+func (r *OpenRAGReconciler) valkeyHeadlessService(o *openragv1alpha1.OpenRAG, targetNS string) *corev1.Service {
+	spec := o.Spec.DoclingComponents.Valkey
+	port := int32(6379)
+	if spec.Port > 0 {
+		port = spec.Port
+	}
+
+	baseLabels := componentLabels(o.Name, "valkey")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resourceName("valkey-headless"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: "None",
+			Selector:  baseLabels,
+			Ports: []corev1.ServicePort{
+				{Name: "valkey", Port: port, TargetPort: intstr.FromInt32(port), Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+}
+
+func (r *OpenRAGReconciler) valkeyConfigMap(o *openragv1alpha1.OpenRAG, targetNS string) *corev1.ConfigMap {
+	spec := o.Spec.DoclingComponents.Valkey
+	port := int32(6379)
+	if spec.Port > 0 {
+		port = spec.Port
+	}
+
+	maxMemory := "256mb"
+	if spec.MaxMemory != "" {
+		maxMemory = spec.MaxMemory
+	}
+
+	maxMemoryPolicy := "allkeys-lru"
+	if spec.MaxMemoryPolicy != "" {
+		maxMemoryPolicy = spec.MaxMemoryPolicy
+	}
+
+	config := fmt.Sprintf(`# Valkey configuration
+port %d
+bind 0.0.0.0
+protected-mode yes
+maxmemory %s
+maxmemory-policy %s
+save 900 1
+save 300 10
+save 60 10000
+dir /data
+appendonly yes
+appendfilename "appendonly.aof"
+`, port, maxMemory, maxMemoryPolicy)
+
+	baseLabels := componentLabels(o.Name, "valkey")
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resourceName("valkey-config"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		Data: map[string]string{
+			"valkey.conf": config,
+		},
+	}
+}
+
+func (r *OpenRAGReconciler) valkeySecret(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (*corev1.Secret, error) {
+	spec := o.Spec.DoclingComponents.Valkey
+	var password string
+
+	if spec.Password != "" {
+		password = spec.Password
+	} else if spec.PasswordSecret != nil {
+		pwd, err := r.readSecretValue(ctx, targetNS, spec.PasswordSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read valkey password: %w", err)
+		}
+		password = pwd
+	}
+
+	baseLabels := componentLabels(o.Name, "valkey")
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resourceName("valkey-auth"),
+			Namespace: targetNS,
+			Labels:    baseLabels,
+		},
+		StringData: map[string]string{
+			"password": password,
+		},
+	}, nil
+}
+
 func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	labels := componentLabels(o.Name, "lf")
 
@@ -1020,6 +2119,16 @@ func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Objec
 	return r.Update(ctx, obj)
 }
 
+// deleteIfExists deletes an object if it exists, ignoring NotFound errors.
+// This is useful for cleaning up resources when they are disabled in the CR.
+func (r *OpenRAGReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
+	err := r.Delete(ctx, obj)
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
 func desiredHash(obj client.Object) (string, error) {
 	tmp := obj.DeepCopyObject().(client.Object)
 	tmp.SetResourceVersion("")
@@ -1100,15 +2209,29 @@ func targetNamespace(o *openragv1alpha1.OpenRAG) string {
 
 // resourceName generates a DNS-1035 compliant name for Kubernetes resources.
 // Since each namespace is tenant-exclusive, we don't need to include the CR name.
-// This provides clean, predictable names: openrag-fe, openrag-be, openrag-lf.
+// This provides clean, predictable names: openrag-fe, openrag-be, openrag-lf, docling-serve, docling-worker.
 func resourceName(role string) string {
-	return "openrag-" + role
+	switch role {
+	case "ds":
+		return "docling-serve"
+	case "dw":
+		return "docling-worker"
+	default:
+		return "openrag-" + role
+	}
 }
 
 // saName generates service account names.
 // Since each namespace is tenant-exclusive, we don't need to include the CR name.
 func saName(role string) string {
-	return "openrag-" + role
+	switch role {
+	case "ds":
+		return "docling-serve"
+	case "dw":
+		return "docling-worker"
+	default:
+		return "openrag-" + role
+	}
 }
 
 // getServiceAccountName returns the ServiceAccount name for a component.
@@ -1122,6 +2245,18 @@ func getServiceAccountName(o *openragv1alpha1.OpenRAG, role string) string {
 		customName = o.Spec.Backend.ServiceAccountName
 	case "lf":
 		customName = o.Spec.Langflow.ServiceAccountName
+	case "ds":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Serve != nil {
+			customName = o.Spec.DoclingComponents.Serve.ServiceAccountName
+		}
+	case "dw":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Worker != nil {
+			customName = o.Spec.DoclingComponents.Worker.ServiceAccountName
+		}
+	case "valkey":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Valkey != nil {
+			customName = o.Spec.DoclingComponents.Valkey.ServiceAccountName
+		}
 	}
 	if customName != "" {
 		return customName
@@ -1140,6 +2275,18 @@ func shouldCreateServiceAccount(o *openragv1alpha1.OpenRAG, role string) bool {
 		createFlag = o.Spec.Backend.CreateServiceAccount
 	case "lf":
 		createFlag = o.Spec.Langflow.CreateServiceAccount
+	case "ds":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Serve != nil {
+			createFlag = o.Spec.DoclingComponents.Serve.CreateServiceAccount
+		}
+	case "dw":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Worker != nil {
+			createFlag = o.Spec.DoclingComponents.Worker.CreateServiceAccount
+		}
+	case "valkey":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Valkey != nil {
+			createFlag = o.Spec.DoclingComponents.Valkey.CreateServiceAccount
+		}
 	}
 	// Default to true if not specified
 	if createFlag == nil {
@@ -1159,6 +2306,18 @@ func getServiceName(o *openragv1alpha1.OpenRAG, role string) string {
 		customName = o.Spec.Backend.ServiceName
 	case "lf":
 		customName = o.Spec.Langflow.ServiceName
+	case "ds":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Serve != nil {
+			customName = o.Spec.DoclingComponents.Serve.ServiceName
+		}
+	case "dw":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Worker != nil {
+			customName = o.Spec.DoclingComponents.Worker.ServiceName
+		}
+	case "valkey":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Valkey != nil {
+			customName = o.Spec.DoclingComponents.Valkey.ServiceName
+		}
 	}
 	if customName != "" {
 		return customName
@@ -1177,6 +2336,14 @@ func shouldCreateService(o *openragv1alpha1.OpenRAG, role string) bool {
 		createFlag = o.Spec.Backend.CreateService
 	case "lf":
 		createFlag = o.Spec.Langflow.CreateService
+	case "ds":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Serve != nil {
+			createFlag = o.Spec.DoclingComponents.Serve.CreateService
+		}
+	case "dw":
+		if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Worker != nil {
+			createFlag = o.Spec.DoclingComponents.Worker.CreateService
+		}
 	}
 	// Default to true if not specified
 	if createFlag == nil {
@@ -1291,6 +2458,14 @@ func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {
 		FailureThreshold:    5,
 		TimeoutSeconds:      10,
 	}
+}
+
+// probeOrDefault returns the custom probe if provided, otherwise returns the default probe.
+func probeOrDefault(custom, defaultProbe *corev1.Probe) *corev1.Probe {
+	if custom != nil {
+		return custom
+	}
+	return defaultProbe
 }
 
 func tcpPort(p int32) networkingv1.NetworkPolicyPort {

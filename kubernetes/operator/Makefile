@@ -106,7 +106,7 @@ endif
 
 .PHONY: install
 install: manifests kustomize ## Install CRDs into the cluster in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | kubectl apply --server-side -f -
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the cluster.
