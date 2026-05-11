@@ -39,6 +39,7 @@ from services.default_docs_service import (
 from services.startup_orchestrator import startup_tasks
 from utils.encryption import enforce_startup_prerequisites
 from utils.jwt_keygen import generate_jwt_keys
+from utils.logging_config import get_logger
 from utils.opensearch_init import _ensure_opensearch_index, init_index
 
 enforce_startup_prerequisites()
