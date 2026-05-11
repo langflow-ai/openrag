@@ -91,6 +91,7 @@ override-dependencies = ["python-dotenv>=1.1.0"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+exclude = ["flows/components"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
@@ -119,5 +120,6 @@ python_version = "3.13"
 ignore_missing_imports = true
 no_strict_optional = true
 warn_unused_ignores = true
+exclude = ["flows/components"]
 
 
