@@ -25,7 +25,7 @@ In `files` mode the patch is not installed.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -168,7 +168,7 @@ class WorkspaceConfigService:
             return False  # no yaml fallback in pure-db mode
         return self._cm.load_config().edited
 
-    async def get_onboarding_step(self) -> Optional[Any]:
+    async def get_onboarding_step(self) -> Any | None:
         """Returns the legacy step indicator — usually an int index from
         the OnboardingState dataclass, sometimes None. Treat as opaque."""
         mode = get_storage_mode()
@@ -194,10 +194,10 @@ class WorkspaceConfigService:
 
     async def save_config(
         self,
-        config: Optional[OpenRAGConfig] = None,
+        config: OpenRAGConfig | None = None,
         *,
         preserve_edited: bool = False,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> bool:
         mode = get_storage_mode()
 
@@ -230,7 +230,7 @@ class WorkspaceConfigService:
 
     async def update_onboarding_state(
         self,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
         **kwargs: Any,
     ) -> bool:
         mode = get_storage_mode()
@@ -334,7 +334,7 @@ class WorkspaceConfigService:
 
     def _apply_in_memory(
         self,
-        config: Optional[OpenRAGConfig],
+        config: OpenRAGConfig | None,
         preserve_edited: bool,
     ) -> None:
         """Mirror the in-process effects of ``ConfigManager.save_config_file``
@@ -386,7 +386,7 @@ class WorkspaceConfigService:
         self,
         config: OpenRAGConfig,
         *,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> None:
         config_dict = config.to_dict()
 
