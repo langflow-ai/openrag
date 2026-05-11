@@ -1008,14 +1008,22 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		if dc.Serve.Port > 0 {
 			port = dc.Serve.Port
 		}
+
+		// Default to ClusterIP if not specified
+		serviceType := dc.Serve.ServiceType
+		if serviceType == "" {
+			serviceType = corev1.ServiceTypeClusterIP
+		}
+
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceName(o, "ds"),
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, "ds"),
+				Name:        getServiceName(o, "ds"),
+				Namespace:   targetNS,
+				Labels:      componentLabels(o.Name, "ds"),
+				Annotations: dc.Serve.ServiceAnnotations,
 			},
 			Spec: corev1.ServiceSpec{
-				Type:     corev1.ServiceTypeClusterIP,
+				Type:     serviceType,
 				Selector: componentLabels(o.Name, "ds"),
 				Ports: []corev1.ServicePort{
 					{Name: "http", Port: port, TargetPort: intstr.FromInt32(port), Protocol: corev1.ProtocolTCP},
