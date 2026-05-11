@@ -140,11 +140,16 @@ type BackendSpec struct {
 	ComponentSpec `json:",inline"`
 
 	// JWTSigningKeySecret references the Secret key that holds the JWT signing key.
+	// If omitted, the operator auto-generates a stable key in the .env file.
+	// WARNING: Do not change or delete after initial deployment - will break existing JWT tokens.
+	// BEST PRACTICE: Create the referenced secret with immutable: true to prevent accidental modification.
 	// +optional
 	JWTSigningKeySecret *corev1.SecretKeySelector `json:"jwtSigningKeySecret,omitempty"`
 
 	// EncryptionKeySecret references the Secret key for OPENRAG_ENCRYPTION_KEY.
-	// If omitted the operator auto-generates a stable key.
+	// If omitted, the operator auto-generates a stable key in the .env file.
+	// WARNING: Do not change or delete after initial deployment - will make encrypted data unreadable.
+	// BEST PRACTICE: Create the referenced secret with immutable: true to prevent accidental modification.
 	// +optional
 	EncryptionKeySecret *corev1.SecretKeySelector `json:"encryptionKeySecret,omitempty"`
 
@@ -170,8 +175,9 @@ type LangflowSpec struct {
 	ComponentSpec `json:",inline"`
 
 	// SecretKeySecret references the Secret key for LANGFLOW_SECRET_KEY,
-	// shared between backend and Langflow. If omitted the operator auto-generates
-	// a stable key stored in <cr-name>-openrag-gen-creds.
+	// shared between backend and Langflow. If omitted, the operator auto-generates a stable key in the .env file.
+	// WARNING: Do not change or delete after initial deployment - will break Langflow sessions and authentication.
+	// BEST PRACTICE: Create the referenced secret with immutable: true to prevent accidental modification.
 	// +optional
 	SecretKeySecret *corev1.SecretKeySelector `json:"secretKeySecret,omitempty"`
 

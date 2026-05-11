@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,8 +26,11 @@ import (
 )
 
 const (
-	finalizer          = "openr.ag/namespace-cleanup"
-	specHashAnnotation = "openr.ag/spec-hash"
+	finalizer           = "openr.ag/namespace-cleanup"
+	envSecretFinalizer  = "openr.ag/env-secret-protection"
+	userSecretFinalizer = "openr.ag/user-secret-protection"
+	specHashAnnotation  = "openr.ag/spec-hash"
+	immutableAnnotation = "openr.ag/immutable"
 )
 
 // OpenRAGReconciler reconciles an OpenRAG object.
@@ -121,6 +125,63 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	}
 
 	targetNS := targetNamespace(o)
+
+	// Remove finalizers from .env secrets so they can be deleted
+	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
+		envSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
+				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
+				if err := r.Update(ctx, envSecret); err != nil {
+					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
+		}
+	}
+
+	// Remove finalizers from user-provided secrets so they can be deleted
+	userSecretRefs := collectProtectedSecrets(o)
+	for _, secretRef := range userSecretRefs {
+		userSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
+				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
+				if err := r.Update(ctx, userSecret); err != nil {
+					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
+		}
+	}
+
+	// Remove finalizers from auto-generated default secrets so they can be deleted
+	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
+	defaultSecretNames := []string{
+		o.Name + "-openrag-encryption-key-default",
+		o.Name + "-jwt-private-key-default",
+		o.Name + "-langflow-secret-key-default",
+	}
+	for _, secretName := range defaultSecretNames {
+		defaultSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, defaultSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
+				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
+				if err := r.Update(ctx, defaultSecret); err != nil {
+					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
+		}
+	}
+
+	// Delete managed namespace if it exists
 	ns := &corev1.Namespace{}
 	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
 	if err != nil && !errors.IsNotFound(err) {
@@ -227,6 +288,10 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 				Name:      d.name,
 				Namespace: targetNS,
 				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+				Annotations: map[string]string{
+					immutableAnnotation: "true",
+				},
+				Finalizers: []string{envSecretFinalizer},
 			},
 			StringData: map[string]string{".env": d.content},
 		}
@@ -1240,7 +1305,9 @@ func udpPort(p int32) networkingv1.NetworkPolicyPort {
 	return networkingv1.NetworkPolicyPort{Port: &v, Protocol: &proto}
 }
 
-// readSecretValue reads a secret value from a Kubernetes secret.
+// readSecretValue reads a secret value from a Kubernetes secret without protection.
+// Use this for non-critical secrets like external service credentials (OpenSearch, OAuth, etc.)
+// that users may need to rotate or update.
 // Returns the value and nil error if found, empty string and error otherwise.
 func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace string, sel *corev1.SecretKeySelector) (string, error) {
 	if sel == nil {
@@ -1261,45 +1328,188 @@ func (r *OpenRAGReconciler) readSecretValue(ctx context.Context, namespace strin
 	return string(value), nil
 }
 
-// getOrGenerateSecret retrieves a secret value following this priority:
-// 1. If userSecretRef is provided in CR, read from that secret
-// 2. If value exists in existing .env secret, use that (for stability - never regenerate)
-// 3. Generate a new secret using the appropriate generation function
-// This consolidates all secrets into .env files without creating separate Kubernetes secrets.
-func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, userSecretRef *corev1.SecretKeySelector, envKeyName, envSecretName string, genFunc func() (string, error)) (string, error) {
-	// Priority 1: User-provided secret in CR
-	if userSecretRef != nil {
-		value, err := r.readSecretValue(ctx, targetNS, userSecretRef)
-		if err != nil {
-			return "", fmt.Errorf("failed to read user-provided secret for %s: %w", envKeyName, err)
-		}
-		if value != "" {
-			return value, nil
+// readSecretRequiredProtection reads a secret value from a Kubernetes secret with protection.
+// Use this for critical security-sensitive secrets (JWT, encryption, and Langflow secret keys).
+// It enforces that the secret must be immutable and adds a finalizer to prevent accidental deletion.
+// Returns the value and nil error if found, error otherwise.
+func (r *OpenRAGReconciler) readSecretRequiredProtection(ctx context.Context, namespace string, sel *corev1.SecretKeySelector) (string, error) {
+	if sel == nil {
+		return "", nil
+	}
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sel.Name}, secret)
+	if err != nil {
+		return "", err
+	}
+
+	// Validate that security-sensitive secrets are immutable
+	if secret.Immutable == nil || !*secret.Immutable {
+		return "", fmt.Errorf("secret %s/%s must be immutable (set immutable: true) to prevent accidental modification of critical security keys", namespace, sel.Name)
+	}
+
+	// Add finalizer to prevent deletion (immutable only prevents modification, not deletion)
+	needsUpdate := false
+	if !controllerutil.ContainsFinalizer(secret, userSecretFinalizer) {
+		controllerutil.AddFinalizer(secret, userSecretFinalizer)
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		if err := r.Update(ctx, secret); err != nil {
+			return "", fmt.Errorf("failed to add protection finalizer to secret %s/%s: %w", namespace, sel.Name, err)
 		}
 	}
 
-	// Priority 2: Check if key exists in the existing .env secret (for stability)
-	existingEnvSecret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
+	value, ok := secret.Data[sel.Key]
+	if !ok {
+		return "", fmt.Errorf("key %s not found in secret %s", sel.Key, sel.Name)
+	}
+
+	return string(value), nil
+}
+
+// collectProtectedSecrets gathers all user-provided secret references from the OpenRAG CR
+func collectProtectedSecrets(o *openragv1alpha1.OpenRAG) []*corev1.SecretKeySelector {
+	var refs []*corev1.SecretKeySelector
+
+	// Backend secrets
+	if o.Spec.Backend.JWTSigningKeySecret != nil {
+		refs = append(refs, o.Spec.Backend.JWTSigningKeySecret)
+	}
+	if o.Spec.Backend.EncryptionKeySecret != nil {
+		refs = append(refs, o.Spec.Backend.EncryptionKeySecret)
+	}
+
+	// Langflow secret
+	if o.Spec.Langflow.SecretKeySecret != nil {
+		refs = append(refs, o.Spec.Langflow.SecretKeySecret)
+	}
+
+	return refs
+}
+
+// getOrGenerateSecret retrieves a secret value following this priority:
+// 1. If userSecretRef is provided in CR, read from that secret
+// 2. If default secret exists (auto-generated), read from that
+// 3. If value exists in existing .env secret, use that (for backward compatibility)
+// 4. Generate a new secret and store it in a default Kubernetes secret
+// Auto-generated secrets are stored as immutable Kubernetes secrets with -default suffix for better debuggability.
+func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, userSecretRef *corev1.SecretKeySelector, envKeyName, envSecretName string, genFunc func() (string, error)) (string, error) {
+	// Read user-provided secret if specified
+	var userProvidedValue string
+	if userSecretRef != nil {
+		value, err := r.readSecretRequiredProtection(ctx, targetNS, userSecretRef)
+		if err != nil {
+			return "", fmt.Errorf("failed to read user-provided secret for %s: %w", envKeyName, err)
+		}
+		userProvidedValue = value
+	}
+
+	// Construct default secret name (auto-generated by operator)
+	// Convert envKeyName to DNS-compliant format (lowercase, hyphens instead of underscores)
+	dnsCompliantName := strings.ToLower(strings.ReplaceAll(envKeyName, "_", "-"))
+	defaultSecretName := o.Name + "-" + dnsCompliantName + "-default"
+
+	// Check if default secret exists (auto-generated in previous reconcile)
+	var defaultSecretValue string
+	defaultSecret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Name: defaultSecretName, Namespace: targetNS}, defaultSecret)
 	switch {
 	case err == nil:
-		if value := parseEnvValue(string(existingEnvSecret.Data[".env"]), envKeyName); value != "" {
-			return value, nil // Never regenerate existing key
+		// Default secret exists, read the value
+		if val, ok := defaultSecret.Data["value"]; ok {
+			defaultSecretValue = string(val)
 		}
+	case !errors.IsNotFound(err):
+		return "", fmt.Errorf("failed to read default secret %s for %s: %w", defaultSecretName, envKeyName, err)
+	}
+
+	// Check if key exists in the existing .env secret (for backward compatibility)
+	var existingEnvValue string
+	existingEnvSecret := &corev1.Secret{}
+	err = r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, existingEnvSecret)
+	switch {
+	case err == nil:
+		existingEnvValue = parseEnvValue(string(existingEnvSecret.Data[".env"]), envKeyName)
 	case !errors.IsNotFound(err):
 		return "", fmt.Errorf("failed to read existing env secret %s for %s: %w", envSecretName, envKeyName, err)
 	}
 
-	// Priority 3: Generate new secret using the provided generation function
+	// If both user-provided secret and default/existing value exist, they MUST match
+	// This prevents users from changing secret references or modifying secret values after initial deployment
+	existingValue := defaultSecretValue
+	if existingValue == "" {
+		existingValue = existingEnvValue
+	}
+	if userProvidedValue != "" && existingValue != "" {
+		if userProvidedValue != existingValue {
+			return "", fmt.Errorf("security violation: %s value mismatch between user-provided secret and existing value (secret reference or value has been changed after initial deployment - this is not allowed for critical security keys)", envKeyName)
+		}
+	}
+
+	// Priority 1: Use user-provided value if available
+	if userProvidedValue != "" {
+		return userProvidedValue, nil
+	}
+
+	// Priority 2: Use default secret value if available (auto-generated)
+	if defaultSecretValue != "" {
+		return defaultSecretValue, nil
+	}
+
+	// Priority 3: Use existing .env value if available (backward compatibility - never regenerate)
+	if existingEnvValue != "" {
+		return existingEnvValue, nil
+	}
+
+	// Priority 4: Generate new secret and store it in a default Kubernetes secret
 	newSecret, err := genFunc()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate secret for %s: %w", envKeyName, err)
 	}
 
+	// Create immutable Kubernetes secret for the auto-generated value
+	immutableTrue := true
+	generatedTime := metav1.Now().Format(time.RFC3339)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      defaultSecretName,
+			Namespace: targetNS,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "openrag-operator",
+				"openr.ag/auto-generated":      "true",
+				"openr.ag/openrag-name":        o.Name,
+			},
+			Annotations: map[string]string{
+				"openr.ag/generated-at": generatedTime,
+				"openr.ag/secret-key":   envKeyName,
+				"openr.ag/tenant-id":    o.Spec.TenantID,
+				immutableAnnotation:     "true",
+			},
+			Finalizers: []string{userSecretFinalizer},
+		},
+		Immutable: &immutableTrue,
+		Data: map[string][]byte{
+			"value": []byte(newSecret),
+		},
+	}
+
+	// Set owner reference or label
+	if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
+		return "", err
+	}
+
+	// Create the secret
+	if err := r.createOrUpdate(ctx, secret); err != nil {
+		return "", fmt.Errorf("failed to create default secret %s for %s: %w", defaultSecretName, envKeyName, err)
+	}
+
 	// Log the secret generation for auditing and debugging
 	logger := log.FromContext(ctx)
-	logger.Info("Generated new secret",
+	logger.Info("Generated new secret and created default Kubernetes secret",
 		"secretKey", envKeyName,
+		"defaultSecretName", defaultSecretName,
 		"openragName", o.Name,
 		"namespace", o.Namespace,
 		"tenantId", o.Spec.TenantID,
