@@ -40,8 +40,8 @@ async def upload(
 ):
     """Upload a single file"""
     try:
-
         from config.settings import is_no_auth_mode
+
         is_no_auth = is_no_auth_mode()
         owner_user_id = user.user_id if (user and not is_no_auth) else None
         owner_name = user.name if user else None
@@ -57,10 +57,7 @@ async def upload(
         return JSONResponse(result, status_code=201)
     except Exception as e:
         error_msg = str(e)
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             logger.warning("[INGEST] Upload rejected — access denied", error=error_msg)
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
@@ -78,9 +75,7 @@ async def upload_path(
     if not body.path or not os.path.isdir(body.path):
         return JSONResponse({"error": "Invalid path"}, status_code=400)
 
-    file_paths = [
-        os.path.join(root, fn) for root, _, files in os.walk(body.path) for fn in files
-    ]
+    file_paths = [os.path.join(root, fn) for root, _, files in os.walk(body.path) for fn in files]
 
     if not file_paths:
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
@@ -88,12 +83,14 @@ async def upload_path(
     jwt_token = user.jwt_token
 
     from config.settings import is_no_auth_mode
+
     is_no_auth = is_no_auth_mode()
     owner_user_id = user.user_id if (user and not is_no_auth) else None
     owner_name = user.name if user else None
     owner_email = user.email if user else None
 
     from api.documents import _ensure_index_exists
+
     await _ensure_index_exists(jwt_token)
 
     task_id = await task_service.create_upload_task(
@@ -122,12 +119,11 @@ async def upload_context(
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
     user_id = user.user_id if user else None
-    storage_user_id = (
-        (getattr(user, "db_user_id", None) or user.user_id) if user else None
-    )
+    storage_user_id = (getattr(user, "db_user_id", None) or user.user_id) if user else None
 
     if previous_response_id and storage_user_id:
         from api.chat import _assert_owns
+
         await _assert_owns(previous_response_id, storage_user_id)
 
     jwt_token = user.jwt_token
@@ -137,6 +133,7 @@ async def upload_context(
     )
 
     from config.settings import is_no_auth_mode
+
     is_no_auth = is_no_auth_mode()
     owner_user_id = user.user_id if (user and not is_no_auth) else None
     owner_name = user.name if user else None
@@ -171,10 +168,9 @@ async def upload_options(
     user: User = Depends(get_current_user),
 ):
     """Return availability of upload features"""
-    aws_enabled = bool(
-        os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
-    )
+    aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
     from config.settings import UPLOAD_BATCH_SIZE
+
     return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
 
 
@@ -188,9 +184,7 @@ async def upload_bucket(
 ):
     """Process all files from an S3 bucket URL"""
     if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
-        return JSONResponse(
-            {"error": "AWS credentials not configured"}, status_code=400
-        )
+        return JSONResponse({"error": "AWS credentials not configured"}, status_code=400)
 
     if not body.s3_url or not body.s3_url.startswith("s3://"):
         return JSONResponse({"error": "Invalid S3 URL"}, status_code=400)
@@ -216,6 +210,7 @@ async def upload_bucket(
     from models.processors import S3FileProcessor
 
     from config.settings import is_no_auth_mode
+
     is_no_auth = is_no_auth_mode()
     owner_user_id = user.user_id if (user and not is_no_auth) else None
     owner_name = user.name if user else None
@@ -223,6 +218,7 @@ async def upload_bucket(
     task_user_id = user.user_id if (user and not is_no_auth) else None
 
     from api.documents import _ensure_index_exists
+
     await _ensure_index_exists(jwt_token)
 
     processor = S3FileProcessor(

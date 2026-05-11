@@ -58,27 +58,19 @@ class LangflowFileService:
         if not settings:
             return final_tweaks
 
-        if (
-            settings.get("chunkSize")
-            or settings.get("chunkOverlap")
-            or settings.get("separator")
-        ):
+        if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
             if "SplitText-QIKhg" not in final_tweaks:
                 final_tweaks["SplitText-QIKhg"] = {}
             if settings.get("chunkSize"):
                 final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
             if settings.get("chunkOverlap"):
-                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
-                    "chunkOverlap"
-                ]
+                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings["chunkOverlap"]
             if settings.get("separator"):
                 final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
 
         return final_tweaks
 
-    async def upload_user_file(
-        self, file_tuple, jwt_token: Optional[str] = None
-    ) -> Dict[str, Any]:
+    async def upload_user_file(self, file_tuple, jwt_token: Optional[str] = None) -> Dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
         """
@@ -188,15 +180,11 @@ class LangflowFileService:
             bool(jwt_token),
         )
         # To compute the file size in bytes, use len() on the file content (which should be bytes)
-        file_size_bytes = (
-            len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
-        )
+        file_size_bytes = len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         # Extract file metadata if file_tuples is provided
-        filename = (
-            str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
-        )
+        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
         mimetype = (
             str(file_tuples[0][2])
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
@@ -222,9 +210,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id)
-            if document_id
-            else "",
+            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
             if docling_task_id
@@ -234,13 +220,9 @@ class LangflowFileService:
         # Serialize ACL lists as JSON strings for Langflow global vars
         # (flows will parse these back into lists before indexing)
         if allowed_users is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(
-                allowed_users or []
-            )
+            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(allowed_users or [])
         if allowed_groups is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(
-                allowed_groups or []
-            )
+            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(allowed_groups or [])
 
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(
@@ -428,8 +410,7 @@ class LangflowFileService:
         flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
         if not flow_file.exists():
             raise ValueError(
-                "LANGFLOW_URL_INGEST_FLOW_ID is invalid and "
-                f"flow file was not found at {flow_file}"
+                f"LANGFLOW_URL_INGEST_FLOW_ID is invalid and flow file was not found at {flow_file}"
             )
         with flow_file.open("r", encoding="utf-8") as f:
             flow_payload = json.load(f)
@@ -502,9 +483,7 @@ class LangflowFileService:
                 flow_data = create_resp.json()
                 imported_flow_id = flow_data.get("id")
                 if not imported_flow_id:
-                    raise ValueError(
-                        "Langflow flow import succeeded but no flow id was returned"
-                    )
+                    raise ValueError("Langflow flow import succeeded but no flow id was returned")
 
                 self.flow_id_url_ingest = imported_flow_id
                 logger.warning(
@@ -592,9 +571,7 @@ class LangflowFileService:
             raise Exception(f"Docling upload failed: {str(e)}")
 
         # Step 2: Prepare for ingestion
-        final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
-            tweaks, settings
-        )
+        final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(tweaks, settings)
         if settings:
             logger.debug(
                 "[LF] Applying ingestion settings",

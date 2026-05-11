@@ -22,7 +22,9 @@ from lfx.utils.util import transform_localhost_url
 
 class DoclingRemoteComponent(BaseFileComponent):
     display_name = "Docling Serve"
-    description = "Uses Docling to process input documents connecting to your instance of Docling Serve."
+    description = (
+        "Uses Docling to process input documents connecting to your instance of Docling Serve."
+    )
     documentation = "https://docling-project.github.io/docling/"
     trace_type = "tool"
     icon = "Docling"
@@ -184,7 +186,9 @@ class DoclingRemoteComponent(BaseFileComponent):
 
         return component_headers_dict
 
-    def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None) -> dotdict:
+    def update_build_config(
+        self, build_config: dotdict, field_value: Any, field_name: str | None = None
+    ) -> dotdict:
         if field_name == "api_headers":
             if isinstance(field_value, dict):
                 # If it's a dict, convert to list of {key, value} pairs for TableInput
@@ -239,7 +243,9 @@ class DoclingRemoteComponent(BaseFileComponent):
             if retry_status_start <= response.status_code < retry_status_end:
                 http_failures += 1
                 if http_failures > self.MAX_500_RETRIES:
-                    self.log(f"The status requests got a http response {response.status_code} too many times.")
+                    self.log(
+                        f"The status requests got a http response {response.status_code} too many times."
+                    )
                     return None
                 continue
 
@@ -286,15 +292,21 @@ class DoclingRemoteComponent(BaseFileComponent):
             return self._process_task_id()
         return super().load_files_base()
 
-    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:
+    def process_files(
+        self, file_list: list[BaseFileComponent.BaseFile]
+    ) -> list[BaseFileComponent.BaseFile]:
         transformed_url = transform_localhost_url(self.api_url)
         base_url = f"{transformed_url}/v1"
 
-        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:
+        def _convert_document(
+            client: httpx.Client, file_path: Path, options: dict[str, Any]
+        ) -> Data | None:
             encoded_doc = base64.b64encode(file_path.read_bytes()).decode()
             payload = {
                 "options": options,
-                "sources": [{"kind": "file", "base64_string": encoded_doc, "filename": file_path.name}],
+                "sources": [
+                    {"kind": "file", "base64_string": encoded_doc, "filename": file_path.name}
+                ],
             }
 
             response = client.post(f"{base_url}/convert/source/async", json=payload)
@@ -320,7 +332,9 @@ class DoclingRemoteComponent(BaseFileComponent):
                     processed_data.append(None)
                     continue
 
-                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))
+                futures.append(
+                    (i, executor.submit(_convert_document, client, file.path, docling_options))
+                )
 
             for _index, future in futures:
                 try:

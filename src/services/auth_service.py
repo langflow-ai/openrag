@@ -38,7 +38,6 @@ class AuthService:
         self.flows_service = flows_service
         self.langflow_mcp_service = langflow_mcp_service
 
-
     async def init_oauth(
         self,
         connector_type: str,
@@ -88,6 +87,7 @@ class AuthService:
 
         # Create connection configuration - use data directory for persistence
         from config.paths import get_data_file
+
         token_file = get_data_file(f"{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json")
         effective_redirect_uri = OAUTH_BROKER_URL or redirect_uri
         config = {
@@ -99,18 +99,14 @@ class AuthService:
 
         # Only add webhook URL if WEBHOOK_BASE_URL is configured
         if WEBHOOK_BASE_URL:
-            config["webhook_url"] = (
-                f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
-            )
+            config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
 
         # Create connection in manager
-        connection_id = (
-            await self.connector_service.connection_manager.create_connection(
-                connector_type=connector_type,
-                name=connection_name,
-                config=config,
-                user_id=user_id,
-            )
+        connection_id = await self.connector_service.connection_manager.create_connection(
+            connector_type=connector_type,
+            name=connection_name,
+            config=config,
+            user_id=user_id,
         )
 
         # Direct-auth connectors (HMAC/API-key based, no OAuth redirect)
@@ -126,9 +122,7 @@ class AuthService:
             "sharepoint": (SharePointConnector, SharePointOAuth),
         }
 
-        connector_class, oauth_class = connector_class_map.get(
-            connector_type, (None, None)
-        )
+        connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
         if not connector_class or not oauth_class:
             raise ValueError(f"No classes found for connector type: {connector_type}")
 
@@ -173,9 +167,7 @@ class AuthService:
             },
         }
 
-    async def _init_direct_connection(
-        self, connector_type: str, connection_id: str
-    ) -> dict:
+    async def _init_direct_connection(self, connector_type: str, connection_id: str) -> dict:
         """Authenticate a non-OAuth connector immediately using env var credentials.
 
         Creates the connection record (already done by the caller) and verifies
@@ -184,10 +176,8 @@ class AuthService:
         is needed.
         """
         try:
-            connection_config = (
-                await self.connector_service.connection_manager.get_connection(
-                    connection_id
-                )
+            connection_config = await self.connector_service.connection_manager.get_connection(
+                connection_id
             )
             if not connection_config:
                 raise ValueError("Connection not found")
@@ -198,25 +188,19 @@ class AuthService:
             authenticated = await connector.authenticate()
             if not authenticated:
                 # Remove the connection so the user can retry after fixing credentials
-                await self.connector_service.connection_manager.delete_connection(
-                    connection_id
-                )
+                await self.connector_service.connection_manager.delete_connection(connection_id)
                 raise ValueError(
                     f"Could not authenticate with {connector_type}. "
                     "Check that your credentials and endpoint are correct."
                 )
 
             # Cache the authenticated connector
-            self.connector_service.connection_manager.active_connectors[
-                connection_id
-            ] = connector
+            self.connector_service.connection_manager.active_connectors[connection_id] = connector
 
         except ValueError:
             raise
         except Exception as exc:
-            await self.connector_service.connection_manager.delete_connection(
-                connection_id
-            )
+            await self.connector_service.connection_manager.delete_connection(connection_id)
             raise ValueError(f"Failed to connect {connector_type}: {exc}") from exc
 
         return {
@@ -236,9 +220,7 @@ class AuthService:
         """Handle OAuth callback - exchange authorization code for tokens"""
         logger.info(f"OAuth callback state: {state}")
         if not all([connection_id, authorization_code]):
-            raise ValueError(
-                "Missing required parameters (connection_id, authorization_code)"
-            )
+            raise ValueError("Missing required parameters (connection_id, authorization_code)")
 
         # Check if authorization code has already been used
         if authorization_code in self.used_auth_codes:
@@ -249,10 +231,8 @@ class AuthService:
 
         try:
             # Get connection config
-            connection_config = (
-                await self.connector_service.connection_manager.get_connection(
-                    connection_id
-                )
+            connection_config = await self.connector_service.connection_manager.get_connection(
+                connection_id
             )
             if not connection_config:
                 raise ValueError("Connection not found")
@@ -275,13 +255,9 @@ class AuthService:
                 "sharepoint": (SharePointConnector, SharePointOAuth),
             }
 
-            connector_class, oauth_class = connector_class_map.get(
-                connector_type, (None, None)
-            )
+            connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
             if not connector_class or not oauth_class:
-                raise ValueError(
-                    f"No classes found for connector type: {connector_type}"
-                )
+                raise ValueError(f"No classes found for connector type: {connector_type}")
 
             token_url = oauth_class.TOKEN_ENDPOINT
 
@@ -311,9 +287,7 @@ class AuthService:
 
             # OAuth providers typically return scopes as a space-separated string
             scopes = (
-                granted_scopes.split(" ")
-                if isinstance(granted_scopes, str)
-                else granted_scopes
+                granted_scopes.split(" ") if isinstance(granted_scopes, str) else granted_scopes
             )
 
             token_file_data = {
@@ -324,9 +298,7 @@ class AuthService:
 
             # Add expiry if provided
             if token_data.get("expires_in"):
-                expiry = datetime.now() + timedelta(
-                    seconds=int(token_data["expires_in"])
-                )
+                expiry = datetime.now() + timedelta(seconds=int(token_data["expires_in"]))
                 token_file_data["expiry"] = expiry.isoformat()
 
             # Save tokens to file
@@ -343,9 +315,7 @@ class AuthService:
                     connection_id, connection_config, token_data, request
                 )
             else:
-                return await self._handle_data_source_auth(
-                    connection_id, connection_config
-                )
+                return await self._handle_data_source_auth(connection_id, connection_config)
 
         except Exception as e:
             # Remove used code from set if we failed
@@ -376,9 +346,6 @@ class AuthService:
                 token_data["access_token"]
             )
 
-
-
-
             response_data = {
                 "status": "authenticated",
                 "purpose": "app_auth",
@@ -398,9 +365,7 @@ class AuthService:
                         "purpose": "data_source",
                         "user_email": user_info.get("email"),
                         **(
-                            {
-                                "webhook_url": f"{WEBHOOK_BASE_URL}/connectors/google_drive/webhook"
-                            }
+                            {"webhook_url": f"{WEBHOOK_BASE_URL}/connectors/google_drive/webhook"}
                             if WEBHOOK_BASE_URL
                             else {}
                         ),
@@ -409,21 +374,15 @@ class AuthService:
                 response_data["google_drive_connection_id"] = connection_id
             else:
                 # Fallback: delete connection if we can't get user info
-                await self.connector_service.connection_manager.delete_connection(
-                    connection_id
-                )
+                await self.connector_service.connection_manager.delete_connection(connection_id)
 
             return response_data
         else:
             # Clean up connection if session creation failed
-            await self.connector_service.connection_manager.delete_connection(
-                connection_id
-            )
+            await self.connector_service.connection_manager.delete_connection(connection_id)
             raise Exception("Failed to create user session")
 
-    async def _handle_data_source_auth(
-        self, connection_id: str, connection_config
-    ) -> dict:
+    async def _handle_data_source_auth(self, connection_id: str, connection_config) -> dict:
         """Handle data source connection - keep the connection for syncing"""
         result = {
             "status": "authenticated",
@@ -442,10 +401,8 @@ class AuthService:
                 logger.info(
                     f"_handle_data_source_auth: Getting connector for connection_id: {connection_id}"
                 )
-                connector = (
-                    await self.connector_service.connection_manager.get_connector(
-                        connection_id
-                    )
+                connector = await self.connector_service.connection_manager.get_connector(
+                    connection_id
                 )
                 logger.info(
                     f"_handle_data_source_auth: Got connector: {connector is not None}, has _detect_base_url: {hasattr(connector, '_detect_base_url') if connector else False}"
@@ -466,17 +423,13 @@ class AuthService:
                         logger.info(
                             f"_handle_data_source_auth: Updated connector.base_url to: {connector.base_url}"
                         )
-                        await (
-                            self.connector_service.connection_manager.save_connections()
-                        )
+                        await self.connector_service.connection_manager.save_connections()
                         result["base_url"] = detected_url
                         logger.info(
                             f"_handle_data_source_auth: Auto-detected and saved base URL: {detected_url}"
                         )
                     else:
-                        logger.warning(
-                            "_handle_data_source_auth: _detect_base_url returned None"
-                        )
+                        logger.warning("_handle_data_source_auth: _detect_base_url returned None")
                 else:
                     logger.warning(
                         f"_handle_data_source_auth: Connector not available or doesn't have _detect_base_url"
@@ -484,16 +437,11 @@ class AuthService:
 
                 # Clear the cached connector so next get_connector() creates a fresh instance
                 # with the updated config (including base_url)
-                if (
-                    connection_id
-                    in self.connector_service.connection_manager.active_connectors
-                ):
+                if connection_id in self.connector_service.connection_manager.active_connectors:
                     logger.info(
                         f"_handle_data_source_auth: Clearing cached connector for {connection_id}"
                     )
-                    del self.connector_service.connection_manager.active_connectors[
-                        connection_id
-                    ]
+                    del self.connector_service.connection_manager.active_connectors[connection_id]
             except Exception as e:
                 logger.exception("[AUTH] Auto-detect base URL failed")
 
@@ -516,9 +464,7 @@ class AuthService:
                         "name": user.name,
                         "picture": user.picture,
                         "provider": user.provider,
-                        "last_login": user.last_login.isoformat()
-                        if user.last_login
-                        else None,
+                        "last_login": user.last_login.isoformat() if user.last_login else None,
                     },
                 }
             return {"authenticated": False, "ibm_auth_mode": True, "user": None}
@@ -539,9 +485,7 @@ class AuthService:
                     "name": user.name,
                     "picture": user.picture,
                     "provider": user.provider,
-                    "last_login": user.last_login.isoformat()
-                    if user.last_login
-                    else None,
+                    "last_login": user.last_login.isoformat() if user.last_login else None,
                 },
             }
 

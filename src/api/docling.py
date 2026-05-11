@@ -10,7 +10,12 @@ import httpx
 from fastapi import Request, Depends
 from fastapi.responses import JSONResponse
 
-from config.settings import DOCLING_SERVE_URL, DOCLING_HOST_IP, DOCLING_SERVE_VERIFY_SSL, IBM_AUTH_ENABLED
+from config.settings import (
+    DOCLING_SERVE_URL,
+    DOCLING_HOST_IP,
+    DOCLING_SERVE_VERIFY_SSL,
+    IBM_AUTH_ENABLED,
+)
 from dependencies import get_optional_user
 from session_manager import User
 from utils.logging_config import get_logger
@@ -24,8 +29,7 @@ HOST_IP = DOCLING_HOST_IP
 
 
 async def health(
-    request: Request,
-    user: Optional[User] = Depends(get_optional_user)
+    request: Request, user: Optional[User] = Depends(get_optional_user)
 ) -> JSONResponse:
     """
     Proxy health check to docling-serve.
@@ -41,36 +45,31 @@ async def health(
 
     try:
         async with httpx.AsyncClient(verify=DOCLING_SERVE_VERIFY_SSL) as client:
-            response = await client.get(
-                health_url,
-                headers=headers,
-                timeout=2.0
-            )
+            response = await client.get(health_url, headers=headers, timeout=2.0)
 
             if response.status_code == 200:
-                return JSONResponse({
-                    "status": "healthy",
-                    "host": HOST_IP
-                })
+                return JSONResponse({"status": "healthy", "host": HOST_IP})
             else:
-                logger.warning("Docling health check failed", url=health_url, status_code=response.status_code)
-                return JSONResponse({
-                    "status": "unhealthy",
-                    "message": f"Health check failed with status: {response.status_code}",
-                    "host": HOST_IP
-                }, status_code=503)
+                logger.warning(
+                    "Docling health check failed", url=health_url, status_code=response.status_code
+                )
+                return JSONResponse(
+                    {
+                        "status": "unhealthy",
+                        "message": f"Health check failed with status: {response.status_code}",
+                        "host": HOST_IP,
+                    },
+                    status_code=503,
+                )
 
     except httpx.TimeoutException:
         logger.warning("Docling health check timeout", url=health_url)
-        return JSONResponse({
-            "status": "unhealthy",
-            "message": "Connection timeout",
-            "host": HOST_IP
-        }, status_code=503)
+        return JSONResponse(
+            {"status": "unhealthy", "message": "Connection timeout", "host": HOST_IP},
+            status_code=503,
+        )
     except Exception as e:
         logger.error("Docling health check failed", url=health_url, error=str(e))
-        return JSONResponse({
-            "status": "unhealthy",
-            "message": str(e),
-            "host": HOST_IP
-        }, status_code=503)
+        return JSONResponse(
+            {"status": "unhealthy", "message": str(e), "host": HOST_IP}, status_code=503
+        )

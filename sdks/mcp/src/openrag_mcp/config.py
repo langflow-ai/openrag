@@ -63,9 +63,7 @@ class Config:
         # MCP httpx client configuration (OPENRAG_MCP_*)
         self.mcp_timeout = _parse_float("OPENRAG_MCP_TIMEOUT", 60.0)
         self.mcp_max_connections = _parse_int("OPENRAG_MCP_MAX_CONNECTIONS", 100)
-        self.mcp_max_keepalive_connections = _parse_int(
-            "OPENRAG_MCP_MAX_KEEPALIVE_CONNECTIONS", 20
-        )
+        self.mcp_max_keepalive_connections = _parse_int("OPENRAG_MCP_MAX_KEEPALIVE_CONNECTIONS", 20)
         self.mcp_max_retries = _parse_int("OPENRAG_MCP_MAX_RETRIES", 3)
         self.mcp_follow_redirects = _parse_bool("OPENRAG_MCP_FOLLOW_REDIRECTS", True)
 
