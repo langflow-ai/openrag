@@ -1924,41 +1924,6 @@ func (r *OpenRAGReconciler) valkeySecret(ctx context.Context, o *openragv1alpha1
 	}, nil
 }
 
-// buildValkeyURL constructs the queue URL for docling-worker.
-func (r *OpenRAGReconciler) buildValkeyURL(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
-	valkeySpec := o.Spec.DoclingComponents.Valkey
-	port := int32(6379)
-	if valkeySpec.Port > 0 {
-		port = valkeySpec.Port
-	}
-
-	database := int32(0)
-	if valkeySpec.Database > 0 {
-		database = valkeySpec.Database
-	}
-
-	// Get password if configured
-	password := ""
-	if valkeySpec.Password != "" {
-		password = valkeySpec.Password
-	} else if valkeySpec.PasswordSecret != nil {
-		pwd, err := r.readSecretValue(ctx, targetNS, valkeySpec.PasswordSecret)
-		if err != nil {
-			return "", fmt.Errorf("failed to read valkey password: %w", err)
-		}
-		password = pwd
-	}
-
-	// Build URL
-	serviceName := getServiceName(o, "valkey")
-	if password != "" {
-		return fmt.Sprintf("redis://:%s@%s.%s.svc.cluster.local:%d/%d",
-			password, serviceName, targetNS, port, database), nil
-	}
-	return fmt.Sprintf("redis://%s.%s.svc.cluster.local:%d/%d",
-		serviceName, targetNS, port, database), nil
-}
-
 func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	labels := componentLabels(o.Name, "lf")
 
