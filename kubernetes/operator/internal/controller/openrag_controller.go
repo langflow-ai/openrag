@@ -1273,6 +1273,49 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 
+	deploymentSpec := appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
+		Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels:      podLabels,
+				Annotations: podAnnotations,
+			},
+			Spec: corev1.PodSpec{
+				ServiceAccountName:        getServiceAccountName(o, "ds"),
+				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:           spec.PodSecurityContext,
+				NodeSelector:              spec.NodeSelector,
+				Tolerations:               spec.Tolerations,
+				Affinity:                  spec.Affinity,
+				TopologySpreadConstraints: spec.TopologySpreadConstraints,
+				Volumes:                   volumes,
+				Containers: []corev1.Container{
+					{
+						Name:            "docling-serve",
+						Image:           spec.Image,
+						ImagePullPolicy: spec.ImagePullPolicy,
+						Command:         spec.Command,
+						Args:            spec.Args,
+						Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: port}},
+						Env:             envVars,
+						Resources:       spec.Resources,
+						VolumeMounts:    mounts,
+						SecurityContext: spec.SecurityContext,
+						LivenessProbe:   probeOrDefault(spec.LivenessProbe, httpProbe("/health", port, 30, 10)),
+						ReadinessProbe:  probeOrDefault(spec.ReadinessProbe, httpProbe("/health", port, 10, 5)),
+					},
+				},
+			},
+		},
+	}
+
+	// Only set Replicas if HPA is not enabled
+	// When HPA is active, it controls the replica count
+	if spec.HPA == nil || !spec.HPA.Enabled {
+		deploymentSpec.Replicas = &replicas
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("ds"),
@@ -1280,43 +1323,7 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
-			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      podLabels,
-					Annotations: podAnnotations,
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName:        getServiceAccountName(o, "ds"),
-					ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					SecurityContext:           spec.PodSecurityContext,
-					NodeSelector:              spec.NodeSelector,
-					Tolerations:               spec.Tolerations,
-					Affinity:                  spec.Affinity,
-					TopologySpreadConstraints: spec.TopologySpreadConstraints,
-					Volumes:                   volumes,
-					Containers: []corev1.Container{
-						{
-							Name:            "docling-serve",
-							Image:           spec.Image,
-							ImagePullPolicy: spec.ImagePullPolicy,
-							Command:         spec.Command,
-							Args:            spec.Args,
-							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: port}},
-							Env:             envVars,
-							Resources:       spec.Resources,
-							VolumeMounts:    mounts,
-							SecurityContext: spec.SecurityContext,
-							LivenessProbe:   probeOrDefault(spec.LivenessProbe, httpProbe("/health", port, 30, 10)),
-							ReadinessProbe:  probeOrDefault(spec.ReadinessProbe, httpProbe("/health", port, 10, 5)),
-						},
-					},
-				},
-			},
-		},
+		Spec: deploymentSpec,
 	}
 }
 
@@ -1441,6 +1448,48 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 
+	deploymentSpec := appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
+		Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels:      podLabels,
+				Annotations: podAnnotations,
+			},
+			Spec: corev1.PodSpec{
+				ServiceAccountName:        getServiceAccountName(o, "dw"),
+				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:           spec.PodSecurityContext,
+				NodeSelector:              spec.NodeSelector,
+				Tolerations:               spec.Tolerations,
+				Affinity:                  spec.Affinity,
+				TopologySpreadConstraints: spec.TopologySpreadConstraints,
+				Volumes:                   volumes,
+				Containers: []corev1.Container{
+					{
+						Name:            "docling-worker",
+						Image:           spec.Image,
+						ImagePullPolicy: spec.ImagePullPolicy,
+						Command:         spec.Command,
+						Args:            spec.Args,
+						Env:             envVars,
+						Resources:       spec.Resources,
+						VolumeMounts:    mounts,
+						SecurityContext: spec.SecurityContext,
+						LivenessProbe:   spec.LivenessProbe,
+						ReadinessProbe:  spec.ReadinessProbe,
+					},
+				},
+			},
+		},
+	}
+
+	// Only set Replicas if HPA is not enabled
+	// When HPA is active, it controls the replica count
+	if spec.HPA == nil || !spec.HPA.Enabled {
+		deploymentSpec.Replicas = &replicas
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("dw"),
@@ -1448,42 +1497,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
-			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      podLabels,
-					Annotations: podAnnotations,
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName:        getServiceAccountName(o, "dw"),
-					ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					SecurityContext:           spec.PodSecurityContext,
-					NodeSelector:              spec.NodeSelector,
-					Tolerations:               spec.Tolerations,
-					Affinity:                  spec.Affinity,
-					TopologySpreadConstraints: spec.TopologySpreadConstraints,
-					Volumes:                   volumes,
-					Containers: []corev1.Container{
-						{
-							Name:            "docling-worker",
-							Image:           spec.Image,
-							ImagePullPolicy: spec.ImagePullPolicy,
-							Command:         spec.Command,
-							Args:            spec.Args,
-							Env:             envVars,
-							Resources:       spec.Resources,
-							VolumeMounts:    mounts,
-							SecurityContext: spec.SecurityContext,
-							LivenessProbe:   spec.LivenessProbe,
-							ReadinessProbe:  spec.ReadinessProbe,
-						},
-					},
-				},
-			},
-		},
+		Spec: deploymentSpec,
 	}
 }
 
