@@ -3,18 +3,17 @@
 import json
 import os
 import tempfile
-from typing import List, Optional
 
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
 from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 from dependencies import (
+    get_current_user,
     get_document_service,
     get_langflow_file_service,
     get_session_manager,
     get_task_service,
-    get_current_user,
 )
 from session_manager import User
 from utils.logging_config import get_logger
@@ -23,10 +22,10 @@ logger = get_logger(__name__)
 
 
 async def upload_ingest_router(
-    file: List[UploadFile] = File(...),
-    session_id: Optional[str] = Form(None),
-    settings_json: Optional[str] = Form(None, alias="settings"),
-    tweaks_json: Optional[str] = Form(None, alias="tweaks"),
+    file: list[UploadFile] = File(...),
+    session_id: str | None = Form(None),
+    settings_json: str | None = Form(None, alias="settings"),
+    tweaks_json: str | None = Form(None, alias="tweaks"),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     document_service=Depends(get_document_service),
@@ -74,7 +73,7 @@ async def upload_ingest_router(
 
 
 async def _langflow_upload_ingest_task(
-    upload_files: List[UploadFile],
+    upload_files: list[UploadFile],
     session_id,
     settings_json,
     tweaks_json,
@@ -125,7 +124,9 @@ async def _langflow_upload_ingest_task(
                     f.write(content)
                 temp_file_paths.append(temp_path)
 
-            file_path_to_original_filename = dict(zip(temp_file_paths, original_filenames))
+            file_path_to_original_filename = dict(
+                zip(temp_file_paths, original_filenames, strict=True)
+            )
 
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
