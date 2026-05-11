@@ -806,7 +806,7 @@ class S3FileProcessor(TaskProcessor):
 
 
 class LangflowFileProcessor(TaskProcessor):
-    """Processor for Langflow file uploads with upload and ingest"""
+    """Processor for Langflow file uploads with two-phase Docling + Langflow ingestion."""
 
     def __init__(
         self,
@@ -821,6 +821,7 @@ class LangflowFileProcessor(TaskProcessor):
         settings: dict = None,
         replace_duplicates: bool = False,
         connector_type: str = "local",
+        docling_polling_service=None,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -834,6 +835,18 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
+        # Backend-side Docling polling coordinator. When provided (default),
+        # the processor waits for Docling to finish before invoking Langflow,
+        # so Langflow execution slots aren't held during conversion.
+        if docling_polling_service is None and getattr(
+            langflow_file_service, "docling_service", None
+        ) is not None:
+            from services.docling_polling_service import DoclingPollingService
+
+            docling_polling_service = DoclingPollingService(
+                langflow_file_service.docling_service
+            )
+        self.docling_polling_service = docling_polling_service
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -908,7 +921,10 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
-            # Process file using langflow service
+            # Process file using langflow service. Passing the polling
+            # service triggers the two-phase model: backend polls Docling,
+            # then invokes Langflow only after SUCCESS. file_task is passed
+            # so phase / docling_status are tracked on the task record.
             result = await self.langflow_file_service.upload_and_ingest_file(
                 file_tuple=file_tuple,
                 session_id=self.session_id,
@@ -919,6 +935,8 @@ class LangflowFileProcessor(TaskProcessor):
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 connector_type=self.connector_type,
+                docling_polling_service=self.docling_polling_service,
+                file_task=file_task,
             )
 
             # Update task with success
@@ -930,7 +948,7 @@ class LangflowFileProcessor(TaskProcessor):
         except Exception as e:
             # Update task with failure
             file_task.status = TaskStatus.FAILED
-            file_task.error_message = str(e)
+            file_task.error = str(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
