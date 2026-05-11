@@ -1033,7 +1033,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		}
 	}
 
-	// Reconcile HPA for docling-serve if enabled
+	// Reconcile HPA for docling-serve
 	if dc.Serve != nil && dc.Serve.HPA != nil && dc.Serve.HPA.Enabled {
 		hpa := r.doclingServeHPA(o, targetNS)
 		if err := r.setOwnerOrLabel(o, hpa, targetNS); err != nil {
@@ -1042,9 +1042,20 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		if err := r.createOrUpdate(ctx, hpa); err != nil {
 			return fmt.Errorf("docling-serve hpa: %w", err)
 		}
+	} else {
+		// Delete HPA if it exists but is now disabled
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName("ds-hpa"),
+				Namespace: targetNS,
+			},
+		}
+		if err := r.deleteIfExists(ctx, hpa); err != nil {
+			return fmt.Errorf("delete docling-serve hpa: %w", err)
+		}
 	}
 
-	// Reconcile HPA for docling-worker if enabled
+	// Reconcile HPA for docling-worker
 	if dc.Worker != nil && dc.Worker.HPA != nil && dc.Worker.HPA.Enabled {
 		hpa := r.doclingWorkerHPA(o, targetNS)
 		if err := r.setOwnerOrLabel(o, hpa, targetNS); err != nil {
@@ -1052,6 +1063,17 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		}
 		if err := r.createOrUpdate(ctx, hpa); err != nil {
 			return fmt.Errorf("docling-worker hpa: %w", err)
+		}
+	} else {
+		// Delete HPA if it exists but is now disabled
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName("dw-hpa"),
+				Namespace: targetNS,
+			},
+		}
+		if err := r.deleteIfExists(ctx, hpa); err != nil {
+			return fmt.Errorf("delete docling-worker hpa: %w", err)
 		}
 	}
 
@@ -2025,6 +2047,16 @@ func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Objec
 	setAnnotation(obj, specHashAnnotation, hash)
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	return r.Update(ctx, obj)
+}
+
+// deleteIfExists deletes an object if it exists, ignoring NotFound errors.
+// This is useful for cleaning up resources when they are disabled in the CR.
+func (r *OpenRAGReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
+	err := r.Delete(ctx, obj)
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func desiredHash(obj client.Object) (string, error) {
