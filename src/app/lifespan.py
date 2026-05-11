@@ -224,9 +224,7 @@ async def run_shutdown(app: FastAPI):
         task.cancel()
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
-        logger.info(
-            "Background tasks cancelled at shutdown", count=len(background_tasks)
-        )
+        logger.info("Background tasks cancelled at shutdown", count=len(background_tasks))
 
     # Drain any pending workspace_config DB-mirror tasks before we
     # tear down the engine. Without this, a save_config triggered
