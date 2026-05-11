@@ -1,4 +1,3 @@
-
 import tiktoken
 
 from config.settings import get_embedding_model, get_index_name
