@@ -24,19 +24,13 @@ def build_s3_config(
         ({}, error_message)  on validation failure
     """
     access_key = (
-        body.access_key
-        or os.getenv("AWS_ACCESS_KEY_ID")
-        or existing_config.get("access_key")
+        body.access_key or os.getenv("AWS_ACCESS_KEY_ID") or existing_config.get("access_key")
     )
     secret_key = (
-        body.secret_key
-        or os.getenv("AWS_SECRET_ACCESS_KEY")
-        or existing_config.get("secret_key")
+        body.secret_key or os.getenv("AWS_SECRET_ACCESS_KEY") or existing_config.get("secret_key")
     )
     session_token = (
-        body.session_token
-        or os.getenv("AWS_SESSION_TOKEN")
-        or existing_config.get("session_token")
+        body.session_token or os.getenv("AWS_SESSION_TOKEN") or existing_config.get("session_token")
     )
 
     if not access_key or not secret_key:

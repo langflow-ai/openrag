@@ -12,9 +12,7 @@ async def get_document_acl(
     user: User = Depends(get_current_user),
 ):
     """GET /documents/acl?filename=... — return ACL for a document."""
-    opensearch_client = session_manager.get_user_opensearch_client(
-        user.user_id, user.jwt_token
-    )
+    opensearch_client = session_manager.get_user_opensearch_client(user.user_id, user.jwt_token)
     response = await opensearch_client.search(
         index=get_index_name(),
         body={

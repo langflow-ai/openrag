@@ -38,9 +38,7 @@ class FileService:
         Aggregates chunks by filename using OpenSearch terms aggregation,
         then paginates and sorts the resulting file list in-memory.
         """
-        opensearch_client = self.session_manager.get_user_opensearch_client(
-            user_id, jwt_token
-        )
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
         agg_body = self._build_file_aggregation(query)
@@ -120,15 +118,17 @@ class FileService:
 
         if search:
             # Combine wildcard (partial), prefix, and fuzzy for flexible matching
-            must.append({
-                "bool": {
-                    "should": [
-                        {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
-                        {"prefix": {"filename": search.lower()}},
-                    ],
-                    "minimum_should_match": 1,
+            must.append(
+                {
+                    "bool": {
+                        "should": [
+                            {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
+                            {"prefix": {"filename": search.lower()}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
                 }
-            })
+            )
 
         query = {"bool": {"filter": filter_clauses}}
         if must:
@@ -170,9 +170,7 @@ class FileService:
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
                         },
-                        "chunk_count": {
-                            "value_count": {"field": "_id"}
-                        },
+                        "chunk_count": {"value_count": {"field": "_id"}},
                     },
                 }
             },
@@ -180,11 +178,7 @@ class FileService:
 
     def _parse_aggregation_buckets(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Parse OpenSearch aggregation buckets into file dicts."""
-        buckets = (
-            result.get("aggregations", {})
-            .get("files", {})
-            .get("buckets", [])
-        )
+        buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
 
         files = []
         for bucket in buckets:
@@ -193,23 +187,25 @@ class FileService:
                 continue
 
             source = hits[0].get("_source", {})
-            files.append({
-                "filename": bucket["key"],
-                "document_id": source.get("document_id", ""),
-                "mimetype": source.get("mimetype", ""),
-                "file_size": source.get("file_size", 0),
-                "source_url": source.get("source_url", ""),
-                "owner": source.get("owner", ""),
-                "owner_name": source.get("owner_name", ""),
-                "owner_email": source.get("owner_email", ""),
-                "connector_type": source.get("connector_type", ""),
-                "embedding_model": source.get("embedding_model", ""),
-                "embedding_dimensions": source.get("embedding_dimensions"),
-                "indexed_time": source.get("indexed_time", ""),
-                "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
-                "allowed_users": source.get("allowed_users", []),
-                "allowed_groups": source.get("allowed_groups", []),
-            })
+            files.append(
+                {
+                    "filename": bucket["key"],
+                    "document_id": source.get("document_id", ""),
+                    "mimetype": source.get("mimetype", ""),
+                    "file_size": source.get("file_size", 0),
+                    "source_url": source.get("source_url", ""),
+                    "owner": source.get("owner", ""),
+                    "owner_name": source.get("owner_name", ""),
+                    "owner_email": source.get("owner_email", ""),
+                    "connector_type": source.get("connector_type", ""),
+                    "embedding_model": source.get("embedding_model", ""),
+                    "embedding_dimensions": source.get("embedding_dimensions"),
+                    "indexed_time": source.get("indexed_time", ""),
+                    "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
+                    "allowed_users": source.get("allowed_users", []),
+                    "allowed_groups": source.get("allowed_groups", []),
+                }
+            )
 
         return files
 
@@ -221,8 +217,13 @@ class FileService:
     ) -> List[Dict[str, Any]]:
         """Sort file list by the given field."""
         valid_sort_fields = {
-            "filename", "file_size", "mimetype", "indexed_time",
-            "connector_type", "chunk_count", "owner",
+            "filename",
+            "file_size",
+            "mimetype",
+            "indexed_time",
+            "connector_type",
+            "chunk_count",
+            "owner",
         }
         if sort_by not in valid_sort_fields:
             sort_by = "filename"
@@ -231,6 +232,6 @@ class FileService:
 
         return sorted(
             files,
-            key=lambda f: (f.get(sort_by) or ""),
+            key=lambda f: f.get(sort_by) or "",
             reverse=reverse,
         )

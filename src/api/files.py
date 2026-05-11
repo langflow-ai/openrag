@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 def _get_file_service(session_manager=Depends(get_session_manager)):
     from services.file_service import FileService
+
     return FileService(session_manager=session_manager)
 
 
