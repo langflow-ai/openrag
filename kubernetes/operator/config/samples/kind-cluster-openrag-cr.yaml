@@ -72,6 +72,8 @@ spec:
   #     storage:
   #       enabled: true
   #       size: "10Gi"
+  #     hpa:
+  #       enabled: false
   #   worker:
   #     image: langflowai/docling-worker:latest
   #     replicas: 1
@@ -86,8 +88,8 @@ spec:
   #       enabled: true
   #       size: "10Gi"
   #     queueUrl: "redis://redis-master.redis.svc.cluster.local:6379/0"
-  #   hpa:
-  #     enabled: false
+  #     hpa:
+  #       enabled: false
 
   # External Docling — optional external document conversion service (legacy)
   # docling:

@@ -3,6 +3,7 @@
 package v1alpha1
 
 import (
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,6 +103,35 @@ type ComponentSpec struct {
 	// +optional
 	// +kubebuilder:default=true
 	CreateService *bool `json:"createService,omitempty"`
+
+	// PodSecurityContext holds pod-level security attributes.
+	// +optional
+	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// SecurityContext holds container-level security attributes.
+	// +optional
+	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
+
+	// TopologySpreadConstraints for high availability pod distribution.
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+
+	// ServiceType specifies the type of Service to create (ClusterIP, LoadBalancer, NodePort).
+	// +optional
+	// +kubebuilder:default=ClusterIP
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
+
+	// ServiceAnnotations are annotations to add to the Service resource.
+	// +optional
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+
+	// Command overrides the container's entrypoint.
+	// +optional
+	Command []string `json:"command,omitempty"`
+
+	// Args overrides the container's command arguments.
+	// +optional
+	Args []string `json:"args,omitempty"`
 }
 
 // FrontendSpec configures the OpenRAG frontend (Next.js).
@@ -292,6 +322,22 @@ type DoclingServeSpec struct {
 	// +optional
 	// +kubebuilder:default=5001
 	Port int32 `json:"port,omitempty"`
+
+	// LivenessProbe configures the liveness probe for the container.
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// ReadinessProbe configures the readiness probe for the container.
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// HPA configures autoscaling for the docling-serve deployment.
+	// +optional
+	HPA *DoclingHPASpec `json:"hpa,omitempty"`
+
+	// Config contains docling-specific configuration options.
+	// +optional
+	Config *DoclingConfig `json:"config,omitempty"`
 }
 
 // DoclingWorkerSpec configures the Docling worker component (document processing).
@@ -303,12 +349,185 @@ type DoclingWorkerSpec struct {
 	Storage *PersistenceSpec `json:"storage,omitempty"`
 
 	// QueueURL for worker communication (e.g., Redis, RabbitMQ).
+	// Ignored when Valkey is enabled in DoclingComponentsSpec.
 	// +optional
 	QueueURL string `json:"queueUrl,omitempty"`
 
 	// QueueURLSecret references a Secret key for the queue connection string.
+	// Ignored when Valkey is enabled in DoclingComponentsSpec.
 	// +optional
 	QueueURLSecret *corev1.SecretKeySelector `json:"queueUrlSecret,omitempty"`
+
+	// LivenessProbe configures the liveness probe for the container.
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// ReadinessProbe configures the readiness probe for the container.
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// HPA configures autoscaling for the docling-worker deployment.
+	// +optional
+	HPA *DoclingHPASpec `json:"hpa,omitempty"`
+
+	// Config contains docling-specific configuration options.
+	// +optional
+	Config *DoclingConfig `json:"config,omitempty"`
+
+	// Concurrency sets the number of concurrent tasks per worker.
+	// +optional
+	// +kubebuilder:default=4
+	// +kubebuilder:validation:Minimum=1
+	Concurrency *int32 `json:"concurrency,omitempty"`
+}
+
+// ValkeySpec configures the Valkey (Redis-compatible) instance for docling queue.
+type ValkeySpec struct {
+	ComponentSpec `json:",inline"`
+
+	// Port for the Valkey service.
+	// +optional
+	// +kubebuilder:default=6379
+	Port int32 `json:"port,omitempty"`
+
+	// Storage configures a PVC for Valkey data persistence.
+	// +optional
+	Storage *PersistenceSpec `json:"storage,omitempty"`
+
+	// Password for Valkey authentication (optional).
+	// +optional
+	Password string `json:"password,omitempty"`
+
+	// PasswordSecret references a Secret key for Valkey password.
+	// +optional
+	PasswordSecret *corev1.SecretKeySelector `json:"passwordSecret,omitempty"`
+
+	// Database number to use (0-15).
+	// +optional
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=15
+	Database int32 `json:"database,omitempty"`
+
+	// MaxMemory sets the max memory limit (e.g., "256mb", "1gb").
+	// +optional
+	MaxMemory string `json:"maxMemory,omitempty"`
+
+	// MaxMemoryPolicy sets eviction policy (e.g., "allkeys-lru", "volatile-lru").
+	// +optional
+	// +kubebuilder:default="allkeys-lru"
+	MaxMemoryPolicy string `json:"maxMemoryPolicy,omitempty"`
+}
+
+// DoclingConfig contains docling-specific configuration options for document processing.
+type DoclingConfig struct {
+	// OCR configures optical character recognition settings.
+	// +optional
+	OCR *DoclingOCRConfig `json:"ocr,omitempty"`
+
+	// TableStructure configures table structure recognition settings.
+	// +optional
+	TableStructure *DoclingTableStructureConfig `json:"tableStructure,omitempty"`
+
+	// Performance configures performance-related settings.
+	// +optional
+	Performance *DoclingPerformanceConfig `json:"performance,omitempty"`
+
+	// Models configures which AI models to use for different tasks.
+	// +optional
+	Models *DoclingModelsConfig `json:"models,omitempty"`
+
+	// ExtraEnv allows setting additional environment variables for docling configuration.
+	// +optional
+	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+}
+
+// DoclingOCRConfig configures OCR (Optical Character Recognition) settings.
+type DoclingOCRConfig struct {
+	// Enabled controls whether OCR is enabled.
+	// +optional
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Engine specifies the OCR engine to use (e.g., "easyocr", "tesseract").
+	// +optional
+	// +kubebuilder:default="easyocr"
+	Engine string `json:"engine,omitempty"`
+
+	// Languages is a list of language codes for OCR (e.g., ["en", "de", "fr"]).
+	// +optional
+	Languages []string `json:"languages,omitempty"`
+
+	// ForceFullPageOCR forces OCR on all pages even if text is extractable.
+	// +optional
+	// +kubebuilder:default=false
+	ForceFullPageOCR *bool `json:"forceFullPageOCR,omitempty"`
+}
+
+// DoclingTableStructureConfig configures table structure recognition settings.
+type DoclingTableStructureConfig struct {
+	// Enabled controls whether table structure recognition is enabled.
+	// +optional
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Mode specifies the table extraction mode (e.g., "accurate", "fast").
+	// +optional
+	// +kubebuilder:default="accurate"
+	Mode string `json:"mode,omitempty"`
+
+	// MinConfidencePercent sets the minimum confidence threshold for table detection (0-100).
+	// +optional
+	// +kubebuilder:default=70
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	MinConfidencePercent *int32 `json:"minConfidencePercent,omitempty"`
+}
+
+// DoclingPerformanceConfig configures performance-related settings.
+type DoclingPerformanceConfig struct {
+	// BatchSize sets the number of pages to process in a single batch.
+	// +optional
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=1
+	BatchSize *int32 `json:"batchSize,omitempty"`
+
+	// MaxWorkers sets the maximum number of worker threads per process.
+	// +optional
+	// +kubebuilder:default=4
+	// +kubebuilder:validation:Minimum=1
+	MaxWorkers *int32 `json:"maxWorkers,omitempty"`
+
+	// TimeoutSeconds sets the processing timeout per document in seconds.
+	// +optional
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+
+	// EnableGPU enables GPU acceleration if available.
+	// +optional
+	// +kubebuilder:default=false
+	EnableGPU *bool `json:"enableGPU,omitempty"`
+}
+
+// DoclingModelsConfig configures which AI models to use for different tasks.
+type DoclingModelsConfig struct {
+	// LayoutModel specifies the model for document layout analysis.
+	// +optional
+	LayoutModel string `json:"layoutModel,omitempty"`
+
+	// OCRModel specifies the model for OCR.
+	// +optional
+	OCRModel string `json:"ocrModel,omitempty"`
+
+	// TableModel specifies the model for table structure recognition.
+	// +optional
+	TableModel string `json:"tableModel,omitempty"`
+
+	// ModelCachePath specifies where to cache downloaded models.
+	// +optional
+	// +kubebuilder:default="/models"
+	ModelCachePath string `json:"modelCachePath,omitempty"`
 }
 
 // DoclingHPASpec configures HorizontalPodAutoscaler for docling components.
@@ -340,6 +559,10 @@ type DoclingHPASpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
 	TargetMemoryUtilizationPercentage *int32 `json:"targetMemoryUtilizationPercentage,omitempty"`
+
+	// Behavior configures the scaling behavior (scale up/down policies, stabilization windows).
+	// +optional
+	Behavior *autoscalingv2.HorizontalPodAutoscalerBehavior `json:"behavior,omitempty"`
 }
 
 // DoclingComponentsSpec aggregates all docling-related components.
@@ -357,9 +580,10 @@ type DoclingComponentsSpec struct {
 	// +optional
 	Worker *DoclingWorkerSpec `json:"worker,omitempty"`
 
-	// HPA configures autoscaling for docling components.
+	// Valkey configures an operator-managed Valkey instance for the queue.
+	// When enabled, docling-worker automatically uses this Valkey instance.
 	// +optional
-	HPA *DoclingHPASpec `json:"hpa,omitempty"`
+	Valkey *ValkeySpec `json:"valkey,omitempty"`
 }
 
 // NetworkPolicySpec controls whether the operator creates a NetworkPolicy for Langflow.
