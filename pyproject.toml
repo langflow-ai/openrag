@@ -97,6 +97,9 @@ exclude = ["flows/components"]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]  # line-length handled by formatter
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends", "Depends"]
+
 # `bootstrap` must be the first import in any module that uses it
 # (it loads .env and configures structlog before anything else can
 # read env vars or emit logs). Define it as its own isort section

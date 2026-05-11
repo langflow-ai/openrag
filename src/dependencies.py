@@ -17,7 +17,8 @@ Usage:
 
 import asyncio
 import dataclasses
-from typing import AsyncIterator, Optional, Sequence
+from collections.abc import AsyncIterator, Sequence
+from typing import Optional
 
 from cachetools import TTLCache
 from fastapi import Depends, HTTPException, Request
@@ -158,7 +159,7 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-async def _ensure_db_user(user: User) -> Optional[str]:
+async def _ensure_db_user(user: User) -> str | None:
     """Best-effort DB upsert for the authenticated user. Returns the SQL
     `users.id` for this user (so callers can cache the OAuth-sub → DB-id
     mapping). Returns None on failure.
@@ -220,7 +221,7 @@ async def _resolve_db_user_id(user: User) -> str:
     return resolved or user.user_id
 
 
-async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional[User]:
+async def _attach_db_user_id(request: Request, user: User | None) -> User | None:
     """Attach the internal SQL users.id to the request user.
 
     `User.user_id` remains the external auth subject used in JWT/OpenSearch
@@ -239,8 +240,8 @@ async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional
 
 
 def invalidate_user_ensured_cache(
-    oauth_provider: Optional[str] = None,
-    oauth_subject: Optional[str] = None,
+    oauth_provider: str | None = None,
+    oauth_subject: str | None = None,
 ) -> None:
     """Pop the ensure-cache + lock for a single identity, or clear all
     if neither argument is provided.
@@ -358,10 +359,10 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
     from config.settings import (
-        IBM_SESSION_COOKIE_NAME,
         IBM_CREDENTIALS_HEADER,
-        PLATFORM_USERNAME,
+        IBM_SESSION_COOKIE_NAME,
         PLATFORM_PASSWORD,
+        PLATFORM_USERNAME,
     )
 
     # ── Option -1: Environment variable override (local dev/calls) ───────
@@ -560,7 +561,7 @@ async def get_current_user(
 async def get_optional_user(
     request: Request,
     session_manager=Depends(get_session_manager),
-) -> Optional[User]:
+) -> User | None:
     """
     Optionally extract JWT cookie user.
 

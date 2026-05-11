@@ -207,9 +207,8 @@ async def upload_bucket(
 
     jwt_token = user.jwt_token
 
-    from models.processors import S3FileProcessor
-
     from config.settings import is_no_auth_mode
+    from models.processors import S3FileProcessor
 
     is_no_auth = is_no_auth_mode()
     owner_user_id = user.user_id if (user and not is_no_auth) else None

@@ -1,8 +1,9 @@
-from typing import List
+
 import tiktoken
-from utils.logging_config import get_logger
+
 from config.settings import get_embedding_model, get_index_name
 from utils.document_processing import extract_relevant
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,8 +21,8 @@ def get_token_count(text: str, model: str = None) -> int:
 
 
 def chunk_texts_for_embeddings(
-    texts: List[str], max_tokens: int = None, model: str = None
-) -> List[List[str]]:
+    texts: list[str], max_tokens: int = None, model: str = None
+) -> list[list[str]]:
     """
     Split texts into batches that won't exceed token limits.
     If max_tokens is None, returns texts as single batch (no splitting).
@@ -100,12 +101,12 @@ class DocumentService:
         owner_email: str = None,
     ):
         """Process an uploaded file from form data"""
-        from utils.hash_utils import hash_id
-        from utils.file_utils import auto_cleanup_tempfile
         import os
 
         # Default metadata for anonymous users if not provided
         from session_manager import AnonymousUser
+        from utils.file_utils import auto_cleanup_tempfile
+        from utils.hash_utils import hash_id
 
         anonymous_user = AnonymousUser()
         owner_name = owner_name or anonymous_user.name

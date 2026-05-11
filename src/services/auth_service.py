@@ -1,24 +1,23 @@
-import uuid
 import json
-import httpx
-
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
-
 import os
-from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
+import uuid
+from datetime import datetime, timedelta
+
+import httpx
 from fastapi import HTTPException
 
-logger = logging.getLogger(__name__)
-from session_manager import SessionManager
-from services.langflow_mcp_service import LangflowMCPService
-from connectors.google_drive.oauth import GoogleDriveOAuth
-from connectors.onedrive.oauth import OneDriveOAuth
-from connectors.sharepoint.oauth import SharePointOAuth
+from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
 from connectors.google_drive import GoogleDriveConnector
+from connectors.google_drive.oauth import GoogleDriveOAuth
 from connectors.onedrive import OneDriveConnector
+from connectors.onedrive.oauth import OneDriveOAuth
 from connectors.sharepoint import SharePointConnector
+from connectors.sharepoint.oauth import SharePointOAuth
+from services.langflow_mcp_service import LangflowMCPService
+from session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
 
 # Connectors that authenticate directly (no OAuth redirect required)
 _DIRECT_AUTH_CONNECTORS = {"ibm_cos"}
@@ -432,7 +431,7 @@ class AuthService:
                         logger.warning("_handle_data_source_auth: _detect_base_url returned None")
                 else:
                     logger.warning(
-                        f"_handle_data_source_auth: Connector not available or doesn't have _detect_base_url"
+                        "_handle_data_source_auth: Connector not available or doesn't have _detect_base_url"
                     )
 
                 # Clear the cached connector so next get_connector() creates a fresh instance
@@ -442,12 +441,12 @@ class AuthService:
                         f"_handle_data_source_auth: Clearing cached connector for {connection_id}"
                     )
                     del self.connector_service.connection_manager.active_connectors[connection_id]
-            except Exception as e:
+            except Exception:
                 logger.exception("[AUTH] Auto-detect base URL failed")
 
         return result
 
-    async def get_user_info(self, request) -> Optional[dict]:
+    async def get_user_info(self, request) -> dict | None:
         """Get current user information from request"""
         from config.settings import IBM_AUTH_ENABLED
 

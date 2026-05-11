@@ -1,8 +1,10 @@
 import asyncio
 import os
 import random
+
 import yaml
 from opensearchpy import AsyncOpenSearch
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -146,7 +148,7 @@ async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> No
         try:
             await asyncio.wait_for(opensearch_client.cluster.health(), timeout=10.0)
             logger.debug("Final cluster health check completed")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Timeout during final cluster health check")
         except Exception as e:
             logger.debug("[OPENSEARCH] Final cluster health check skipped", reason=str(e))
@@ -234,7 +236,7 @@ async def setup_opensearch_security(
             logger.error(f"[OPENSEARCH] Roles configuration file not found: {roles_file}")
             raise FileNotFoundError(f"Roles configuration file not found: {roles_file}")
 
-        with open(roles_file, "r") as f:
+        with open(roles_file) as f:
             roles_config = yaml.safe_load(f)
 
         logger.info(
@@ -271,7 +273,7 @@ async def setup_opensearch_security(
             logger.error(f"[OPENSEARCH] Roles mapping file not found: {roles_mapping_file}")
             raise FileNotFoundError(f"Roles mapping file not found: {roles_mapping_file}")
 
-        with open(roles_mapping_file, "r") as f:
+        with open(roles_mapping_file) as f:
             mapping_config = yaml.safe_load(f)
 
         logger.info(

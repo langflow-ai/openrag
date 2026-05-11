@@ -1,16 +1,17 @@
 import asyncio
-import platform
 import json
+import platform
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any
+
 import httpx
 from pydantic import BaseModel
 
 from config.settings import (
-    get_openrag_config,
     DOCLING_SERVE_URL,
-    IBM_AUTH_ENABLED,
     DOCLING_SERVE_VERIFY_SSL,
+    IBM_AUTH_ENABLED,
+    get_openrag_config,
 )
 from utils.logging_config import get_logger
 
@@ -23,7 +24,7 @@ class DoclingConfig(BaseModel):
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
-    picture_description_local: Optional[dict] = None
+    picture_description_local: dict | None = None
 
 
 class DoclingServeError(Exception):
@@ -32,7 +33,7 @@ class DoclingServeError(Exception):
 
 def get_docling_preset_configs(
     table_structure=False, ocr=False, picture_descriptions=False
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get docling preset configurations based on toggle settings"""
     is_macos = platform.system() == "Darwin"
 
@@ -52,10 +53,10 @@ def get_docling_preset_configs(
 
 
 class DoclingService:
-    _default_client: Optional[httpx.AsyncClient] = None
+    _default_client: httpx.AsyncClient | None = None
 
     def __init__(
-        self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None
+        self, docling_url: str | None = None, httpx_client: httpx.AsyncClient | None = None
     ):
         """
         Initialize the DoclingService.
@@ -80,7 +81,7 @@ class DoclingService:
             )
         return DoclingService._default_client
 
-    def _build_docling_options(self) -> Dict[str, Any]:
+    def _build_docling_options(self) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs."""
         config = get_openrag_config()
         knowledge_config = config.knowledge
@@ -95,8 +96,8 @@ class DoclingService:
         return options
 
     def _get_auth_headers(
-        self, user_id: Optional[str] = None, auth_header: Optional[str] = None
-    ) -> Dict[str, str]:
+        self, user_id: str | None = None, auth_header: str | None = None
+    ) -> dict[str, str]:
         """Build authentication headers for Docling Serve if IBM auth is enabled."""
         headers = {}
         if IBM_AUTH_ENABLED:
@@ -111,8 +112,8 @@ class DoclingService:
         self,
         filename: str,
         file_content: bytes,
-        user_id: Optional[str] = None,
-        auth_header: Optional[str] = None,
+        user_id: str | None = None,
+        auth_header: str | None = None,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
@@ -165,9 +166,9 @@ class DoclingService:
         task_id: str,
         poll_interval: float = 1.0,
         timeout: float = 600.0,
-        user_id: Optional[str] = None,
-        auth_header: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """
         Poll Docling Serve for the result of an async conversion task.
         """
@@ -194,9 +195,9 @@ class DoclingService:
         task_id: str,
         poll_interval: float,
         timeout: float,
-        user_id: Optional[str] = None,
-        auth_header: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """Internal polling logic."""
         elapsed = 0.0
         headers = self._get_auth_headers(user_id, auth_header)
@@ -209,7 +210,7 @@ class DoclingService:
                 status_data = response.json()
             except Exception as e:
                 logger.error("Error polling docling status", task_id=task_id, error=str(e))
-                raise DoclingServeError(f"Error polling docling status: {str(e)}")
+                raise DoclingServeError(f"Error polling docling status: {str(e)}") from e
 
             status = status_data.get("task_status")
 
@@ -235,8 +236,8 @@ class DoclingService:
         raise TimeoutError(f"Docling task {task_id} did not complete within {timeout} seconds")
 
     async def convert_file(
-        self, file_path: str, user_id: Optional[str] = None, auth_header: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, file_path: str, user_id: str | None = None, auth_header: str | None = None
+    ) -> dict[str, Any]:
         """
         Convert a local file via docling-serve async polling.
         """
@@ -253,9 +254,9 @@ class DoclingService:
         self,
         content: bytes,
         filename: str,
-        user_id: Optional[str] = None,
-        auth_header: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """
         Convert in-memory bytes via docling-serve async polling.
         """
