@@ -40,9 +40,7 @@ def no_sleep():
 
 
 @pytest.mark.asyncio
-async def test_returns_success_immediately_when_already_done(
-    polling_service, mock_docling_service
-):
+async def test_returns_success_immediately_when_already_done(polling_service, mock_docling_service):
     mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
 
     result = await polling_service.poll_until_ready(
@@ -113,9 +111,7 @@ async def test_tolerates_brief_not_found_then_succeeds(
 async def test_returns_expired_when_not_found_exceeds_budget(
     polling_service, mock_docling_service, no_sleep
 ):
-    mock_docling_service.check_task_status.return_value = _snap(
-        DoclingTaskState.NOT_FOUND
-    )
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.NOT_FOUND)
 
     result = await polling_service.poll_until_ready(
         task_id="t1",
@@ -132,9 +128,7 @@ async def test_returns_expired_when_not_found_exceeds_budget(
 async def test_returns_timeout_when_max_seconds_exceeded(
     polling_service, mock_docling_service, no_sleep
 ):
-    mock_docling_service.check_task_status.return_value = _snap(
-        DoclingTaskState.PROCESSING
-    )
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.PROCESSING)
 
     # Loop counter — break ourselves after enough iterations to simulate
     # crossing the deadline. We achieve this by having the patched
@@ -161,19 +155,13 @@ async def test_returns_timeout_when_max_seconds_exceeded(
 @pytest.mark.asyncio
 async def test_invalid_arguments(polling_service):
     with pytest.raises(ValueError):
-        await polling_service.poll_until_ready(
-            task_id="t1", poll_interval=0, max_seconds=10
-        )
+        await polling_service.poll_until_ready(task_id="t1", poll_interval=0, max_seconds=10)
     with pytest.raises(ValueError):
-        await polling_service.poll_until_ready(
-            task_id="t1", poll_interval=1.0, max_seconds=0
-        )
+        await polling_service.poll_until_ready(task_id="t1", poll_interval=1.0, max_seconds=0)
 
 
 @pytest.mark.asyncio
-async def test_backoff_grows_interval_up_to_cap(
-    polling_service, mock_docling_service, no_sleep
-):
+async def test_backoff_grows_interval_up_to_cap(polling_service, mock_docling_service, no_sleep):
     """Verify the sleep interval grows until it hits max_interval."""
     mock_docling_service.check_task_status.side_effect = [
         _snap(DoclingTaskState.PROCESSING),

@@ -70,22 +70,14 @@ class DoclingPollingService:
         interval = poll_interval
         consecutive_not_found = 0
         last_snapshot: Optional[DoclingStatusSnapshot] = None
-        
-        logger.debug(
-            "Starting Docling polling",
-            task_id=task_id)
+
+        logger.debug("Starting Docling polling", task_id=task_id)
 
         while True:
-            logger.debug(
-            "Docling polling",
-            task_id=task_id)
+            logger.debug("Docling polling", task_id=task_id)
             snapshot = await self.docling_service.check_task_status(task_id)
             last_snapshot = snapshot
-            logger.debug(
-                "Snapshot received",
-                task_id=task_id,
-                snapshot=last_snapshot
-            )
+            logger.debug("Snapshot received", task_id=task_id, snapshot=last_snapshot)
             elapsed = time.monotonic() - start
 
             if snapshot.state == DoclingTaskState.SUCCESS:

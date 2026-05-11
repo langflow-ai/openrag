@@ -51,9 +51,7 @@ async def test_check_status_success(docling_service, mock_client):
 
 @pytest.mark.asyncio
 async def test_check_status_failure(docling_service, mock_client):
-    mock_client.get.return_value = _resp(
-        200, {"task_status": "failure", "error": "boom"}
-    )
+    mock_client.get.return_value = _resp(200, {"task_status": "failure", "error": "boom"})
 
     snap = await docling_service.check_task_status("t1")
 
@@ -108,9 +106,7 @@ async def test_check_status_4xx_other_treated_as_failed(docling_service, mock_cl
 
 
 @pytest.mark.asyncio
-async def test_check_status_network_error_treated_as_processing(
-    docling_service, mock_client
-):
+async def test_check_status_network_error_treated_as_processing(docling_service, mock_client):
     mock_client.get.side_effect = httpx.ConnectError("connection refused")
 
     snap = await docling_service.check_task_status("t1")
@@ -123,9 +119,7 @@ async def test_check_status_network_error_treated_as_processing(
 
 @pytest.mark.asyncio
 async def test_fetch_result_success(docling_service, mock_client):
-    mock_client.get.return_value = _resp(
-        200, {"document": {"json_content": {"k": "v"}}}
-    )
+    mock_client.get.return_value = _resp(200, {"document": {"json_content": {"k": "v"}}})
 
     out = await docling_service.fetch_task_result("t1")
 

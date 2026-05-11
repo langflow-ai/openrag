@@ -236,9 +236,7 @@ async def test_task_service_threads_polling_service_to_processor(monkeypatch):
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
-    monkeypatch.setattr(
-        "models.processors.LangflowFileProcessor", FakeProcessor
-    )
+    monkeypatch.setattr("models.processors.LangflowFileProcessor", FakeProcessor)
 
     async def fake_create_custom_task(*args, **kwargs):
         return "task-id"

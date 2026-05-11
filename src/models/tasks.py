@@ -14,6 +14,7 @@ class TaskStatus(Enum):
 
 class DoclingPhaseStatus(Enum):
     """Tracks the state of the Docling conversion sub-phase for a single file."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -29,6 +30,7 @@ class IngestionPhase(Enum):
     LANGFLOW: Docling conversion succeeded; Langflow ingestion flow is running.
     COMPLETE: Langflow ingestion finished and the document is indexed.
     """
+
     DOCLING = "docling"
     LANGFLOW = "langflow"
     COMPLETE = "complete"

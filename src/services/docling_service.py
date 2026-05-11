@@ -13,6 +13,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 class DoclingConfig(BaseModel):
     do_ocr: bool
     ocr_engine: str
@@ -21,12 +22,14 @@ class DoclingConfig(BaseModel):
     do_picture_description: bool
     picture_description_local: Optional[dict] = None
 
+
 class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 
 
 class DoclingTaskState(str, Enum):
     """Result of a single status check against Docling Serve."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -37,9 +40,11 @@ class DoclingTaskState(str, Enum):
 @dataclass
 class DoclingStatusSnapshot:
     """Single-point-in-time view of a Docling task's state."""
+
     state: DoclingTaskState
     detail: Optional[str] = None
     raw: Optional[dict] = None
+
 
 def get_docling_preset_configs(
     table_structure=False, ocr=False, picture_descriptions=False
@@ -61,13 +66,16 @@ def get_docling_preset_configs(
 
     return config
 
+
 class DoclingService:
     _default_client: Optional[httpx.AsyncClient] = None
 
-    def __init__(self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None):
+    def __init__(
+        self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None
+    ):
         """
         Initialize the DoclingService.
-        
+
         Args:
             docling_url: Base URL of the Docling Serve instance. If None, auto-detects.
             httpx_client: Pre-configured httpx async client.
@@ -76,7 +84,7 @@ class DoclingService:
             self.docling_url = docling_url.rstrip("/")
         else:
             self.docling_url = DOCLING_SERVE_URL
-            
+
         self.httpx_client = httpx_client
 
     def _get_client(self) -> httpx.AsyncClient:
@@ -92,18 +100,14 @@ class DoclingService:
         """Build the options payload for docling from OpenRAG configs."""
         config = get_openrag_config()
         knowledge_config = config.knowledge
-        
+
         preset = get_docling_preset_configs(
             table_structure=knowledge_config.table_structure,
             ocr=knowledge_config.ocr,
-            picture_descriptions=knowledge_config.picture_descriptions
+            picture_descriptions=knowledge_config.picture_descriptions,
         )
-        
-        options = {
-            "to_formats": "json",
-            "image_export_mode": "placeholder",
-            **preset
-        }
+
+        options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
         return options
 
     async def upload_to_docling_direct_async(self, filename: str, file_content: bytes) -> str:
@@ -111,38 +115,34 @@ class DoclingService:
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
         options = self._build_docling_options()
-        
+
         # Docling serve async multipart endpoint /v1/convert/file/async
         # Options are passed as form data
         data = {
             k: str(v).lower() if isinstance(v, bool) else v
             for k, v in options.items()
             if not isinstance(v, dict)
-        }        # picture_description_local needs to be JSON if it's a dict
+        }  # picture_description_local needs to be JSON if it's a dict
 
         if "picture_description_local" in options:
             data["picture_description_local"] = json.dumps(options["picture_description_local"])
 
         files = {"files": (filename, file_content)}
-        
+
         client = self._get_client()
         should_close = client != self.httpx_client
-        
+
         try:
             if should_close:
                 async with client:
                     response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async",
-                        files=files,
-                        data=data
+                        f"{self.docling_url}/v1/convert/file/async", files=files, data=data
                     )
             else:
                 response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
-                    files=files,
-                    data=data
+                    f"{self.docling_url}/v1/convert/file/async", files=files, data=data
                 )
-            
+
             response.raise_for_status()
             task = response.json()
             return task["task_id"]
@@ -151,10 +151,7 @@ class DoclingService:
             raise
 
     async def get_docling_result_async(
-        self,
-        task_id: str,
-        poll_interval: float = 1.0,
-        timeout: float = 600.0
+        self, task_id: str, poll_interval: float = 1.0, timeout: float = 600.0
     ) -> Dict[str, Any]:
         """
         Poll Docling Serve for the result of an async conversion task.
@@ -246,7 +243,9 @@ class DoclingService:
             raise DoclingServeError(f"Network error fetching docling result: {str(e)}") from e
 
         if response.status_code == 404:
-            raise DoclingServeError(f"Docling result not found for task {task_id} (task expired or unknown)")
+            raise DoclingServeError(
+                f"Docling result not found for task {task_id} (task expired or unknown)"
+            )
         if response.status_code >= 400:
             raise DoclingServeError(
                 f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
@@ -262,7 +261,9 @@ class DoclingService:
             raise DoclingServeError("docling-serve response missing document.json_content")
         return doc_content
 
-    async def _poll_result(self, client: httpx.AsyncClient, task_id: str, poll_interval: float, timeout: float) -> Dict[str, Any]:
+    async def _poll_result(
+        self, client: httpx.AsyncClient, task_id: str, poll_interval: float, timeout: float
+    ) -> Dict[str, Any]:
         """Internal polling logic."""
         elapsed = 0.0
         while elapsed < timeout:
@@ -280,12 +281,12 @@ class DoclingService:
                 result_response = await client.get(f"{self.docling_url}/v1/result/{task_id}")
                 result_response.raise_for_status()
                 result_json = result_response.json()
-                
+
                 # Extract the json_content which matches the old convert_file/bytes return
                 doc_content = result_json.get("document", {}).get("json_content")
                 if doc_content is None:
                     raise DoclingServeError("docling-serve response missing document.json_content")
-                
+
                 return doc_content
             elif status == "failure":
                 raise DoclingServeError(f"Docling conversion failed: {status_data}")
