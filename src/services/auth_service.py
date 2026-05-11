@@ -127,6 +127,7 @@ class AuthService:
 
         # Cast to Any to satisfy mypy for class attribute access
         from typing import Any
+
         oauth_class_any: Any = oauth_class
         connector_class_any: Any = connector_class
 
@@ -264,6 +265,7 @@ class AuthService:
                 raise ValueError(f"No classes found for connector type: {connector_type}")
 
             from typing import Any
+
             oauth_class_any: Any = oauth_class
             token_url = oauth_class_any.TOKEN_ENDPOINT
 
