@@ -1,9 +1,7 @@
-from config.paths import get_flows_path
 import asyncio
+import concurrent.futures
 import os
 import threading
-import concurrent.futures
-from utils.env_utils import get_env_int, get_env_float
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -11,11 +9,14 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
-from utils.container_utils import get_container_host, determine_docling_host
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from config.paths import get_flows_path
+from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
+from utils.env_utils import get_env_float, get_env_int
 from utils.logging_config import get_logger
+
 # Import configuration manager
 from .config_manager import config_manager
 
@@ -51,6 +52,10 @@ LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
 LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
+# Optional explicit JWT signing key. When set (and IBM auth is off),
+# RSA keypair generation is skipped. Read here so callers don't poke
+# os.environ directly.
+JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
@@ -66,6 +71,41 @@ SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in ("true", "1", "yes")
 DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+
+# Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
+# on the FastAPI app instance). Named explicitly so it isn't confused with
+# logging-level "debug" or other unrelated debug flags.
+#
+# Default behavior:
+#   * If FASTAPI_DEBUG is set explicitly (true/false), that wins.
+#   * Otherwise, defaults to True when LOG_LEVEL=DEBUG (developer is already
+#     opting into verbose output), False otherwise. This gives `LOG_LEVEL=DEBUG`
+#     in .env a single-knob "dev mode" effect without forcing it on in prod.
+_fastapi_debug_default = "true" if os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG" else "false"
+FASTAPI_DEBUG = os.getenv("FASTAPI_DEBUG", _fastapi_debug_default).lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+# Whether uvicorn emits an access log line per HTTP request. On by
+# default; flip via ACCESS_LOG=false (e.g. when fronted by a load balancer
+# that already logs requests, or to reduce log noise in CI).
+ACCESS_LOG_ENABLED = os.getenv("ACCESS_LOG", "true").lower() in ("true", "1", "yes")
+
+# Number of uvicorn worker processes to allow. Multi-worker is currently
+# unsupported because the RBAC permission cache and the OAuth-subject→DB-id
+# cache are per-process; the lifespan startup hook hard-fails if this is >1
+# until the cache moves to a shared backend (Redis).
+UVICORN_WORKER_COUNT = get_env_int("UVICORN_WORKERS", 1)
+
+# Backend for the in-process RBAC permission cache. Only "memory" is wired
+# today; the lifespan hook rejects anything else.
+RBAC_CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory").lower()
+
+# TTL (seconds) for cached RBAC permission lookups. Stale permissions can
+# linger for up to this many seconds after a role mutation.
+RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("OPENRAG_PERM_CACHE_TTL", 60)
 
 # Docling service URL configuration
 # Priority:
@@ -542,7 +582,7 @@ class AppClients:
                     )
                     logger.info(f"HTTP/2 probe successful with {model_name}")
                     return True
-                except (asyncio.TimeoutError, Exception) as probe_error:
+                except (TimeoutError, Exception) as probe_error:
                     logger.warning(f"HTTP/2 probe failed with {model_name}, falling back to HTTP/1.1", error=str(probe_error))
                     return False
                 finally:
@@ -592,7 +632,7 @@ class AppClients:
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
-                raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.")
+                raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.") from e
 
             return self._patched_async_client
 

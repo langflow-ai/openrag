@@ -1344,15 +1344,20 @@ async def onboarding(
 
         # Create OpenRAG Docs knowledge filter if sample data was ingested
         # Only create on embedding step to avoid duplicates (both LLM and embedding cards submit with sample_data)
+        # Also skip if a filter was already created (e.g. user re-submits the embedding step)
         openrag_docs_filter_id = None
-        if should_ingest_sample_data and (body.embedding_provider or body.embedding_model):
+        if (
+            should_ingest_sample_data
+            and (body.embedding_provider or body.embedding_model)
+            and not current_config.onboarding.openrag_docs_filter_id
+        ):
             try:
                 openrag_docs_filter_id = await _create_openrag_docs_filter(
                     knowledge_filter_service, session_manager, user
                 )
                 if openrag_docs_filter_id:
                     logger.info(
-                        "Created OpenRAG Docs knowledge filter",
+                        "OpenRAG Docs knowledge filter ready",
                         filter_id=openrag_docs_filter_id,
                     )
                     # Save the filter ID to the config
@@ -1399,6 +1404,34 @@ async def _create_openrag_docs_filter(
 
     # Get JWT token
     jwt_token = user.jwt_token
+
+    # Guard against duplicates: check if a filter named "OpenRAG Docs" already exists
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(
+            user.user_id, jwt_token
+        )
+        from services.knowledge_filter_service import KNOWLEDGE_FILTERS_INDEX_NAME
+        existing = await opensearch_client.search(
+            index=KNOWLEDGE_FILTERS_INDEX_NAME,
+            body={
+                "query": {"match_phrase": {"name": "OpenRAG Docs"}},
+                "_source": ["id"],
+                "size": 1,
+            },
+        )
+        hits = existing.get("hits", {}).get("hits", [])
+        if hits:
+            existing_id = hits[0]["_source"].get("id")
+            logger.info(
+                "OpenRAG Docs filter already exists, skipping creation",
+                existing_id=existing_id,
+            )
+            return existing_id
+    except Exception as e:
+        logger.warning(
+            "Could not check for existing OpenRAG Docs filter, proceeding with creation",
+            error=str(e),
+        )
 
     # In no-auth mode, set owner to None so filter is visible to all users
     # In auth mode, use the actual user as owner

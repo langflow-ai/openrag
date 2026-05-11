@@ -1,0 +1,359 @@
+apiVersion: openr.ag/v1alpha1
+kind: OpenRAG
+metadata:
+  name: openrag-docling-complete
+  namespace: openrag-system
+spec:
+  # Global settings
+  imagePullSecrets:
+    - name: registry-credentials
+  
+  # Docling components
+  doclingComponents:
+    # Docling Serve - API server with security, reliability, and configuration
+    enabled: true
+    serve:
+      image: ghcr.io/docling-project/docling-serve-cpu:v1.15.1
+      imagePullPolicy: IfNotPresent
+      replicas: 2
+      
+      # Resource management
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2000m"
+          memory: "4Gi"
+      
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop:
+            - ALL
+      
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 5001
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 5001
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      
+      # High availability - topology spread
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: ds
+        # - maxSkew: 1
+        #   topologyKey: topology.kubernetes.io/zone
+        #   whenUnsatisfiable: ScheduleAnyway
+        #   labelSelector:
+        #     matchLabels:
+        #       app.kubernetes.io/component: ds
+      
+      # Service configuration
+      serviceType: ClusterIP
+      serviceAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5001"
+      
+      # Node placement
+      nodeSelector:
+        workload-type: compute
+      
+      tolerations:
+        - key: "workload-type"
+          operator: "Equal"
+          value: "compute"
+          effect: "NoSchedule"
+      
+      # Phase 1: Labels and annotations
+      labels:
+        team: "ai-platform"
+        cost-center: "engineering"
+      
+      annotations:
+        description: "Docling serve API server"
+      
+      podLabels:
+        app.kubernetes.io/version: "1.0.0"
+      
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5001"
+      
+      # HPA with advanced scaling behavior
+      hpa:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+        targetMemoryUtilizationPercentage: 80
+        
+        # Fine-grained scaling control
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 60
+            policies:
+              - type: Percent
+                value: 50
+                periodSeconds: 60
+              - type: Pods
+                value: 2
+                periodSeconds: 60
+            selectPolicy: Max
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Percent
+                value: 10
+                periodSeconds: 60
+              - type: Pods
+                value: 1
+                periodSeconds: 60
+            selectPolicy: Min
+    
+    # Docling Worker - Background processing with full features
+    worker:
+      image: ghcr.io/docling-project/docling-serve-cpu:v1.15.1
+      imagePullPolicy: IfNotPresent
+      replicas: 3
+      
+      # Resource management
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: "2Gi"
+        limits:
+          cpu: "4000m"
+          memory: "8Gi"
+      
+      # Container-level security context
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1001
+        capabilities:
+          drop:
+            - ALL
+      
+      # Custom health probes
+      livenessProbe:
+        exec:
+          command:
+            - /bin/sh
+            - -c
+            - "pgrep -f docling-worker"
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      
+      readinessProbe:
+        exec:
+          command:
+            - /bin/sh
+            - -c
+            - "test -f /tmp/worker-ready"
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      
+      # High availability - topology spread
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: dw
+      
+      # Node placement
+      nodeSelector:
+        workload-type: compute-intensive
+      
+      tolerations:
+        - key: "workload-type"
+          operator: "Equal"
+          value: "compute-intensive"
+          effect: "NoSchedule"
+        - key: "gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      
+      # Labels and annotations
+      labels:
+        team: "ai-platform"
+        cost-center: "engineering"
+      
+      annotations:
+        description: "Docling background workers"
+      
+      podLabels:
+        app.kubernetes.io/version: "1.0.0"
+      
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+      
+      # Worker concurrency
+      concurrency: 4
+      
+      # Docling-specific configuration
+      config:
+        # OCR settings
+        ocr:
+          enabled: true
+          engine: "easyocr"
+          languages:
+            - "en"
+            - "de"
+            - "fr"
+            - "es"
+          forceFullPageOCR: false
+        
+        # Table structure recognition
+        tableStructure:
+          enabled: true
+          mode: "accurate"
+          minConfidencePercent: 75
+        
+        # Performance tuning for workers
+        performance:
+          batchSize: 20  # Higher batch size for workers
+          maxWorkers: 8  # More workers per pod
+          timeoutSeconds: 600  # Longer timeout for complex documents
+          enableGPU: false
+        
+        # Model configuration
+        models:
+          layoutModel: "microsoft/layoutlmv3-base"
+          ocrModel: "easyocr-default"
+          tableModel: "microsoft/table-transformer-detection"
+          modelCachePath: "/models"
+        
+        # Additional custom environment variables
+        extraEnv:
+          - name: "DOCLING_LOG_LEVEL"
+            value: "DEBUG"
+          - name: "DOCLING_WORKER_NAME"
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+      
+      # Phase 1: HPA with conservative scaling
+      hpa:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 20
+        targetCPUUtilizationPercentage: 80
+        targetMemoryUtilizationPercentage: 85
+        
+        # Conservative scaling to avoid thrashing
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 25
+                periodSeconds: 120
+              - type: Pods
+                value: 1
+                periodSeconds: 120
+            selectPolicy: Min
+          scaleDown:
+            stabilizationWindowSeconds: 600
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+            selectPolicy: Min
+    
+    # Valkey (Redis-compatible) - Queue backend with security
+    valkey:
+      image: valkey/valkey:7.2-alpine
+      imagePullPolicy: IfNotPresent
+      replicas: 1
+      
+      # Resource management
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
+      
+      # Container-level security context
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false  # Valkey needs to write to /data
+        runAsNonRoot: true
+        runAsUser: 999
+        capabilities:
+          drop:
+            - ALL
+      
+      # High availability - topology spread
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: valkey
+      
+      # Storage configuration
+      storage:
+        size: "10Gi"
+        storageClassName: "fast-ssd"
+        accessModes:
+          - ReadWriteOnce
+      
+      # Node placement
+      nodeSelector:
+        storage-type: ssd
+      
+      tolerations:
+        - key: "storage-type"
+          operator: "Equal"
+          value: "ssd"
+          effect: "NoSchedule"
+      
+      # Labels and annotations
+      labels:
+        team: "ai-platform"
+        cost-center: "engineering"
+      
+      annotations:
+        description: "Valkey queue backend"
+      
+      podLabels:
+        app.kubernetes.io/version: "7.2"
+      
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "6379"
+      
+      # Authentication
+      password: "change-me-in-production"
+

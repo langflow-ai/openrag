@@ -63,7 +63,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.0.3", "pytest-asyncio>=0.21.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.15.12",
+    "mypy>=2.0.0",
+]
 
 [project.scripts]
 openrag = "tui.main:run_tui"
@@ -76,5 +83,41 @@ filterwarnings = [
 [tool.uv]
 package = true
 override-dependencies = ["python-dotenv>=1.1.0"]
+
+# Ruff and mypy run only against files changed in a PR (see
+# .github/workflows/lint-backend.yml). The configs below stay
+# intentionally minimal — broad enforcement is out of scope for the
+# refactor that introduced them.
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # line-length handled by formatter
+
+# `bootstrap` must be the first import in any module that uses it
+# (it loads .env and configures structlog before anything else can
+# read env vars or emit logs). Define it as its own isort section
+# placed above standard-library so the formatter never re-sorts it
+# below other imports.
+[tool.ruff.lint.isort]
+section-order = [
+    "future",
+    "bootstrap",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+bootstrap = ["bootstrap"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_unused_ignores = true
 
 
