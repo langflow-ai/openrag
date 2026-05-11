@@ -63,7 +63,17 @@ export function buildKnowledgeTableRows(
     const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
     if (taskFile) {
       const backendStatus = file.status ?? "active";
-      return { ...file, ...taskFile, status: backendStatus };
+      return {
+        ...file,
+        filename: taskFile.filename,
+        source_url: taskFile.source_url,
+        connector_type: taskFile.connector_type,
+        status: backendStatus,
+        error: taskFile.error,
+        embedding_model: taskFile.embedding_model ?? file.embedding_model,
+        embedding_dimensions:
+          taskFile.embedding_dimensions ?? file.embedding_dimensions,
+      };
     }
     return file;
   });

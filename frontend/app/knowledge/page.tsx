@@ -214,9 +214,7 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error,
     isError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    refetchInterval: 5000,
-  });
+  } = useGetSearchQuery(queryOverride, parsedFilterData);
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
 
