@@ -391,8 +391,6 @@ spec:
       storage:
         size: "10Gi"
         storageClassName: "fast-ssd"
-        accessModes:
-          - ReadWriteOnce
       
       # Phase 1: Node placement
       nodeSelector:
