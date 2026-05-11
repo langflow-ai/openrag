@@ -2,8 +2,6 @@ import { X } from "lucide-react";
 
 import { usePermissions } from "@/hooks/use-permissions";
 
-import { usePermissions } from "@/hooks/use-permissions";
-
 interface KnowledgeBatchActionsBarProps {
   selectedCount: number;
   onDelete: () => void;
