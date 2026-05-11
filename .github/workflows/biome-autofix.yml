@@ -1,0 +1,42 @@
+name: Biome Auto-fix
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "frontend/**"
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Biome auto-fix
+        working-directory: frontend
+        run: npx biome check --write .
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && echo "No changes to commit" || (
+            git add -A
+            git commit -m "style: apply biome auto-fixes [skip ci]"
+            git push
+          )
