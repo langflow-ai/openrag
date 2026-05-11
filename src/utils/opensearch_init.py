@@ -188,7 +188,9 @@ async def init_index(opensearch_client=None, admin_username: str = None):
 
             if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
                 try:
-                    current = await os_client.indices.get_settings(index=knowledge_filter_index_name)
+                    current = await os_client.indices.get_settings(
+                        index=knowledge_filter_index_name
+                    )
                     current_replicas = int(
                         current[knowledge_filter_index_name]["settings"]["index"].get(
                             "number_of_replicas", 1
@@ -222,9 +224,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error
 
         if is_disk_space_error(e):
-            logger.error(
-                "OpenSearch disk space exceeded watermark. Index creation failed."
-            )
+            logger.error("OpenSearch disk space exceeded watermark. Index creation failed.")
             raise OpenSearchDiskSpaceError(
                 "OpenSearch disk space is full (watermark exceeded). "
                 "Please free up disk space on your Docker volume or host machine to continue."
