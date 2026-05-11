@@ -71,5 +71,10 @@ async def health(
     except Exception as e:
         logger.error("Docling health check failed", url=health_url, error=str(e))
         return JSONResponse(
-            {"status": "unhealthy", "message": str(e), "host": HOST_IP}, status_code=503
+            {
+                "status": "unhealthy",
+                "message": "Internal error while checking service health",
+                "host": HOST_IP,
+            },
+            status_code=503,
         )
