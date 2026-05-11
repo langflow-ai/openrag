@@ -1,18 +1,12 @@
-"""Docling service proxy endpoints."""
+from typing import Annotated
 
-import os
-import socket
-import struct
-from pathlib import Path
-
-from typing import Optional
 import httpx
-from fastapi import Request, Depends
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 
 from config.settings import (
-    DOCLING_SERVE_URL,
     DOCLING_HOST_IP,
+    DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
     IBM_AUTH_ENABLED,
 )
@@ -29,7 +23,7 @@ HOST_IP = DOCLING_HOST_IP
 
 
 async def health(
-    request: Request, user: Optional[User] = Depends(get_optional_user)
+    request: Request, user: Annotated[User | None, Depends(get_optional_user)] = None
 ) -> JSONResponse:
     """
     Proxy health check to docling-serve.

@@ -1,20 +1,20 @@
-from dependencies import get_docling_service
-from dependencies import get_models_service
 import os
-from typing import Optional
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import boto3
 from fastapi import Depends, File, Form, UploadFile
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from dependencies import (
-    get_document_service,
-    get_task_service,
     get_chat_service,
-    get_session_manager,
     get_current_user,
+    get_docling_service,
+    get_document_service,
+    get_models_service,
+    get_session_manager,
+    get_task_service,
     require_all_permissions,
     require_permission,
 )
@@ -33,10 +33,10 @@ class UploadBucketBody(BaseModel):
 
 
 async def upload(
-    file: UploadFile = File(...),
-    document_service=Depends(get_document_service),
-    session_manager=Depends(get_session_manager),
-    user: User = Depends(require_permission("knowledge:upload")),
+    file: Annotated[UploadFile, File(...)],
+    document_service: Annotated[Any, Depends(get_document_service)],
+    session_manager: Annotated[Any, Depends(get_session_manager)],
+    user: Annotated[User, Depends(require_permission("knowledge:upload"))],
 ):
     """Upload a single file"""
     try:
@@ -67,9 +67,9 @@ async def upload(
 
 async def upload_path(
     body: UploadPathBody,
-    task_service=Depends(get_task_service),
-    session_manager=Depends(get_session_manager),
-    user: User = Depends(require_permission("knowledge:upload")),
+    task_service: Annotated[Any, Depends(get_task_service)],
+    session_manager: Annotated[Any, Depends(get_session_manager)],
+    user: Annotated[User, Depends(require_permission("knowledge:upload"))],
 ):
     """Upload all files from a directory path"""
     if not body.path or not os.path.isdir(body.path):
@@ -108,13 +108,13 @@ async def upload_path(
 
 
 async def upload_context(
-    file: UploadFile = File(...),
-    previous_response_id: Optional[str] = Form(None),
-    endpoint: str = Form("langflow"),
-    document_service=Depends(get_document_service),
-    chat_service=Depends(get_chat_service),
-    session_manager=Depends(get_session_manager),
-    user: User = Depends(require_all_permissions(("knowledge:upload", "chat:use"))),
+    file: Annotated[UploadFile, File(...)],
+    document_service: Annotated[Any, Depends(get_document_service)],
+    chat_service: Annotated[Any, Depends(get_chat_service)],
+    session_manager: Annotated[Any, Depends(get_session_manager)],
+    user: Annotated[User, Depends(require_all_permissions(("knowledge:upload", "chat:use")))],
+    previous_response_id: Annotated[str | None, Form(None)] = None,
+    endpoint: Annotated[str, Form("langflow")] = "langflow",
 ):
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
@@ -165,7 +165,7 @@ async def upload_context(
 
 
 async def upload_options(
-    user: User = Depends(get_current_user),
+    user: Annotated[User, Depends(get_current_user)],
 ):
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
@@ -176,11 +176,11 @@ async def upload_options(
 
 async def upload_bucket(
     body: UploadBucketBody,
-    task_service=Depends(get_task_service),
-    models_service=Depends(get_models_service),
-    docling_service=Depends(get_docling_service),
-    session_manager=Depends(get_session_manager),
-    user: User = Depends(require_permission("knowledge:upload")),
+    task_service: Annotated[Any, Depends(get_task_service)],
+    models_service: Annotated[Any, Depends(get_models_service)],
+    docling_service: Annotated[Any, Depends(get_docling_service)],
+    session_manager: Annotated[Any, Depends(get_session_manager)],
+    user: Annotated[User, Depends(require_permission("knowledge:upload"))],
 ):
     """Process all files from an S3 bucket URL"""
     if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
