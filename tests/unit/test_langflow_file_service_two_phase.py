@@ -168,21 +168,28 @@ async def test_phase_progresses_only_after_polling_succeeds(
 
 @pytest.mark.asyncio
 async def test_legacy_path_without_polling_service_calls_langflow_directly(
-    langflow_service, file_tuple
+    langflow_service, file_tuple, file_task
 ):
     """Backward compatibility: when no polling service is provided, Langflow
     is invoked immediately after Docling submission (Langflow handles polling).
+    On success the file_task must end with docling_status=SUCCESS so the
+    status fields stay coherent — Langflow returning success implies its
+    DoclingRemote component consumed the task.
     """
     result = await langflow_service.upload_and_ingest_file(
         file_tuple=file_tuple,
         docling_polling_service=None,
-        file_task=None,
+        file_task=file_task,
     )
 
     assert langflow_service.run_ingestion_flow.call_count == 1
     kwargs = langflow_service.run_ingestion_flow.call_args.kwargs
     assert kwargs["docling_task_id"] == "task-abc-123"
     assert result["status"] == "success"
+    # Status fields must not leave the task stuck in PROCESSING.
+    assert file_task.docling_status == DoclingPhaseStatus.SUCCESS
+    assert file_task.phase == IngestionPhase.COMPLETE
+    assert file_task.docling_task_id == "task-abc-123"
 
 
 def test_processor_default_polling_service_is_none():

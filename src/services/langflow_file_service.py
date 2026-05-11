@@ -708,6 +708,12 @@ class LangflowFileService:
 
         if file_task is not None:
             file_task.phase = IngestionPhase.COMPLETE
+            # Legacy path leaves docling_status at PROCESSING because the
+            # backend never observed Docling completion directly. Langflow
+            # returning success implies its DoclingRemote component consumed
+            # the task, so Docling succeeded — mark SUCCESS to keep status
+            # fields coherent. Idempotent for the polling path.
+            file_task.docling_status = DoclingPhaseStatus.SUCCESS
 
         return {
             "status": "success",
