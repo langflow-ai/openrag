@@ -1738,6 +1738,12 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 
 	// Add VolumeClaimTemplate if storage is enabled
 	if spec.Storage != nil && spec.Storage.Enabled && spec.Storage.ExistingClaim == "" {
+		// Default to ReadWriteOnce if not specified
+		accessModes := spec.Storage.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		}
+
 		sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
 			{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1745,7 +1751,7 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 					Labels: baseLabels,
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					AccessModes: accessModes,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: spec.Storage.Size,

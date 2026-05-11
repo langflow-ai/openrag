@@ -264,6 +264,10 @@ type PersistenceSpec struct {
 	// +kubebuilder:default="10Gi"
 	Size resource.Quantity `json:"size,omitempty"`
 
+	// AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+	// +optional
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+
 	// ExistingClaim reuses a pre-existing PVC instead of creating one.
 	// +optional
 	ExistingClaim string `json:"existingClaim,omitempty"`

@@ -1839,6 +1839,11 @@ spec:
                   storage:
                     description: Storage configures a PVC mounted at /app/backend-data.
                     properties:
+                      accessModes:
+                        description: AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+                        items:
+                          type: string
+                        type: array
                       enabled:
                         default: true
                         type: boolean
@@ -4504,6 +4509,11 @@ spec:
                         description: Storage configures a PVC for model cache and
                           temporary files.
                         properties:
+                          accessModes:
+                            description: AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+                            items:
+                              type: string
+                            type: array
                           enabled:
                             default: true
                             type: boolean
@@ -6456,6 +6466,11 @@ spec:
                       storage:
                         description: Storage configures a PVC for Valkey data persistence.
                         properties:
+                          accessModes:
+                            description: AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+                            items:
+                              type: string
+                            type: array
                           enabled:
                             default: true
                             type: boolean
@@ -9126,6 +9141,11 @@ spec:
                       storage:
                         description: Storage configures a PVC for processing workspace.
                         properties:
+                          accessModes:
+                            description: AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+                            items:
+                              type: string
+                            type: array
                           enabled:
                             default: true
                             type: boolean
@@ -12964,6 +12984,11 @@ spec:
                     description: Storage configures a PVC mounted at /app/data (Langflow
                       SQLite + flows).
                     properties:
+                      accessModes:
+                        description: AccessModes for the PVC. Defaults to ["ReadWriteOnce"].
+                        items:
+                          type: string
+                        type: array
                       enabled:
                         default: true
                         type: boolean

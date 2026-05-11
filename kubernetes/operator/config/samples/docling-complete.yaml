@@ -8,11 +8,12 @@ spec:
   imagePullSecrets:
     - name: registry-credentials
   
-  # Docling components with complete Phase 1 & 2 features
+  # Docling components
   doclingComponents:
     # Docling Serve - API server with security, reliability, and configuration
+    enabled: true
     serve:
-      image: itestmycode/docling-proxy:0.0.5
+      image: ghcr.io/docling-project/docling-serve-cpu:v1.15.1
       imagePullPolicy: IfNotPresent
       replicas: 2
       
@@ -25,15 +26,6 @@ spec:
           cpu: "2000m"
           memory: "4Gi"
       
-      # Phase 1: Pod-level security context
-      podSecurityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      
-      # Phase 1: Container-level security context
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
@@ -43,7 +35,6 @@ spec:
           drop:
             - ALL
       
-      # Phase 1: Custom health probes
       livenessProbe:
         httpGet:
           path: /health
@@ -62,7 +53,7 @@ spec:
         timeoutSeconds: 3
         failureThreshold: 3
       
-      # Phase 1: High availability - topology spread
+      # High availability - topology spread
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -70,20 +61,20 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/component: ds
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: ds
+        # - maxSkew: 1
+        #   topologyKey: topology.kubernetes.io/zone
+        #   whenUnsatisfiable: ScheduleAnyway
+        #   labelSelector:
+        #     matchLabels:
+        #       app.kubernetes.io/component: ds
       
-      # Phase 1: Service configuration
+      # Service configuration
       serviceType: ClusterIP
       serviceAnnotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "5001"
       
-      # Phase 1: Node placement
+      # Node placement
       nodeSelector:
         workload-type: compute
       
@@ -108,47 +99,7 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "5001"
       
-      # Phase 2: Docling-specific configuration
-      config:
-        # OCR settings
-        ocr:
-          enabled: true
-          engine: "easyocr"
-          languages:
-            - "en"
-            - "de"
-            - "fr"
-            - "es"
-          forceFullPageOCR: false
-        
-        # Table structure recognition
-        tableStructure:
-          enabled: true
-          mode: "accurate"
-          minConfidencePercent: 75
-        
-        # Performance tuning
-        performance:
-          batchSize: 10
-          maxWorkers: 4
-          timeoutSeconds: 300
-          enableGPU: false
-        
-        # Model configuration
-        models:
-          layoutModel: "microsoft/layoutlmv3-base"
-          ocrModel: "easyocr-default"
-          tableModel: "microsoft/table-transformer-detection"
-          modelCachePath: "/models"
-        
-        # Additional custom environment variables
-        extraEnv:
-          - name: "DOCLING_LOG_LEVEL"
-            value: "INFO"
-          - name: "DOCLING_MAX_FILE_SIZE"
-            value: "100MB"
-      
-      # Phase 1: HPA with advanced scaling behavior
+      # HPA with advanced scaling behavior
       hpa:
         enabled: true
         minReplicas: 2
@@ -194,15 +145,7 @@ spec:
           cpu: "4000m"
           memory: "8Gi"
       
-      # Phase 1: Pod-level security context
-      podSecurityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        fsGroup: 1001
-        seccompProfile:
-          type: RuntimeDefault
-      
-      # Phase 1: Container-level security context
+      # Container-level security context
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
@@ -212,7 +155,7 @@ spec:
           drop:
             - ALL
       
-      # Phase 1: Custom health probes
+      # Custom health probes
       livenessProbe:
         exec:
           command:
@@ -235,7 +178,7 @@ spec:
         timeoutSeconds: 5
         failureThreshold: 3
       
-      # Phase 1: High availability - topology spread
+      # High availability - topology spread
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -244,7 +187,7 @@ spec:
             matchLabels:
               app.kubernetes.io/component: dw
       
-      # Phase 1: Node placement
+      # Node placement
       nodeSelector:
         workload-type: compute-intensive
       
@@ -257,7 +200,7 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       
-      # Phase 1: Labels and annotations
+      # Labels and annotations
       labels:
         team: "ai-platform"
         cost-center: "engineering"
@@ -272,10 +215,10 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
       
-      # Phase 2: Worker concurrency
+      # Worker concurrency
       concurrency: 4
       
-      # Phase 2: Docling-specific configuration
+      # Docling-specific configuration
       config:
         # OCR settings
         ocr:
@@ -360,15 +303,7 @@ spec:
           cpu: "1000m"
           memory: "2Gi"
       
-      # Phase 1: Pod-level security context
-      podSecurityContext:
-        runAsNonRoot: true
-        runAsUser: 999
-        fsGroup: 999
-        seccompProfile:
-          type: RuntimeDefault
-      
-      # Phase 1: Container-level security context
+      # Container-level security context
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: false  # Valkey needs to write to /data
@@ -378,7 +313,7 @@ spec:
           drop:
             - ALL
       
-      # Phase 1: High availability - topology spread
+      # High availability - topology spread
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -391,8 +326,10 @@ spec:
       storage:
         size: "10Gi"
         storageClassName: "fast-ssd"
+        accessModes:
+          - ReadWriteOnce
       
-      # Phase 1: Node placement
+      # Node placement
       nodeSelector:
         storage-type: ssd
       
@@ -402,7 +339,7 @@ spec:
           value: "ssd"
           effect: "NoSchedule"
       
-      # Phase 1: Labels and annotations
+      # Labels and annotations
       labels:
         team: "ai-platform"
         cost-center: "engineering"
@@ -420,4 +357,3 @@ spec:
       # Authentication
       password: "change-me-in-production"
 
-# Made with Bob
