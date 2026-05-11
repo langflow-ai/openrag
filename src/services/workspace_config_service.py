@@ -291,8 +291,8 @@ class WorkspaceConfigService:
             cm._db_mirror_original_save = cm.save_config_file  # type: ignore[attr-defined]
             cm._db_mirror_original_update_ob = cm.update_onboarding_state  # type: ignore[attr-defined]
 
-        original_save = cm._db_mirror_original_save
-        original_update_ob = cm._db_mirror_original_update_ob
+        original_save = cm._db_mirror_original_save  # type: ignore[attr-defined]
+        original_update_ob = cm._db_mirror_original_update_ob  # type: ignore[attr-defined]
 
         def patched_save(config=None, preserve_edited: bool = False) -> bool:
             mode = get_storage_mode()
