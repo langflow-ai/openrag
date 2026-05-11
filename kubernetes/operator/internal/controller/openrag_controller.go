@@ -524,6 +524,12 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 		if d.storage == nil || !d.storage.Enabled || d.storage.ExistingClaim != "" {
 			continue
 		}
+		// Default to ReadWriteOnce if not specified
+		accessModes := d.storage.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		}
+
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      d.name,
@@ -531,7 +537,7 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				AccessModes:      accessModes,
 				StorageClassName: d.storage.StorageClassName,
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
@@ -931,6 +937,12 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 	if dc.Serve != nil && dc.Serve.Storage != nil && dc.Serve.Storage.Enabled {
 		pvcName := resourceName("ds-data")
 		if dc.Serve.Storage.ExistingClaim == "" {
+			// Default to ReadWriteOnce if not specified
+			accessModes := dc.Serve.Storage.AccessModes
+			if len(accessModes) == 0 {
+				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+			}
+
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pvcName,
@@ -938,7 +950,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 					Labels:    componentLabels(o.Name, "ds"),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					AccessModes: accessModes,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: dc.Serve.Storage.Size,
@@ -959,6 +971,12 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 	if dc.Worker != nil && dc.Worker.Storage != nil && dc.Worker.Storage.Enabled {
 		pvcName := resourceName("dw-data")
 		if dc.Worker.Storage.ExistingClaim == "" {
+			// Default to ReadWriteOnce if not specified
+			accessModes := dc.Worker.Storage.AccessModes
+			if len(accessModes) == 0 {
+				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+			}
+
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pvcName,
@@ -966,7 +984,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 					Labels:    componentLabels(o.Name, "dw"),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					AccessModes: accessModes,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: dc.Worker.Storage.Size,
