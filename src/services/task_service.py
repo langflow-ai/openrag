@@ -26,10 +26,22 @@ class TaskService:
     # Cleanup interval in seconds (2 hours)
     CLEANUP_INTERVAL_SECONDS = 2 * 60 * 60
 
-    def __init__(self, document_service=None, models_service=None, ingestion_timeout=3600, docling_service=None):
+    def __init__(
+        self,
+        document_service=None,
+        models_service=None,
+        ingestion_timeout=3600,
+        docling_service=None,
+        docling_polling_service=None,
+    ):
         self.document_service = document_service
         self.models_service = models_service
         self.docling_service = docling_service
+        # Backend-side Docling polling coordinator. Injected by the container
+        # so LangflowFileProcessor receives it from the established DI chain
+        # rather than constructing it inline. None disables the two-phase
+        # flow and falls back to the legacy single-call ingestion path.
+        self.docling_polling_service = docling_polling_service
         self.task_store: dict[
             str, dict[str, UploadTask]
         ] = {}  # user_id -> {task_id -> UploadTask}
@@ -160,6 +172,7 @@ class TaskService:
             settings=settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
+            docling_polling_service=self.docling_polling_service,
         )
         return await self.create_custom_task(user_id, file_paths, processor, original_filenames, existing_task_id=existing_task_id)
 

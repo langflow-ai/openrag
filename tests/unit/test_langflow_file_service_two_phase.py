@@ -185,14 +185,12 @@ async def test_legacy_path_without_polling_service_calls_langflow_directly(
     assert result["status"] == "success"
 
 
-def test_processor_skips_polling_service_when_flag_off(monkeypatch):
-    """When ENABLE_BACKEND_DOCLING_POLLING is false, the processor must not
-    auto-construct a polling service — legacy single-call path is preserved.
+def test_processor_default_polling_service_is_none():
+    """LangflowFileProcessor no longer constructs a polling service inline.
+    The container injects it; absent injection, the processor falls back
+    to the legacy single-call path.
     """
-    import config.settings as settings_module
     from models.processors import LangflowFileProcessor
-
-    monkeypatch.setattr(settings_module, "ENABLE_BACKEND_DOCLING_POLLING", False)
 
     lf_svc = LangflowFileService(docling_service=AsyncMock())
     processor = LangflowFileProcessor(
@@ -202,19 +200,53 @@ def test_processor_skips_polling_service_when_flag_off(monkeypatch):
     assert processor.docling_polling_service is None
 
 
-def test_processor_constructs_polling_service_when_flag_on(monkeypatch):
-    import config.settings as settings_module
+def test_processor_accepts_injected_polling_service():
+    """The polling service is passed through unchanged when injected."""
     from models.processors import LangflowFileProcessor
-    from services.docling_polling_service import DoclingPollingService
-
-    monkeypatch.setattr(settings_module, "ENABLE_BACKEND_DOCLING_POLLING", True)
 
     lf_svc = LangflowFileService(docling_service=AsyncMock())
+    injected = AsyncMock()
     processor = LangflowFileProcessor(
         langflow_file_service=lf_svc,
         session_manager=None,
+        docling_polling_service=injected,
     )
-    assert isinstance(processor.docling_polling_service, DoclingPollingService)
+    assert processor.docling_polling_service is injected
+
+
+@pytest.mark.asyncio
+async def test_task_service_threads_polling_service_to_processor(monkeypatch):
+    """TaskService.create_langflow_upload_task must forward its injected
+    polling service to the LangflowFileProcessor it constructs. This is the
+    DI contract that replaces the processor's inline construction.
+    """
+    from services.task_service import TaskService
+
+    injected = AsyncMock()
+    captured: dict = {}
+
+    class FakeProcessor:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "models.processors.LangflowFileProcessor", FakeProcessor
+    )
+
+    async def fake_create_custom_task(*args, **kwargs):
+        return "task-id"
+
+    svc = TaskService(docling_polling_service=injected)
+    monkeypatch.setattr(svc, "create_custom_task", fake_create_custom_task)
+
+    await svc.create_langflow_upload_task(
+        user_id="u1",
+        file_paths=["/tmp/x.pdf"],
+        langflow_file_service=AsyncMock(),
+        session_manager=AsyncMock(),
+    )
+
+    assert captured["docling_polling_service"] is injected
 
 
 @pytest.mark.asyncio

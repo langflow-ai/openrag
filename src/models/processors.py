@@ -835,22 +835,10 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
-        # Backend-side Docling polling coordinator. Gated by
-        # ENABLE_BACKEND_DOCLING_POLLING so operators can roll back to the
-        # legacy single-call path (Langflow polls Docling) without code
-        # changes. When the flag is off, docling_polling_service stays None
-        # and upload_and_ingest_file falls through to the legacy behavior.
-        if docling_polling_service is None and getattr(
-            langflow_file_service, "docling_service", None
-        ) is not None:
-            from config.settings import ENABLE_BACKEND_DOCLING_POLLING
-
-            if ENABLE_BACKEND_DOCLING_POLLING:
-                from services.docling_polling_service import DoclingPollingService
-
-                docling_polling_service = DoclingPollingService(
-                    langflow_file_service.docling_service
-                )
+        # Backend-side Docling polling coordinator. Injected by TaskService
+        # from the container; gating by ENABLE_BACKEND_DOCLING_POLLING happens
+        # at construction time in app.container. When None, the legacy
+        # single-call ingestion path is used.
         self.docling_polling_service = docling_polling_service
 
     async def process_item(
