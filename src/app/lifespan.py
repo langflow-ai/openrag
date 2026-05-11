@@ -176,6 +176,13 @@ async def run_startup(app: FastAPI):
         logger.error("Runtime DB migration failed", error=str(e))
         raise
 
+    try:
+        wcs = services.get("workspace_config_service")
+        if wcs is not None:
+            await wcs.hydrate_on_startup()
+    except Exception as e:
+        logger.error("Workspace config hydration failed at startup", error=str(e))
+
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED)
 
     # FastMCP requires its own lifespan to be entered before requests

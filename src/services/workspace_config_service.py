@@ -137,6 +137,19 @@ class WorkspaceConfigService:
         self._cm._config = None
         return await self.load_config()
 
+    async def hydrate_on_startup(self) -> None:
+        """Eagerly populate ``config_manager._config`` from the DB at
+        lifespan startup.
+
+        Without this, in `db` mode a restart leaves ``_config = None``
+        and the synchronous ``get_openrag_config()`` falls back to
+        defaults (no yaml exists) — so ``/api/settings`` reports
+        ``onboarding.current_step=0`` and the frontend flashes the
+        wizard on every restart. ``load_config()`` is itself mode-aware,
+        so this is safe to call unconditionally.
+        """
+        await self.load_config()
+
     async def is_onboarded(self) -> bool:
         mode = get_storage_mode()
         if mode == "files":
