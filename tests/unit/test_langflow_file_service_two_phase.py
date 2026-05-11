@@ -185,6 +185,38 @@ async def test_legacy_path_without_polling_service_calls_langflow_directly(
     assert result["status"] == "success"
 
 
+def test_processor_skips_polling_service_when_flag_off(monkeypatch):
+    """When ENABLE_BACKEND_DOCLING_POLLING is false, the processor must not
+    auto-construct a polling service — legacy single-call path is preserved.
+    """
+    import config.settings as settings_module
+    from models.processors import LangflowFileProcessor
+
+    monkeypatch.setattr(settings_module, "ENABLE_BACKEND_DOCLING_POLLING", False)
+
+    lf_svc = LangflowFileService(docling_service=AsyncMock())
+    processor = LangflowFileProcessor(
+        langflow_file_service=lf_svc,
+        session_manager=None,
+    )
+    assert processor.docling_polling_service is None
+
+
+def test_processor_constructs_polling_service_when_flag_on(monkeypatch):
+    import config.settings as settings_module
+    from models.processors import LangflowFileProcessor
+    from services.docling_polling_service import DoclingPollingService
+
+    monkeypatch.setattr(settings_module, "ENABLE_BACKEND_DOCLING_POLLING", True)
+
+    lf_svc = LangflowFileService(docling_service=AsyncMock())
+    processor = LangflowFileProcessor(
+        langflow_file_service=lf_svc,
+        session_manager=None,
+    )
+    assert isinstance(processor.docling_polling_service, DoclingPollingService)
+
+
 @pytest.mark.asyncio
 async def test_docling_submit_failure_skips_polling_and_langflow(
     mock_docling_service, mock_polling_service, file_tuple, file_task
