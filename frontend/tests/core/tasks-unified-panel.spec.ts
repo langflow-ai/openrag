@@ -325,5 +325,6 @@ test("unified panel shows all completed tasks in a single past tasks section", a
   await openTasksPanel(page);
   await expect(page.getByText("Task task-new...")).toBeVisible();
   await expect(page.getByText("Task task-old...")).toBeVisible();
-  await expect(page.getByText("INCOMPLETE")).toHaveCount(2);
+  // The most recent failure task auto-expands, hiding its INCOMPLETE pill; the older one stays collapsed.
+  await expect(page.getByText("INCOMPLETE")).toHaveCount(1);
 });
