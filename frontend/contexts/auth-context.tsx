@@ -17,6 +17,8 @@ interface User {
   picture?: string;
   provider: string;
   last_login?: string;
+  roles?: string[];
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -26,10 +28,28 @@ interface AuthContextType {
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
   version: string | null;
+  permissions: Set<string>;
+  roles: string[];
+  /**
+   * Whether the backend is enforcing RBAC (mirrors `OPENRAG_RBAC_ENFORCE`).
+   * When false, the system behaves like the pre-RBAC release: any
+   * authenticated user has full access. The UI hides RBAC-only
+   * sections (Users & Roles, audit log, role pills) so the experience
+   * matches the backend behavior.
+   */
+  rbacEnforced: boolean;
+  /** True iff the workspace has been onboarded. Sourced from the public
+   * GET /api/onboarding-status endpoint (no auth needed). */
+  isOnboarded: boolean | null;
+  /** Current onboarding step indicator (int index or named step). */
+  onboardingStep: number | string | null;
+  can: (perm: string) => boolean;
   login: () => void;
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
+  refreshOnboardingStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -228,9 +248,92 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await checkAuth();
   };
 
+  const [permissions, setPermissions] = useState<Set<string>>(new Set());
+  const [roles, setRoles] = useState<string[]>([]);
+  // Default to true so RBAC-only UI doesn't briefly flash on first
+  // load before /api/users/me responds. The backend is authoritative;
+  // this is just a UI affordance.
+  const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
+
+  const fetchPermissions = useCallback(async () => {
+    try {
+      const r = await fetch("/api/users/me");
+      if (!r.ok) {
+        setPermissions(new Set());
+        setRoles([]);
+        return;
+      }
+      const data = await r.json();
+      const perms: string[] = Array.isArray(data?.permissions)
+        ? data.permissions
+        : [];
+      const userRoles: string[] = Array.isArray(data?.roles) ? data.roles : [];
+      setPermissions(new Set(perms));
+      setRoles(userRoles);
+      // Field is optional from older backends — default to true.
+      setRbacEnforced(
+        typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
+      );
+    } catch {
+      setPermissions(new Set());
+      setRoles([]);
+    }
+  }, []);
+
+  const refreshPermissions = useCallback(async () => {
+    await fetchPermissions();
+  }, [fetchPermissions]);
+
+  // Public onboarding-status — fetched once on mount, no auth required.
+  // The frontend uses this to decide between the wizard and the login flow.
+  const [isOnboarded, setIsOnboarded] = useState<boolean | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState<number | string | null>(
+    null,
+  );
+
+  const fetchOnboardingStatus = useCallback(async () => {
+    try {
+      const r = await fetch("/api/onboarding-status");
+      if (!r.ok) return;
+      const data = await r.json();
+      setIsOnboarded(Boolean(data?.onboarded));
+      const step = data?.current_step;
+      setOnboardingStep(
+        typeof step === "string" || typeof step === "number" ? step : null,
+      );
+    } catch {
+      // Conservative: don't flip the flag if the call fails.
+    }
+  }, []);
+
+  const refreshOnboardingStatus = useCallback(async () => {
+    await fetchOnboardingStatus();
+  }, [fetchOnboardingStatus]);
+
+  useEffect(() => {
+    fetchOnboardingStatus();
+  }, [fetchOnboardingStatus]);
+
+  useEffect(() => {
+    if (user || isNoAuthMode || isIbmAuthMode) {
+      fetchPermissions();
+    } else {
+      setPermissions(new Set());
+      setRoles([]);
+    }
+  }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
+
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  const can = useCallback(
+    (perm: string): boolean => {
+      if (isNoAuthMode) return true;
+      return permissions.has(perm);
+    },
+    [permissions, isNoAuthMode],
+  );
 
   const value: AuthContextType = {
     user,
@@ -239,10 +342,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isNoAuthMode,
     isIbmAuthMode,
     version,
+    permissions,
+    roles,
+    rbacEnforced,
+    isOnboarded,
+    onboardingStep,
+    can,
     login,
     loginWithIbm,
     logout,
     refreshAuth,
+    refreshPermissions,
+    refreshOnboardingStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

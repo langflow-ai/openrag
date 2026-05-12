@@ -41,6 +41,12 @@ COPY src/ ./src/
 COPY flows/ ./flows/
 COPY securityconfig/ ./securityconfig/
 COPY cloud_securityconfig/ ./cloud_securityconfig/
+# Alembic migrations — the runtime calls run_alembic_upgrade("head") on
+# startup. Without these the migration silently no-ops with
+# "alembic.ini not found; skipping schema upgrade", and the SQL DB
+# starts empty (no users / conversations / session_ownership tables).
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)

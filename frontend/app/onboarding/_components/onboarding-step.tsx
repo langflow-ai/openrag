@@ -1,8 +1,17 @@
 import { AnimatePresence, motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
 import { Message } from "@/app/chat/_components/message";
 import DogIcon from "@/components/icons/dog-icon";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
+
+const MarkdownRenderer = dynamic(
+  () =>
+    import("@/components/markdown-renderer").then((m) => ({
+      default: m.MarkdownRenderer,
+    })),
+  { ssr: false },
+);
+
 import { cn } from "@/lib/utils";
 
 interface OnboardingStepProps {

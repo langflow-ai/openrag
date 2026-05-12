@@ -1,3 +1,4 @@
+from dependencies import get_docling_service
 from dependencies import get_models_service
 import os
 from typing import Optional
@@ -14,6 +15,8 @@ from dependencies import (
     get_chat_service,
     get_session_manager,
     get_current_user,
+    require_all_permissions,
+    require_permission,
 )
 from session_manager import User
 from utils.logging_config import get_logger
@@ -33,7 +36,7 @@ async def upload(
     file: UploadFile = File(...),
     document_service=Depends(get_document_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload a single file"""
     try:
@@ -69,7 +72,7 @@ async def upload_path(
     body: UploadPathBody,
     task_service=Depends(get_task_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload all files from a directory path"""
     if not body.path or not os.path.isdir(body.path):
@@ -114,11 +117,18 @@ async def upload_context(
     document_service=Depends(get_document_service),
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_all_permissions(("knowledge:upload", "chat:use"))),
 ):
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
     user_id = user.user_id if user else None
+    storage_user_id = (
+        (getattr(user, "db_user_id", None) or user.user_id) if user else None
+    )
+
+    if previous_response_id and storage_user_id:
+        from api.chat import _assert_owns
+        await _assert_owns(previous_response_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -140,6 +150,7 @@ async def upload_context(
         owner=owner_user_id,
         owner_name=owner_name,
         owner_email=owner_email,
+        storage_user_id=storage_user_id,
     )
 
     response_data = {
@@ -169,8 +180,9 @@ async def upload_bucket(
     body: UploadBucketBody,
     task_service=Depends(get_task_service),
     models_service=Depends(get_models_service),
+    docling_service=Depends(get_docling_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Process all files from an S3 bucket URL"""
     if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
@@ -215,6 +227,7 @@ async def upload_bucket(
         task_service.document_service,
         bucket,
         models_service=models_service,
+        docling_service=docling_service,
         s3_client=s3_client,
         owner_user_id=owner_user_id,
         jwt_token=jwt_token,

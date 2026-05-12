@@ -37,7 +37,9 @@ from dependencies import (
     get_langflow_file_service,
     get_knowledge_filter_service,
     get_chat_service,
+    require_permission,
 )
+from services.docling_service import DoclingConfig, get_docling_preset_configs
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -197,18 +199,11 @@ class RefreshOpenRAGDocsResponse(BaseModel):
     message: str
     refreshed: bool
 
-class DoclingConfig(BaseModel):
-    do_ocr: bool
-    ocr_engine: str
-    do_table_structure: bool
-    do_picture_classification: bool
-    do_picture_description: bool
-    picture_description_local: Optional[dict] = None
-
 class DoclingPresetResponse(BaseModel):
     message: str
     settings: dict
     preset_config: DoclingConfig
+
 
 class OnboardingStateResponse(BaseModel):
     message: str
@@ -229,31 +224,6 @@ class RollbackBody(BaseModel):
 
 
 # Docling preset configurations
-def get_docling_preset_configs(
-    table_structure=False, ocr=False, picture_descriptions=False
-):
-    """Get docling preset configurations based on toggle settings
-
-    Args:
-        table_structure: Enable table structure parsing (default: False)
-        ocr: Enable OCR for text extraction from images (default: False)
-        picture_descriptions: Enable picture descriptions/captions (default: False)
-    """
-    is_macos = platform.system() == "Darwin"
-
-    config = {
-        "do_ocr": ocr,
-        "ocr_engine": "ocrmac" if is_macos else "easyocr",
-        "do_table_structure": table_structure,
-        "do_picture_classification": picture_descriptions,
-        "do_picture_description": picture_descriptions,
-        "picture_description_local": {
-            "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
-            "prompt": "Describe this image in a few sentences.",
-        },
-    }
-
-    return config
 
 
 async def get_settings(
@@ -513,7 +483,7 @@ def _embedding_conflict_response(
 async def update_settings(
     body: SettingsUpdateBody,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
@@ -1023,7 +993,7 @@ async def onboarding(
     task_service=Depends(get_task_service),
     langflow_file_service=Depends(get_langflow_file_service),
     knowledge_filter_service=Depends(get_knowledge_filter_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
 ) -> OnboardingResponse:
     """Handle onboarding configuration setup"""
     try:
@@ -1374,15 +1344,20 @@ async def onboarding(
 
         # Create OpenRAG Docs knowledge filter if sample data was ingested
         # Only create on embedding step to avoid duplicates (both LLM and embedding cards submit with sample_data)
+        # Also skip if a filter was already created (e.g. user re-submits the embedding step)
         openrag_docs_filter_id = None
-        if should_ingest_sample_data and (body.embedding_provider or body.embedding_model):
+        if (
+            should_ingest_sample_data
+            and (body.embedding_provider or body.embedding_model)
+            and not current_config.onboarding.openrag_docs_filter_id
+        ):
             try:
                 openrag_docs_filter_id = await _create_openrag_docs_filter(
                     knowledge_filter_service, session_manager, user
                 )
                 if openrag_docs_filter_id:
                     logger.info(
-                        "Created OpenRAG Docs knowledge filter",
+                        "OpenRAG Docs knowledge filter ready",
                         filter_id=openrag_docs_filter_id,
                     )
                     # Save the filter ID to the config
@@ -1429,6 +1404,34 @@ async def _create_openrag_docs_filter(
 
     # Get JWT token
     jwt_token = user.jwt_token
+
+    # Guard against duplicates: check if a filter named "OpenRAG Docs" already exists
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(
+            user.user_id, jwt_token
+        )
+        from services.knowledge_filter_service import KNOWLEDGE_FILTERS_INDEX_NAME
+        existing = await opensearch_client.search(
+            index=KNOWLEDGE_FILTERS_INDEX_NAME,
+            body={
+                "query": {"match_phrase": {"name": "OpenRAG Docs"}},
+                "_source": ["id"],
+                "size": 1,
+            },
+        )
+        hits = existing.get("hits", {}).get("hits", [])
+        if hits:
+            existing_id = hits[0]["_source"].get("id")
+            logger.info(
+                "OpenRAG Docs filter already exists, skipping creation",
+                existing_id=existing_id,
+            )
+            return existing_id
+    except Exception as e:
+        logger.warning(
+            "Could not check for existing OpenRAG Docs filter, proceeding with creation",
+            error=str(e),
+        )
 
     # In no-auth mode, set owner to None so filter is visible to all users
     # In auth mode, use the actual user as owner
@@ -1716,7 +1719,7 @@ async def _update_langflow_chunk_settings(config, flows_service):
 
 async def update_onboarding_state(
     body: OnboardingStateBody,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
 ) -> OnboardingStateResponse:
     """Update onboarding state in configuration"""
     try:
@@ -1725,7 +1728,9 @@ async def update_onboarding_state(
         # Convert body to dict excluding None values
         body_dict = body.model_dump(exclude_unset=True)
 
-        # Update onboarding state using config manager
+        # Update onboarding state using config manager (a monkey-patch
+        # installed by WorkspaceConfigService mirrors this to the SQL
+        # workspace_config table fire-and-forget).
         success = config_manager.update_onboarding_state(**body_dict)
 
         if not success:
@@ -1806,7 +1811,7 @@ async def rollback_onboarding(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     flows_service=Depends(get_flows_service),
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
 ) -> RollbackResponse:
     """Rollback onboarding configuration when sample data files fail.
 
@@ -2005,7 +2010,7 @@ async def rollback_onboarding(
 async def update_docling_preset(
     body: DoclingPresetBody,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
 ) -> DoclingPresetResponse:
     """Update docling settings in the ingest flow - deprecated endpoint, use /settings instead"""
     try:
@@ -2078,7 +2083,7 @@ async def refresh_openrag_docs(
     models_service=Depends(get_models_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("config:write")),
 ) -> RefreshOpenRAGDocsResponse:
     """Manually refresh OpenRAG docs ingestion on demand."""
     try:

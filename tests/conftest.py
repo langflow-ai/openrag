@@ -15,6 +15,22 @@ load_dotenv()
 os.environ['GOOGLE_OAUTH_CLIENT_ID'] = ''
 os.environ['GOOGLE_OAUTH_CLIENT_SECRET'] = ''
 
+# RBAC is OFF by default in production. For tests we keep it ON so the
+# RBAC assertions in admin-endpoint and require_permission tests aren't
+# silently bypassed. Specific tests that exercise the kill switch
+# override this via monkeypatch.
+os.environ.setdefault("OPENRAG_RBAC_ENFORCE", "true")
+
+# Pin the RBAC/SQL DB to an isolated temp file BEFORE any code that
+# imports `db.engine` runs. The DB engine module reads DATABASE_URL at
+# init time, so this must happen at module load. Without it the
+# integration tests share `data/openrag.db` with a developer's local
+# install (or a stale CI volume), which is both flaky and unsafe.
+if not os.environ.get("SDK_TESTS_ONLY") == "true":
+    _test_db_dir = tempfile.mkdtemp(prefix="openrag-itest-db-")
+    _test_db_path = Path(_test_db_dir) / "openrag.db"
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path}"
+
 from config.settings import clients
 from session_manager import SessionManager
 from main import generate_jwt_keys
@@ -38,6 +54,21 @@ async def onboard_system():
     config_file = Path("config/config.yaml")
     if config_file.exists():
         config_file.unlink()
+
+    # Apply Alembic migrations to the test DB BEFORE the FastAPI app is
+    # built. The app's @on_event("startup") (which calls init_engine and
+    # would normally run schema creation) only fires when uvicorn boots
+    # — but integration tests await create_app() directly. Without this
+    # explicit migration, the very first RBAC query inside any
+    # require_permission-gated endpoint dies with
+    # "no such table: permissions".
+    from db.migrations_runtime import run_alembic_upgrade_async
+    await run_alembic_upgrade_async("head")
+
+    # Bind the SQLAlchemy engine to the migrated DB. init_engine is
+    # idempotent and synchronous; safe to call from the test event loop.
+    from db.engine import init_engine
+    init_engine()
 
     # Clean up OpenSearch indices to ensure fresh state for tests
     try:
