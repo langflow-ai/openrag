@@ -18,6 +18,12 @@ type ComponentSpec struct {
 	// +kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
+	// ImagePullSecrets for private registries, specific to this component.
+	// These are merged with the global imagePullSecrets from the OpenRAG spec.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
 	// +optional
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=0
@@ -42,22 +48,15 @@ type ComponentSpec struct {
 	// Labels are custom labels to add to the Deployment/StatefulSet object metadata.
 	// These labels appear on the workload resource itself, not the pods.
 	// Useful for querying and grouping Deployment/StatefulSet objects.
-	// Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-	// Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
 	// +optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="label keys must be valid Kubernetes label keys (prefix/name or name)"
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))",message="label values must be 63 characters or less and match regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$"
 	Labels map[string]string `json:"labels,omitempty"`
 
 	// Annotations are custom annotations to add to the Deployment/StatefulSet object metadata.
 	// These annotations appear on the workload resource itself, not the pods.
 	// Useful for GitOps metadata, deployment tracking, and automation tools.
-	// Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-	// Annotation values can be arbitrary strings.
 	// +optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="annotation keys must be valid Kubernetes annotation keys (prefix/name or name)"
 	Annotations map[string]string `json:"annotations,omitempty"`
 
 	// PodLabels are custom labels to add to the pod template.
@@ -65,23 +64,44 @@ type ComponentSpec struct {
 	// Useful for pod selectors, monitoring queries, network policies, and service mesh.
 	// Merged with operator-managed labels (app.kubernetes.io/*).
 	// Cannot override operator-managed labels.
-	// Label keys must be valid Kubernetes label keys: optional prefix (DNS subdomain) + name.
-	// Label values must be 63 characters or less, alphanumeric with '-', '_', '.'.
 	// +optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="label keys must be valid Kubernetes label keys (prefix/name or name)"
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(self[key]) <= 63 && self[key].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))",message="label values must be 63 characters or less and match regex ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$"
 	PodLabels map[string]string `json:"podLabels,omitempty"`
 
 	// PodAnnotations are custom annotations to add to the pod template.
 	// These annotations appear on the actual pods created by the Deployment/StatefulSet.
 	// Useful for sidecar injection (Istio, Vault), monitoring (Prometheus), and backup (Velero).
-	// Annotation keys must be valid Kubernetes annotation keys: optional prefix (DNS subdomain) + name.
-	// Annotation values can be arbitrary strings.
 	// +optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(key, size(key) <= 253 && (key.contains('/') ? key.split('/')[0].matches('^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') && key.split('/')[1].matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$') : key.matches('^([A-Za-z0-9][-A-Za-z0-9_.]{0,61})?[A-Za-z0-9]$')))",message="annotation keys must be valid Kubernetes annotation keys (prefix/name or name)"
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
+	// When CreateServiceAccount is true, the operator will create a ServiceAccount with this name.
+	// When CreateServiceAccount is false, the ServiceAccount must already exist in the target namespace.
+	// If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// CreateServiceAccount indicates whether the operator should create the ServiceAccount.
+	// If true (default), the operator creates a ServiceAccount with the name specified in ServiceAccountName.
+	// If false, the operator assumes the ServiceAccount already exists and will only reference it.
+	// +optional
+	// +kubebuilder:default=true
+	CreateServiceAccount *bool `json:"createServiceAccount,omitempty"`
+
+	// ServiceName is the name of the Service to use for this component.
+	// When CreateService is true, the operator will create a Service with this name.
+	// When CreateService is false, the Service must already exist in the target namespace.
+	// If not specified, defaults to "openrag-{role}" (e.g., "openrag-fe", "openrag-be", "openrag-lf").
+	// +optional
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// CreateService indicates whether the operator should create the Service.
+	// If true (default), the operator creates a Service with the name specified in ServiceName.
+	// If false, the operator assumes the Service already exists and will only reference it.
+	// +optional
+	// +kubebuilder:default=true
+	CreateService *bool `json:"createService,omitempty"`
 }
 
 // FrontendSpec configures the OpenRAG frontend (Next.js).
@@ -281,6 +301,7 @@ type OpenRAGSpec struct {
 
 	// ImagePullSecrets for private registries, applied to all component pods.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
 	// Frontend configures the OpenRAG Next.js frontend.
