@@ -240,9 +240,10 @@ function SearchPage() {
     data: searchData = EMPTY_SEARCH_RESULT,
     isLoading: isSearchLoading,
     error,
-    isError
+    isError,
   } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery});
+    enabled: !isWildcardQuery,
+  });
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
@@ -252,8 +253,6 @@ function SearchPage() {
     ? (listFilesData?.files ?? [])
     : searchFiles;
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
-  const error = isWildcardQuery ? listFilesError : searchError;
-  const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
