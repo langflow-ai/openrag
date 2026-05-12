@@ -9,7 +9,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
@@ -59,20 +59,28 @@ export function TaskNotificationMenu() {
       task.status === "running" ||
       task.status === "processing",
   );
-  const terminalTasks = tasks
-    .filter(
-      (task) =>
-        task.status === "completed" ||
-        task.status === "failed" ||
-        task.status === "error",
-    )
-    .sort((a, b) => {
-      const aMs =
-        parseTimestampMs(a.updated_at) ?? parseTimestampMs(a.created_at) ?? 0;
-      const bMs =
-        parseTimestampMs(b.updated_at) ?? parseTimestampMs(b.created_at) ?? 0;
-      return bMs - aMs;
-    });
+  const terminalTasks = useMemo(
+    () =>
+      tasks
+        .filter(
+          (task) =>
+            task.status === "completed" ||
+            task.status === "failed" ||
+            task.status === "error",
+        )
+        .sort((a, b) => {
+          const aMs =
+            parseTimestampMs(a.updated_at) ??
+            parseTimestampMs(a.created_at) ??
+            0;
+          const bMs =
+            parseTimestampMs(b.updated_at) ??
+            parseTimestampMs(b.created_at) ??
+            0;
+          return bMs - aMs;
+        }),
+    [tasks],
+  );
   const mostRecentFailureTaskId =
     terminalTasks.find(
       (task) => isTerminalFailedTask(task) || hasFailedFileEntries(task),
