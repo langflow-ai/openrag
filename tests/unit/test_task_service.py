@@ -233,3 +233,29 @@ async def test_concurrent_mixed_counter_updates(task_service):
     assert task.successful_files == 13
     assert task.processed_files == task.successful_files + task.failed_files
 
+
+@pytest.mark.asyncio
+async def test_logs_when_waiting_for_worker_slot(task_service):
+    """Test that contention on the global worker semaphore is logged."""
+    task_service._worker_count = 1
+    task_service._processing_semaphore = asyncio.Semaphore(1)
+
+    await task_service._acquire_processing_slot("task-1", "file-1")
+
+    async def blocked_acquire():
+        return await task_service._acquire_processing_slot("task-2", "file-2")
+
+    blocked_task = asyncio.create_task(blocked_acquire())
+    await asyncio.sleep(0.02)
+
+    with patch("services.task_service.logger.info") as mock_info:
+        await task_service._release_processing_slot()
+        wait_seconds = await blocked_task
+
+    await task_service._release_processing_slot()
+
+    assert wait_seconds >= 0.01
+    assert any(
+        call.args and call.args[0] == "File processing task waited for worker slot"
+        for call in mock_info.call_args_list
+    )

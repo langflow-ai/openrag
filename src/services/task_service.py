@@ -43,6 +43,56 @@ class TaskService:
         # TaskService is a singleton, so this limits concurrency system-wide.
         self._worker_count = get_worker_count()
         self._processing_semaphore = asyncio.Semaphore(self._worker_count)
+        self._worker_stats_lock = asyncio.Lock()
+        self._active_workers = 0
+        self._queued_workers = 0
+
+    async def _acquire_processing_slot(self, task_id: str, item_key: str) -> float:
+        """Acquire a worker slot and log if work had to wait in the queue."""
+        queued_at = time.monotonic()
+
+        async with self._worker_stats_lock:
+            self._queued_workers += 1
+            queued_workers = self._queued_workers
+            active_workers = self._active_workers
+
+        logger.debug(
+            "File processing task queued for worker slot",
+            task_id=task_id,
+            file_path=item_key,
+            active_workers=active_workers,
+            queued_workers=queued_workers,
+            worker_count=self._worker_count,
+        )
+
+        await self._processing_semaphore.acquire()
+        wait_seconds = time.monotonic() - queued_at
+
+        async with self._worker_stats_lock:
+            self._queued_workers -= 1
+            self._active_workers += 1
+            queued_workers = self._queued_workers
+            active_workers = self._active_workers
+
+        # Ignore scheduler jitter and only log meaningful contention.
+        if wait_seconds >= 0.01:
+            logger.info(
+                "File processing task waited for worker slot",
+                task_id=task_id,
+                file_path=item_key,
+                wait_seconds=round(wait_seconds, 3),
+                active_workers=active_workers,
+                queued_workers=queued_workers,
+                worker_count=self._worker_count,
+            )
+
+        return wait_seconds
+
+    async def _release_processing_slot(self) -> None:
+        """Release a worker slot and update queue accounting."""
+        self._processing_semaphore.release()
+        async with self._worker_stats_lock:
+            self._active_workers = max(0, self._active_workers - 1)
 
     def _get_task_lock(self, task_id: str) -> asyncio.Lock:
         """Get or create a lock for a specific task's counter updates"""
@@ -318,7 +368,11 @@ class TaskService:
             # - Limits concurrency across all tasks, not just within this one
             # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
             async def process_with_semaphore(item, item_key: str):
-                async with self._processing_semaphore:
+                slot_acquired = False
+                wait_seconds = 0.0
+                try:
+                    wait_seconds = await self._acquire_processing_slot(task_id, item_key)
+                    slot_acquired = True
                     file_task = upload_task.file_tasks[item_key]
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
@@ -328,6 +382,7 @@ class TaskService:
                         task_number=upload_task.sequence_number,
                         task_id=task_id,
                         file_path=file_task.file_path,
+                        wait_seconds=round(wait_seconds, 3),
                     )
 
                     try:
@@ -408,6 +463,9 @@ class TaskService:
                             async with self._get_task_lock(task_id):
                                 upload_task.processed_files += 1
                         upload_task.updated_at = time.time()
+                finally:
+                    if slot_acquired:
+                        await self._release_processing_slot()
 
             tasks = [process_with_semaphore(item, str(item)) for item in items]
 
@@ -793,4 +851,3 @@ class TaskService:
             for i, result in enumerate(results):
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                     logger.warning("Background task raised exception during shutdown", error=str(result))
-
