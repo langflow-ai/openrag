@@ -128,10 +128,16 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 // updateStatusSuccess updates the status to indicate successful reconciliation
 func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG) (ctrl.Result, error) {
-	instance.Status.Phase = "Running"
-	instance.Status.Message = "All resources reconciled successfully"
-	instance.Status.ObservedGeneration = instance.Generation
+	const successMsg = "All resources reconciled successfully"
+	if instance.Status.Phase == "Running" &&
+		instance.Status.Message == successMsg &&
+		instance.Status.ObservedGeneration == instance.Generation {
+		return ctrl.Result{}, nil
+	}
 
+	instance.Status.Phase = "Running"
+	instance.Status.Message = successMsg
+	instance.Status.ObservedGeneration = instance.Generation
 	if err := r.Status().Update(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
