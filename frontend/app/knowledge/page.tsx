@@ -254,7 +254,6 @@ function SearchPage() {
     isError: isSearchError,
   } = useGetSearchQuery(queryOverride, parsedFilterData, {
     enabled: !isWildcardQuery,
-    refetchInterval: 5000,
   });
 
   const { files: searchFiles, warnings: searchWarnings } =
