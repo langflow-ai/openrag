@@ -757,6 +757,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
+					SecurityContext:    spec.PodSecurityContext,
 					Containers: []corev1.Container{
 						{
 							Name:            "frontend",
@@ -766,9 +767,10 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							Env: append([]corev1.EnvVar{
 								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
-							Resources:      spec.Resources,
-							LivenessProbe:  httpProbe("/", 3000, 30, 10),
-							ReadinessProbe: httpProbe("/", 3000, 10, 5),
+							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
+							LivenessProbe:   httpProbe("/", 3000, 30, 10),
+							ReadinessProbe:  httpProbe("/", 3000, 10, 5),
 						},
 					},
 				},
@@ -843,13 +845,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000),
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					Volumes: volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "backend",
@@ -858,6 +855,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
 							LivenessProbe:   httpProbe("/health", 8000, 45, 30),
 							ReadinessProbe:  httpProbe("/health", 8000, 45, 10),
@@ -962,14 +960,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000), // Allow volume access for non-root users
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					InitContainers: initContainers,
-					Volumes:        volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					InitContainers:     initContainers,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "langflow",
@@ -980,6 +973,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
 							LivenessProbe:   httpProbe("/health", 7860, 90, 30),
 							ReadinessProbe:  httpProbe("/health", 7860, 90, 30),
