@@ -519,8 +519,24 @@ class ConnectorFileProcessor(TaskProcessor):
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
             # Get file content from connector
-            document = await connector.get_file_content(file_id)
-            
+            try:
+                document = await connector.get_file_content(file_id)
+            except (FileNotFoundError, ValueError) as e:
+                msg = str(e).lower()
+                if "not found" in msg or "404" in msg:
+                    logger.warning(
+                        "File no longer exists at source — skipping",
+                        file_id=file_id,
+                        connection_id=self.connection_id,
+                        error=str(e),
+                    )
+                    file_task.status = TaskStatus.SKIPPED
+                    file_task.result = {"status": "skipped", "reason": "deleted_at_source"}
+                    file_task.updated_at = time.time()
+                    upload_task.successful_files += 1
+                    return
+                raise
+
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)
 

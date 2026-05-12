@@ -10,6 +10,7 @@ class TaskStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 @dataclass

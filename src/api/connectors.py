@@ -91,17 +91,20 @@ async def reconcile_orphans_for_connector_type(
     session_manager,
     jwt_token: Optional[str],
     existing_file_ids: List[str],
-) -> int:
+) -> List[str]:
     """Delete OpenSearch chunks whose document_id is no longer present in the
     union of remote file IDs across all active connections of this connector_type
     for this user.
 
-    Strict gating: returns 0 (no deletes) if any active connection cannot be
+    Returns the list of orphan file IDs that were deleted from OpenSearch so
+    callers can exclude them from the subsequent sync pass.
+
+    Strict gating: returns [] (no deletes) if any active connection cannot be
     listed cleanly — an unauthenticated connector or a listing exception aborts
     the pass to avoid false-positive deletions.
     """
     if not existing_file_ids:
-        return 0
+        return []
 
     connections = await connector_service.connection_manager.list_connections(
         user_id=user_id, connector_type=connector_type
@@ -112,7 +115,7 @@ async def reconcile_orphans_for_connector_type(
             "Skipping orphan reconcile — no active connections",
             connector_type=connector_type,
         )
-        return 0
+        return []
 
     remote_ids: set = set()
     for conn in active:
@@ -124,7 +127,7 @@ async def reconcile_orphans_for_connector_type(
                     connector_type=connector_type,
                     connection_id=conn.connection_id,
                 )
-                return 0
+                return []
             page_token = None
             while True:
                 page = await connector.list_files(page_token=page_token)
@@ -142,11 +145,11 @@ async def reconcile_orphans_for_connector_type(
                 connection_id=conn.connection_id,
                 error=str(e),
             )
-            return 0
+            return []
 
     orphans = [fid for fid in existing_file_ids if fid not in remote_ids]
     if not orphans:
-        return 0
+        return []
 
     from .documents import delete_chunks_by_document_ids
 
@@ -163,7 +166,7 @@ async def reconcile_orphans_for_connector_type(
             orphan_count=len(orphans),
             deleted_chunks=deleted,
         )
-        return deleted
+        return orphans
     except Exception as e:
         logger.error(
             "Orphan reconcile delete failed",
@@ -171,7 +174,7 @@ async def reconcile_orphans_for_connector_type(
             orphan_count=len(orphans),
             error=str(e),
         )
-        return 0
+        return []
 
 
 class ConnectorSyncBody(BaseModel):
@@ -866,7 +869,7 @@ async def sync_all_connectors(
                         jwt_token=jwt_token,
                         filename_filter=set(existing_filenames),
                     )
-                    
+
                 all_task_ids.append(task_id)
                 synced_connectors.append(connector_type)
                 logger.info(
