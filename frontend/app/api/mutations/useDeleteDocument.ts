@@ -41,6 +41,7 @@ export const useDeleteDocument = () => {
       // Invalidate and refetch search queries to update the UI
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["search"] });
+        queryClient.invalidateQueries({ queryKey: ["listFiles"] });
       }, 1000);
     },
   });

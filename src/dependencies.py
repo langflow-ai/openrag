@@ -17,7 +17,8 @@ Usage:
 
 import asyncio
 import dataclasses
-from typing import AsyncIterator, Optional, Sequence
+from collections.abc import AsyncIterator, Sequence
+from typing import Optional
 
 from cachetools import TTLCache
 from fastapi import Depends, HTTPException, Request
@@ -130,6 +131,8 @@ def get_flows_service(services: dict = Depends(get_services)):
 
 def get_docling_service(services: dict = Depends(get_services)):
     return services["docling_service"]
+
+
 def get_rbac_service(services: dict = Depends(get_services)):
     return services["rbac_service"]
 
@@ -150,12 +153,13 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
     if SessionLocal is None:
         init_engine()
     from db.engine import SessionLocal as _SessionLocal
+
     assert _SessionLocal is not None
     async with _SessionLocal() as session:
         yield session
 
 
-async def _ensure_db_user(user: User) -> Optional[str]:
+async def _ensure_db_user(user: User) -> str | None:
     """Best-effort DB upsert for the authenticated user. Returns the SQL
     `users.id` for this user (so callers can cache the OAuth-sub → DB-id
     mapping). Returns None on failure.
@@ -189,6 +193,7 @@ async def _ensure_db_user(user: User) -> Optional[str]:
             if SessionLocal is None:
                 init_engine()
             from db.engine import SessionLocal as _SessionLocal
+
             if _SessionLocal is None:
                 return None
             async with _SessionLocal() as session:
@@ -216,7 +221,7 @@ async def _resolve_db_user_id(user: User) -> str:
     return resolved or user.user_id
 
 
-async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional[User]:
+async def _attach_db_user_id(request: Request, user: User | None) -> User | None:
     """Attach the internal SQL users.id to the request user.
 
     `User.user_id` remains the external auth subject used in JWT/OpenSearch
@@ -235,8 +240,8 @@ async def _attach_db_user_id(request: Request, user: Optional[User]) -> Optional
 
 
 def invalidate_user_ensured_cache(
-    oauth_provider: Optional[str] = None,
-    oauth_subject: Optional[str] = None,
+    oauth_provider: str | None = None,
+    oauth_subject: str | None = None,
 ) -> None:
     """Pop the ensure-cache + lock for a single identity, or clear all
     if neither argument is provided.
@@ -353,7 +358,33 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
-    from config.settings import IBM_SESSION_COOKIE_NAME, IBM_CREDENTIALS_HEADER
+    from config.settings import (
+        IBM_CREDENTIALS_HEADER,
+        IBM_SESSION_COOKIE_NAME,
+        PLATFORM_PASSWORD,
+        PLATFORM_USERNAME,
+    )
+
+    # ── Option -1: Environment variable override (local dev/calls) ───────
+
+    if PLATFORM_USERNAME and PLATFORM_PASSWORD:
+        import base64
+
+        logger.debug("[AUTH] Using PLATFORM_USERNAME and PLATFORM_PASSWORD from environment")
+        creds = f"{PLATFORM_USERNAME}:{PLATFORM_PASSWORD}"
+        lh_credentials = base64.b64encode(creds.encode()).decode()
+        user = User(
+            user_id=PLATFORM_USERNAME,
+            email=PLATFORM_USERNAME,
+            name=PLATFORM_USERNAME,
+            picture=None,
+            provider="ibm_ams_env",
+            jwt_token=f"Basic {lh_credentials}",
+            opensearch_username=PLATFORM_USERNAME,
+            opensearch_credentials=lh_credentials,
+        )
+        request.state.user = user
+        return user
 
     # ── Option 0: Configurable credentials header (Traefik production) ───
 
@@ -369,12 +400,13 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
             logger.debug("[AUTH] IBM JWT claims decoded successfully")
             sub = claims.get("sub")
             if not sub:
-                logger.warning("IBM JWT is missing required 'sub' claim; treating as unauthenticated")
+                logger.warning(
+                    "IBM JWT is missing required 'sub' claim; treating as unauthenticated"
+                )
             else:
                 user_id = claims.get("username", sub)
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
-
 
     if lh_credentials and lh_credentials.strip() != "":
         logger.debug("[AUTH] IBM LH credentials found in request headers")
@@ -410,9 +442,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
     if ibm_token and user_id:
         logger.debug("[AUTH] IBM JWT cookie present and user_id found")
-        logger.debug(
-            "[AUTH] LH credentials not available in header, reading from connections.json"
-        )
+        logger.debug("[AUTH] LH credentials not available in header, reading from connections.json")
         # lh credentials not available in header, read from connections service
         connector_service = request.app.state.services.get("connector_service")
         if connector_service:
@@ -457,9 +487,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # ── Option 2: ibm-auth-basic cookie (local dev, no Traefik) ─────────
     auth_header = request.cookies.get("ibm-auth-basic", "")
     if auth_header.startswith("Basic "):
-        logger.debug(
-            "[AUTH] Debug mode enabled, extracting IBM LH credentials from cookie"
-        )
+        logger.debug("[AUTH] Debug mode enabled, extracting IBM LH credentials from cookie")
         username, _ = extract_ibm_credentials(auth_header)
         logger.debug("[AUTH] IBM LH credentials extracted successfully")
         user = User(
@@ -533,7 +561,7 @@ async def get_current_user(
 async def get_optional_user(
     request: Request,
     session_manager=Depends(get_session_manager),
-) -> Optional[User]:
+) -> User | None:
     """
     Optionally extract JWT cookie user.
 
@@ -568,13 +596,9 @@ async def get_optional_user(
     user = session_manager.get_user_from_token(auth_token)
     # get_effective_jwt_token handles anonymous JWT creation if needed
     effective_token = (
-        session_manager.get_effective_jwt_token(user.user_id, auth_token)
-        if user
-        else None
+        session_manager.get_effective_jwt_token(user.user_id, auth_token) if user else None
     )
-    user_with_token = (
-        dataclasses.replace(user, jwt_token=effective_token) if user else None
-    )
+    user_with_token = dataclasses.replace(user, jwt_token=effective_token) if user else None
 
     if user_with_token:
         return await _attach_db_user_id(request, user_with_token)
@@ -664,8 +688,6 @@ async def get_api_key_user_async(
     # Phase 2 will populate api_key_role_ids from the SQL api_keys table.
     # In Phase 1 we leave it unset so require_permission falls back to the
     # user's live role membership (no privilege escalation possible).
-    request.state.api_key_role_ids = getattr(
-        request.state, "api_key_role_ids", None
-    )
+    request.state.api_key_role_ids = getattr(request.state, "api_key_role_ids", None)
 
     return await _attach_db_user_id(request, user_with_token)

@@ -25,6 +25,7 @@ import {
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
+import { useListFiles } from "../api/queries/useListFiles";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
@@ -52,12 +53,20 @@ import {
 import AwsLogo from "../../components/icons/aws-logo";
 import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
-import IBMLogo from "../../components/icons/ibm-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
 import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
+
+/** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
+function listFilesFilterParam(values?: string[]): string | undefined {
+  const raw = values?.[0]?.trim();
+  if (!raw || raw === "*") {
+    return undefined;
+  }
+  return raw;
+}
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -100,7 +109,8 @@ function SearchPage() {
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
-  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
+  const { parsedFilterData, queryOverride, selectedFilter } =
+    useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
@@ -209,16 +219,53 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
+  // Use server-side file listing for default/wildcard view; search otherwise.
+  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
+  const effectiveSearchText =
+    queryOverride.trim() || parsedFilterData?.query?.trim() || "";
+  const isWildcardQuery =
+    effectiveSearchText === "" || effectiveSearchText === "*";
+
+  const {
+    data: listFilesData,
+    isLoading: isListFilesLoading,
+    error: listFilesError,
+    isError: isListFilesError,
+  } = useListFiles(
+    {
+      pageSize: 100,
+      search: isWildcardQuery ? undefined : queryOverride,
+      connectorType: listFilesFilterParam(
+        parsedFilterData?.filters?.connector_types,
+      ),
+      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
+      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+    },
+    {
+      refetchInterval: 5000,
+      enabled: isWildcardQuery,
+    },
+  );
+
   const {
     data: searchData = EMPTY_SEARCH_RESULT,
     isLoading: isSearchLoading,
-    error,
-    isError,
+    error: searchError,
+    isError: isSearchError,
   } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    refetchInterval: 5000,
+    enabled: !isWildcardQuery,
   });
+
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
+
+  // Merge data from whichever source is active
+  const effectiveData: File[] = isWildcardQuery
+    ? (listFilesData?.files ?? [])
+    : searchFiles;
+  const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+  const error = isWildcardQuery ? listFilesError : searchError;
+  const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -311,10 +358,11 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
+  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
-    searchFiles,
+    effectiveData,
     taskFiles,
-    !!parsedFilterData,
+    Boolean(selectedFilter),
   );
 
   const gridRows = fileResults;
@@ -794,7 +842,7 @@ function SearchPage() {
             </div>
           </div>
         )}
-        {searchWarnings.length > 0 && (
+        {!isWildcardQuery && searchWarnings.length > 0 && (
           <div className="mb-4 flex flex-col gap-2">
             {searchWarnings.map((warning, idx) => {
               const isEmbeddingWarning =
@@ -836,7 +884,7 @@ function SearchPage() {
             className="w-full overflow-auto border"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={isLoading || deleteDocumentMutation.isPending}
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}
@@ -867,7 +915,7 @@ function SearchPage() {
             className="w-full overflow-auto"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={isLoading || deleteDocumentMutation.isPending}
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}

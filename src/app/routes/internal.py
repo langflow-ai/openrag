@@ -14,6 +14,7 @@ from api import (
     connectors,
     docling,
     documents,
+    files,
     flows,
     knowledge_filter,
     langflow_files,
@@ -88,6 +89,10 @@ def register_internal_routes(app: FastAPI):
 
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
+
+    # File listing/search endpoints
+    app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
+    app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
     app.add_api_route(

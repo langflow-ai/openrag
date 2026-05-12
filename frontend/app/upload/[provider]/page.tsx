@@ -1,7 +1,13 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  FileSearch,
+  FolderOpen,
+  RefreshCw,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +19,7 @@ import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
+import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -58,6 +65,9 @@ function BucketView({
   );
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
+    null,
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -218,6 +228,18 @@ function BucketView({
                         </p>
                       )}
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBrowseDialogBucket(bucket.name);
+                      }}
+                    >
+                      <FileSearch size={14} className="mr-1.5" />
+                      Browse Files
+                    </Button>
                   </div>
                 </div>
               );
@@ -256,6 +278,18 @@ function BucketView({
           </Button>
         </div>
       </div>
+
+      {connector.connectionId && browseDialogBucket && (
+        <FileBrowserDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setBrowseDialogBucket(null);
+          }}
+          connectorType={connector.type}
+          connectionId={connector.connectionId}
+          buckets={[browseDialogBucket]}
+        />
+      )}
     </>
   );
 }

@@ -44,13 +44,13 @@ class Config:
         self.openrag_url = os.environ.get("OPENRAG_URL", "http://localhost:3000")
         self.api_key = os.environ.get("OPENRAG_API_KEY")
 
-        # IBM auth mode: user provides IBM_USERNAME + IBM_API_KEY instead of OPENRAG_API_KEY.
+        # Platform auth mode: user provides PLATFORM_USERNAME + IBM_API_KEY instead of OPENRAG_API_KEY.
         # The MCP forwards these as headers on every SDK request to OpenRAG.
-        ibm_username = os.environ.get("IBM_USERNAME")
+        platform_username = os.environ.get("PLATFORM_USERNAME")
         ibm_api_key = os.environ.get("IBM_API_KEY")
         self.ibm_extra_headers: dict[str, str] = {}
-        if ibm_username:
-            self.ibm_extra_headers["X-Username"] = ibm_username
+        if platform_username:
+            self.ibm_extra_headers["X-Username"] = platform_username
         if ibm_api_key:
             self.ibm_extra_headers["X-Api-Key"] = ibm_api_key
 
@@ -63,9 +63,7 @@ class Config:
         # MCP httpx client configuration (OPENRAG_MCP_*)
         self.mcp_timeout = _parse_float("OPENRAG_MCP_TIMEOUT", 60.0)
         self.mcp_max_connections = _parse_int("OPENRAG_MCP_MAX_CONNECTIONS", 100)
-        self.mcp_max_keepalive_connections = _parse_int(
-            "OPENRAG_MCP_MAX_KEEPALIVE_CONNECTIONS", 20
-        )
+        self.mcp_max_keepalive_connections = _parse_int("OPENRAG_MCP_MAX_KEEPALIVE_CONNECTIONS", 20)
         self.mcp_max_retries = _parse_int("OPENRAG_MCP_MAX_RETRIES", 3)
         self.mcp_follow_redirects = _parse_bool("OPENRAG_MCP_FOLLOW_REDIRECTS", True)
 
