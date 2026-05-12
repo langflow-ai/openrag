@@ -383,25 +383,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
           void (async () => {
-            // Refresh knowledge data before dropping overlays, otherwise rows
-            // vanish for ~500ms–2s (wildcard uses listFiles; refetchSearch was search-only).
-            await Promise.all([
-              queryClient.refetchQueries({
-                queryKey: ["search"],
-                exact: false,
-              }),
-              queryClient.refetchQueries({
-                queryKey: ["listFiles"],
-                exact: false,
-              }),
-            ]);
-            setFiles((prevFiles) =>
-              prevFiles.filter(
-                (file) =>
-                  file.task_id !== currentTask.task_id ||
-                  (completedHasFailures && file.status === "failed"),
-              ),
-            );
+            // Refetch before dropping overlays (wildcard uses listFiles, not only search).
+            try {
+              await Promise.all([
+                queryClient.refetchQueries({
+                  queryKey: ["search"],
+                  exact: false,
+                }),
+                queryClient.refetchQueries({
+                  queryKey: ["listFiles"],
+                  exact: false,
+                }),
+              ]);
+            } catch (e) {
+              console.error(
+                "Knowledge refetch after task completion failed",
+                e,
+              );
+            } finally {
+              setFiles((prevFiles) =>
+                prevFiles.filter(
+                  (file) =>
+                    file.task_id !== currentTask.task_id ||
+                    (completedHasFailures && file.status === "failed"),
+                ),
+              );
+            }
           })();
         } else if (
           shouldShowToast &&
