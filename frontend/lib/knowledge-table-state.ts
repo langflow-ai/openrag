@@ -88,14 +88,15 @@ export function buildKnowledgeTableRows(
     if (taskFile.connector_type === "openrag_docs") {
       return false;
     }
-    return (
-      taskFile.status !== "active" &&
-      !backendFiles.some(
-        (backendFile) =>
-          getKnowledgeFileIdentity(backendFile) ===
-          getKnowledgeFileIdentity(taskFile),
-      )
+    const identity = getKnowledgeFileIdentity(taskFile);
+    const inBackend = backendFiles.some(
+      (backendFile) => getKnowledgeFileIdentity(backendFile) === identity,
     );
+    if (inBackend) {
+      return false;
+    }
+    // Keep "active" overlays until the index lists the file (task drops key before refetch).
+    return true;
   });
 
   if (hasActiveFilter) {

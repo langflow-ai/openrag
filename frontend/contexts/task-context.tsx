@@ -141,6 +141,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       queryKey: ["search"],
       exact: false,
     });
+    queryClient.invalidateQueries({
+      queryKey: ["listFiles"],
+      exact: false,
+    });
   }, [queryClient]);
 
   const addFiles = useCallback(
@@ -326,7 +330,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               });
               return changed ? updated : prevFiles;
             });
-            setTimeout(() => refetchSearch(), 500);
+            refetchSearch();
           }
         }
         if (
@@ -378,10 +382,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
-          setTimeout(() => {
-            // Remove overlay rows for this completed task so backend becomes
-            // source of truth. For partial-success completions, keep failed
-            // rows visible in the table.
+          void (async () => {
+            // Refresh knowledge data before dropping overlays, otherwise rows
+            // vanish for ~500ms–2s (wildcard uses listFiles; refetchSearch was search-only).
+            await Promise.all([
+              queryClient.refetchQueries({
+                queryKey: ["search"],
+                exact: false,
+              }),
+              queryClient.refetchQueries({
+                queryKey: ["listFiles"],
+                exact: false,
+              }),
+            ]);
             setFiles((prevFiles) =>
               prevFiles.filter(
                 (file) =>
@@ -389,8 +402,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   (completedHasFailures && file.status === "failed"),
               ),
             );
-            refetchSearch();
-          }, 500);
+          })();
         } else if (
           shouldShowToast &&
           previousTask &&
