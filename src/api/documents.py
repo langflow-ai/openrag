@@ -137,7 +137,8 @@ async def delete_chunks_by_document_ids(
 
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
-    from config.settings import IBM_AUTH_ENABLED, clients as app_clients
+    from config.settings import IBM_AUTH_ENABLED
+    from config.settings import clients as app_clients
     from main import init_index
 
     opensearch_client = None
