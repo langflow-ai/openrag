@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
@@ -7,8 +6,9 @@ import httpx
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
 from .oauth import SharePointOAuth
+from utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SharePointConnector(BaseConnector):
