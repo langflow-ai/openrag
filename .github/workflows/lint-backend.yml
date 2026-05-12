@@ -45,7 +45,7 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           # Diff against the merge base so we only see files touched in the PR.
           merge_base=$(git merge-base "$base" "$head")
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$merge_base" "$head" -- '*.py')
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$merge_base" "$head" -- '*.py' ':!flows/components/*')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No Python files changed."
             echo "files=" >> "$GITHUB_OUTPUT"

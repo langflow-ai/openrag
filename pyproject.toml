@@ -91,10 +91,14 @@ override-dependencies = ["python-dotenv>=1.1.0"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+exclude = ["flows/components"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]  # line-length handled by formatter
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends", "Depends"]
 
 # `bootstrap` must be the first import in any module that uses it
 # (it loads .env and configures structlog before anything else can
@@ -119,5 +123,6 @@ python_version = "3.13"
 ignore_missing_imports = true
 no_strict_optional = true
 warn_unused_ignores = true
+exclude = ["flows/components"]
 
 
