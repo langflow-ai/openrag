@@ -1,10 +1,10 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from utils.file_utils import get_file_extension, clean_connector_filename
 from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
-from utils.file_utils import get_file_extension, clean_connector_filename
 
 
 logger = get_logger(__name__)
@@ -38,7 +38,7 @@ class ConnectorService:
         """Initialize the service by loading existing connections"""
         await self.connection_manager.load_connections()
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
@@ -50,7 +50,7 @@ class ConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
@@ -315,10 +315,10 @@ class ConnectorService:
         self,
         connection_id: str,
         user_id: str,
-        file_ids: List[str],
+        file_ids: list[str],
         jwt_token: str = None,
-        file_infos: List[Dict[str, Any]] = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        file_infos: list[dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -460,6 +460,6 @@ class ConnectorService:
 
         return task_id
 
-    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def _get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID (alias for get_connector)"""
         return await self.get_connector(connection_id)

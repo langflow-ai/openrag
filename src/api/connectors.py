@@ -1,20 +1,20 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import Depends, Request
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, PlainTextResponse
-from connectors.sharepoint.utils import is_valid_sharepoint_url
+from pydantic import BaseModel
+
 from config.settings import get_index_name
-from utils.logging_config import get_logger
-from utils.telemetry import TelemetryClient, Category, MessageId
+from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
     get_current_user,
-    get_rbac_service,
     get_session_manager,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
@@ -82,9 +82,9 @@ async def reconcile_orphans_for_connector_type(
     user_id: str,
     connector_service,
     session_manager,
-    jwt_token: Optional[str],
-    existing_file_ids: List[str],
-) -> List[str]:
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+) -> list[str]:
     """Delete OpenSearch chunks whose document_id is no longer present in the
     union of remote file IDs across all active connections of this connector_type
     for this user.
@@ -171,15 +171,15 @@ async def reconcile_orphans_for_connector_type(
 
 
 class ConnectorSyncBody(BaseModel):
-    max_files: Optional[int] = None
-    selected_files: Optional[List[Any]] = None
+    max_files: int | None = None
+    selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
     # Used by direct-sync providers like IBM COS on initial ingest.
     sync_all: bool = False
     # When set, only ingest files from these buckets (IBM COS specific).
-    bucket_filter: Optional[List[str]] = None
+    bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
-    settings: Optional[Dict[str, Any]] = None
+    settings: dict[str, Any] | None = None
 
 
 async def list_connectors(
@@ -463,7 +463,7 @@ async def connector_status(
                     )
                 else:
                     logger.debug(
-                        f"connector_status: Connector has no base_url or sharepoint_url attribute"
+                        "connector_status: Connector has no base_url or sharepoint_url attribute"
                     )
 
                 connection_details[connection.connection_id] = {
@@ -1058,9 +1058,9 @@ async def browse_connection_files(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
-    bucket: Optional[str] = None,
-    search: Optional[str] = None,
-    page_token: Optional[str] = None,
+    bucket: str | None = None,
+    search: str | None = None,
+    page_token: str | None = None,
     max_files: int = 100,
 ):
     """
