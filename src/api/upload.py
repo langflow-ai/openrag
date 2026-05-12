@@ -113,8 +113,8 @@ async def upload_context(
     chat_service: Annotated[Any, Depends(get_chat_service)],
     session_manager: Annotated[Any, Depends(get_session_manager)],
     user: Annotated[User, Depends(require_all_permissions(("knowledge:upload", "chat:use")))],
-    previous_response_id: Annotated[str | None, Form(None)] = None,
-    endpoint: Annotated[str, Form("langflow")] = "langflow",
+    previous_response_id: Annotated[str | None, Form()] = None,
+    endpoint: Annotated[str, Form()] = "langflow",
 ):
     """Upload a file and add its content as context to the current conversation"""
     filename = file.filename or "uploaded_document"
