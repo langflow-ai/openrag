@@ -93,35 +93,76 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Reconcile all resources
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
+		return r.updateStatusError(ctx, instance, "namespace", err)
 	}
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
+		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
 	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("env secrets: %w", err)
+		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("pvcs: %w", err)
+		return r.updateStatusError(ctx, instance, "pvcs", err)
 	}
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("services: %w", err)
+		return r.updateStatusError(ctx, instance, "services", err)
 	}
 	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("deployments: %w", err)
+		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("docling components: %w", err)
+		return r.updateStatusError(ctx, instance, "docling components", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
-			return ctrl.Result{}, fmt.Errorf("network policy: %w", err)
+			return r.updateStatusError(ctx, instance, "network policy", err)
 		}
 	}
 
+	// Update status to success
 	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
+	return r.updateStatusSuccess(ctx, instance)
+}
+
+// updateStatusSuccess updates the status to indicate successful reconciliation
+func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG) (ctrl.Result, error) {
+	const successMsg = "All resources reconciled successfully"
+	if instance.Status.Phase == "Running" &&
+		instance.Status.Message == successMsg &&
+		instance.Status.ObservedGeneration == instance.Generation {
+		return ctrl.Result{}, nil
+	}
+
+	instance.Status.Phase = "Running"
+	instance.Status.Message = successMsg
+	instance.Status.ObservedGeneration = instance.Generation
+	if err := r.Status().Update(ctx, instance); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// updateStatusError updates the status to indicate reconciliation failure and schedules retry after 5 minutes
+func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *openragv1alpha1.OpenRAG, component string, reconcileErr error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	instance.Status.Phase = "Error"
+	instance.Status.Message = fmt.Sprintf("Failed to reconcile %s: %s", component, reconcileErr.Error())
+	instance.Status.ObservedGeneration = instance.Generation
+
+	if err := r.Status().Update(ctx, instance); err != nil {
+		logger.Error(err, "failed to update status after error", "component", component, "reconcileError", reconcileErr.Error())
+		// Return original error even if status update fails
+		return ctrl.Result{}, reconcileErr
+	}
+
+	logger.Error(reconcileErr, "reconciliation failed, will retry in 5 minutes", "component", component)
+
+	// Requeue after 5 minutes on failure
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
@@ -323,11 +364,11 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Get or generate JWT signing key (base64 secret)
-	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_PRIVATE_KEY", resourceName("be-env"), generateBase64SecretKey)
+	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", resourceName("be-env"), generateBase64SecretKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
 	}
-	envVars["JWT_PRIVATE_KEY"] = jwtSigningKey
+	envVars["JWT_SIGNING_KEY"] = jwtSigningKey
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
@@ -716,6 +757,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
+					SecurityContext:    spec.PodSecurityContext,
 					Containers: []corev1.Container{
 						{
 							Name:            "frontend",
@@ -725,9 +767,10 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							Env: append([]corev1.EnvVar{
 								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
-							Resources:      spec.Resources,
-							LivenessProbe:  httpProbe("/", 3000, 30, 10),
-							ReadinessProbe: httpProbe("/", 3000, 10, 5),
+							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
+							LivenessProbe:   httpProbe("/", 3000, 30, 10),
+							ReadinessProbe:  httpProbe("/", 3000, 10, 5),
 						},
 					},
 				},
@@ -802,13 +845,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000),
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					Volumes: volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "backend",
@@ -817,6 +855,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
 							LivenessProbe:   httpProbe("/health", 8000, 45, 30),
 							ReadinessProbe:  httpProbe("/health", 8000, 45, 10),
@@ -921,14 +960,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000), // Allow volume access for non-root users
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					InitContainers: initContainers,
-					Volumes:        volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					InitContainers:     initContainers,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "langflow",
@@ -939,6 +973,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
 							LivenessProbe:   httpProbe("/health", 7860, 90, 30),
 							ReadinessProbe:  httpProbe("/health", 7860, 90, 30),
