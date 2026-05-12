@@ -11,6 +11,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -40,13 +41,31 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Get the namespace to watch from environment variable
+	// If not set, watches all namespaces (cluster-scoped)
+	watchNamespace := os.Getenv("WATCH_NAMESPACE")
+
+	mgrOptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: cfg.MetricsBindAddress},
 		HealthProbeBindAddress: cfg.HealthProbeBindAddress,
 		LeaderElection:         cfg.LeaderElectionEnabled,
 		LeaderElectionID:       "openrag-operator.openr.ag",
-	})
+	}
+
+	// If WATCH_NAMESPACE is set, configure namespace-scoped watching
+	if watchNamespace != "" {
+		setupLog.Info("configuring namespace-scoped watching", "namespace", watchNamespace)
+		// Note: Setting Cache.DefaultNamespaces limits the cache to specific namespaces
+		// This is available in controller-runtime v0.15+
+		mgrOptions.Cache.DefaultNamespaces = map[string]cache.Config{
+			watchNamespace: {},
+		}
+	} else {
+		setupLog.Info("configuring cluster-scoped watching")
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
