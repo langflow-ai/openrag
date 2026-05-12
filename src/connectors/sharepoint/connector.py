@@ -1,12 +1,14 @@
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
 import httpx
+
+from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
 from .oauth import SharePointOAuth
-from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -458,7 +460,7 @@ class SharePointConnector(BaseConnector):
             next_page_token = None
             next_link = data.get("@odata.nextLink")
             if next_link:
-                from urllib.parse import urlparse, parse_qs
+                from urllib.parse import parse_qs, urlparse
 
                 parsed = urlparse(next_link)
                 query_params = parse_qs(parsed.query)
