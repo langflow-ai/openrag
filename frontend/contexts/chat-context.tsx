@@ -87,6 +87,8 @@ interface ChatContextType {
   setChatError: (hasError: boolean) => void;
   isOnboardingComplete: boolean;
   setOnboardingComplete: (complete: boolean) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -117,6 +119,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
   const [hasChatError, setChatError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Get settings to check if onboarding was completed (settings.edited)
   const { data: settings } = useGetSettingsQuery();
@@ -450,6 +453,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setChatError,
       isOnboardingComplete,
       setOnboardingComplete,
+      loading,
+      setLoading,
     }),
     [
       endpoint,
@@ -473,6 +478,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       hasChatError,
       isOnboardingComplete,
       setOnboardingComplete,
+      loading,
     ],
   );
 
