@@ -93,35 +93,76 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Reconcile all resources
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
+		return r.updateStatusError(ctx, instance, "namespace", err)
 	}
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
+		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
 	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("env secrets: %w", err)
+		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("pvcs: %w", err)
+		return r.updateStatusError(ctx, instance, "pvcs", err)
 	}
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("services: %w", err)
+		return r.updateStatusError(ctx, instance, "services", err)
 	}
 	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("deployments: %w", err)
+		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("docling components: %w", err)
+		return r.updateStatusError(ctx, instance, "docling components", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
-			return ctrl.Result{}, fmt.Errorf("network policy: %w", err)
+			return r.updateStatusError(ctx, instance, "network policy", err)
 		}
 	}
 
+	// Update status to success
 	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
+	return r.updateStatusSuccess(ctx, instance)
+}
+
+// updateStatusSuccess updates the status to indicate successful reconciliation
+func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG) (ctrl.Result, error) {
+	const successMsg = "All resources reconciled successfully"
+	if instance.Status.Phase == "Running" &&
+		instance.Status.Message == successMsg &&
+		instance.Status.ObservedGeneration == instance.Generation {
+		return ctrl.Result{}, nil
+	}
+
+	instance.Status.Phase = "Running"
+	instance.Status.Message = successMsg
+	instance.Status.ObservedGeneration = instance.Generation
+	if err := r.Status().Update(ctx, instance); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// updateStatusError updates the status to indicate reconciliation failure and schedules retry after 5 minutes
+func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *openragv1alpha1.OpenRAG, component string, reconcileErr error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	instance.Status.Phase = "Error"
+	instance.Status.Message = fmt.Sprintf("Failed to reconcile %s: %s", component, reconcileErr.Error())
+	instance.Status.ObservedGeneration = instance.Generation
+
+	if err := r.Status().Update(ctx, instance); err != nil {
+		logger.Error(err, "failed to update status after error", "component", component, "reconcileError", reconcileErr.Error())
+		// Return original error even if status update fails
+		return ctrl.Result{}, reconcileErr
+	}
+
+	logger.Error(reconcileErr, "reconciliation failed, will retry in 5 minutes", "component", component)
+
+	// Requeue after 5 minutes on failure
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
