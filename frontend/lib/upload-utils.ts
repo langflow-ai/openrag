@@ -161,12 +161,20 @@ export async function uploadFile(
 
     return result;
   } catch (error) {
-    callbacks?.onError?.(
-      file.name,
-      error instanceof Error ? error.message : "Upload failed",
-    );
+    try {
+      callbacks?.onError?.(
+        file.name,
+        error instanceof Error ? error.message : "Upload failed",
+      );
+    } catch (cbErr) {
+      console.warn("uploadFile: onError callback threw", cbErr);
+    }
     throw error;
   } finally {
-    callbacks?.onComplete?.();
+    try {
+      callbacks?.onComplete?.();
+    } catch (cbErr) {
+      console.warn("uploadFile: onComplete callback threw", cbErr);
+    }
   }
 }
