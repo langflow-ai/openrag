@@ -131,9 +131,7 @@ async def delete_chunks_by_document_ids(
     if not document_ids:
         return 0
     body = {"query": {"terms": {"document_id": document_ids}}}
-    res = await opensearch_client.delete_by_query(
-        index=index_name, body=body, conflicts="proceed"
-    )
+    res = await opensearch_client.delete_by_query(index=index_name, body=body, conflicts="proceed")
     return res.get("deleted", 0)
 
 

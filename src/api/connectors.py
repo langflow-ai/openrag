@@ -147,12 +147,8 @@ async def reconcile_orphans_for_connector_type(
     from .documents import delete_chunks_by_document_ids
 
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user_id, jwt_token
-        )
-        deleted = await delete_chunks_by_document_ids(
-            orphans, opensearch_client, get_index_name()
-        )
+        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+        deleted = await delete_chunks_by_document_ids(orphans, opensearch_client, get_index_name())
         logger.info(
             "Orphan reconcile complete",
             connector_type=connector_type,

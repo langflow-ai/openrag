@@ -30,9 +30,7 @@ def _make_service():
     service.index_name = "test-index"
 
     opensearch_client = AsyncMock()
-    service.session_manager.get_user_opensearch_client = MagicMock(
-        return_value=opensearch_client
-    )
+    service.session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     return service, opensearch_client
 
 
@@ -107,9 +105,7 @@ async def test_filename_passed_raw_not_cleaned(monkeypatch):
         document, owner_user_id="alice", connector_type="sharepoint"
     )
 
-    params = opensearch_client.update_by_query.await_args.kwargs["body"]["script"][
-        "params"
-    ]
+    params = opensearch_client.update_by_query.await_args.kwargs["body"]["script"]["params"]
     assert params["filename"] == raw_name
 
 

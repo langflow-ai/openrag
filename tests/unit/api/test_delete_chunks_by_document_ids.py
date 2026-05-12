@@ -23,9 +23,7 @@ async def test_empty_ids_short_circuits_without_calling_opensearch():
     from api.documents import delete_chunks_by_document_ids
 
     opensearch_client = AsyncMock()
-    deleted = await delete_chunks_by_document_ids(
-        [], opensearch_client, "test-index"
-    )
+    deleted = await delete_chunks_by_document_ids([], opensearch_client, "test-index")
 
     assert deleted == 0
     opensearch_client.delete_by_query.assert_not_awaited()
@@ -39,9 +37,7 @@ async def test_issues_single_delete_by_query_with_terms_filter():
     opensearch_client.delete_by_query.return_value = {"deleted": 12}
 
     ids = ["abc", "def", "ghi"]
-    deleted = await delete_chunks_by_document_ids(
-        ids, opensearch_client, "test-index"
-    )
+    deleted = await delete_chunks_by_document_ids(ids, opensearch_client, "test-index")
 
     assert deleted == 12
     opensearch_client.delete_by_query.assert_awaited_once()
@@ -61,8 +57,6 @@ async def test_returns_zero_when_response_missing_deleted_field():
     opensearch_client = AsyncMock()
     opensearch_client.delete_by_query.return_value = {}  # no "deleted" key
 
-    deleted = await delete_chunks_by_document_ids(
-        ["abc"], opensearch_client, "test-index"
-    )
+    deleted = await delete_chunks_by_document_ids(["abc"], opensearch_client, "test-index")
 
     assert deleted == 0

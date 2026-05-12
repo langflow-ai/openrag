@@ -323,9 +323,7 @@ async def test_delete_failure_does_not_raise():
     service = _make_service([conn], connector_lookup={"c1": connector})
 
     opensearch_client = AsyncMock()
-    opensearch_client.delete_by_query.side_effect = RuntimeError(
-        "opensearch unavailable"
-    )
+    opensearch_client.delete_by_query.side_effect = RuntimeError("opensearch unavailable")
     sm = _make_session_manager(opensearch_client)
 
     deleted = await reconcile_orphans_for_connector_type(
