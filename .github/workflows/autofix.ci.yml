@@ -1,0 +1,78 @@
+# autofix.ci enforces that any workflow invoking `autofix-ci/action` is
+# named exactly `autofix.ci`. Keep this workflow narrowly scoped to
+# formatter autofix; strict lint and mypy checks live in
+# `.github/workflows/lint-backend.yml`.
+#
+# Setup: install https://github.com/apps/autofix-ci on the repo (free for
+# public repos) and enable auto-apply in the autofix.ci dashboard so the
+# App pushes the format commit directly.
+name: autofix.ci
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/autofix.ci.yml'
+
+concurrency:
+  group: autofix-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The autofix.ci GitHub App holds write capability separately; the
+# workflow token only needs read access to checkout and run ruff.
+permissions:
+  contents: read
+
+jobs:
+  autofix:
+    name: ruff format autofix
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dev dependencies
+        run: uv sync --group dev
+
+      - name: Compute changed Python files
+        id: changed
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          merge_base=$(git merge-base "$base" "$head")
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$merge_base" "$head" -- '*.py' ':!flows/components/*')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Python files changed."
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "${files[@]}"
+          echo "files=${files[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Ruff format (in-place)
+        if: steps.changed.outputs.files != ''
+        run: uv run ruff format ${{ steps.changed.outputs.files }}
+
+      # Hands any working-tree changes from the previous step to autofix.ci.
+      # In auto-apply mode the App pushes a commit back to the PR branch;
+      # the action exits non-zero on the run that produced the diff, then
+      # the App's commit triggers a fresh CI cycle that passes.
+      - name: Apply ruff format autofix via autofix.ci
+        if: steps.changed.outputs.files != ''
+        uses: autofix-ci/action@v1.3.1
+        with:
+          commit-message: "style: ruff format (auto)"

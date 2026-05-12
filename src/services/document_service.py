@@ -1,12 +1,10 @@
-from typing import List
 import tiktoken
+
+from config.settings import get_embedding_model, get_index_name
+from utils.document_processing import extract_relevant
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-from config.settings import clients, get_embedding_model, get_index_name
-from utils.document_processing import extract_relevant
-from utils.telemetry import TelemetryClient, Category, MessageId
 
 
 def get_token_count(text: str, model: str = None) -> int:
@@ -22,8 +20,8 @@ def get_token_count(text: str, model: str = None) -> int:
 
 
 def chunk_texts_for_embeddings(
-    texts: List[str], max_tokens: int = None, model: str = None
-) -> List[List[str]]:
+    texts: list[str], max_tokens: int = None, model: str = None
+) -> list[list[str]]:
     """
     Split texts into batches that won't exceed token limits.
     If max_tokens is None, returns texts as single batch (no splitting).
@@ -40,7 +38,7 @@ def chunk_texts_for_embeddings(
         return [texts]
 
     batches = []
-    current_batch = []
+    current_batch: list[str] = []
     current_tokens = 0
 
     for text in texts:
@@ -93,7 +91,6 @@ class DocumentService:
         self.docling_service = docling_service
         self._mapping_ensured = False
 
-
     async def process_upload_file(
         self,
         upload_file,
@@ -103,12 +100,13 @@ class DocumentService:
         owner_email: str = None,
     ):
         """Process an uploaded file from form data"""
-        from utils.hash_utils import hash_id
-        from utils.file_utils import auto_cleanup_tempfile
         import os
 
         # Default metadata for anonymous users if not provided
         from session_manager import AnonymousUser
+        from utils.file_utils import auto_cleanup_tempfile
+        from utils.hash_utils import hash_id
+
         anonymous_user = AnonymousUser()
         owner_name = owner_name or anonymous_user.name
         owner_email = owner_email or anonymous_user.email
@@ -120,7 +118,7 @@ class DocumentService:
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
             # Stream upload file to temporary file
             file_size = 0
-            with open(tmp_path, 'wb') as tmp_file:
+            with open(tmp_path, "wb") as tmp_file:
                 while True:
                     chunk = await upload_file.read(1 << 20)
                     if not chunk:
@@ -137,16 +135,19 @@ class DocumentService:
             try:
                 exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
             except Exception as e:
-                logger.error(
-                    "OpenSearch exists check failed", file_hash=file_hash, error=str(e)
-                )
+                logger.error("OpenSearch exists check failed", file_hash=file_hash, error=str(e))
                 raise
             if exists:
                 return {"status": "unchanged", "id": file_hash}
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor
-            processor = TaskProcessor(document_service=self, models_service=self.models_service, docling_service=self.docling_service)
+
+            processor = TaskProcessor(
+                document_service=self,
+                models_service=self.models_service,
+                docling_service=self.docling_service,
+            )
             result = await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash=file_hash,
@@ -160,7 +161,9 @@ class DocumentService:
             )
             return result
 
-    async def process_upload_context(self, upload_file, filename: str = None):
+    async def process_upload_context(
+        self, upload_file, filename: str = None, user_id: str = None, jwt_token: str = None
+    ):
         """Process uploaded file and return content for context"""
         import io
         import os
@@ -179,11 +182,11 @@ class DocumentService:
 
         # Check if this is a .txt or .md file - use simple processing
         file_ext = os.path.splitext(filename)[1].lower()
-        
-        if file_ext in ('.txt', '.md'):
+
+        if file_ext in (".txt", ".md"):
             # Simple text file processing for chat context
-            text_content = content.read().decode('utf-8', errors='replace')
-            
+            text_content = content.read().decode("utf-8", errors="replace")
+
             # For context, we don't need to chunk - just return the full content
             return {
                 "filename": filename,
@@ -192,7 +195,9 @@ class DocumentService:
                 "content_length": len(text_content),
             }
         else:
-            full_doc = await self.docling_service.convert_bytes(content.read(), filename)
+            full_doc = await self.docling_service.convert_bytes(
+                content.read(), filename, user_id=user_id, auth_header=jwt_token
+            )
             slim_doc = extract_relevant(full_doc)
 
             # Extract all text content

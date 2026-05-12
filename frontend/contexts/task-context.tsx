@@ -141,6 +141,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       queryKey: ["search"],
       exact: false,
     });
+    queryClient.invalidateQueries({
+      queryKey: ["listFiles"],
+      exact: false,
+    });
   }, [queryClient]);
 
   const addFiles = useCallback(
@@ -326,7 +330,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               });
               return changed ? updated : prevFiles;
             });
-            setTimeout(() => refetchSearch(), 500);
+            refetchSearch();
           }
         }
         if (
@@ -378,19 +382,35 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
-          setTimeout(() => {
-            // Remove overlay rows for this completed task so backend becomes
-            // source of truth. For partial-success completions, keep failed
-            // rows visible in the table.
-            setFiles((prevFiles) =>
-              prevFiles.filter(
-                (file) =>
-                  file.task_id !== currentTask.task_id ||
-                  (completedHasFailures && file.status === "failed"),
-              ),
-            );
-            refetchSearch();
-          }, 500);
+          async function refetchKnowledgeAfterTaskCompletion() {
+            // Refetch before dropping overlays (wildcard uses listFiles, not only search).
+            try {
+              await Promise.all([
+                queryClient.refetchQueries({
+                  queryKey: ["search"],
+                  exact: false,
+                }),
+                queryClient.refetchQueries({
+                  queryKey: ["listFiles"],
+                  exact: false,
+                }),
+              ]);
+            } catch (e) {
+              console.error(
+                "Knowledge refetch after task completion failed",
+                e,
+              );
+            } finally {
+              setFiles((prevFiles) =>
+                prevFiles.filter(
+                  (file) =>
+                    file.task_id !== currentTask.task_id ||
+                    (completedHasFailures && file.status === "failed"),
+                ),
+              );
+            }
+          }
+          void refetchKnowledgeAfterTaskCompletion();
         } else if (
           shouldShowToast &&
           previousTask &&

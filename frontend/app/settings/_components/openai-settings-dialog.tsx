@@ -99,7 +99,7 @@ const OpenAISettingsDialog = ({
         action: {
           label: "Settings",
           onClick: () => {
-            router.push("/settings?focusLlmModel=true");
+            router.push("/settings/langflow?focusLlmModel=true");
           },
         },
       });

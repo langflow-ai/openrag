@@ -1,9 +1,7 @@
-from config.paths import get_flows_path
 import asyncio
+import concurrent.futures
 import os
 import threading
-import concurrent.futures
-from utils.env_utils import get_env_int, get_env_float
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -11,11 +9,14 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
-from utils.container_utils import get_container_host, determine_docling_host
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from config.paths import get_flows_path
+from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
+from utils.env_utils import get_env_float, get_env_int
 from utils.logging_config import get_logger
+
 # Import configuration manager
 from .config_manager import config_manager
 
@@ -51,17 +52,68 @@ LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
 LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
+# Optional explicit JWT signing key. When set (and IBM auth is off),
+# RSA keypair generation is skipped. Read here so callers don't poke
+# os.environ directly.
+JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
+PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
+PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+# Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
+# on the FastAPI app instance). Named explicitly so it isn't confused with
+# logging-level "debug" or other unrelated debug flags.
+#
+# Default behavior:
+#   * If FASTAPI_DEBUG is set explicitly (true/false), that wins.
+#   * Otherwise, defaults to True when LOG_LEVEL=DEBUG (developer is already
+#     opting into verbose output), False otherwise. This gives `LOG_LEVEL=DEBUG`
+#     in .env a single-knob "dev mode" effect without forcing it on in prod.
+_fastapi_debug_default = "true" if os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG" else "false"
+FASTAPI_DEBUG = os.getenv("FASTAPI_DEBUG", _fastapi_debug_default).lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+# Whether uvicorn emits an access log line per HTTP request. On by
+# default; flip via ACCESS_LOG=false (e.g. when fronted by a load balancer
+# that already logs requests, or to reduce log noise in CI).
+ACCESS_LOG_ENABLED = os.getenv("ACCESS_LOG", "true").lower() in ("true", "1", "yes")
+
+# Number of uvicorn worker processes to allow. Multi-worker is currently
+# unsupported because the RBAC permission cache and the OAuth-subject→DB-id
+# cache are per-process; the lifespan startup hook hard-fails if this is >1
+# until the cache moves to a shared backend (Redis).
+UVICORN_WORKER_COUNT = get_env_int("UVICORN_WORKERS", 1)
+
+# Backend for the in-process RBAC permission cache. Only "memory" is wired
+# today; the lifespan hook rejects anything else.
+RBAC_CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory").lower()
+
+# TTL (seconds) for cached RBAC permission lookups. Stale permissions can
+# linger for up to this many seconds after a role mutation.
+RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("OPENRAG_PERM_CACHE_TTL", 60)
 
 # Docling service URL configuration
 # Priority:
@@ -79,19 +131,21 @@ else:
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
 # Ingestion configuration
-DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
-    "DISABLE_INGEST_WITH_LANGFLOW", "false"
-).lower() in ("true", "1", "yes")
+DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Show the "+" file upload button in the chat input
-OPENRAG_INGEST_VIA_CHAT = os.getenv(
-    "OPENRAG_INGEST_VIA_CHAT", "false"
-).lower() in ("true", "1", "yes")
+OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Ingest sample data configuration
-INGEST_SAMPLE_DATA = os.getenv(
-    "INGEST_SAMPLE_DATA", "true"
-).lower() in ("true", "1", "yes")
+INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
 
 # Default OpenRAG docs sample ingestion source
 # - "url": crawl DEFAULT_DOCS_URL with URL ingestion flow
@@ -99,13 +153,15 @@ INGEST_SAMPLE_DATA = os.getenv(
 
 DEFAULT_DOCS_INGEST_SOURCE = os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "url").lower()
 DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.openr.ag/")
-#TODO: Enable this when the flow is updated to use the new variables
+# TODO: Enable this when the flow is updated to use the new variables
 
 DEFAULT_DOCS_CRAWL_DEPTH = get_env_int("DEFAULT_DOCS_CRAWL_DEPTH", 2)
 
-FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv(
-    "FETCH_OPENRAG_DOCS_AT_STARTUP", "false"
-).lower() in ("true", "1", "yes")
+FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
@@ -121,18 +177,17 @@ LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30
 # Default: 3600 seconds (60 minutes)
 INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
 
+
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     if IBM_AUTH_ENABLED:
-        return False  # IBM cookie auth is a valid auth mode
+        return False  # IBM cookie auth is a valid auth mode (variable name kept for now as per instructions)
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
     return result
 
 
 # Webhook configuration - must be set to enable webhooks
-WEBHOOK_BASE_URL = os.getenv(
-    "WEBHOOK_BASE_URL"
-)  # No default - must be explicitly configured
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
 
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
@@ -353,23 +408,29 @@ class AppClients:
         # The property will handle lazy initialization with probe when first accessed
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
-            logger.info("OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe")
+            logger.info(
+                "OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe"
+            )
         else:
-            logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
+            logger.info(
+                "OpenAI API key not found in environment - will be initialized on first use if needed"
+            )
 
         # Initialize docling-serve HTTP client for document conversion
         self.docling_http_client = httpx.AsyncClient(
+            verify=DOCLING_SERVE_VERIFY_SSL,
             timeout=httpx.Timeout(
                 timeout=INGESTION_TIMEOUT,
                 connect=30.0,
                 read=INGESTION_TIMEOUT,
                 write=30.0,
                 pool=30.0,
-            )
+            ),
         )
 
         # Eagerly initialize DoclingService to ensure thread-safety
         from services.docling_service import DoclingService
+
         self._docling_service = DoclingService(httpx_client=self.docling_http_client)
 
         # Initialize Langflow HTTP client with extended timeouts for large documents
@@ -383,7 +444,7 @@ class AppClients:
                 read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
                 write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
                 pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            )
+            ),
         )
         logger.info(
             "Initialized Langflow HTTP client with extended timeouts",
@@ -393,6 +454,7 @@ class AppClients:
 
         # Wait for Langflow to be healthy before generating API key
         from utils.langflow_utils import wait_for_langflow
+
         await wait_for_langflow(langflow_http_client=self.langflow_http_client)
 
         # Generate Langflow API key now that Langflow is confirmed ready
@@ -414,9 +476,7 @@ class AppClients:
                 logger.warning("Failed to initialize Langflow client", error=str(e))
                 self.langflow_client = None
         if self.langflow_client is None:
-            logger.warning(
-                "No Langflow client initialized yet, will attempt later on first use"
-            )
+            logger.warning("No Langflow client initialized yet, will attempt later on first use")
 
         return self
 
@@ -433,9 +493,7 @@ class AppClients:
                 )
                 logger.info("Langflow client initialized on-demand")
             except Exception as e:
-                logger.error(
-                    "Failed to initialize Langflow client on-demand", error=str(e)
-                )
+                logger.error("Failed to initialize Langflow client on-demand", error=str(e))
                 self.langflow_client = None
         return self.langflow_client
 
@@ -471,7 +529,7 @@ class AppClients:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
                 elif not os.environ.get("OPENAI_API_KEY"):
-                    # Provide dummy key to satisfy AsyncOpenAI constructor; 
+                    # Provide dummy key to satisfy AsyncOpenAI constructor;
                     # LiteLLM/MCP will handle routing to other providers if needed.
                     os.environ["OPENAI_API_KEY"] = "no-key-required"
                     logger.debug("Using dummy OpenAI API key to satisfy client constructor")
@@ -486,7 +544,9 @@ class AppClients:
                     os.environ["WATSONX_API_KEY"] = config.providers.watsonx.api_key
                 if config.providers.watsonx.endpoint:
                     os.environ["WATSONX_ENDPOINT"] = config.providers.watsonx.endpoint
-                    os.environ["WATSONX_API_BASE"] = config.providers.watsonx.endpoint  # LiteLLM expects this name
+                    os.environ["WATSONX_API_BASE"] = (
+                        config.providers.watsonx.endpoint
+                    )  # LiteLLM expects this name
                 if config.providers.watsonx.project_id:
                     os.environ["WATSONX_PROJECT_ID"] = config.providers.watsonx.project_id
                 if config.providers.watsonx.api_key:
@@ -512,7 +572,6 @@ class AppClients:
                     os.environ["OPENAI_API_KEY"] = "no-key-required"
                     logger.debug("Using dummy OpenAI API key fallback (config load failed)")
 
-
             # API key for AsyncOpenAI constructor
             api_key = os.environ.get("OPENAI_API_KEY")
 
@@ -529,16 +588,15 @@ class AppClients:
                 logger.info(f"Probing client with HTTP/2 using model {model_name}...")
                 try:
                     await asyncio.wait_for(
-                        client.embeddings.create(
-                            model=model_name,
-                            input=['test']
-                        ),
-                        timeout=5.0
+                        client.embeddings.create(model=model_name, input=["test"]), timeout=5.0
                     )
                     logger.info(f"HTTP/2 probe successful with {model_name}")
                     return True
-                except (asyncio.TimeoutError, Exception) as probe_error:
-                    logger.warning(f"HTTP/2 probe failed with {model_name}, falling back to HTTP/1.1", error=str(probe_error))
+                except (TimeoutError, Exception) as probe_error:
+                    logger.warning(
+                        f"HTTP/2 probe failed with {model_name}, falling back to HTTP/1.1",
+                        error=str(probe_error),
+                    )
                     return False
                 finally:
                     # Always close the probe client so its connections are fully
@@ -574,20 +632,27 @@ class AppClients:
 
                 if use_http2:
                     self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI(api_key=api_key))
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name})")
+                    logger.info(
+                        f"OpenAI-compatible client initialized with HTTP/2 (model: {model_name})"
+                    )
                 else:
                     http_client = httpx.AsyncClient(
-                        http2=False,
-                        timeout=httpx.Timeout(60.0, connect=10.0)
+                        http2=False, timeout=httpx.Timeout(60.0, connect=10.0)
                     )
                     self._patched_async_client = patch_openai_with_mcp(
                         AsyncOpenAI(api_key=api_key, http_client=http_client)
                     )
-                    logger.info(f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name})")
+                    logger.info(
+                        f"OpenAI-compatible client initialized with HTTP/1.1 fallback (model: {model_name})"
+                    )
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
-                raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.")
+                logger.error(
+                    f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}"
+                )
+                raise ValueError(
+                    f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable."
+                ) from e
 
             return self._patched_async_client
 
@@ -626,6 +691,7 @@ class AppClients:
                 return self._docling_service
 
             from services.docling_service import DoclingService
+
             self._docling_service = DoclingService(httpx_client=self.docling_http_client)
             return self._docling_service
 
@@ -725,9 +791,7 @@ class AppClients:
 
         return response
 
-    async def _create_langflow_global_variable(
-        self, name: str, value: str, modify: bool = False
-    ):
+    async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
         """Create a global variable in Langflow via API"""
         payload = {
             "name": name,
@@ -737,9 +801,7 @@ class AppClients:
         }
 
         try:
-            response = await self.langflow_request(
-                "POST", "/api/v1/variables/", json=payload
-            )
+            response = await self.langflow_request("POST", "/api/v1/variables/", json=payload)
 
             if response.status_code in [200, 201]:
                 logger.info(
@@ -876,18 +938,15 @@ def _component_path(env_var: str, filename: str) -> str:
     flows_dir = get_flows_path()
     return os.path.join(flows_dir, "components", filename)
 
-WATSONX_LLM_COMPONENT_PATH = _component_path(
-    "WATSONX_LLM_COMPONENT_PATH", "watsonx_llm.json"
-)
+
+WATSONX_LLM_COMPONENT_PATH = _component_path("WATSONX_LLM_COMPONENT_PATH", "watsonx_llm.json")
 WATSONX_LLM_TEXT_COMPONENT_PATH = _component_path(
     "WATSONX_LLM_TEXT_COMPONENT_PATH", "watsonx_llm_text.json"
 )
 WATSONX_EMBEDDING_COMPONENT_PATH = _component_path(
     "WATSONX_EMBEDDING_COMPONENT_PATH", "watsonx_embedding.json"
 )
-OLLAMA_LLM_COMPONENT_PATH = _component_path(
-    "OLLAMA_LLM_COMPONENT_PATH", "ollama_llm.json"
-)
+OLLAMA_LLM_COMPONENT_PATH = _component_path("OLLAMA_LLM_COMPONENT_PATH", "ollama_llm.json")
 OLLAMA_LLM_TEXT_COMPONENT_PATH = _component_path(
     "OLLAMA_LLM_TEXT_COMPONENT_PATH", "ollama_llm_text.json"
 )
@@ -900,13 +959,9 @@ OLLAMA_EMBEDDING_COMPONENT_PATH = _component_path(
 OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
     "OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME", "Embedding Model"
 )
-OPENAI_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
-    "OPENAI_LLM_COMPONENT_DISPLAY_NAME", "Language Model"
-)
+OPENAI_LLM_COMPONENT_DISPLAY_NAME = os.getenv("OPENAI_LLM_COMPONENT_DISPLAY_NAME", "Language Model")
 
-AGENT_COMPONENT_DISPLAY_NAME = os.getenv(
-    "AGENT_COMPONENT_DISPLAY_NAME", "Agent"
-)
+AGENT_COMPONENT_DISPLAY_NAME = os.getenv("AGENT_COMPONENT_DISPLAY_NAME", "Agent")
 
 # Provider-specific component IDs
 WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
@@ -954,7 +1009,9 @@ def get_agent_config():
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model or (OPENAI_DEFAULT_EMBEDDING_MODEL if DISABLE_INGEST_WITH_LANGFLOW else "")
+    return get_openrag_config().knowledge.embedding_model or (
+        OPENAI_DEFAULT_EMBEDDING_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+    )
 
 
 def get_index_name() -> str:

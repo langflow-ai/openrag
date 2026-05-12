@@ -5,6 +5,13 @@ import type {
   TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
+import {
+  detectImplicitToolCall,
+  detectRAGFromContent,
+  parseOpenAIChatChunk,
+  parseOpenRAGChunk,
+  parseRealtimeChunk,
+} from "@/lib/chat-stream-parsers";
 import type { FilterInput } from "@/lib/filter-normalization";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
@@ -135,13 +142,12 @@ export function useChatStreaming({
 
       const decoder = new TextDecoder();
       let buffer = "";
-      let currentContent = "";
+      const content = { value: "" };
       const currentFunctionCalls: FunctionCall[] = [];
       let newResponseId: string | null = null;
       let isError = false;
-      let usageData: TokenUsage | undefined;
+      const usage: { value: TokenUsage | undefined } = { value: undefined };
 
-      // Initialize streaming message
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
           role: "assistant",
@@ -173,394 +179,38 @@ export function useChatStreaming({
               try {
                 const chunk = JSON.parse(line);
 
-                // Investigation logging for Granite 3.3 8b tool call detection
-                const chunkKeys = Object.keys(chunk);
-                const toolRelatedKeys = chunkKeys.filter(
-                  (key) =>
-                    key.toLowerCase().includes("tool") ||
-                    key.toLowerCase().includes("call") ||
-                    key.toLowerCase().includes("retrieval") ||
-                    key.toLowerCase().includes("function") ||
-                    key.toLowerCase().includes("result"),
-                );
-                if (toolRelatedKeys.length > 0) {
-                  console.log(
-                    "[Tool Detection] Found tool-related keys:",
-                    toolRelatedKeys,
-                    chunk,
-                  );
-                }
-
-                // Extract response ID if present
                 if (chunk.id) {
                   newResponseId = chunk.id;
                 } else if (chunk.response_id) {
                   newResponseId = chunk.response_id;
                 }
 
-                // Handle OpenAI Chat Completions streaming format
-                if (chunk.object === "response.chunk" && chunk.delta) {
-                  // Handle function calls in delta
-                  if (chunk.delta.function_call) {
-                    if (chunk.delta.function_call.name) {
-                      const functionCall: FunctionCall = {
-                        name: chunk.delta.function_call.name,
-                        arguments: undefined,
-                        status: "pending",
-                        argumentsString:
-                          chunk.delta.function_call.arguments || "",
-                      };
-                      currentFunctionCalls.push(functionCall);
-                    } else if (chunk.delta.function_call.arguments) {
-                      const lastFunctionCall =
-                        currentFunctionCalls[currentFunctionCalls.length - 1];
-                      if (lastFunctionCall) {
-                        if (!lastFunctionCall.argumentsString) {
-                          lastFunctionCall.argumentsString = "";
-                        }
-                        lastFunctionCall.argumentsString +=
-                          chunk.delta.function_call.arguments;
-
-                        if (lastFunctionCall.argumentsString.includes("}")) {
-                          try {
-                            const parsed = JSON.parse(
-                              lastFunctionCall.argumentsString,
-                            );
-                            lastFunctionCall.arguments = parsed;
-                            lastFunctionCall.status = "completed";
-                          } catch (e) {
-                            // Arguments not yet complete
-                          }
-                        }
-                      }
-                    }
-                  }
-                  // Handle tool calls in delta
-                  else if (
-                    chunk.delta.tool_calls &&
-                    Array.isArray(chunk.delta.tool_calls)
-                  ) {
-                    for (const toolCall of chunk.delta.tool_calls) {
-                      if (toolCall.function) {
-                        if (toolCall.function.name) {
-                          const functionCall: FunctionCall = {
-                            name: toolCall.function.name,
-                            arguments: undefined,
-                            status: "pending",
-                            argumentsString: toolCall.function.arguments || "",
-                          };
-                          currentFunctionCalls.push(functionCall);
-                        } else if (toolCall.function.arguments) {
-                          const lastFunctionCall =
-                            currentFunctionCalls[
-                              currentFunctionCalls.length - 1
-                            ];
-                          if (lastFunctionCall) {
-                            if (!lastFunctionCall.argumentsString) {
-                              lastFunctionCall.argumentsString = "";
-                            }
-                            lastFunctionCall.argumentsString +=
-                              toolCall.function.arguments;
-
-                            if (
-                              lastFunctionCall.argumentsString.includes("}")
-                            ) {
-                              try {
-                                const parsed = JSON.parse(
-                                  lastFunctionCall.argumentsString,
-                                );
-                                lastFunctionCall.arguments = parsed;
-                                lastFunctionCall.status = "completed";
-                              } catch (e) {
-                                // Arguments not yet complete
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                  // Handle content/text in delta
-                  else if (chunk.delta.content) {
-                    currentContent += chunk.delta.content;
-                  }
-
-                  // Handle finish reason
-                  if (chunk.delta.finish_reason) {
-                    currentFunctionCalls.forEach((fc) => {
-                      if (fc.status === "pending" && fc.argumentsString) {
-                        try {
-                          fc.arguments = JSON.parse(fc.argumentsString);
-                          fc.status = "completed";
-                        } catch (e) {
-                          fc.arguments = { raw: fc.argumentsString };
-                          fc.status = "error";
-                        }
-                      }
-                    });
-                  }
-                }
-                // Handle Realtime API format - function call added
-                else if (
-                  chunk.type === "response.output_item.added" &&
-                  chunk.item?.type === "function_call"
-                ) {
-                  let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
-                  );
-                  if (!existing) {
-                    existing = [...currentFunctionCalls]
-                      .reverse()
-                      .find(
-                        (fc) =>
-                          fc.status === "pending" &&
-                          !fc.id &&
-                          fc.name === (chunk.item.tool_name || chunk.item.name),
-                      );
-                  }
-
-                  if (existing) {
-                    existing.id = chunk.item.id;
-                    existing.type = chunk.item.type;
-                    existing.name =
-                      chunk.item.tool_name || chunk.item.name || existing.name;
-                    existing.arguments =
-                      chunk.item.inputs || existing.arguments;
-                  } else {
-                    const functionCall: FunctionCall = {
-                      name:
-                        chunk.item.tool_name || chunk.item.name || "unknown",
-                      arguments: chunk.item.inputs || undefined,
-                      status: "pending",
-                      argumentsString: "",
-                      id: chunk.item.id,
-                      type: chunk.item.type,
-                    };
-                    currentFunctionCalls.push(functionCall);
-                  }
-                }
-                // Handle Realtime API format - tool call added
-                else if (
-                  chunk.type === "response.output_item.added" &&
-                  chunk.item?.type?.includes("_call") &&
-                  chunk.item?.type !== "function_call"
-                ) {
-                  let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
-                  );
-                  if (!existing) {
-                    existing = [...currentFunctionCalls]
-                      .reverse()
-                      .find(
-                        (fc) =>
-                          fc.status === "pending" &&
-                          !fc.id &&
-                          fc.name ===
-                            (chunk.item.tool_name ||
-                              chunk.item.name ||
-                              chunk.item.type),
-                      );
-                  }
-
-                  if (existing) {
-                    existing.id = chunk.item.id;
-                    existing.type = chunk.item.type;
-                    existing.name =
-                      chunk.item.tool_name ||
-                      chunk.item.name ||
-                      chunk.item.type ||
-                      existing.name;
-                    existing.arguments =
-                      chunk.item.inputs || existing.arguments;
-                  } else {
-                    const functionCall = {
-                      name:
-                        chunk.item.tool_name ||
-                        chunk.item.name ||
-                        chunk.item.type ||
-                        "unknown",
-                      arguments: chunk.item.inputs || {},
-                      status: "pending" as const,
-                      id: chunk.item.id,
-                      type: chunk.item.type,
-                    };
-                    currentFunctionCalls.push(functionCall);
-                  }
-                }
-                // Handle function call done
-                else if (
-                  chunk.type === "response.output_item.done" &&
-                  chunk.item?.type === "function_call"
-                ) {
-                  const functionCall = currentFunctionCalls.find(
-                    (fc) =>
-                      fc.id === chunk.item.id ||
-                      fc.name === chunk.item.tool_name ||
-                      fc.name === chunk.item.name,
-                  );
-
-                  if (functionCall) {
-                    functionCall.status =
-                      chunk.item.status === "completed" ? "completed" : "error";
-                    functionCall.id = chunk.item.id;
-                    functionCall.type = chunk.item.type;
-                    functionCall.name =
-                      chunk.item.tool_name ||
-                      chunk.item.name ||
-                      functionCall.name;
-                    functionCall.arguments =
-                      chunk.item.inputs || functionCall.arguments;
-
-                    if (chunk.item.results) {
-                      functionCall.result = chunk.item.results;
-                    }
-                  }
-                }
-                // Handle tool call done with results
-                else if (
-                  chunk.type === "response.output_item.done" &&
-                  chunk.item?.type?.includes("_call") &&
-                  chunk.item?.type !== "function_call"
-                ) {
-                  const functionCall = currentFunctionCalls.find(
-                    (fc) =>
-                      fc.id === chunk.item.id ||
-                      fc.name === chunk.item.tool_name ||
-                      fc.name === chunk.item.name ||
-                      fc.name === chunk.item.type ||
-                      fc.name.includes(chunk.item.type.replace("_call", "")) ||
-                      chunk.item.type.includes(fc.name),
-                  );
-
-                  if (functionCall) {
-                    functionCall.arguments =
-                      chunk.item.inputs || functionCall.arguments;
-                    functionCall.status =
-                      chunk.item.status === "completed" ? "completed" : "error";
-                    functionCall.id = chunk.item.id;
-                    functionCall.type = chunk.item.type;
-
-                    if (chunk.item.results) {
-                      functionCall.result = chunk.item.results;
-                    }
-                  } else {
-                    const newFunctionCall = {
-                      name:
-                        chunk.item.tool_name ||
-                        chunk.item.name ||
-                        chunk.item.type ||
-                        "unknown",
-                      arguments: chunk.item.inputs || {},
-                      status: "completed" as const,
-                      id: chunk.item.id,
-                      type: chunk.item.type,
-                      result: chunk.item.results,
-                    };
-                    currentFunctionCalls.push(newFunctionCall);
-                  }
-                }
-
-                // Handle text output streaming (Realtime API)
-                else if (chunk.type === "response.output_text.delta") {
-                  currentContent += chunk.delta || "";
-                }
-                // Handle response.completed event - capture usage
-                else if (
-                  chunk.type === "response.completed" &&
-                  chunk.response?.usage
-                ) {
-                  usageData = chunk.response.usage;
-                }
-                // Handle OpenRAG backend format
-                else if (chunk.output_text) {
-                  currentContent += chunk.output_text;
-                }
-                // Note: chunk.delta.content is already handled in the OpenAI format section above (line 271)
-                // Only handle delta if it's a string or has text (not content)
-                else if (chunk.delta) {
-                  if (typeof chunk.delta === "string") {
-                    currentContent += chunk.delta;
-                  } else if (
-                    typeof chunk.delta === "object" &&
-                    chunk.delta.text &&
-                    !chunk.delta.content
-                  ) {
-                    // Only add text if content wasn't already processed
-                    currentContent += chunk.delta.text;
-                  }
-                }
-
-                // Heuristic detection for implicit tool calls (Granite 3.3 8b workaround)
-                // Check if chunk contains retrieval results without explicit tool call markers
-                const hasImplicitToolCall =
-                  // Check for various result indicators in the chunk
-                  (chunk.results &&
-                    Array.isArray(chunk.results) &&
-                    chunk.results.length > 0) ||
-                  (chunk.outputs &&
-                    Array.isArray(chunk.outputs) &&
-                    chunk.outputs.length > 0) ||
-                  // Check for retrieval-related fields
-                  chunk.retrieved_documents ||
-                  chunk.retrieval_results ||
-                  // Check for nested data structures that might contain results
-                  (chunk.data &&
-                    typeof chunk.data === "object" &&
-                    (chunk.data.results ||
-                      chunk.data.retrieved_documents ||
-                      chunk.data.retrieval_results));
-
-                if (hasImplicitToolCall && currentFunctionCalls.length === 0) {
-                  console.log(
-                    "[Heuristic Detection] Detected implicit tool call:",
+                parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||
+                  parseRealtimeChunk(
                     chunk,
-                  );
+                    content,
+                    currentFunctionCalls,
+                    usage,
+                  ) ||
+                  parseOpenRAGChunk(chunk, content);
+                detectImplicitToolCall(chunk, currentFunctionCalls);
 
-                  // Create a synthetic function call for the UI
-                  const results =
-                    chunk.results ||
-                    chunk.outputs ||
-                    chunk.retrieved_documents ||
-                    chunk.retrieval_results ||
-                    chunk.data?.results ||
-                    chunk.data?.retrieved_documents ||
-                    [];
-
-                  const syntheticFunctionCall: FunctionCall = {
-                    name: "Retrieval",
-                    arguments: { implicit: true, detected_heuristically: true },
-                    status: "completed",
-                    type: "retrieval_call",
-                    result: results,
-                  };
-                  currentFunctionCalls.push(syntheticFunctionCall);
-                  console.log(
-                    "[Heuristic Detection] Created synthetic function call",
-                  );
-                }
-
-                // Check for error status from Langflow
                 if (
                   chunk.finish_reason === "error" ||
                   chunk.status === "failed"
                 ) {
                   console.error("Error detected in stream");
-
-                  // Mark this as an error message and complete the stream
                   isError = true;
-
-                  // Exit the streaming loop by breaking the labeled while loop
                   break streamLoop;
                 }
 
-                // Update streaming message in real-time
                 if (
                   !controller.signal.aborted &&
                   thisStreamId === streamIdRef.current
                 ) {
                   setStreamingMessage({
                     role: "assistant",
-                    content: currentContent,
+                    content: content.value,
                     functionCalls:
                       currentFunctionCalls.length > 0
                         ? [...currentFunctionCalls]
@@ -580,57 +230,29 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
-      // Check if we got any content at all
       if (
         !hasReceivedData ||
-        (!currentContent && currentFunctionCalls.length === 0)
+        (!content.value && currentFunctionCalls.length === 0)
       ) {
         throw new Error(
           "No response received from the server. Please try again.",
         );
       }
 
-      // Post-processing: Heuristic detection based on final content
-      // If no explicit tool calls detected but content shows RAG indicators
-      if (currentFunctionCalls.length === 0 && currentContent) {
-        // Check for citation patterns that indicate RAG usage
-        const hasCitations =
-          /\(Source:|\[Source:|\bSource:|filename:|document:/i.test(
-            currentContent,
-          );
-        // Check for common RAG response patterns
-        const hasRAGPattern =
-          /based on.*(?:document|file|information|data)|according to.*(?:document|file)/i.test(
-            currentContent,
-          );
-
-        if (hasCitations || hasRAGPattern) {
-          console.log(
-            "[Post-Processing] Detected RAG usage from content patterns",
-          );
-          const syntheticFunctionCall: FunctionCall = {
-            name: "Retrieval",
-            arguments: {
-              implicit: true,
-              detected_from: hasCitations ? "citations" : "content_patterns",
-            },
-            status: "completed",
-            type: "retrieval_call",
-          };
-          currentFunctionCalls.push(syntheticFunctionCall);
-        }
+      if (currentFunctionCalls.length === 0 && content.value) {
+        const ragCall = detectRAGFromContent(content.value);
+        if (ragCall) currentFunctionCalls.push(ragCall);
       }
 
-      // Finalize the message
       const finalMessage: Message = {
         role: "assistant",
-        content: currentContent,
+        content: content.value,
         functionCalls:
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
-        error: isError, // Mark as error if Langflow returned error status
-        usage: usageData,
+        error: isError,
+        usage: usage.value,
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
