@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -41,10 +42,6 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	// Get the namespace to watch from environment variable
-	// If not set, watches all namespaces (cluster-scoped)
-	watchNamespace := os.Getenv("WATCH_NAMESPACE")
-
 	mgrOptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: cfg.MetricsBindAddress},
@@ -54,6 +51,7 @@ func main() {
 	}
 
 	// If WATCH_NAMESPACE is set, configure namespace-scoped watching
+	watchNamespace := strings.TrimSpace(os.Getenv("WATCH_NAMESPACE"))
 	if watchNamespace != "" {
 		setupLog.Info("configuring namespace-scoped watching", "namespace", watchNamespace)
 		// Note: Setting Cache.DefaultNamespaces limits the cache to specific namespaces
