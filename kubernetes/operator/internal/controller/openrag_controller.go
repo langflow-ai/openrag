@@ -364,11 +364,11 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Get or generate JWT signing key (base64 secret)
-	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_PRIVATE_KEY", resourceName("be-env"), generateBase64SecretKey)
+	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", resourceName("be-env"), generateBase64SecretKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
 	}
-	envVars["JWT_PRIVATE_KEY"] = jwtSigningKey
+	envVars["JWT_SIGNING_KEY"] = jwtSigningKey
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
