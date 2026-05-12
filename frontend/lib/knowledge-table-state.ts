@@ -78,6 +78,10 @@ export function buildKnowledgeTableRows(
     return file;
   });
 
+  const backendIdentities = new Set(
+    backendFiles.map((f) => getKnowledgeFileIdentity(f)),
+  );
+
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
       taskFile.filename === "OpenRAG docs refresh" ||
@@ -89,10 +93,7 @@ export function buildKnowledgeTableRows(
       return false;
     }
     const identity = getKnowledgeFileIdentity(taskFile);
-    const inBackend = backendFiles.some(
-      (backendFile) => getKnowledgeFileIdentity(backendFile) === identity,
-    );
-    if (inBackend) {
+    if (backendIdentities.has(identity)) {
       return false;
     }
     // Keep "active" overlays until the index lists the file (task drops key before refetch).

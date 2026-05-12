@@ -382,7 +382,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
-          void (async () => {
+          async function refetchKnowledgeAfterTaskCompletion() {
             // Refetch before dropping overlays (wildcard uses listFiles, not only search).
             try {
               await Promise.all([
@@ -409,7 +409,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 ),
               );
             }
-          })();
+          }
+          void refetchKnowledgeAfterTaskCompletion();
         } else if (
           shouldShowToast &&
           previousTask &&
