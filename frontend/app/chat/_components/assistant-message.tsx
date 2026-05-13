@@ -38,6 +38,7 @@ interface AssistantMessageProps {
   isInitialGreeting?: boolean;
   usage?: TokenUsageType;
   timestamp?: Date;
+  showFeedback?: boolean;
 }
 
 export function AssistantMessage({
@@ -56,6 +57,7 @@ export function AssistantMessage({
   isInitialGreeting = false,
   usage,
   timestamp,
+  showFeedback = true,
 }: AssistantMessageProps) {
   const trackFeedback = (feedback: "like" | "dislike") => {
     trackButton({
@@ -165,7 +167,7 @@ export function AssistantMessage({
               }
             />
             {usage && !isStreaming && <TokenUsage usage={usage} />}
-            {!isInitialGreeting && (
+            {!isInitialGreeting && showFeedback && (
               <MessageActions trackFeedback={trackFeedback} />
             )}
           </motion.div>
