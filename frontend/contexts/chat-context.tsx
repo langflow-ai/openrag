@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { INITIAL_ASSISTANT_MESSAGE } from "@/app/chat/_types/types";
 
 export type EndpointType = "chat" | "langflow";
 
@@ -346,7 +347,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       messages: [
         {
           role: "assistant",
-          content: "How can I assist?",
+          content: INITIAL_ASSISTANT_MESSAGE.content,
           timestamp: new Date().toISOString(),
         },
       ],

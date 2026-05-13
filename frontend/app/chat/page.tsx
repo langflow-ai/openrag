@@ -28,6 +28,7 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
+import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
@@ -52,11 +53,7 @@ function ChatPage() {
     setLoading,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "How can I assist?",
-      timestamp: new Date(),
-    },
+    INITIAL_ASSISTANT_MESSAGE,
   ]);
   const [input, setInput] = useState("");
   const { setChatError } = useChat();
@@ -327,13 +324,7 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       setInput("");
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
@@ -571,13 +562,7 @@ function ChatPage() {
   useEffect(() => {
     if (placeholderConversation && currentConversationId === null) {
       console.log("Starting new conversation");
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
@@ -1054,9 +1039,11 @@ function ChatPage() {
                             isInitialGreeting={
                               index === 0 &&
                               messages.length === 1 &&
-                              message.content === "How can I assist?"
+                              message.content ===
+                                INITIAL_ASSISTANT_MESSAGE.content
                             }
                             usage={message.usage}
+                            timestamp={message.timestamp}
                           />
                         )}
                       </div>
