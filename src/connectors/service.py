@@ -230,7 +230,7 @@ class ConnectorService:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
         # Collect files to process (limited by max_files)
-        files_to_process = []
+        files_to_process: list[dict[str, Any]] = []
         page_token = None
 
         # Calculate page size to minimize API calls
@@ -239,7 +239,7 @@ class ConnectorService:
         while True:
             # List files from connector with limit
             logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
-            file_list = await connector.list_files(page_token, limit=page_size)
+            file_list = await connector.list_files(page_token, max_files=page_size)
             logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
@@ -373,8 +373,8 @@ class ConnectorService:
         try:
             # Set the file_ids we want to sync in the connector's config
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = file_ids  # type: ignore
-                connector.cfg.folder_ids = None  # type: ignore
+                connector.cfg.file_ids = file_ids
+                connector.cfg.folder_ids = None
 
             # Get the expanded list of file IDs (folders will be expanded to their contents)
             # This uses the connector's list_files() which calls _iter_selected_items()
@@ -419,8 +419,8 @@ class ConnectorService:
         finally:
             # Restore original config values
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = original_file_ids  # type: ignore
-                connector.cfg.folder_ids = original_folder_ids  # type: ignore
+                connector.cfg.file_ids = original_file_ids
+                connector.cfg.folder_ids = original_folder_ids
 
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
