@@ -156,6 +156,22 @@ chat:
       usage: auto
     linear:
       usage: auto
+issue_enrichment:
+  auto_enrich:
+    enabled: true
+  planning:
+    enabled: true
+    auto_planning:
+      enabled: true
+      labels:
+        - "enhancement"
+        - "bug"
+        - "feature"
+        - "refactor"
+        - "performance"
+        - "!chore"
+        - "!documentation"
+        - "!test"
 knowledge_base:
   opt_out: false
   code_guidelines:
