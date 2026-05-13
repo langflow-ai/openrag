@@ -23,7 +23,7 @@ interface ConversationDocument {
 interface ConversationMessage {
   role: string;
   content: string;
-  timestamp?: Date;
+  timestamp?: string;
   response_id?: string;
 }
 
@@ -341,7 +341,13 @@ export function ChatProvider({ children }: ChatProviderProps) {
       response_id: "new-conversation-" + Date.now(),
       title: "New conversation",
       endpoint: endpoint,
-      messages: [INITIAL_ASSISTANT_MESSAGE],
+      messages: [
+        {
+          role: "assistant",
+          content: INITIAL_ASSISTANT_MESSAGE.content,
+          timestamp: new Date().toISOString(),
+        },
+      ],
       created_at: new Date().toISOString(),
       last_activity: new Date().toISOString(),
     };

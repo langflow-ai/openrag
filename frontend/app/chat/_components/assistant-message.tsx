@@ -167,7 +167,7 @@ export function AssistantMessage({
               }
             />
             {usage && !isStreaming && <TokenUsage usage={usage} />}
-            {!isInitialGreeting && showFeedback && (
+            {!isInitialGreeting && showFeedback && !isStreaming && (
               <MessageActions trackFeedback={trackFeedback} />
             )}
           </motion.div>

@@ -22,6 +22,8 @@ const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
       <Button
         variant="ghost"
         size="icon"
+        aria-label="Like"
+        aria-pressed={feedbackSelected === "like"}
         className={
           feedbackSelected !== "like"
             ? "text-muted-foreground hover:text-foreground"
@@ -36,6 +38,8 @@ const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
       <Button
         variant="ghost"
         size="icon"
+        aria-label="Dislike"
+        aria-pressed={feedbackSelected === "dislike"}
         className={
           feedbackSelected !== "dislike"
             ? "text-muted-foreground hover:text-foreground"

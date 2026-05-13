@@ -1127,7 +1127,8 @@ function ChatPage() {
                             isInitialGreeting={
                               index === 0 &&
                               messages.length === 1 &&
-                              message === INITIAL_ASSISTANT_MESSAGE
+                              message.content ===
+                                INITIAL_ASSISTANT_MESSAGE.content
                             }
                             usage={message.usage}
                             timestamp={message.timestamp}
