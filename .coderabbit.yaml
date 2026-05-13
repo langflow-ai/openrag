@@ -166,12 +166,9 @@ issue_enrichment:
       labels:
         - "enhancement"
         - "bug"
-        - "feature"
         - "refactor"
-        - "performance"
-        - "!chore"
         - "!documentation"
-        - "!test"
+        - "!tests"
 knowledge_base:
   opt_out: false
   code_guidelines:
