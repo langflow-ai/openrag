@@ -176,6 +176,13 @@ async def run_startup(app: FastAPI):
         logger.error("Runtime DB migration failed", error=str(e))
         raise
 
+    try:
+        wcs = services.get("workspace_config_service")
+        if wcs is not None:
+            await wcs.hydrate_on_startup()
+    except Exception as e:
+        logger.error("Workspace config hydration failed at startup", error=str(e))
+
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED)
 
     # FastMCP requires its own lifespan to be entered before requests
@@ -217,9 +224,7 @@ async def run_shutdown(app: FastAPI):
         task.cancel()
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
-        logger.info(
-            "Background tasks cancelled at shutdown", count=len(background_tasks)
-        )
+        logger.info("Background tasks cancelled at shutdown", count=len(background_tasks))
 
     # Drain any pending workspace_config DB-mirror tasks before we
     # tear down the engine. Without this, a save_config triggered

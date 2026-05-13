@@ -25,7 +25,7 @@ In `files` mode the patch is not installed.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -137,6 +137,19 @@ class WorkspaceConfigService:
         self._cm._config = None
         return await self.load_config()
 
+    async def hydrate_on_startup(self) -> None:
+        """Eagerly populate ``config_manager._config`` from the DB at
+        lifespan startup.
+
+        Without this, in `db` mode a restart leaves ``_config = None``
+        and the synchronous ``get_openrag_config()`` falls back to
+        defaults (no yaml exists) — so ``/api/settings`` reports
+        ``onboarding.current_step=0`` and the frontend flashes the
+        wizard on every restart. ``load_config()`` is itself mode-aware,
+        so this is safe to call unconditionally.
+        """
+        await self.load_config()
+
     async def is_onboarded(self) -> bool:
         mode = get_storage_mode()
         if mode == "files":
@@ -155,7 +168,7 @@ class WorkspaceConfigService:
             return False  # no yaml fallback in pure-db mode
         return self._cm.load_config().edited
 
-    async def get_onboarding_step(self) -> Optional[Any]:
+    async def get_onboarding_step(self) -> Any | None:
         """Returns the legacy step indicator — usually an int index from
         the OnboardingState dataclass, sometimes None. Treat as opaque."""
         mode = get_storage_mode()
@@ -181,10 +194,10 @@ class WorkspaceConfigService:
 
     async def save_config(
         self,
-        config: Optional[OpenRAGConfig] = None,
+        config: OpenRAGConfig | None = None,
         *,
         preserve_edited: bool = False,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> bool:
         mode = get_storage_mode()
 
@@ -217,7 +230,7 @@ class WorkspaceConfigService:
 
     async def update_onboarding_state(
         self,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
         **kwargs: Any,
     ) -> bool:
         mode = get_storage_mode()
@@ -278,8 +291,8 @@ class WorkspaceConfigService:
             cm._db_mirror_original_save = cm.save_config_file  # type: ignore[attr-defined]
             cm._db_mirror_original_update_ob = cm.update_onboarding_state  # type: ignore[attr-defined]
 
-        original_save = cm._db_mirror_original_save
-        original_update_ob = cm._db_mirror_original_update_ob
+        original_save = cm._db_mirror_original_save  # type: ignore[attr-defined]
+        original_update_ob = cm._db_mirror_original_update_ob  # type: ignore[attr-defined]
 
         def patched_save(config=None, preserve_edited: bool = False) -> bool:
             mode = get_storage_mode()
@@ -321,7 +334,7 @@ class WorkspaceConfigService:
 
     def _apply_in_memory(
         self,
-        config: Optional[OpenRAGConfig],
+        config: OpenRAGConfig | None,
         preserve_edited: bool,
     ) -> None:
         """Mirror the in-process effects of ``ConfigManager.save_config_file``
@@ -373,7 +386,7 @@ class WorkspaceConfigService:
         self,
         config: OpenRAGConfig,
         *,
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> None:
         config_dict = config.to_dict()
 
