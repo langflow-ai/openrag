@@ -11,6 +11,7 @@ const MarkdownRenderer = dynamic(
   { ssr: false },
 );
 
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
@@ -18,6 +19,7 @@ import type {
 } from "../_types/types";
 import { FunctionCalls } from "./function-calls";
 import { Message } from "./message";
+import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
 
 interface AssistantMessageProps {
@@ -35,6 +37,7 @@ interface AssistantMessageProps {
   delay?: number;
   isInitialGreeting?: boolean;
   usage?: TokenUsageType;
+  timestamp?: Date;
 }
 
 export function AssistantMessage({
@@ -52,7 +55,18 @@ export function AssistantMessage({
   delay = 0.2,
   isInitialGreeting = false,
   usage,
+  timestamp,
 }: AssistantMessageProps) {
+  const trackFeedback = (feedback: "like" | "dislike") => {
+    trackButton({
+      action: feedback,
+      elementId: "message-feedback",
+      namespace: "chat",
+      CTA: feedback === "like" ? "Like Message" : "Dislike Message",
+      timestamp: timestamp?.getTime(),
+    });
+  };
+
   return (
     <motion.div
       initial={animate ? { opacity: 0, y: -20 } : { opacity: 1, y: 0 }}
@@ -151,6 +165,9 @@ export function AssistantMessage({
               }
             />
             {usage && !isStreaming && <TokenUsage usage={usage} />}
+            {!isInitialGreeting && (
+              <MessageActions trackFeedback={trackFeedback} />
+            )}
           </motion.div>
         </div>
       </Message>
