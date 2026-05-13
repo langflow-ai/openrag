@@ -13,7 +13,6 @@ import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { cn } from "@/lib/utils";
-import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
@@ -32,7 +31,6 @@ import type {
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
-  const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     setEndpoint,
@@ -50,6 +48,8 @@ function ChatPage() {
     placeholderConversation,
     conversationFilter,
     setConversationFilter,
+    loading,
+    setLoading,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -59,7 +59,6 @@ function ChatPage() {
     },
   ]);
   const [input, setInput] = useState("");
-  const { loading, setLoading } = useLoadingStore();
   const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
@@ -109,7 +108,7 @@ function ChatPage() {
     streamingMessage,
     sendMessage: sendStreamingMessage,
     abortStream,
-    isLoading: isStreamLoading,
+    isLoading: isChatStreaming,
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
@@ -169,7 +168,7 @@ function ChatPage() {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isStreamLoading && !streamingMessage) {
+    if (isChatStreaming && !streamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -180,7 +179,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isStreamLoading, streamingMessage]);
+  }, [isChatStreaming, streamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -372,7 +371,7 @@ function ChatPage() {
 
     if (
       conversationData?.messages &&
-      (isNewConversation || (!isStreamLoading && hasMessageCountChanged)) &&
+      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -564,7 +563,7 @@ function ChatPage() {
     isUserInteracting,
     isForkingInProgress,
     setPreviousResponseIds,
-    isStreamLoading,
+    isChatStreaming,
     messages.length,
   ]);
 
