@@ -189,10 +189,7 @@ async def compute_orphans_for_connector_type(
         return []
 
     fn_map = id_to_filename or {}
-    return [
-        {"document_id": fid, "filename": fn_map.get(fid, "")}
-        for fid in orphan_ids
-    ]
+    return [{"document_id": fid, "filename": fn_map.get(fid, "")} for fid in orphan_ids]
 
 
 async def delete_orphan_documents(
@@ -209,9 +206,7 @@ async def delete_orphan_documents(
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_chunks_by_document_ids(
-            orphan_ids, opensearch_client, get_index_name()
-        )
+        return await delete_chunks_by_document_ids(orphan_ids, opensearch_client, get_index_name())
     except Exception as e:
         logger.error(
             "Orphan delete failed",
@@ -1101,9 +1096,7 @@ async def connector_sync_preview(
         )
     except Exception as e:
         logger.error("Sync preview failed", connector_type=connector_type, error=str(e))
-        return JSONResponse(
-            {"error": f"Sync preview failed: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Sync preview failed: {str(e)}"}, status_code=500)
 
 
 async def connectors_sync_all_preview(
@@ -1155,9 +1148,7 @@ async def connectors_sync_all_preview(
         )
     except Exception as e:
         logger.error("Sync-all preview failed", error=str(e))
-        return JSONResponse(
-            {"error": f"Sync-all preview failed: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Sync-all preview failed: {str(e)}"}, status_code=500)
 
 
 async def connector_token(
