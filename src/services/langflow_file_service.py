@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -530,7 +530,7 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token
+                filename, content, user_id=owner, auth_header=jwt_token)
             logger.debug(
                 "[LF] Docling submission accepted",
                 extra={"task_id": task_id, "filename": filename},
