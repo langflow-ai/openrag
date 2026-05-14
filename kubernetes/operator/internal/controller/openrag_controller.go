@@ -334,10 +334,140 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 	// Delete network policy if enabled
 	if o.Spec.NetworkPolicy.Enabled {
 		np := &networkingv1.NetworkPolicy{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("netpol"), Namespace: targetNS}, np)
+		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-netpol"), Namespace: targetNS}, np)
 		if err == nil {
+			logger.Info("Deleting NetworkPolicy", "name", resourceName("lf-netpol"), "namespace", targetNS)
 			if err := r.Delete(ctx, np); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete network policy")
+				logger.Error(err, "failed to delete network policy", "name", resourceName("lf-netpol"))
+			}
+		} else if !errors.IsNotFound(err) {
+			logger.Error(err, "failed to get network policy for deletion", "name", resourceName("lf-netpol"))
+		}
+	}
+
+	// Delete Docling components if enabled
+	if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Enabled {
+		// Delete Docling deployments (ds and dw)
+		for _, name := range []string{resourceName("ds"), resourceName("dw")} {
+			deployment := &appsv1.Deployment{}
+			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
+			if err == nil {
+				logger.Info("Deleting Docling deployment", "name", name)
+				if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Docling deployment", "name", name)
+				}
+			}
+		}
+
+		// Delete Docling services
+		for _, name := range []string{getServiceName(o, "ds"), getServiceName(o, "dw")} {
+			service := &corev1.Service{}
+			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
+			if err == nil {
+				logger.Info("Deleting Docling service", "name", name)
+				if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Docling service", "name", name)
+				}
+			}
+		}
+
+		// Delete Docling service accounts (only if we created them)
+		for _, role := range []string{"ds", "dw"} {
+			if shouldCreateServiceAccount(o, role) {
+				name := getServiceAccountName(o, role)
+				sa := &corev1.ServiceAccount{}
+				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
+				if err == nil {
+					logger.Info("Deleting Docling service account", "name", name)
+					if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
+						logger.Error(err, "failed to delete Docling service account", "name", name)
+					}
+				}
+			}
+		}
+
+		// Delete Docling HPAs if enabled
+		for _, name := range []string{resourceName("ds-hpa"), resourceName("dw-hpa")} {
+			hpa := &autoscalingv2.HorizontalPodAutoscaler{}
+			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, hpa)
+			if err == nil {
+				logger.Info("Deleting Docling HPA", "name", name)
+				if err := r.Delete(ctx, hpa); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Docling HPA", "name", name)
+				}
+			}
+		}
+
+		// Delete Docling PVCs if storage is enabled
+		// Note: Could add reclaim policy for Docling PVCs in future
+		for _, name := range []string{resourceName("ds-data"), resourceName("dw-data")} {
+			pvc := &corev1.PersistentVolumeClaim{}
+			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, pvc)
+			if err == nil {
+				logger.Info("Deleting Docling PVC", "name", name)
+				if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Docling PVC", "name", name)
+				}
+			}
+		}
+
+		// Delete Valkey resources if enabled
+		if o.Spec.DoclingComponents.Valkey != nil {
+			// Delete Valkey StatefulSet
+			sts := &appsv1.StatefulSet{}
+			err := r.Get(ctx, client.ObjectKey{Name: resourceName("valkey"), Namespace: targetNS}, sts)
+			if err == nil {
+				logger.Info("Deleting Valkey StatefulSet", "name", resourceName("valkey"))
+				if err := r.Delete(ctx, sts); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Valkey StatefulSet")
+				}
+			}
+
+			// Delete Valkey services
+			for _, name := range []string{resourceName("valkey"), resourceName("valkey-headless")} {
+				service := &corev1.Service{}
+				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
+				if err == nil {
+					logger.Info("Deleting Valkey service", "name", name)
+					if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
+						logger.Error(err, "failed to delete Valkey service", "name", name)
+					}
+				}
+			}
+
+			// Delete Valkey ConfigMap
+			cm := &corev1.ConfigMap{}
+			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-config"), Namespace: targetNS}, cm)
+			if err == nil {
+				logger.Info("Deleting Valkey ConfigMap", "name", resourceName("valkey-config"))
+				if err := r.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Valkey ConfigMap")
+				}
+			}
+
+			// Delete Valkey Secret
+			secret := &corev1.Secret{}
+			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-auth"), Namespace: targetNS}, secret)
+			if err == nil {
+				logger.Info("Deleting Valkey Secret", "name", resourceName("valkey-auth"))
+				if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete Valkey Secret")
+				}
+			}
+
+			// Delete Valkey PVCs (from StatefulSet)
+			// Note: StatefulSet PVCs have format: data-<statefulset-name>-<ordinal>
+			// We should delete these to avoid orphaned PVCs
+			for i := 0; i < 1; i++ { // Default replicas is 1
+				pvcName := fmt.Sprintf("data-%s-%d", resourceName("valkey"), i)
+				pvc := &corev1.PersistentVolumeClaim{}
+				err := r.Get(ctx, client.ObjectKey{Name: pvcName, Namespace: targetNS}, pvc)
+				if err == nil {
+					logger.Info("Deleting Valkey PVC", "name", pvcName)
+					if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
+						logger.Error(err, "failed to delete Valkey PVC", "name", pvcName)
+					}
+				}
 			}
 		}
 	}
