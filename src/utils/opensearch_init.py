@@ -10,6 +10,7 @@ from config.settings import (
     API_KEYS_INDEX_NAME,
     IBM_AUTH_ENABLED,
     INDEX_BODY,
+    OPENRAG_SKIP_OS_SECURITY_SETUP,
     PLATFORM_AUTH_DEV_MODE,
     clients,
     get_index_name,
@@ -99,9 +100,20 @@ async def init_index(opensearch_client=None, admin_username: str = None):
     try:
         await wait_for_opensearch(opensearch_client)
 
-        from utils.opensearch_utils import setup_opensearch_security
+        # Skip security setup when the platform manages it externally
+        # (SaaS / CPD). Index creation below still runs — SaaS / CPD
+        # deployments still need indices, they just don't want OpenRAG
+        # touching roles or role mappings.
+        if OPENRAG_SKIP_OS_SECURITY_SETUP:
+            logger.info(
+                "Skipping OpenSearch security setup during init_index "
+                "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)",
+                admin_username=admin_username,
+            )
+        else:
+            from utils.opensearch_utils import setup_opensearch_security
 
-        await setup_opensearch_security(os_client, admin_username=admin_username)
+            await setup_opensearch_security(os_client, admin_username=admin_username)
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model

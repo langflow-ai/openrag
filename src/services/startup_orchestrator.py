@@ -9,6 +9,7 @@ server URLs, and reapplies user settings if Langflow flows were reset.
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     FETCH_OPENRAG_DOCS_AT_STARTUP,
+    OPENRAG_SKIP_OS_SECURITY_SETUP,
     clients,
     get_openrag_config,
 )
@@ -65,17 +66,26 @@ async def startup_tasks(services):
         # Index will be created after onboarding when we know the embedding model
         await wait_for_opensearch()
 
-        # Setup OpenSearch security (roles and mappings) after connection is established
-        try:
-            from utils.opensearch_utils import setup_opensearch_security
-
-            await setup_opensearch_security(clients.opensearch)
-            logger.info("OpenSearch security configuration completed successfully")
-        except Exception as e:
-            logger.warning(
-                "Failed to setup OpenSearch security configuration - continuing anyway",
-                error=str(e),
+        # Setup OpenSearch security (roles and mappings) after connection is established.
+        # Skip entirely when the platform manages the security context externally
+        # (SaaS / CPD): the call would otherwise either fail with 403/401 or
+        # overwrite a curated config.
+        if OPENRAG_SKIP_OS_SECURITY_SETUP:
+            logger.info(
+                "Skipping OpenSearch security setup at startup "
+                "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)"
             )
+        else:
+            try:
+                from utils.opensearch_utils import setup_opensearch_security
+
+                await setup_opensearch_security(clients.opensearch)
+                logger.info("OpenSearch security configuration completed successfully")
+            except Exception as e:
+                logger.warning(
+                    "Failed to setup OpenSearch security configuration - continuing anyway",
+                    error=str(e),
+                )
 
         if DISABLE_INGEST_WITH_LANGFLOW:
             await _ensure_opensearch_index()
