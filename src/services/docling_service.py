@@ -29,7 +29,6 @@ class DoclingConfig(BaseModel):
     picture_description_local: dict | None = None
 
 
-
 class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 

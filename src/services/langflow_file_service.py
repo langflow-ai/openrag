@@ -515,8 +515,13 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
-    async def submit_to_docling(self, filename: str, content: bytes, jwt_token: str | None = None,
-        owner: str | None = None,) -> str:
+    async def submit_to_docling(
+        self,
+        filename: str,
+        content: bytes,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+    ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
         Phase 1 of the two-phase ingestion model. The caller is responsible
@@ -530,7 +535,8 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token)
+                filename, content, user_id=owner, auth_header=jwt_token
+            )
             logger.debug(
                 "[LF] Docling submission accepted",
                 extra={"task_id": task_id, "filename": filename},
@@ -591,7 +597,9 @@ class LangflowFileService:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(filename, content,user_id=owner, auth_header=jwt_token)
+        task_id = await self.submit_to_docling(
+            filename, content, user_id=owner, auth_header=jwt_token
+        )
 
         if file_task is not None:
             file_task.docling_task_id = task_id
