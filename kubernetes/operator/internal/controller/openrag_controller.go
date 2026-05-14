@@ -166,22 +166,29 @@ func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *ope
 }
 
 func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+	logger := log.FromContext(ctx)
+
 	if !controllerutil.ContainsFinalizer(o, finalizer) {
 		return nil
 	}
 
 	targetNS := targetNamespace(o)
 
-	// Remove finalizers from .env secrets so they can be deleted
+	// Remove finalizers from .env secrets and delete them
 	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
 		envSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
 		if err == nil {
+			// Remove finalizer first
 			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
 				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
 				if err := r.Update(ctx, envSecret); err != nil {
 					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
 				}
+			}
+			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
+			if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
 			}
 		} else if !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
@@ -199,13 +206,14 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 				if err := r.Update(ctx, userSecret); err != nil {
 					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
 				}
+				logger.Info("removed finalizer from user-supplied secret", "secret", secretRef.Name, "namespace", targetNS, "finalizer", userSecretFinalizer)
 			}
 		} else if !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
 		}
 	}
 
-	// Remove finalizers from auto-generated default secrets so they can be deleted
+	// Remove finalizers from auto-generated default secrets and delete them
 	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
 	defaultSecretNames := []string{
 		o.Name + "-openrag-encryption-key-default",
@@ -216,33 +224,120 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 		defaultSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, defaultSecret)
 		if err == nil {
+			// Remove finalizer first
 			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
 				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
 				if err := r.Update(ctx, defaultSecret); err != nil {
 					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
 				}
 			}
+			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
+			if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
+			}
 		} else if !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
 		}
 	}
 
-	// Delete managed namespace if it exists
-	ns := &corev1.Namespace{}
-	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-	if err == nil {
-		if ns.Labels[managedByLabel] == o.Name {
+	// If targetNamespace is different from CR namespace, we need to clean up resources
+	// We can only delete the namespace if WE created it (has managedByLabel)
+	// Otherwise, we must delete resources individually
+	if targetNS != o.Namespace {
+		ns := &corev1.Namespace{}
+		err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+
+		// Check if we created this namespace
+		if err == nil && ns.Labels[managedByLabel] == o.Name {
+			// We created it, safe to delete the entire namespace
 			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
 				return err
+			}
+		} else {
+			// Namespace exists but we didn't create it (user-provided)
+			// Must delete resources individually to avoid orphans
+			if err := r.deleteResources(ctx, o, targetNS); err != nil {
+				return fmt.Errorf("failed to delete resources in namespace %s: %w", targetNS, err)
+			}
+		}
+	}
+	// If same namespace, owner references handle cleanup automatically
+
+	controllerutil.RemoveFinalizer(o, finalizer)
+	return r.Update(ctx, o)
+}
+
+// deleteResources explicitly deletes all resources created by the operator in the target namespace
+// This is necessary when deploying to an existing namespace that we don't manage
+func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+	logger := log.FromContext(ctx)
+
+	// Delete deployments
+	for _, name := range []string{resourceName("fe"), resourceName("be"), resourceName("lf")} {
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
+		if err == nil {
+			if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "failed to delete deployment", "name", name)
 			}
 		}
 	}
 
-	controllerutil.RemoveFinalizer(o, finalizer)
-	return r.Update(ctx, o)
+	// Delete services
+	for _, name := range []string{getServiceName(o, "fe"), getServiceName(o, "be"), getServiceName(o, "lf")} {
+		service := &corev1.Service{}
+		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
+		if err == nil {
+			if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "failed to delete service", "name", name)
+			}
+		}
+	}
+
+	// Delete service accounts (only if we created them)
+	for _, role := range []string{"fe", "be", "lf"} {
+		if shouldCreateServiceAccount(o, role) {
+			name := getServiceAccountName(o, role)
+			sa := &corev1.ServiceAccount{}
+			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
+			if err == nil {
+				if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete service account", "name", name)
+				}
+			}
+		}
+	}
+
+	// Delete PVCs (only if retainPVCOnDelete is false)
+	// Default is true (retain data), so we only delete if explicitly set to false
+	if o.Spec.Langflow.RetainPVCOnDelete != nil && !*o.Spec.Langflow.RetainPVCOnDelete {
+		pvc := &corev1.PersistentVolumeClaim{}
+		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-data"), Namespace: targetNS}, pvc)
+		if err == nil {
+			logger.Info("Deleting Langflow PVC as retainPVCOnDelete is set to false", "pvc", resourceName("lf-data"))
+			if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "failed to delete PVC", "name", resourceName("lf-data"))
+			}
+		}
+	} else {
+		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "retainPVCOnDelete", true)
+	}
+
+	// Delete network policy if enabled
+	if o.Spec.NetworkPolicy.Enabled {
+		np := &networkingv1.NetworkPolicy{}
+		err := r.Get(ctx, client.ObjectKey{Name: resourceName("netpol"), Namespace: targetNS}, np)
+		if err == nil {
+			if err := r.Delete(ctx, np); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "failed to delete network policy")
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {

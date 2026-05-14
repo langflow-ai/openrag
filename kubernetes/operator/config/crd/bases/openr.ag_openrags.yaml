@@ -12741,6 +12741,14 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  retainPVCOnDelete:
+                    default: true
+                    description: |-
+                      RetainPVCOnDelete determines whether the Langflow PVC should be retained when the OpenRAG CR is deleted.
+                      If true (default), the PVC is retained to preserve user data (flows, SQLite database).
+                      If false, the PVC is deleted along with other resources.
+                      WARNING: Setting this to false will permanently delete all Langflow data on CR deletion.
+                    type: boolean
                   secretKeySecret:
                     description: |-
                       SecretKeySecret references the Secret key for LANGFLOW_SECRET_KEY,

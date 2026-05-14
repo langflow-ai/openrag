@@ -226,6 +226,14 @@ type LangflowSpec struct {
 	// Storage configures a PVC mounted at /app/data (Langflow SQLite + flows).
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`
+
+	// RetainPVCOnDelete determines whether the Langflow PVC should be retained when the OpenRAG CR is deleted.
+	// If true (default), the PVC is retained to preserve user data (flows, SQLite database).
+	// If false, the PVC is deleted along with other resources.
+	// WARNING: Setting this to false will permanently delete all Langflow data on CR deletion.
+	// +optional
+	// +kubebuilder:default=true
+	RetainPVCOnDelete *bool `json:"retainPVCOnDelete,omitempty"`
 }
 
 // LLMSpec configures the LLM provider used by backend and Langflow.
