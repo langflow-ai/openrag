@@ -88,10 +88,6 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_KEY_RETRIES":        "15",
 			"LANGFLOW_KEY_RETRY_DELAY":    "2",
 			"LANGFLOW_KEY":                "",
-			"LANGFLOW_INGEST_FLOW_ID":     "",
-			"LANGFLOW_URL_INGEST_FLOW_ID": "",
-			"LANGFLOW_CHAT_FLOW_ID":       "",
-			"NUDGES_FLOW_ID":              "",
 
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",

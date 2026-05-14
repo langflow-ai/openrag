@@ -31,11 +31,6 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
-    # flowIds:
-    #   chat: ""
-    #   ingest: ""
-    #   urlIngest: ""
-    #   nudges: ""
 
   langflow:
     image: langflowai/openrag-langflow:latest
