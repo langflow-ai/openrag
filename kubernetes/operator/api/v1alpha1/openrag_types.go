@@ -9,6 +9,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// PVCReclaimPolicy describes what happens to PVCs when the OpenRAG CR is deleted.
+// +kubebuilder:validation:Enum=Retain;Delete
+type PVCReclaimPolicy string
+
+const (
+	// PVCReclaimRetain means the PVC will be retained when the CR is deleted (preserves user data).
+	PVCReclaimRetain PVCReclaimPolicy = "Retain"
+	// PVCReclaimDelete means the PVC will be deleted when the CR is deleted (data loss).
+	PVCReclaimDelete PVCReclaimPolicy = "Delete"
+)
+
 // ComponentSpec defines common configuration shared by all three components.
 type ComponentSpec struct {
 	// Image is the container image (repository:tag).
@@ -226,6 +237,15 @@ type LangflowSpec struct {
 	// Storage configures a PVC mounted at /app/data (Langflow SQLite + flows).
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`
+
+	// PVCReclaimPolicy determines what happens to the Langflow PVC when the OpenRAG CR is deleted.
+	// - "Retain" (default): PVC is retained to preserve user data (flows, SQLite database)
+	// - "Delete": PVC is deleted along with other resources (WARNING: permanent data loss)
+	// Similar to Kubernetes PersistentVolume reclaimPolicy.
+	// +optional
+	// +kubebuilder:default=Retain
+	// +kubebuilder:validation:Enum=Retain;Delete
+	PVCReclaimPolicy PVCReclaimPolicy `json:"pvcReclaimPolicy,omitempty"`
 }
 
 // LLMSpec configures the LLM provider used by backend and Langflow.

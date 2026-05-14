@@ -12676,6 +12676,21 @@ spec:
                             type: string
                         type: object
                     type: object
+                  pvcReclaimPolicy:
+                    allOf:
+                    - enum:
+                      - Retain
+                      - Delete
+                    - enum:
+                      - Retain
+                      - Delete
+                    default: Retain
+                    description: |-
+                      PVCReclaimPolicy determines what happens to the Langflow PVC when the OpenRAG CR is deleted.
+                      - "Retain" (default): PVC is retained to preserve user data (flows, SQLite database)
+                      - "Delete": PVC is deleted along with other resources (WARNING: permanent data loss)
+                      Similar to Kubernetes PersistentVolume reclaimPolicy.
+                    type: string
                   replicas:
                     default: 1
                     format: int32
