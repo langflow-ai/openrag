@@ -2,7 +2,7 @@ import asyncio
 import json
 import platform
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,7 @@ class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 
 
-class DoclingTaskState(str, Enum):
+class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
     PENDING = "pending"

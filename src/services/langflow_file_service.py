@@ -541,7 +541,7 @@ class LangflowFileService:
                 "[LF] Docling submission failed",
                 extra={"error": str(e), "filename": filename},
             )
-            raise Exception(f"Docling upload failed: {str(e)}")
+            raise Exception(f"Docling upload failed: {str(e)}") from e
 
     async def upload_and_ingest_file(
         self,
