@@ -598,7 +598,7 @@ class LangflowFileService:
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
         task_id = await self.submit_to_docling(
-            filename, content, user_id=owner, auth_header=jwt_token
+            filename, content, owner=owner, jwt_token=jwt_token
         )
 
         if file_task is not None:
