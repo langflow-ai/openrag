@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -71,7 +71,7 @@ class LangflowFileService:
 
         return final_tweaks
 
-    async def upload_user_file(self, file_tuple, jwt_token: Optional[str] = None) -> Dict[str, Any]:
+    async def upload_user_file(self, file_tuple, jwt_token: str | None = None) -> dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
         """
@@ -515,8 +515,8 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
-    async def submit_to_docling(self, filename: str, content: bytes, jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,) -> str:
+    async def submit_to_docling(self, filename: str, content: bytes, jwt_token: str | None = None,
+        owner: str | None = None,) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
         Phase 1 of the two-phase ingestion model. The caller is responsible
@@ -546,17 +546,17 @@ class LangflowFileService:
     async def upload_and_ingest_file(
         self,
         file_tuple,
-        session_id: Optional[str] = None,
-        tweaks: Optional[Dict[str, Any]] = None,
-        settings: Optional[Dict[str, Any]] = None,
-        jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,
-        docling_polling_service: Optional[Any] = None,
-        file_task: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        session_id: str | None = None,
+        tweaks: dict[str, Any] | None = None,
+        settings: dict[str, Any] | None = None,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        connector_type: str | None = None,
+        docling_polling_service: Any | None = None,
+        file_task: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
 
