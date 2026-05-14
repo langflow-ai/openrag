@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 class IngestionTimeoutError(Exception):
     """Raised when file processing exceeds the configured timeout"""
+
     pass
 
 
@@ -26,13 +27,23 @@ class TaskService:
     # Cleanup interval in seconds (2 hours)
     CLEANUP_INTERVAL_SECONDS = 2 * 60 * 60
 
-    def __init__(self, document_service=None, models_service=None, ingestion_timeout=3600, docling_service=None):
+    def __init__(
+        self,
+        document_service=None,
+        models_service=None,
+        ingestion_timeout=3600,
+        docling_service=None,
+        docling_polling_service=None,
+    ):
         self.document_service = document_service
         self.models_service = models_service
         self.docling_service = docling_service
-        self.task_store: dict[
-            str, dict[str, UploadTask]
-        ] = {}  # user_id -> {task_id -> UploadTask}
+        # Backend-side Docling polling coordinator. Injected by the container
+        # so LangflowFileProcessor receives it from the established DI chain
+        # rather than constructing it inline. None disables the two-phase
+        # flow and falls back to the legacy single-call ingestion path.
+        self.docling_polling_service = docling_polling_service
+        self.task_store: dict[str, dict[str, UploadTask]] = {}  # user_id -> {task_id -> UploadTask}
         self.background_tasks = set()
         self.ingestion_timeout = ingestion_timeout
         self._cleanup_task: asyncio.Task | None = None
@@ -102,7 +113,9 @@ class TaskService:
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
         except asyncio.TimeoutError:
-            raise IngestionTimeoutError(f"File processing timed out after {timeout} seconds.") from None
+            raise IngestionTimeoutError(
+                f"File processing timed out after {timeout} seconds."
+            ) from None
 
     async def create_upload_task(
         self,
@@ -160,8 +173,11 @@ class TaskService:
             settings=settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
+            docling_polling_service=self.docling_polling_service,
         )
-        return await self.create_custom_task(user_id, file_paths, processor, original_filenames, existing_task_id=existing_task_id)
+        return await self.create_custom_task(
+            user_id, file_paths, processor, original_filenames, existing_task_id=existing_task_id
+        )
 
     async def create_langflow_url_upload_task(
         self,
@@ -194,11 +210,21 @@ class TaskService:
             prevent_outside=prevent_outside,
             tweaks=tweaks,
         )
-        return await self.create_custom_task(owner_user_id, [docs_url], processor, existing_task_id=existing_task_id)
+        return await self.create_custom_task(
+            owner_user_id, [docs_url], processor, existing_task_id=existing_task_id
+        )
 
-    async def create_custom_task(self, user_id: str, items: list, processor, original_filenames: dict | None = None, existing_task_id: str = None) -> str:
+    async def create_custom_task(
+        self,
+        user_id: str,
+        items: list,
+        processor,
+        original_filenames: dict | None = None,
+        existing_task_id: str = None,
+    ) -> str:
         """Create a new task with custom processor for any type of items"""
         import os
+
         # Store anonymous tasks under a stable key so they can be retrieved later
         store_user_id = user_id or AnonymousUser().user_id
         task_id = existing_task_id or str(uuid.uuid4())
@@ -210,14 +236,16 @@ class TaskService:
         file_tasks = {
             str(item): FileTask(
                 file_path=str(item),
-                filename=normalized_originals.get(
-                    str(item), os.path.basename(str(item))
-                ),
+                filename=normalized_originals.get(str(item), os.path.basename(str(item))),
             )
             for item in items
         }
 
-        if existing_task_id and store_user_id in self.task_store and existing_task_id in self.task_store[store_user_id]:
+        if (
+            existing_task_id
+            and store_user_id in self.task_store
+            and existing_task_id in self.task_store[store_user_id]
+        ):
             upload_task = self.task_store[store_user_id][existing_task_id]
             upload_task.file_tasks.update(file_tasks)
             upload_task.total_files += len(items)
@@ -252,7 +280,7 @@ class TaskService:
                 metadata={
                     "total_files": len(items),
                     "processor_type": processor.__class__.__name__,
-                }
+                },
             )
         )
 
@@ -334,7 +362,7 @@ class TaskService:
                         # Add timeout protection to prevent indefinite hangs
                         await self._process_with_timeout(
                             processor.process_item(upload_task, item, file_task),
-                            timeout_seconds=self.ingestion_timeout
+                            timeout_seconds=self.ingestion_timeout,
                         )
 
                         logger.info(
@@ -421,6 +449,7 @@ class TaskService:
                 if upload_task.successful_files > 0:
                     try:
                         from config.settings import clients, get_index_name
+
                         await clients.opensearch.indices.refresh(index=get_index_name())
                     except Exception as e:
                         logger.debug("Index refresh after ingest failed (non-fatal)", error=str(e))
@@ -460,7 +489,7 @@ class TaskService:
                         "total_files": upload_task.total_files,
                         "successful_files": upload_task.successful_files,
                         "failed_files": upload_task.failed_files,
-                    }
+                    },
                 )
             )
 
@@ -527,7 +556,7 @@ class TaskService:
                             "processed_files": upload_task.processed_files,
                             "successful_files": upload_task.successful_files,
                             "failed_files": upload_task.failed_files,
-                        }
+                        },
                     )
                 )
             else:
@@ -578,6 +607,9 @@ class TaskService:
                 "updated_at": file_task.updated_at,
                 "duration_seconds": file_task.duration_seconds,
                 "filename": file_task.filename,
+                "phase": file_task.phase.value,
+                "docling_status": file_task.docling_status.value,
+                "docling_task_id": file_task.docling_task_id,
             }
 
             # Count running and pending files
@@ -633,6 +665,9 @@ class TaskService:
                             "updated_at": file_task.updated_at,
                             "duration_seconds": file_task.duration_seconds,
                             "filename": file_task.filename,
+                            "phase": file_task.phase.value,
+                            "docling_status": file_task.docling_status.value,
+                            "docling_task_id": file_task.docling_task_id,
                         }
 
                     if file_task.status.value == "running":
@@ -682,8 +717,10 @@ class TaskService:
             for task_id in list(self.task_store[user_id].keys()):
                 task = self.task_store[user_id][task_id]
                 # Only cleanup completed or failed tasks that are old enough
-                if (task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED] and
-                    current_time - task.updated_at > max_age_seconds):
+                if (
+                    task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
+                    and current_time - task.updated_at > max_age_seconds
+                ):
                     del self.task_store[user_id][task_id]
                     # Clean up the associated lock
                     self._task_locks.pop(task_id, None)
@@ -692,7 +729,7 @@ class TaskService:
                         "Cleaned up old task",
                         task_id=task_id,
                         user_id=user_id,
-                        age_seconds=current_time - task.updated_at
+                        age_seconds=current_time - task.updated_at,
                     )
 
             # Remove empty user entries
@@ -731,10 +768,7 @@ class TaskService:
             return False
 
         # Cancel the background task to stop scheduling new work
-        if (
-            hasattr(upload_task, "background_task")
-            and not upload_task.background_task.done()
-        ):
+        if hasattr(upload_task, "background_task") and not upload_task.background_task.done():
             upload_task.background_task.cancel()
             # Wait for the background task to actually stop to avoid race conditions
             try:
@@ -792,5 +826,6 @@ class TaskService:
             # Log any unexpected errors (not CancelledError)
             for i, result in enumerate(results):
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
-                    logger.warning("Background task raised exception during shutdown", error=str(result))
-
+                    logger.warning(
+                        "Background task raised exception during shutdown", error=str(result)
+                    )

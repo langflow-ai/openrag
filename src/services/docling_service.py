@@ -1,5 +1,7 @@
 import asyncio
 import json
+from dataclasses import dataclass
+from enum import Enum
 import platform
 from pathlib import Path
 from typing import Any
@@ -27,8 +29,28 @@ class DoclingConfig(BaseModel):
     picture_description_local: dict | None = None
 
 
+
 class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
+
+
+class DoclingTaskState(str, Enum):
+    """Result of a single status check against Docling Serve."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    NOT_FOUND = "not_found"
+
+
+@dataclass
+class DoclingStatusSnapshot:
+    """Single-point-in-time view of a Docling task's state."""
+
+    state: DoclingTaskState
+    detail: Optional[str] = None
+    raw: Optional[dict] = None
 
 
 def get_docling_preset_configs(
@@ -56,7 +78,7 @@ class DoclingService:
     _default_client: httpx.AsyncClient | None = None
 
     def __init__(
-        self, docling_url: str | None = None, httpx_client: httpx.AsyncClient | None = None
+        self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None
     ):
         """
         Initialize the DoclingService.
@@ -188,6 +210,98 @@ class DoclingService:
         except Exception as e:
             logger.error("Docling result retrieval failed", task_id=task_id, error=str(e))
             raise
+
+    async def check_task_status(self, task_id: str) -> DoclingStatusSnapshot:
+        """
+        Single (non-blocking) status check against Docling Serve.
+
+        Used by the backend polling coordinator so that the polling loop lives
+        in OpenRAG and not inside Langflow. Maps the Docling Serve response
+        into a DoclingStatusSnapshot regardless of HTTP outcome.
+        """
+        client = self._get_client()
+        url = f"{self.docling_url}/v1/status/poll/{task_id}"
+        try:
+            response = await client.get(url)
+        except httpx.RequestError as e:
+            # Transient network error — surface as PROCESSING so caller can
+            # retry without prematurely failing the file.
+            logger.debug("Transient error checking docling status", task_id=task_id, error=str(e))
+            return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, detail=str(e))
+
+        if response.status_code == 404:
+            return DoclingStatusSnapshot(state=DoclingTaskState.NOT_FOUND, detail="Task not found")
+        if response.status_code >= 500:
+            logger.debug(
+                "Transient HTTP error from docling status endpoint",
+                task_id=task_id,
+                status_code=response.status_code,
+            )
+            return DoclingStatusSnapshot(
+                state=DoclingTaskState.PROCESSING,
+                detail=f"HTTP {response.status_code}",
+            )
+        if response.status_code >= 400:
+            return DoclingStatusSnapshot(
+                state=DoclingTaskState.FAILED,
+                detail=f"HTTP {response.status_code}: {response.text[:300]}",
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as e:
+            return DoclingStatusSnapshot(
+                state=DoclingTaskState.FAILED,
+                detail=f"Malformed status response: {str(e)}",
+            )
+
+        status = payload.get("task_status")
+        if status == "success":
+            return DoclingStatusSnapshot(state=DoclingTaskState.SUCCESS, raw=payload)
+        if status == "failure":
+            return DoclingStatusSnapshot(
+                state=DoclingTaskState.FAILED,
+                detail=str(payload),
+                raw=payload,
+            )
+        if status in ("started", "processing", "running"):
+            return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, raw=payload)
+        return DoclingStatusSnapshot(state=DoclingTaskState.PENDING, raw=payload)
+
+    async def fetch_task_result(self, task_id: str) -> Dict[str, Any]:
+        """
+        Fetch the converted document for a Docling task that is already SUCCESS.
+
+        Raises:
+            DoclingServeError: if the result endpoint returns 404 (task expired
+                or unknown), an unexpected status code, or a payload missing
+                document.json_content.
+        """
+        client = self._get_client()
+        url = f"{self.docling_url}/v1/result/{task_id}"
+        try:
+            response = await client.get(url)
+        except httpx.RequestError as e:
+            raise DoclingServeError(f"Network error fetching docling result: {str(e)}") from e
+
+        if response.status_code == 404:
+            raise DoclingServeError(
+                f"Docling result not found for task {task_id} (task expired or unknown)"
+            )
+        if response.status_code >= 400:
+            raise DoclingServeError(
+                f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as e:
+            raise DoclingServeError(f"Malformed docling result payload: {str(e)}") from e
+
+        doc_content = payload.get("document", {}).get("json_content")
+        if doc_content is None:
+            raise DoclingServeError("docling-serve response missing document.json_content")
+        return doc_content
 
     async def _poll_result(
         self,

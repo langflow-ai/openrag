@@ -735,6 +735,9 @@ class S3FileProcessor(TaskProcessor):
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
         import time
+        import asyncio
+        import datetime
+        from config.settings import clients, get_embedding_model, get_index_name
 
         from models.tasks import TaskStatus
 
@@ -787,7 +790,7 @@ class S3FileProcessor(TaskProcessor):
 
 
 class LangflowFileProcessor(TaskProcessor):
-    """Processor for Langflow file uploads with upload and ingest"""
+    """Processor for Langflow file uploads with two-phase Docling + Langflow ingestion."""
 
     def __init__(
         self,
@@ -802,6 +805,7 @@ class LangflowFileProcessor(TaskProcessor):
         settings: dict = None,
         replace_duplicates: bool = False,
         connector_type: str = "local",
+        docling_polling_service=None,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -815,6 +819,11 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
+        # Backend-side Docling polling coordinator. Injected by TaskService
+        # from the container; gating by ENABLE_BACKEND_DOCLING_POLLING happens
+        # at construction time in app.container. When None, the legacy
+        # single-call ingestion path is used.
+        self.docling_polling_service = docling_polling_service
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -886,7 +895,10 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
-            # Process file using langflow service
+            # Process file using langflow service. Passing the polling
+            # service triggers the two-phase model: backend polls Docling,
+            # then invokes Langflow only after SUCCESS. file_task is passed
+            # so phase / docling_status are tracked on the task record.
             result = await self.langflow_file_service.upload_and_ingest_file(
                 file_tuple=file_tuple,
                 session_id=self.session_id,
@@ -897,6 +909,8 @@ class LangflowFileProcessor(TaskProcessor):
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 connector_type=self.connector_type,
+                docling_polling_service=self.docling_polling_service,
+                file_task=file_task,
             )
 
             # Update task with success

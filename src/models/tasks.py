@@ -12,6 +12,30 @@ class TaskStatus(Enum):
     FAILED = "failed"
 
 
+class DoclingPhaseStatus(Enum):
+    """Tracks the state of the Docling conversion sub-phase for a single file."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class IngestionPhase(Enum):
+    """Tracks which phase of the two-phase ingestion pipeline a file is in.
+
+    DOCLING: file has been submitted to Docling Serve and the backend is
+        polling for conversion completion. Langflow has not been called.
+    LANGFLOW: Docling conversion succeeded; Langflow ingestion flow is running.
+    COMPLETE: Langflow ingestion finished and the document is indexed.
+    """
+
+    DOCLING = "docling"
+    LANGFLOW = "langflow"
+    COMPLETE = "complete"
+
+
 @dataclass
 class FileTask:
     file_path: str
@@ -22,6 +46,11 @@ class FileTask:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     filename: Optional[str] = None  # Original filename for display
+    # Two-phase ingestion fields. Only meaningful for processors that submit
+    # files to Docling Serve and then trigger Langflow (i.e. LangflowFileProcessor).
+    docling_task_id: Optional[str] = None
+    docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
+    phase: IngestionPhase = IngestionPhase.DOCLING
 
     @property
     def duration_seconds(self) -> float:
