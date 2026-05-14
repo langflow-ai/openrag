@@ -43,11 +43,14 @@ async def test_security_setup_called_when_flag_false(monkeypatch):
     os_client = _fake_os_client()
     setup_mock = AsyncMock()
 
-    with patch(
-        "utils.opensearch_utils.setup_opensearch_security", setup_mock
-    ), patch.object(init_mod, "wait_for_opensearch", AsyncMock()), patch.object(
-        init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
-    ), patch.object(init_mod, "get_index_name", return_value="documents"):
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", setup_mock),
+        patch.object(init_mod, "wait_for_opensearch", AsyncMock()),
+        patch.object(
+            init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
+        ),
+        patch.object(init_mod, "get_index_name", return_value="documents"),
+    ):
         await init_mod.init_index(opensearch_client=os_client, admin_username="alice")
 
     assert setup_mock.await_count == 1
@@ -70,18 +73,20 @@ async def test_security_setup_skipped_when_flag_true(monkeypatch):
     logger_spy = MagicMock()
     monkeypatch.setattr(init_mod, "logger", logger_spy)
 
-    with patch(
-        "utils.opensearch_utils.setup_opensearch_security", setup_mock
-    ), patch.object(init_mod, "wait_for_opensearch", AsyncMock()), patch.object(
-        init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
-    ), patch.object(init_mod, "get_index_name", return_value="documents"):
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", setup_mock),
+        patch.object(init_mod, "wait_for_opensearch", AsyncMock()),
+        patch.object(
+            init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
+        ),
+        patch.object(init_mod, "get_index_name", return_value="documents"),
+    ):
         await init_mod.init_index(opensearch_client=os_client, admin_username="bob")
 
     assert setup_mock.await_count == 0
     info_messages = [call.args[0] for call in logger_spy.info.call_args_list if call.args]
     assert any(
-        "Skipping OpenSearch security setup during init_index" in msg
-        for msg in info_messages
+        "Skipping OpenSearch security setup during init_index" in msg for msg in info_messages
     ), f"expected skip log line not emitted; got: {info_messages}"
 
 
@@ -96,15 +101,20 @@ async def test_index_creation_still_runs_when_flag_true(monkeypatch):
 
     os_client = _fake_os_client()
 
-    with patch(
-        "utils.opensearch_utils.setup_opensearch_security", AsyncMock()
-    ), patch.object(init_mod, "wait_for_opensearch", AsyncMock()), patch.object(
-        init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
-    ), patch.object(init_mod, "get_index_name", return_value="documents"):
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", AsyncMock()),
+        patch.object(init_mod, "wait_for_opensearch", AsyncMock()),
+        patch.object(
+            init_mod, "create_index_body", AsyncMock(return_value={"settings": {}, "mappings": {}})
+        ),
+        patch.object(init_mod, "get_index_name", return_value="documents"),
+    ):
         await init_mod.init_index(opensearch_client=os_client)
 
     # The three indices: documents, knowledge_filters, api_keys.
-    created_indices = {call.kwargs.get("index") for call in os_client.indices.create.await_args_list}
+    created_indices = {
+        call.kwargs.get("index") for call in os_client.indices.create.await_args_list
+    }
     assert "documents" in created_indices
     assert "knowledge_filters" in created_indices
     assert "api_keys" in created_indices, (

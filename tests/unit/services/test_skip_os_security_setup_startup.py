@@ -38,23 +38,26 @@ async def test_setup_runs_when_flag_false(monkeypatch):
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False, raising=False)
 
     setup_mock = AsyncMock()
-    with patch(
-        "utils.opensearch_utils.setup_opensearch_security", setup_mock
-    ), patch.object(orchestrator, "wait_for_opensearch", AsyncMock()), patch.object(
-        orchestrator, "init_index", AsyncMock()
-    ), patch.object(
-        orchestrator, "configure_alerting_security", AsyncMock()
-    ), patch.object(
-        orchestrator, "_reingest_default_docs_on_upgrade_if_needed",
-        AsyncMock(return_value=False),
-    ), patch.object(
-        orchestrator, "_update_mcp_server_urls", AsyncMock()
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", setup_mock),
+        patch.object(orchestrator, "wait_for_opensearch", AsyncMock()),
+        patch.object(orchestrator, "init_index", AsyncMock()),
+        patch.object(orchestrator, "configure_alerting_security", AsyncMock()),
+        patch.object(
+            orchestrator,
+            "_reingest_default_docs_on_upgrade_if_needed",
+            AsyncMock(return_value=False),
+        ),
+        patch.object(orchestrator, "_update_mcp_server_urls", AsyncMock()),
     ):
         # Force the post-security work to exit early — config.edited=False
         # short-circuits both the recovery init_index and the flow check.
         with patch.object(
-            orchestrator, "get_openrag_config",
-            MagicMock(return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))),
+            orchestrator,
+            "get_openrag_config",
+            MagicMock(
+                return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
+            ),
         ):
             services = _services_stub()
             services["task_service"] = MagicMock()
@@ -62,9 +65,7 @@ async def test_setup_runs_when_flag_false(monkeypatch):
             services["langflow_file_service"] = MagicMock()
             services["session_manager"] = MagicMock()
             services["langflow_mcp_service"] = MagicMock()
-            services["flows_service"] = MagicMock(
-                ensure_flows_exist=AsyncMock(return_value=set())
-            )
+            services["flows_service"] = MagicMock(ensure_flows_exist=AsyncMock(return_value=set()))
             await orchestrator.startup_tasks(services)
 
     assert setup_mock.await_count == 1, (
@@ -88,21 +89,24 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
     logger_spy = MagicMock()
     monkeypatch.setattr(orchestrator, "logger", logger_spy)
 
-    with patch(
-        "utils.opensearch_utils.setup_opensearch_security", setup_mock
-    ), patch.object(orchestrator, "wait_for_opensearch", AsyncMock()), patch.object(
-        orchestrator, "init_index", AsyncMock()
-    ), patch.object(
-        orchestrator, "configure_alerting_security", AsyncMock()
-    ), patch.object(
-        orchestrator, "_reingest_default_docs_on_upgrade_if_needed",
-        AsyncMock(return_value=False),
-    ), patch.object(
-        orchestrator, "_update_mcp_server_urls", AsyncMock()
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", setup_mock),
+        patch.object(orchestrator, "wait_for_opensearch", AsyncMock()),
+        patch.object(orchestrator, "init_index", AsyncMock()),
+        patch.object(orchestrator, "configure_alerting_security", AsyncMock()),
+        patch.object(
+            orchestrator,
+            "_reingest_default_docs_on_upgrade_if_needed",
+            AsyncMock(return_value=False),
+        ),
+        patch.object(orchestrator, "_update_mcp_server_urls", AsyncMock()),
     ):
         with patch.object(
-            orchestrator, "get_openrag_config",
-            MagicMock(return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))),
+            orchestrator,
+            "get_openrag_config",
+            MagicMock(
+                return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
+            ),
         ):
             services = _services_stub()
             services["task_service"] = MagicMock()
@@ -110,16 +114,13 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
             services["langflow_file_service"] = MagicMock()
             services["session_manager"] = MagicMock()
             services["langflow_mcp_service"] = MagicMock()
-            services["flows_service"] = MagicMock(
-                ensure_flows_exist=AsyncMock(return_value=set())
-            )
+            services["flows_service"] = MagicMock(ensure_flows_exist=AsyncMock(return_value=set()))
             await orchestrator.startup_tasks(services)
 
     assert setup_mock.await_count == 0, (
         "setup_opensearch_security must NOT run when OPENRAG_SKIP_OS_SECURITY_SETUP is true"
     )
     info_messages = [call.args[0] for call in logger_spy.info.call_args_list if call.args]
-    assert any(
-        "Skipping OpenSearch security setup at startup" in msg
-        for msg in info_messages
-    ), f"expected skip log line not emitted; got: {info_messages}"
+    assert any("Skipping OpenSearch security setup at startup" in msg for msg in info_messages), (
+        f"expected skip log line not emitted; got: {info_messages}"
+    )

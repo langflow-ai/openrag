@@ -80,6 +80,7 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
     "yes",
 )
 
+
 # Skip the OpenSearch security context setup (roles, role mappings,
 # all_access admin pin). When true, OpenRAG assumes the security context
 # is managed externally (e.g., by Traefik in CPD or by a SaaS platform
