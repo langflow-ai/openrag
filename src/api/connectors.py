@@ -28,59 +28,46 @@ async def get_synced_file_ids_for_connector(
     """
     Query OpenSearch for unique document_id values where connector_type matches.
     Returns tuple of (file_ids, filenames) - use file_ids if available, else filenames as fallback.
-    
+
     Note: Langflow-ingested files may not have document_id stored. In that case,
     filenames are returned for filename-based filtering during sync.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        
+
         # Query for both document_id and filename aggregations
         query_body = {
             "size": 0,
-            "query": {
-                "term": {
-                    "connector_type": connector_type
-                }
-            },
+            "query": {"term": {"connector_type": connector_type}},
             "aggs": {
-                "unique_document_ids": {
-                    "terms": {
-                        "field": "document_id",
-                        "size": 10000
-                    }
-                },
-                "unique_filenames": {
-                    "terms": {
-                        "field": "filename",
-                        "size": 10000
-                    }
-                }
-            }
+                "unique_document_ids": {"terms": {"field": "document_id", "size": 10000}},
+                "unique_filenames": {"terms": {"field": "filename", "size": 10000}},
+            },
         }
-        
-        result = await opensearch_client.search(
-            index=get_index_name(),
-            body=query_body
-        )
-        
+
+        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+
         # Get document_ids (preferred - these are the actual connector file IDs)
-        doc_id_buckets = result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+        doc_id_buckets = (
+            result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+        )
         file_ids = [bucket["key"] for bucket in doc_id_buckets if bucket["key"]]
-        
+
         # Get filenames as fallback
-        filename_buckets = result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
+        filename_buckets = (
+            result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
+        )
         filenames = [bucket["key"] for bucket in filename_buckets if bucket["key"]]
-        
+
         logger.debug(
             "Found synced files for connector",
             connector_type=connector_type,
             file_ids_count=len(file_ids),
             filenames_count=len(filenames),
         )
-        
+
         return file_ids, filenames
-        
+
     except Exception as e:
         logger.error(
             "Failed to get synced file IDs",
@@ -88,7 +75,6 @@ async def get_synced_file_ids_for_connector(
             error=str(e),
         )
         return [], []
-
 
 
 class ConnectorSyncBody(BaseModel):
@@ -140,7 +126,9 @@ async def connector_sync(
             file_infos = selected_files_raw
 
     try:
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
+        )
         logger.debug(
             "Starting connector sync",
             connector_type=connector_type,
@@ -201,10 +189,11 @@ async def connector_sync(
             "Starting sync with working connection",
             connection_id=working_connection.connection_id,
         )
-        
+
         if selected_files:
             # Explicit files selected (e.g., from file picker) - sync those specific files
             from .documents import _ensure_index_exists
+
             await _ensure_index_exists(jwt_token)
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
@@ -242,7 +231,10 @@ async def connector_sync(
 
                 if not all_file_ids:
                     return JSONResponse(
-                        {"status": "no_files", "message": "No files found in the selected buckets."},
+                        {
+                            "status": "no_files",
+                            "message": "No files found in the selected buckets.",
+                        },
                         status_code=200,
                     )
                 task_id = await connector_service.sync_specific_files(
@@ -308,7 +300,9 @@ async def connector_sync(
                     filename_filter=set(existing_filenames),
                 )
         task_ids = [task_id]
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE
+        )
         return JSONResponse(
             {
                 "task_ids": task_ids,
@@ -321,7 +315,9 @@ async def connector_sync(
 
     except Exception as e:
         logger.error("Connector sync failed", error=str(e))
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
+        )
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
@@ -340,25 +336,31 @@ async def connector_status(
     # Get the connector for each connection and verify authentication
     connection_details = {}
     verified_active_connections = []
-    
+
     for connection in connections:
         try:
             connector = await connector_service._get_connector(connection.connection_id)
             if connector is not None:
                 # Actually verify the connection by trying to authenticate
                 is_authenticated = await connector.authenticate()
-                
+
                 # Get base URL if available (for SharePoint/OneDrive connectors)
                 base_url = None
-                if hasattr(connector, 'base_url'):
+                if hasattr(connector, "base_url"):
                     base_url = connector.base_url
-                    logger.debug(f"connector_status: Got base_url from connector.base_url: {base_url}")
-                elif hasattr(connector, 'sharepoint_url'):
+                    logger.debug(
+                        f"connector_status: Got base_url from connector.base_url: {base_url}"
+                    )
+                elif hasattr(connector, "sharepoint_url"):
                     base_url = connector.sharepoint_url  # Backward compatibility
-                    logger.debug(f"connector_status: Got base_url from connector.sharepoint_url: {base_url}")
+                    logger.debug(
+                        f"connector_status: Got base_url from connector.sharepoint_url: {base_url}"
+                    )
                 else:
-                    logger.debug(f"connector_status: Connector has no base_url or sharepoint_url attribute")
-                
+                    logger.debug(
+                        f"connector_status: Connector has no base_url or sharepoint_url attribute"
+                    )
+
                 connection_details[connection.connection_id] = {
                     "client_id": connector.get_client_id(),
                     "is_authenticated": is_authenticated,
@@ -397,8 +399,13 @@ async def connector_status(
                     "connection_id": conn.connection_id,
                     "name": conn.name,
                     "client_id": connection_details.get(conn.connection_id, {}).get("client_id"),
-                    "is_active": conn.is_active and connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
-                    "is_authenticated": connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
+                    "is_active": conn.is_active
+                    and connection_details.get(conn.connection_id, {}).get(
+                        "is_authenticated", False
+                    ),
+                    "is_authenticated": connection_details.get(conn.connection_id, {}).get(
+                        "is_authenticated", False
+                    ),
                     "base_url": connection_details.get(conn.connection_id, {}).get("base_url"),
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
@@ -428,10 +435,10 @@ async def connector_webhook(
         config=temp_config,
     )
     try:
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_RECV)
-        temp_connector = connector_service.connection_manager._create_connector(
-            temp_connection
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_RECV
         )
+        temp_connector = connector_service.connection_manager._create_connector(temp_connection)
         validation_response = temp_connector.handle_webhook_validation(
             request.method, dict(request.headers), dict(request.query_params)
         )
@@ -466,32 +473,22 @@ async def connector_webhook(
 
         # Extract channel/subscription ID using connector-specific method
         try:
-            temp_connector = connector_service.connection_manager._create_connector(
-                temp_connection
-            )
+            temp_connector = connector_service.connection_manager._create_connector(temp_connection)
             channel_id = temp_connector.extract_webhook_channel_id(payload, headers)
         except (NotImplementedError, ValueError):
             channel_id = None
 
         if not channel_id:
-            logger.warning(
-                "No channel ID found in webhook", connector_type=connector_type
-            )
+            logger.warning("No channel ID found in webhook", connector_type=connector_type)
             return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
 
         # Find the specific connection for this webhook
-        connection = (
-            await connector_service.connection_manager.get_connection_by_webhook_id(
-                channel_id
-            )
+        connection = await connector_service.connection_manager.get_connection_by_webhook_id(
+            channel_id
         )
         if not connection or not connection.is_active:
-            logger.info(
-                "Unknown webhook channel, will auto-expire", channel_id=channel_id
-            )
-            return JSONResponse(
-                {"status": "ignored_unknown_channel", "channel_id": channel_id}
-            )
+            logger.info("Unknown webhook channel, will auto-expire", channel_id=channel_id)
+            return JSONResponse({"status": "ignored_unknown_channel", "channel_id": channel_id})
 
         # Process webhook for the specific connection
         try:
@@ -502,9 +499,7 @@ async def connector_webhook(
                     "Could not get connector for connection",
                     connection_id=connection.connection_id,
                 )
-                return JSONResponse(
-                    {"status": "error", "reason": "connector_not_found"}
-                )
+                return JSONResponse({"status": "error", "reason": "connector_not_found"})
 
             # Let the connector handle the webhook and return affected file IDs
             affected_files = await connector.handle_webhook(payload)
@@ -575,10 +570,11 @@ async def connector_webhook(
 
     except Exception as e:
         logger.error("Webhook processing failed", error=str(e))
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_FAILED)
-        return JSONResponse(
-            {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_FAILED
         )
+        return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)
+
 
 async def connector_disconnect(
     connector_type: str,
@@ -605,7 +601,7 @@ async def connector_disconnect(
             try:
                 # Get the connector to cleanup any subscriptions
                 connector = await connector_service._get_connector(connection.connection_id)
-                if connector and hasattr(connector, 'cleanup_subscription'):
+                if connector and hasattr(connector, "cleanup_subscription"):
                     subscription_id = connection.config.get("webhook_channel_id")
                     if subscription_id:
                         try:
@@ -659,6 +655,7 @@ async def connector_disconnect(
 
 # ---------------------------------------------------------------------------
 
+
 async def sync_all_connectors(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
@@ -668,12 +665,14 @@ async def sync_all_connectors(
     Sync files from all active cloud connector connections.
     """
     try:
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
+        )
         jwt_token = user.jwt_token
 
         # Cloud connector types to sync
         cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
-        
+
         all_task_ids = []
         synced_connectors = []
         skipped_connectors = []
@@ -688,7 +687,7 @@ async def sync_all_connectors(
                     session_manager=session_manager,
                     jwt_token=jwt_token,
                 )
-                
+
                 if not existing_file_ids and not existing_filenames:
                     logger.debug(
                         "No existing files in OpenSearch for connector type, skipping",
@@ -760,14 +759,16 @@ async def sync_all_connectors(
                         jwt_token=jwt_token,
                         filename_filter=set(existing_filenames),
                     )
-                    
+
                 all_task_ids.append(task_id)
                 synced_connectors.append(connector_type)
                 logger.info(
                     "Started sync for connector type",
                     connector_type=connector_type,
                     task_id=task_id,
-                    file_count=len(existing_file_ids) if existing_file_ids else len(existing_filenames),
+                    file_count=len(existing_file_ids)
+                    if existing_file_ids
+                    else len(existing_filenames),
                 )
 
             except Exception as e:
@@ -793,7 +794,9 @@ async def sync_all_connectors(
                 status_code=404,
             )
 
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE
+        )
         return JSONResponse(
             {
                 "task_ids": all_task_ids,
@@ -808,7 +811,9 @@ async def sync_all_connectors(
 
     except Exception as e:
         logger.error("Sync all connectors failed", error=str(e))
-        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
+        )
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
@@ -832,7 +837,9 @@ async def connector_token(
         connector = await connector_service._get_connector(connection_id)
         if not connector:
             return JSONResponse(
-                {"error": f"Connector not available - authentication may have failed for {url_connector_type}"},
+                {
+                    "error": f"Connector not available - authentication may have failed for {url_connector_type}"
+                },
                 status_code=404,
             )
 
@@ -864,7 +871,10 @@ async def connector_token(
                 try:
                     if connector.oauth.creds.expiry:
                         import time
-                        expires_in = max(0, int(connector.oauth.creds.expiry.timestamp() - time.time()))
+
+                        expires_in = max(
+                            0, int(connector.oauth.creds.expiry.timestamp() - time.time())
+                        )
                 except Exception:
                     expires_in = None
 
@@ -911,12 +921,114 @@ async def connector_token(
                 return JSONResponse({"access_token": access_token, "expires_in": None})
             except ValueError as e:
                 # Typical when acquire_token_silent fails (e.g., needs re-auth)
-                return JSONResponse({"error": f"Failed to get access token: {str(e)}"}, status_code=401)
+                return JSONResponse(
+                    {"error": f"Failed to get access token: {str(e)}"}, status_code=401
+                )
             except Exception as e:
                 return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
 
-        return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
+        return JSONResponse(
+            {"error": "Token not available for this connector type"}, status_code=400
+        )
 
     except Exception as e:
         logger.error("Error getting connector token", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def browse_connection_files(
+    connector_type: str,
+    connection_id: str,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+    bucket: Optional[str] = None,
+    search: Optional[str] = None,
+    page_token: Optional[str] = None,
+    max_files: int = 100,
+):
+    """
+    Browse remote files in a connector with ingestion status.
+
+    Lists files from the remote source (e.g., S3 bucket) and marks each
+    as ingested or not by cross-referencing with OpenSearch.
+    """
+    try:
+        connector = await connector_service.get_connector(connection_id)
+        if not connector:
+            return JSONResponse(
+                {"error": "Connection not found or connector unavailable"},
+                status_code=404,
+            )
+
+        if not await connector.authenticate():
+            return JSONResponse(
+                {"error": "Connector authentication failed"},
+                status_code=401,
+            )
+
+        # Temporarily override bucket filter if specified
+        original_buckets = None
+        if bucket and hasattr(connector, "bucket_names"):
+            original_buckets = connector.bucket_names
+            connector.bucket_names = [bucket]
+
+        try:
+            files_result = await connector.list_files(page_token=page_token, max_files=max_files)
+        finally:
+            if original_buckets is not None:
+                connector.bucket_names = original_buckets
+
+        remote_files = files_result.get("files", [])
+        next_page_token = files_result.get("next_page_token")
+
+        # Filter by filename search if provided
+        if search:
+            search_lower = search.lower()
+            remote_files = [f for f in remote_files if search_lower in f.get("name", "").lower()]
+
+        # Get already-ingested file IDs from OpenSearch
+        ingested_ids, ingested_filenames = await get_synced_file_ids_for_connector(
+            connector_type=connector_type,
+            user_id=user.user_id,
+            session_manager=session_manager,
+            jwt_token=user.jwt_token,
+        )
+        ingested_set = set(ingested_ids) | set(ingested_filenames)
+
+        # Merge ingestion status into remote file list
+        enriched_files = []
+        for f in remote_files:
+            is_ingested = f.get("id", "") in ingested_set or f.get("name", "") in ingested_set
+            enriched_files.append(
+                {
+                    "id": f.get("id", ""),
+                    "name": f.get("name", ""),
+                    "bucket": f.get("bucket", ""),
+                    "key": f.get("key", ""),
+                    "size": f.get("size", 0),
+                    "modified_time": f.get("modified_time", ""),
+                    "is_ingested": is_ingested,
+                }
+            )
+
+        return JSONResponse(
+            {
+                "files": enriched_files,
+                "next_page_token": next_page_token,
+                "total_remote": len(enriched_files),
+                "total_ingested": sum(1 for f in enriched_files if f["is_ingested"]),
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to browse connection files",
+            connector_type=connector_type,
+            connection_id=connection_id,
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": f"Failed to browse files: {str(e)}"},
+            status_code=500,
+        )

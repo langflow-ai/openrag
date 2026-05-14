@@ -1,13 +1,18 @@
-from typing import Any, Dict, Optional
-from .tasks import UploadTask, FileTask
-from utils.logging_config import get_logger
+from typing import TYPE_CHECKING, Any
+
 from utils.file_utils import (
-    get_file_extension,
     clean_connector_filename,
+    get_file_extension,
     get_filename_aliases,
 )
+from utils.logging_config import get_logger
+
+from .tasks import FileTask, UploadTask
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from connectors.base import DocumentACL
 
 
 class TaskProcessor:
@@ -27,8 +32,9 @@ class TaskProcessor:
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
         """
-        from config.settings import get_index_name
         import asyncio
+
+        from config.settings import get_index_name
 
         max_retries = 3
         retry_delay = 1.0
@@ -37,7 +43,7 @@ class TaskProcessor:
             try:
                 exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
                 return exists
-            except (asyncio.TimeoutError, Exception) as e:
+            except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
                         "OpenSearch exists check failed after retries",
@@ -61,6 +67,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
+        return False
 
     async def check_filename_exists(
         self,
@@ -71,9 +78,10 @@ class TaskProcessor:
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
         """
+        import asyncio
+
         from config.settings import get_index_name
         from utils.opensearch_queries import build_filename_search_body
-        import asyncio
 
         max_retries = 3
         retry_delay = 1.0
@@ -107,7 +115,7 @@ class TaskProcessor:
                     continue
                 return False
 
-            except (asyncio.TimeoutError, Exception) as e:
+            except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
                         "OpenSearch filename check failed after retries",
@@ -131,6 +139,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
+        return False
 
     async def delete_document_by_filename(
         self,
@@ -196,6 +205,7 @@ class TaskProcessor:
             acl: DocumentACL instance with access control information
         """
         import datetime
+
         from config.settings import (
             clients,
             get_embedding_model,
@@ -249,7 +259,9 @@ class TaskProcessor:
             if original_filename:
                 slim_doc["filename"] = original_filename
         else:
-            full_doc = await self.docling_service.convert_file(file_path)
+            full_doc = await self.docling_service.convert_file(
+                file_path, user_id=owner_user_id, auth_header=jwt_token
+            )
             slim_doc = extract_relevant(full_doc)
 
         if chunk_size is not None:
@@ -306,7 +318,7 @@ class TaskProcessor:
         )
 
         # Index each chunk as a separate document
-        for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):
+        for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True)):
             chunk_doc = {
                 "document_id": file_hash,
                 "filename": original_filename if original_filename else slim_doc["filename"],
@@ -406,10 +418,11 @@ class DocumentFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a regular file path using consolidated methods"""
+        import os
+        import time
+
         from models.tasks import TaskStatus
         from utils.hash_utils import hash_id
-        import time
-        import os
 
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
@@ -468,7 +481,7 @@ class ConnectorFileProcessor(TaskProcessor):
         owner_email: str = None,
         document_service=None,
         models_service=None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ):
         super().__init__(
             document_service=document_service,
@@ -486,11 +499,10 @@ class ConnectorFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using consolidated methods"""
+        import time
+
         from models.tasks import TaskStatus
         from utils.hash_utils import hash_id
-        import tempfile
-        import time
-        import os
 
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
@@ -527,7 +539,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                standard_kwargs: Dict[str, Any] = {}
+                standard_kwargs: dict[str, Any] = {}
                 if isinstance(self.ingest_settings, dict):
                     s = self.ingest_settings
                     em = s.get("embeddingModel")
@@ -592,7 +604,7 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ):
         super().__init__(
             document_service=langflow_connector_service.task_service.document_service
@@ -614,11 +626,10 @@ class LangflowConnectorFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using LangflowConnectorService"""
+        import time
+
         from models.tasks import TaskStatus
         from utils.hash_utils import hash_id
-        import tempfile
-        import time
-        import os
 
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
@@ -723,13 +734,12 @@ class S3FileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
-        from models.tasks import TaskStatus
-        import tempfile
-        import os
         import time
         import asyncio
         import datetime
         from config.settings import clients, get_embedding_model, get_index_name
+
+        from models.tasks import TaskStatus
 
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
@@ -819,8 +829,9 @@ class LangflowFileProcessor(TaskProcessor):
         """Process a file path using LangflowFileService upload_and_ingest_file"""
         import mimetypes
         import os
-        from models.tasks import TaskStatus
         import time
+
+        from models.tasks import TaskStatus
 
         # Update task status
         file_task.status = TaskStatus.RUNNING
@@ -915,6 +926,3 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
-
-
-from .url import LangflowUrlProcessor

@@ -61,12 +61,24 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
+PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
+PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
@@ -187,7 +199,7 @@ DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     if IBM_AUTH_ENABLED:
-        return False  # IBM cookie auth is a valid auth mode
+        return False  # IBM cookie auth is a valid auth mode (variable name kept for now as per instructions)
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
     return result
 
@@ -424,13 +436,14 @@ class AppClients:
 
         # Initialize docling-serve HTTP client for document conversion
         self.docling_http_client = httpx.AsyncClient(
+            verify=DOCLING_SERVE_VERIFY_SSL,
             timeout=httpx.Timeout(
                 timeout=INGESTION_TIMEOUT,
                 connect=30.0,
                 read=INGESTION_TIMEOUT,
                 write=30.0,
                 pool=30.0,
-            )
+            ),
         )
 
         # Eagerly initialize DoclingService to ensure thread-safety

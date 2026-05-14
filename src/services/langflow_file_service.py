@@ -1,9 +1,10 @@
-import json
 import asyncio
+import json
 import time
-import httpx
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import httpx
 
 from config.settings import (
     LANGFLOW_INGEST_FLOW_ID,
@@ -41,9 +42,9 @@ class LangflowFileService:
 
     @staticmethod
     def merge_ui_ingest_settings_into_tweaks(
-        tweaks: Optional[Dict[str, Any]],
-        settings: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        tweaks: dict[str, Any] | None,
+        settings: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         """Merge UI ingest dict (camelCase) into Langflow run ``tweaks``.
 
         - ``chunkSize`` / ``chunkOverlap`` / ``separator`` update the flow's
@@ -117,22 +118,22 @@ class LangflowFileService:
 
     async def run_ingestion_flow(
         self,
-        file_paths: List[str],
+        file_paths: list[str],
         file_tuples: list[tuple[str, str, str]],
-        jwt_token: Optional[str] = None,
-        session_id: Optional[str] = None,
-        tweaks: Optional[Dict[str, Any]] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,
-        document_id: Optional[str] = None,
-        source_url: Optional[str] = None,
-        allowed_users: Optional[List[str]] = None,
-        allowed_groups: Optional[List[str]] = None,
-        selected_embedding_model: Optional[str] = None,
-        docling_task_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        jwt_token: str | None = None,
+        session_id: str | None = None,
+        tweaks: dict[str, Any] | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        connector_type: str | None = None,
+        document_id: str | None = None,
+        source_url: str | None = None,
+        allowed_users: list[str] | None = None,
+        allowed_groups: list[str] | None = None,
+        selected_embedding_model: str | None = None,
+        docling_task_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
         The flow must expose a File component path in input schema or accept files parameter.
@@ -141,7 +142,7 @@ class LangflowFileService:
             logger.error("[LF] LANGFLOW_INGEST_FLOW_ID is not configured")
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "input_value": "Ingest files",
             "input_type": "chat",
             "output_type": "text",  # Changed from "json" to "text"
@@ -309,20 +310,20 @@ class LangflowFileService:
         self,
         docs_url: str,
         crawl_depth: int,
-        jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
         connector_type: str = "url",
         prevent_outside: bool = True,
-        tweaks: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        tweaks: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run URL-based docs ingestion flow using Langflow global variable passthrough."""
         if not docs_url:
             raise ValueError("DEFAULT_DOCS_URL is not configured")
         flow_id = await self._ensure_url_ingest_flow_id()
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "input_value": docs_url,
             "input_type": "chat",
             "output_type": "text",
@@ -514,7 +515,8 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
-    async def submit_to_docling(self, filename: str, content: bytes) -> str:
+    async def submit_to_docling(self, filename: str, content: bytes, jwt_token: Optional[str] = None,
+        owner: Optional[str] = None,) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
         Phase 1 of the two-phase ingestion model. The caller is responsible
@@ -527,7 +529,8 @@ class LangflowFileService:
                 "and the service was injected correctly."
             )
         try:
-            task_id = await self.docling_service.upload_to_docling_direct_async(filename, content)
+            task_id = await self.docling_service.upload_to_docling_direct_async(
+                filename, content, user_id=owner, auth_header=jwt_token
             logger.debug(
                 "[LF] Docling submission accepted",
                 extra={"task_id": task_id, "filename": filename},
@@ -588,7 +591,7 @@ class LangflowFileService:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(filename, content)
+        task_id = await self.submit_to_docling(filename, content,user_id=owner, auth_header=jwt_token)
 
         if file_task is not None:
             file_task.docling_task_id = task_id

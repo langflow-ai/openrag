@@ -13,7 +13,6 @@ import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { cn } from "@/lib/utils";
-import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
@@ -29,10 +28,10 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
+import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
-  const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     setEndpoint,
@@ -50,16 +49,13 @@ function ChatPage() {
     placeholderConversation,
     conversationFilter,
     setConversationFilter,
+    loading,
+    setLoading,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "How can I assist?",
-      timestamp: new Date(),
-    },
+    INITIAL_ASSISTANT_MESSAGE,
   ]);
   const [input, setInput] = useState("");
-  const { loading, setLoading } = useLoadingStore();
   const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
@@ -109,7 +105,7 @@ function ChatPage() {
     streamingMessage,
     sendMessage: sendStreamingMessage,
     abortStream,
-    isLoading: isStreamLoading,
+    isLoading: isChatStreaming,
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
@@ -169,7 +165,7 @@ function ChatPage() {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isStreamLoading && !streamingMessage) {
+    if (isChatStreaming && !streamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -180,7 +176,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isStreamLoading, streamingMessage]);
+  }, [isChatStreaming, streamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -328,13 +324,7 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       setInput("");
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
@@ -372,7 +362,7 @@ function ChatPage() {
 
     if (
       conversationData?.messages &&
-      (isNewConversation || (!isStreamLoading && hasMessageCountChanged)) &&
+      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -564,7 +554,7 @@ function ChatPage() {
     isUserInteracting,
     isForkingInProgress,
     setPreviousResponseIds,
-    isStreamLoading,
+    isChatStreaming,
     messages.length,
   ]);
 
@@ -572,13 +562,7 @@ function ChatPage() {
   useEffect(() => {
     if (placeholderConversation && currentConversationId === null) {
       console.log("Starting new conversation");
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
@@ -587,93 +571,6 @@ function ChatPage() {
       }, 100);
     }
   }, [placeholderConversation, currentConversationId]);
-
-  // Listen for file upload events from navigation
-  useEffect(() => {
-    const handleFileUploadStart = (event: CustomEvent) => {
-      const { filename } = event.detail;
-      console.log("Chat page received file upload start event:", filename);
-
-      setLoading(true);
-      setIsUploading(true);
-      setUploadedFile(null); // Clear previous file
-    };
-
-    const handleFileUploaded = (event: CustomEvent) => {
-      const { result } = event.detail;
-      console.log("Chat page received file upload event:", result);
-
-      setUploadedFile(null); // Clear file after upload
-
-      // Update the response ID for this endpoint
-      if (result.response_id) {
-        setPreviousResponseIds((prev) => ({
-          ...prev,
-          [endpoint]: result.response_id,
-        }));
-      }
-    };
-
-    const handleFileUploadComplete = () => {
-      console.log("Chat page received file upload complete event");
-      setLoading(false);
-      setIsUploading(false);
-    };
-
-    const handleFileUploadError = (event: CustomEvent) => {
-      const { filename, error } = event.detail;
-      console.log(
-        "Chat page received file upload error event:",
-        filename,
-        error,
-      );
-
-      // Replace the last message with error message
-      const errorMessage: Message = {
-        role: "assistant",
-        content: `❌ Upload failed for **${filename}**: ${error}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
-      setUploadedFile(null); // Clear file on error
-    };
-
-    window.addEventListener(
-      "fileUploadStart",
-      handleFileUploadStart as EventListener,
-    );
-    window.addEventListener(
-      "fileUploaded",
-      handleFileUploaded as EventListener,
-    );
-    window.addEventListener(
-      "fileUploadComplete",
-      handleFileUploadComplete as EventListener,
-    );
-    window.addEventListener(
-      "fileUploadError",
-      handleFileUploadError as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener(
-        "fileUploadStart",
-        handleFileUploadStart as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploaded",
-        handleFileUploaded as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploadComplete",
-        handleFileUploadComplete as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploadError",
-        handleFileUploadError as EventListener,
-      );
-    };
-  }, [endpoint, setPreviousResponseIds, setLoading]);
 
   // Check onboarding completion
 
@@ -1142,9 +1039,11 @@ function ChatPage() {
                             isInitialGreeting={
                               index === 0 &&
                               messages.length === 1 &&
-                              message.content === "How can I assist?"
+                              message.content ===
+                                INITIAL_ASSISTANT_MESSAGE.content
                             }
                             usage={message.usage}
+                            timestamp={message.timestamp}
                           />
                         )}
                       </div>

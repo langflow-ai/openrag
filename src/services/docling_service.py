@@ -1,14 +1,20 @@
 import asyncio
-import platform
 import json
 from dataclasses import dataclass
 from enum import Enum
+import platform
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any
+
 import httpx
 from pydantic import BaseModel
 
-from config.settings import get_openrag_config, DOCLING_SERVE_URL
+from config.settings import (
+    DOCLING_SERVE_URL,
+    DOCLING_SERVE_VERIFY_SSL,
+    IBM_AUTH_ENABLED,
+    get_openrag_config,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -20,7 +26,8 @@ class DoclingConfig(BaseModel):
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
-    picture_description_local: Optional[dict] = None
+    picture_description_local: dict | None = None
+
 
 
 class DoclingServeError(Exception):
@@ -48,7 +55,7 @@ class DoclingStatusSnapshot:
 
 def get_docling_preset_configs(
     table_structure=False, ocr=False, picture_descriptions=False
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get docling preset configurations based on toggle settings"""
     is_macos = platform.system() == "Darwin"
 
@@ -68,7 +75,7 @@ def get_docling_preset_configs(
 
 
 class DoclingService:
-    _default_client: Optional[httpx.AsyncClient] = None
+    _default_client: httpx.AsyncClient | None = None
 
     def __init__(
         self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None
@@ -92,11 +99,11 @@ class DoclingService:
             return self.httpx_client
         if DoclingService._default_client is None or DoclingService._default_client.is_closed:
             DoclingService._default_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(300.0, connect=10.0)
+                timeout=httpx.Timeout(300.0, connect=10.0), verify=DOCLING_SERVE_VERIFY_SSL
             )
         return DoclingService._default_client
 
-    def _build_docling_options(self) -> Dict[str, Any]:
+    def _build_docling_options(self) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs."""
         config = get_openrag_config()
         knowledge_config = config.knowledge
@@ -110,11 +117,31 @@ class DoclingService:
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
         return options
 
-    async def upload_to_docling_direct_async(self, filename: str, file_content: bytes) -> str:
+    def _get_auth_headers(
+        self, user_id: str | None = None, auth_header: str | None = None
+    ) -> dict[str, str]:
+        """Build authentication headers for Docling Serve if IBM auth is enabled."""
+        headers = {}
+        if IBM_AUTH_ENABLED:
+            if auth_header:
+                headers["Authorization"] = auth_header
+
+            if user_id:
+                headers["X-Tenant-Id"] = user_id
+        return headers
+
+    async def upload_to_docling_direct_async(
+        self,
+        filename: str,
+        file_content: bytes,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
         options = self._build_docling_options()
+        headers = self._get_auth_headers(user_id, auth_header)
 
         # Docling serve async multipart endpoint /v1/convert/file/async
         # Options are passed as form data
@@ -136,11 +163,17 @@ class DoclingService:
             if should_close:
                 async with client:
                     response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async", files=files, data=data
+                        f"{self.docling_url}/v1/convert/file/async",
+                        files=files,
+                        data=data,
+                        headers=headers,
                     )
             else:
                 response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async", files=files, data=data
+                    f"{self.docling_url}/v1/convert/file/async",
+                    files=files,
+                    data=data,
+                    headers=headers,
                 )
 
             response.raise_for_status()
@@ -151,8 +184,13 @@ class DoclingService:
             raise
 
     async def get_docling_result_async(
-        self, task_id: str, poll_interval: float = 1.0, timeout: float = 600.0
-    ) -> Dict[str, Any]:
+        self,
+        task_id: str,
+        poll_interval: float = 1.0,
+        timeout: float = 600.0,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """
         Poll Docling Serve for the result of an async conversion task.
         """
@@ -162,9 +200,13 @@ class DoclingService:
         try:
             if should_close:
                 async with client:
-                    return await self._poll_result(client, task_id, poll_interval, timeout)
+                    return await self._poll_result(
+                        client, task_id, poll_interval, timeout, user_id, auth_header
+                    )
             else:
-                return await self._poll_result(client, task_id, poll_interval, timeout)
+                return await self._poll_result(
+                    client, task_id, poll_interval, timeout, user_id, auth_header
+                )
         except Exception as e:
             logger.error("Docling result retrieval failed", task_id=task_id, error=str(e))
             raise
@@ -262,23 +304,34 @@ class DoclingService:
         return doc_content
 
     async def _poll_result(
-        self, client: httpx.AsyncClient, task_id: str, poll_interval: float, timeout: float
-    ) -> Dict[str, Any]:
+        self,
+        client: httpx.AsyncClient,
+        task_id: str,
+        poll_interval: float,
+        timeout: float,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """Internal polling logic."""
         elapsed = 0.0
+        headers = self._get_auth_headers(user_id, auth_header)
         while elapsed < timeout:
             try:
-                response = await client.get(f"{self.docling_url}/v1/status/poll/{task_id}")
+                response = await client.get(
+                    f"{self.docling_url}/v1/status/poll/{task_id}", headers=headers
+                )
                 response.raise_for_status()
                 status_data = response.json()
             except Exception as e:
                 logger.error("Error polling docling status", task_id=task_id, error=str(e))
-                raise DoclingServeError(f"Error polling docling status: {str(e)}")
+                raise DoclingServeError(f"Error polling docling status: {str(e)}") from e
 
             status = status_data.get("task_status")
 
             if status == "success":
-                result_response = await client.get(f"{self.docling_url}/v1/result/{task_id}")
+                result_response = await client.get(
+                    f"{self.docling_url}/v1/result/{task_id}", headers=headers
+                )
                 result_response.raise_for_status()
                 result_json = result_response.json()
 
@@ -296,18 +349,34 @@ class DoclingService:
 
         raise TimeoutError(f"Docling task {task_id} did not complete within {timeout} seconds")
 
-    async def convert_file(self, file_path: str) -> Dict[str, Any]:
+    async def convert_file(
+        self, file_path: str, user_id: str | None = None, auth_header: str | None = None
+    ) -> dict[str, Any]:
         """
         Convert a local file via docling-serve async polling.
         """
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        task_id = await self.upload_to_docling_direct_async(path.name, file_bytes)
-        return await self.get_docling_result_async(task_id)
+        task_id = await self.upload_to_docling_direct_async(
+            path.name, file_bytes, user_id=user_id, auth_header=auth_header
+        )
+        return await self.get_docling_result_async(
+            task_id, user_id=user_id, auth_header=auth_header
+        )
 
-    async def convert_bytes(self, content: bytes, filename: str) -> Dict[str, Any]:
+    async def convert_bytes(
+        self,
+        content: bytes,
+        filename: str,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """
         Convert in-memory bytes via docling-serve async polling.
         """
-        task_id = await self.upload_to_docling_direct_async(filename, content)
-        return await self.get_docling_result_async(task_id)
+        task_id = await self.upload_to_docling_direct_async(
+            filename, content, user_id=user_id, auth_header=auth_header
+        )
+        return await self.get_docling_result_async(
+            task_id, user_id=user_id, auth_header=auth_header
+        )

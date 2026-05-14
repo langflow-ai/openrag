@@ -118,9 +118,7 @@ class SearchService:
         available_models = []
         failed_models: list = []
 
-        opensearch_client = self.session_manager.get_user_opensearch_client(
-            user_id, jwt_token
-        )
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
@@ -141,9 +139,7 @@ class SearchService:
 
                         if len(values) == 0:
                             # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append(
-                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
-                            )
+                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
                         elif len(values) == 1:
                             # Single value filter
                             filter_clauses.append({"term": {field_name: values[0]}})
@@ -156,27 +152,22 @@ class SearchService:
                 agg_query = {
                     "size": 0,
                     "aggs": {
-                        "embedding_models": {
-                            "terms": {
-                                "field": "embedding_model",
-                                "size": 10
-                            }
-                        }
-                    }
+                        "embedding_models": {"terms": {"field": "embedding_model", "size": 10}}
+                    },
                 }
 
                 # Apply filters to model detection if any exist
                 if filter_clauses:
-                    agg_query["query"] = {
-                        "bool": {
-                            "filter": filter_clauses
-                        }
-                    }
+                    agg_query["query"] = {"bool": {"filter": filter_clauses}}
 
                 agg_result = await opensearch_client.search(
                     index=get_index_name(), body=agg_query, params={"terminate_after": 0}
                 )
-                buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
+                buckets = (
+                    agg_result.get("aggregations", {})
+                    .get("embedding_models", {})
+                    .get("buckets", [])
+                )
                 available_models = [b["key"] for b in buckets if b["key"]]
 
                 if not available_models:
@@ -187,10 +178,12 @@ class SearchService:
                     "Detected embedding models in corpus",
                     available_models=available_models,
                     model_counts={b["key"]: b["doc_count"] for b in buckets},
-                    with_filters=len(filter_clauses) > 0
+                    with_filters=len(filter_clauses) > 0,
                 )
             except Exception as e:
-                logger.warning("Failed to detect embedding models, using configured model", error=str(e))
+                logger.warning(
+                    "Failed to detect embedding models, using configured model", error=str(e)
+                )
                 available_models = [embedding_model]
 
             # Parallelize embedding generation for all models
@@ -219,9 +212,9 @@ class SearchService:
                             model=formatted_model, input=[query]
                         )
                         # Try to get embedding - some providers return .embedding, others return ['embedding']
-                        embedding = getattr(resp.data[0], 'embedding', None)
+                        embedding = getattr(resp.data[0], "embedding", None)
                         if embedding is None:
-                            embedding = resp.data[0]['embedding']
+                            embedding = resp.data[0]["embedding"]
                         return model_name, embedding
                     except Exception as e:
                         last_exception = e
@@ -232,9 +225,7 @@ class SearchService:
                                 attempts=attempts,
                                 error=str(e),
                             )
-                            raise RuntimeError(
-                                f"Failed to embed with model {model_name}"
-                            ) from e
+                            raise RuntimeError(f"Failed to embed with model {model_name}") from e
 
                         logger.warning(
                             "Retrying embedding generation",
@@ -247,9 +238,7 @@ class SearchService:
                         delay = min(delay * 2, EMBED_RETRY_MAX_DELAY)
 
                 # Should not reach here, but guard in case
-                raise RuntimeError(
-                    f"Failed to embed with model {model_name}"
-                ) from last_exception
+                raise RuntimeError(f"Failed to embed with model {model_name}") from last_exception
 
             # Run all embeddings in parallel, tolerating per-model failures so
             # one broken model (e.g. provider credentials removed after ingest)
@@ -298,9 +287,7 @@ class SearchService:
 
                         if len(values) == 0:
                             # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append(
-                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
-                            )
+                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
                         elif len(values) == 1:
                             # Single value filter
                             filter_clauses.append({"term": {field_name: values[0]}})
@@ -324,15 +311,17 @@ class SearchService:
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
-                knn_queries.append({
-                    "knn": {
-                        field_name: {
-                            "vector": embedding_vector,
-                            "k": 50,
-                            "num_candidates": 1000,
+                knn_queries.append(
+                    {
+                        "knn": {
+                            field_name: {
+                                "vector": embedding_vector,
+                                "k": 50,
+                                "num_candidates": 1000,
+                            }
                         }
                     }
-                })
+                )
 
             # Only require an embedding field when we actually have embeddings
             # to match against — otherwise we'd filter out every doc in keyword
@@ -345,12 +334,14 @@ class SearchService:
                 # Allow them through by matching on their embedding_model value.
                 if failed_models:
                     exists_should.append({"terms": {"embedding_model": failed_models}})
-                all_filters.append({
-                    "bool": {
-                        "should": exists_should,
-                        "minimum_should_match": 1,
+                all_filters.append(
+                    {
+                        "bool": {
+                            "should": exists_should,
+                            "minimum_should_match": 1,
+                        }
                     }
-                })
+                )
 
             logger.debug(
                 "Building hybrid query with filters",
@@ -365,39 +356,43 @@ class SearchService:
             # the multi_match boost so keyword scoring isn't artificially damped.
             should_clauses = []
             if knn_queries:
-                should_clauses.append({
-                    "dis_max": {
-                        "tie_breaker": 0.0,  # Take only the best match, no blending
-                        "boost": 0.7,         # 70% weight for semantic search
-                        "queries": knn_queries,
-                    }
-                })
-            should_clauses.extend([
-                {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["text^2", "filename^1.5"],
-                        "type": "best_fields",
-                        "operator": "or",
-                        "fuzziness": "AUTO:4,7",
-                        "boost": 0.3 if knn_queries else 1.0,
-                    }
-                },
-                {
-                    # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
-                    # Avoid bool_prefix here because our current mappings are:
-                    # - text: standard "text" (not search_as_you_type / edge-ngram)
-                    # - filename: "keyword"
-                    # match_phrase_prefix with a bounded expansion is safer.
-                    "match_phrase_prefix": {
-                        "text": {
-                            "query": query,
-                            "max_expansions": 50,
-                            "boost": 0.25,
+                should_clauses.append(
+                    {
+                        "dis_max": {
+                            "tie_breaker": 0.0,  # Take only the best match, no blending
+                            "boost": 0.7,  # 70% weight for semantic search
+                            "queries": knn_queries,
                         }
                     }
-                },
-            ])
+                )
+            should_clauses.extend(
+                [
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["text^2", "filename^1.5"],
+                            "type": "best_fields",
+                            "operator": "or",
+                            "fuzziness": "AUTO:4,7",
+                            "boost": 0.3 if knn_queries else 1.0,
+                        }
+                    },
+                    {
+                        # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
+                        # Avoid bool_prefix here because our current mappings are:
+                        # - text: standard "text" (not search_as_you_type / edge-ngram)
+                        # - filename: "keyword"
+                        # match_phrase_prefix with a bounded expansion is safer.
+                        "match_phrase_prefix": {
+                            "text": {
+                                "query": query,
+                                "max_expansions": 50,
+                                "boost": 0.25,
+                            }
+                        }
+                    },
+                ]
+            )
 
             query_block = {
                 "bool": {
@@ -445,9 +440,9 @@ class SearchService:
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
-                knn_query_blocks = (
-                    fallback_search_body["query"]["bool"]["should"][0]["dis_max"]["queries"]
-                )
+                knn_query_blocks = fallback_search_body["query"]["bool"]["should"][0]["dis_max"][
+                    "queries"
+                ]
                 for query_candidate in knn_query_blocks:
                     knn_section = query_candidate.get("knn")
                     if isinstance(knn_section, dict):
@@ -457,7 +452,7 @@ class SearchService:
             except (KeyError, IndexError, AttributeError, TypeError):
                 fallback_search_body = None
 
-        # Authentication required - DLS will handle document filtering automatically
+        # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
             "search_service authentication info",
             user_id=user_id,
@@ -468,12 +463,14 @@ class SearchService:
             return {"results": [], "error": "Authentication required"}
 
         # Get user's OpenSearch client with JWT for OIDC auth through session manager
-        opensearch_client = self.session_manager.get_user_opensearch_client(
-            user_id, jwt_token
-        )
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         from opensearchpy.exceptions import RequestError
-        from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error, DISK_SPACE_ERROR_MESSAGE
+        from utils.opensearch_utils import (
+            OpenSearchDiskSpaceError,
+            is_disk_space_error,
+            DISK_SPACE_ERROR_MESSAGE,
+        )
 
         search_params = {"terminate_after": 0}
 
@@ -531,9 +528,7 @@ class SearchService:
                     error=str(e),
                 )
                 raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            logger.error(
-                "OpenSearch query failed", error=str(e), search_body=search_body
-            )
+            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
             # Re-raise the exception so the API returns the error to frontend
             raise
 
@@ -566,11 +561,7 @@ class SearchService:
         # to avoid broad semantic spillover for unique lookups.
         normalized_query = query.strip().lower()
         aggregations = results.get("aggregations", {})
-        if (
-            normalized_query
-            and not is_wildcard_match_all
-            and len(normalized_query) >= 4
-        ):
+        if normalized_query and not is_wildcard_match_all and len(normalized_query) >= 4:
             exact_files = {
                 filename
                 for chunk in chunks
@@ -598,8 +589,7 @@ class SearchService:
                         "doc_count_error_upper_bound": 0,
                         "sum_other_doc_count": 0,
                         "buckets": [
-                            {"key": key, "doc_count": count}
-                            for key, count in counts.most_common()
+                            {"key": key, "doc_count": count} for key, count in counts.most_common()
                         ],
                     }
 
