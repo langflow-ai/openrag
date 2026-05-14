@@ -95,9 +95,7 @@ class OneDriveConnector(BaseConnector):
 
         # Graph API defaults
         self._graph_api_version = "v1.0"
-        self._default_params = {
-            "$select": "id,name,size,lastModifiedDateTime,createdDateTime,webUrl,file,folder,@microsoft.graph.downloadUrl"
-        }
+        self._default_params = {}
         
         # Selective sync support (similar to Google Drive)
         self.cfg = type('OneDriveConfig', (), {
@@ -648,22 +646,25 @@ class OneDriveConnector(BaseConnector):
                         except Exception as e:
                             logger.debug(f"Shares approach {i+1} failed: {e}")
                 
-                # Try: /drives/{driveId}/items/{itemId} with full item ID (including 's' prefix)
-                logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{item_id}")
+                # Try: /drives/{driveId}/items/{file_id} with full file ID
+                logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{file_id}")
                 try:
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}"
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}"
                     response = await self._make_graph_request(url, params=params)
                     if response.status_code == 200:
                         return response.json()
+                    else:
+                        logger.warning(f"Drives endpoint failed with status {response.status_code}: {response.text}")
                 except Exception as e:
-                    logger.debug(f"Drives endpoint failed: {e}")
+                    logger.debug(f"Drives endpoint exception: {e}")
                 
-                # Try: /drives/{driveId}/items/{itemId} without 's' prefix
+                # Try: /drives/{driveId}/items/{clean_file_id} without 's' prefix
                 if item_id.startswith('s'):
                     clean_item_id = item_id[1:]  # Remove 's' prefix
-                    logger.info(f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_item_id}")
+                    clean_file_id = f"{drive_id}!{clean_item_id}"
+                    logger.info(f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_file_id}")
                     try:
-                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_item_id}"
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_file_id}"
                         response = await self._make_graph_request(url, params=params)
                         if response.status_code == 200:
                             return response.json()
@@ -677,8 +678,10 @@ class OneDriveConnector(BaseConnector):
                     response = await self._make_graph_request(url, params=params)
                     if response.status_code == 200:
                         return response.json()
+                    else:
+                        logger.warning(f"Standard endpoint failed with status {response.status_code}: {response.text}")
                 except Exception as e:
-                    logger.debug(f"Standard endpoint failed: {e}")
+                    logger.debug(f"Standard endpoint exception: {e}")
         else:
             # Standard item ID without '!'
             url = f"{self._graph_base_url}/me/drive/items/{file_id}"
@@ -711,8 +714,8 @@ class OneDriveConnector(BaseConnector):
                         if content is not None:
                             return content
 
-                    # Try drives endpoint for driveId!itemId format (including the 's' prefix)
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+                    # Try drives endpoint for driveId!itemId format
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}/content"
                     logger.info(f"Downloading via drives endpoint: {url}")
                 else:
                     url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
