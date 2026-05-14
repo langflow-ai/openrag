@@ -21,6 +21,12 @@ export interface Message {
   usage?: TokenUsage;
 }
 
+export const INITIAL_ASSISTANT_MESSAGE: Message = {
+  role: "assistant",
+  content: "How can I assist?",
+  timestamp: new Date(),
+};
+
 export interface FunctionCall {
   name: string;
   arguments?: Record<string, unknown>;

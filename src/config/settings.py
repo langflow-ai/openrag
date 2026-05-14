@@ -177,6 +177,24 @@ LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30
 # Default: 3600 seconds (60 minutes)
 INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
 
+# Two-phase ingestion: backend-side Docling polling configuration.
+# Controls how the OpenRAG backend waits for Docling Serve to finish converting
+# a document before invoking the Langflow ingestion flow. Decoupling this poll
+# from Langflow keeps Langflow execution slots free during long Docling jobs.
+# When ENABLE_BACKEND_DOCLING_POLLING is false, the backend submits to Docling
+# and immediately invokes Langflow with the task_id; Langflow's DoclingRemote
+# component then polls Docling itself (legacy single-call behavior).
+ENABLE_BACKEND_DOCLING_POLLING = os.getenv("ENABLE_BACKEND_DOCLING_POLLING", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+DOCLING_POLL_INTERVAL_SECONDS = get_env_float("DOCLING_POLL_INTERVAL_SECONDS", 3.0)
+DOCLING_POLL_MAX_SECONDS = get_env_int("DOCLING_POLL_MAX_SECONDS", 1800)
+DOCLING_POLL_MAX_INTERVAL_SECONDS = get_env_float("DOCLING_POLL_MAX_INTERVAL_SECONDS", 30.0)
+DOCLING_POLL_BACKOFF_FACTOR = get_env_float("DOCLING_POLL_BACKOFF_FACTOR", 1.5)
+DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5)
+
 
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""

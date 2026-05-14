@@ -9,7 +9,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
@@ -37,22 +37,20 @@ export function TaskNotificationMenu() {
     cancelTask,
     closeMenu,
   } = useTask();
-  const [isRecentOpen, setIsRecentOpen] = useState(true);
-  const [isPastOpen, setIsPastOpen] = useState(false);
+  const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
 
   // Reset section defaults whenever panel is opened.
   useEffect(() => {
     if (isMenuOpen) {
-      setIsRecentOpen(true);
-      setIsPastOpen(false);
+      setIsPastOpen(true);
     }
   }, [isMenuOpen]);
 
   // Sync local state with context state
   useEffect(() => {
     if (isRecentTasksExpanded) {
-      setIsRecentOpen(true);
+      setIsPastOpen(true);
     }
   }, [isRecentTasksExpanded]);
   const activeTasks = tasks.filter(
@@ -61,61 +59,46 @@ export function TaskNotificationMenu() {
       task.status === "running" ||
       task.status === "processing",
   );
-  const fiveMinutesMs = 5 * 60 * 1000;
-  const nowMs = Date.now();
-  const terminalTasks = tasks
-    .filter(
-      (task) =>
-        task.status === "completed" ||
-        task.status === "failed" ||
-        task.status === "error",
-    )
-    .sort((a, b) => {
-      const aMs =
-        parseTimestampMs(a.updated_at) ?? parseTimestampMs(a.created_at) ?? 0;
-      const bMs =
-        parseTimestampMs(b.updated_at) ?? parseTimestampMs(b.created_at) ?? 0;
-      return bMs - aMs;
-    });
-  const recentTasks: Task[] = [];
-  const pastTasks: Task[] = [];
-  terminalTasks.forEach((task) => {
-    const referenceMs =
-      parseTimestampMs(task.created_at) ?? parseTimestampMs(task.updated_at);
-    if (referenceMs === null) {
-      pastTasks.push(task);
-      return;
-    }
-    if (nowMs - referenceMs < fiveMinutesMs) {
-      recentTasks.push(task);
-      return;
-    }
-    pastTasks.push(task);
-  });
-
+  const terminalTasks = useMemo(
+    () =>
+      tasks
+        .filter(
+          (task) =>
+            task.status === "completed" ||
+            task.status === "failed" ||
+            task.status === "error",
+        )
+        .sort((a, b) => {
+          const aMs =
+            parseTimestampMs(a.updated_at) ??
+            parseTimestampMs(a.created_at) ??
+            0;
+          const bMs =
+            parseTimestampMs(b.updated_at) ??
+            parseTimestampMs(b.created_at) ??
+            0;
+          return bMs - aMs;
+        }),
+    [tasks],
+  );
   const mostRecentFailureTaskId =
-    recentTasks.find(
+    terminalTasks.find(
       (task) => isTerminalFailedTask(task) || hasFailedFileEntries(task),
     )?.task_id ?? null;
 
-  // Ensure selected task is visible in the correct section.
+  // Ensure selected task is visible in the past tasks section.
   useEffect(() => {
     if (!selectedTaskId) return;
     if (selectedTaskTrigger <= lastHandledSelectionTriggerRef.current) return;
     lastHandledSelectionTriggerRef.current = selectedTaskTrigger;
 
-    const isInRecent = recentTasks.some(
+    const isInTerminal = terminalTasks.some(
       (task) => task.task_id === selectedTaskId,
     );
-    const isInPast = pastTasks.some((task) => task.task_id === selectedTaskId);
-
-    if (isInRecent) {
-      setIsRecentOpen(true);
-    }
-    if (isInPast) {
+    if (isInTerminal) {
       setIsPastOpen(true);
     }
-  }, [selectedTaskId, recentTasks, pastTasks]);
+  }, [selectedTaskId, terminalTasks]);
 
   // Don't render if menu is closed
   if (!isMenuOpen) return null;
@@ -403,98 +386,11 @@ export function TaskNotificationMenu() {
             </div>
           )}
 
-          {/* Recent Tasks */}
-          <div>
-            <TaskCollapsibleSection
-              title="Recent Tasks"
-              items={recentTasks}
-              isOpen={isRecentOpen}
-              onToggle={() => setIsRecentOpen((prev) => !prev)}
-              emptyText="No recent tasks."
-              containerClassName=""
-              contentClassName="transition-all duration-200"
-              renderItem={(task) => {
-                const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasFailedFileEntries(task);
-                const shouldExpandDetails =
-                  selectedTaskId === task.task_id ||
-                  (!selectedTaskId && task.task_id === mostRecentFailureTaskId);
-
-                if (isTerminalFailedTask(task)) {
-                  return (
-                    <TaskErrorContent
-                      key={task.task_id}
-                      task={task}
-                      mode="recent"
-                      defaultExpanded={shouldExpandDetails}
-                      expandTrigger={
-                        shouldExpandDetails ? selectedTaskTrigger : 0
-                      }
-                    />
-                  );
-                }
-
-                return (
-                  <div
-                    key={task.task_id}
-                    className="px-4 py-2 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      {getTaskIcon(task.status, hasFailedFiles)}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">
-                          Task {task.task_id.substring(0, 8)}...
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatRelativeTime(task.updated_at)}
-                          {formatDuration(task.duration_seconds) && (
-                            <span className="ml-2">
-                              • {formatDuration(task.duration_seconds)}
-                            </span>
-                          )}
-                        </div>
-                        {task.status === "completed" &&
-                          progress?.detailed &&
-                          !hasFailedFiles && (
-                            <div className="text-xs text-muted-foreground">
-                              {progress.detailed.successful} success,{" "}
-                              {progress.detailed.failed} failed
-                              {(progress.detailed.running || 0) > 0 && (
-                                <span>
-                                  , {progress.detailed.running} running
-                                </span>
-                              )}
-                            </div>
-                          )}
-                      </div>
-                      <div className="self-start pt-0.5">
-                        {getStatusBadge(task.status, hasFailedFiles)}
-                      </div>
-                    </div>
-                    {hasFailedFiles && (
-                      <div className="ml-7">
-                        <TaskErrorContent
-                          task={task}
-                          mode="recent"
-                          showHeader={false}
-                          defaultExpanded={shouldExpandDetails}
-                          expandTrigger={
-                            shouldExpandDetails ? selectedTaskTrigger : 0
-                          }
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              }}
-            />
-          </div>
-
           {/* Past Tasks */}
           <div>
             <TaskCollapsibleSection
               title="Past Tasks"
-              items={pastTasks}
+              items={terminalTasks}
               isOpen={isPastOpen}
               onToggle={() => setIsPastOpen((prev) => !prev)}
               emptyText="No past tasks."
@@ -503,7 +399,9 @@ export function TaskNotificationMenu() {
               renderItem={(task) => {
                 const progress = formatTaskProgress(task);
                 const hasFailedFiles = hasFailedFileEntries(task);
-                const shouldExpandDetails = selectedTaskId === task.task_id;
+                const shouldExpandDetails =
+                  selectedTaskId === task.task_id ||
+                  (!selectedTaskId && task.task_id === mostRecentFailureTaskId);
 
                 if (isTerminalFailedTask(task)) {
                   return (
@@ -576,20 +474,18 @@ export function TaskNotificationMenu() {
           </div>
 
           {/* Empty State */}
-          {activeTasks.length === 0 &&
-            recentTasks.length === 0 &&
-            pastTasks.length === 0 && (
-              <div className="p-8 text-center">
-                <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                  No tasks yet
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  Task notifications will appear here when you upload files or
-                  sync connectors.
-                </p>
-              </div>
-            )}
+          {activeTasks.length === 0 && terminalTasks.length === 0 && (
+            <div className="p-8 text-center">
+              <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                No tasks yet
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Task notifications will appear here when you upload files or
+                sync connectors.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

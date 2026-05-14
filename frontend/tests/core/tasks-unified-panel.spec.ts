@@ -109,7 +109,7 @@ const openTasksPanel = async (page: Page) => {
   await expect(panelTitle).toBeVisible({ timeout: 15000 });
 };
 
-const openRecentTasksSection = async (page: Page) => {
+const openPastTasksSection = async (page: Page) => {
   const failureAccordionTrigger = page.getByRole("button", {
     name: /\d+\s*success,\s*\d+\s*failed/i,
   });
@@ -117,9 +117,9 @@ const openRecentTasksSection = async (page: Page) => {
     return;
   }
 
-  const recentTasksToggle = page.getByRole("button", { name: /Recent Tasks/i });
-  if (await recentTasksToggle.count()) {
-    await recentTasksToggle.first().click();
+  const pastTasksToggle = page.getByRole("button", { name: /Past Tasks/i });
+  if (await pastTasksToggle.count()) {
+    await pastTasksToggle.first().click();
   }
   await expect(failureAccordionTrigger.first()).toBeVisible({ timeout: 15000 });
 };
@@ -177,7 +177,7 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
     response.url().includes("/api/tasks"),
   );
   await openTasksPanel(page);
-  await openRecentTasksSection(page);
+  await openPastTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(
@@ -227,7 +227,7 @@ test("completed task with failures requires View click to open tasks panel", asy
     response.url().includes("/api/tasks"),
   );
   await openTasksPanel(page);
-  await openRecentTasksSection(page);
+  await openPastTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(page.getByText("Auto-open on partial success")).toBeVisible();
@@ -273,34 +273,17 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
     response.url().includes("/api/tasks"),
   );
   await openTasksPanel(page);
-  await openRecentTasksSection(page);
+  await openPastTasksSection(page);
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(page.getByText("Auto-open on failed task")).toBeVisible();
 });
 
-test("unified panel groups terminal tasks into recent and past", async ({
+test("unified panel shows all completed tasks in a single past tasks section", async ({
   page,
 }) => {
-  const recentFailedTask = buildTask({
-    task_id: "task-recent-failed",
-    status: "failed",
-    created_at: isoMinutesAgo(1),
-    updated_at: isoMinutesAgo(1),
-    total_files: 1,
-    processed_files: 1,
-    failed_files: 1,
-    files: {
-      "/tmp/recent-failed.pdf": {
-        status: "failed",
-        filename: "recent-failed.pdf",
-        error: "Recent failure log",
-      },
-    },
-  });
-
-  const pastFailedTask = buildTask({
-    task_id: "task-past-failed",
+  const olderFailedTask = buildTask({
+    task_id: "task-older-failed",
     status: "failed",
     created_at: isoMinutesAgo(8),
     updated_at: isoMinutesAgo(8),
@@ -308,28 +291,40 @@ test("unified panel groups terminal tasks into recent and past", async ({
     processed_files: 1,
     failed_files: 1,
     files: {
-      "/tmp/past-failed.pdf": {
+      "/tmp/older-failed.pdf": {
         status: "failed",
-        filename: "past-failed.pdf",
-        error: "Past failure log",
+        filename: "older-failed.pdf",
+        error: "Older failure log",
       },
     },
   });
 
-  await wireTasksState(page, [recentFailedTask, pastFailedTask]);
+  const newerFailedTask = buildTask({
+    task_id: "task-newer-failed",
+    status: "failed",
+    created_at: isoMinutesAgo(1),
+    updated_at: isoMinutesAgo(1),
+    total_files: 1,
+    processed_files: 1,
+    failed_files: 1,
+    files: {
+      "/tmp/newer-failed.pdf": {
+        status: "failed",
+        filename: "newer-failed.pdf",
+        error: "Newer failure log",
+      },
+    },
+  });
+
+  await wireTasksState(page, [olderFailedTask, newerFailedTask]);
   await page.goto("/knowledge");
   await page.waitForResponse((response) =>
     response.url().includes("/api/tasks"),
   );
 
   await openTasksPanel(page);
-  await expect(page.getByText("Task task-rec...")).toBeVisible();
-  await expect(page.getByText("Recent failure log")).toBeVisible();
-  await page
-    .getByRole("button", { name: /Past Tasks/i })
-    .first()
-    .click();
-
-  await expect(page.getByText("Task task-pas...")).toBeVisible();
+  await expect(page.getByText("Task task-new...")).toBeVisible();
+  await expect(page.getByText("Task task-old...")).toBeVisible();
+  // The most recent failure task auto-expands, hiding its INCOMPLETE pill; the older one stays collapsed.
   await expect(page.getByText("INCOMPLETE")).toHaveCount(1);
 });
