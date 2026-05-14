@@ -56,14 +56,17 @@ class ConnectorService:
         # Create temporary file from document content
         from utils.file_utils import auto_cleanup_tempfile
 
-        with auto_cleanup_tempfile(
-            suffix=get_file_extension(document.mimetype)
-        ) as tmp_path:
+        with auto_cleanup_tempfile(suffix=get_file_extension(document.mimetype)) as tmp_path:
             # Write document content to temp file
             with open(tmp_path, "wb") as f:
                 f.write(document.content)
 
-            logger.info("[CONNECTOR] Processing document", document_id=document.id, connector_type=connector_type, filename=document.filename)
+            logger.info(
+                "[CONNECTOR] Processing document",
+                document_id=document.id,
+                connector_type=connector_type,
+                filename=document.filename,
+            )
 
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
@@ -86,7 +89,11 @@ class ConnectorService:
                 acl=document.acl,
             )
 
-            logger.info("[CONNECTOR] Document processed", document_id=document.id, status=result.get("status"))
+            logger.info(
+                "[CONNECTOR] Document processed",
+                document_id=document.id,
+                status=result.get("status"),
+            )
 
             # If successfully indexed or already exists, update the indexed documents with connector metadata
             if result["status"] in ["indexed", "unchanged"]:
@@ -130,8 +137,7 @@ class ConnectorService:
             logger.debug(f"ACL unchanged for {document.id}, skipped update")
         elif acl_result["status"] == "updated":
             logger.info(
-                f"Updated ACL for {document.id}, "
-                f"{acl_result['chunks_updated']} chunks updated"
+                f"Updated ACL for {document.id}, {acl_result['chunks_updated']} chunks updated"
             )
         elif acl_result["status"] == "error":
             logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
@@ -167,9 +173,9 @@ class ConnectorService:
                             if document.modified_time
                             else None,
                             "metadata": document.metadata,
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             )
             logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
@@ -179,7 +185,6 @@ class ConnectorService:
                 error=str(e),
             )
             raise
-
 
     async def sync_connector_files(
         self,
@@ -191,7 +196,7 @@ class ConnectorService:
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -214,9 +219,7 @@ class ConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         logger.debug("Got connector", authenticated=connector.is_authenticated)
 
@@ -232,13 +235,9 @@ class ConnectorService:
 
         while True:
             # List files from connector with limit
-            logger.debug(
-                "Calling list_files", page_size=page_size, page_token=page_token
-            )
+            logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
             file_list = await connector.list_files(page_token, limit=page_size)
-            logger.debug(
-                "Got files from connector", file_count=len(file_list.get("files", []))
-            )
+            logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
             if not files:
@@ -320,7 +319,7 @@ class ConnectorService:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
         Automatically expands folders to their contents.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -338,9 +337,7 @@ class ConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
@@ -355,7 +352,7 @@ class ConnectorService:
 
         # If file_infos provided, cache them in the connector for later use
         # This allows get_file_content to use download URLs directly
-        if file_infos and hasattr(connector, 'set_file_infos'):
+        if file_infos and hasattr(connector, "set_file_infos"):
             connector.set_file_infos(file_infos)
             logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
 
@@ -389,16 +386,33 @@ class ConnectorService:
                 )
                 # If we have file_infos with download URLs, use original file_ids
                 # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                # Exclude folders — they have no downloadable content on their own.
                 if file_infos:
-                    logger.info("Using original file IDs with cached download URLs")
-                    expanded_file_ids = file_ids
+                    non_folder_infos = [f for f in file_infos if not f.get("isFolder")]
+                    non_folder_ids = [f["id"] for f in non_folder_infos if f.get("id")]
+                    if non_folder_ids:
+                        logger.info(
+                            "Using original file IDs with cached download URLs (folders excluded)"
+                        )
+                        expanded_file_ids = non_folder_ids
+                    else:
+                        raise ValueError("No files to sync after expanding folders")
                 else:
                     raise ValueError("No files to sync after expanding folders")
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")
-            # Fallback to original file_ids if expansion fails
-            expanded_file_ids = file_ids
+            # Preserve intentional validation failures (e.g., folders-only selection)
+            if isinstance(e, ValueError):
+                raise
+            # Fallback path: still exclude known folders when metadata is available
+            if file_infos:
+                non_folder_ids = [
+                    f["id"] for f in file_infos if f.get("id") and not f.get("isFolder")
+                ]
+                expanded_file_ids = non_folder_ids or file_ids
+            else:
+                expanded_file_ids = file_ids
         finally:
             # Restore original config values
             if hasattr(connector, "cfg"):
@@ -431,9 +445,7 @@ class ConnectorService:
         original_filenames = {}
         if file_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype")
-                )
+                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
                 for f in file_infos
                 if "id" in f and "name" in f
             }

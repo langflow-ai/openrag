@@ -204,11 +204,6 @@ export class SharePointV8Handler {
         commands: {
           pick: {
             action: "select",
-            select: {
-              urls: {
-                download: true, // Request download URLs
-              },
-            },
           },
         },
       };
