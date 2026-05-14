@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
@@ -572,13 +573,7 @@ function ChatPage() {
     }
   }, [placeholderConversation, currentConversationId]);
 
-  // Check onboarding completion
-
-  // Check if onboarding is complete (current_step >= 4 means complete)
-  const TOTAL_ONBOARDING_STEPS = 4;
-  const isOnboardingComplete =
-    settings?.onboarding?.current_step !== undefined &&
-    settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS;
+  const { isOnboardingComplete } = useOnboardingState();
 
   // Prepare filters for nudges (same as chat)
   const processedFiltersForNudges = parsedFilterData?.filters

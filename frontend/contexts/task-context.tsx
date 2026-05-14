@@ -12,13 +12,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
 import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
 
@@ -123,18 +123,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Get settings to check if onboarding is active
-  const { data: settings } = useGetSettingsQuery();
-
-  // Helper function to check if onboarding is active
-  const isOnboardingActive = useCallback(() => {
-    const TOTAL_ONBOARDING_STEPS = 4;
-    // Onboarding is active if current_step < 4
-    return (
-      settings?.onboarding?.current_step !== undefined &&
-      settings.onboarding.current_step < TOTAL_ONBOARDING_STEPS
-    );
-  }, [settings?.onboarding?.current_step]);
+  const { isOnboardingActive } = useOnboardingState();
 
   const refetchSearch = useCallback(() => {
     queryClient.invalidateQueries({
@@ -366,7 +355,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               successfulFiles !== 1 ? "s" : ""
             } uploaded successfully`;
           }
-          if (!isOnboardingActive()) {
+          if (!isOnboardingActive) {
             toast.success("Task completed", {
               description,
               action: {
@@ -417,7 +406,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
-          if (!isOnboardingActive()) {
+          if (!isOnboardingActive) {
             selectTask(currentTask.task_id);
             setIsMenuOpen(true);
             setIsRecentTasksExpanded(true);
