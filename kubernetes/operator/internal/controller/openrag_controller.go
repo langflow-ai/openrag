@@ -311,19 +311,24 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 		}
 	}
 
-	// Delete PVCs (only if retainPVCOnDelete is false)
-	// Default is true (retain data), so we only delete if explicitly set to false
-	if o.Spec.Langflow.RetainPVCOnDelete != nil && !*o.Spec.Langflow.RetainPVCOnDelete {
+	// Delete PVCs based on pvcReclaimPolicy
+	// Default is "Retain" to preserve user data
+	policy := o.Spec.Langflow.PVCReclaimPolicy
+	if policy == "" {
+		policy = openragv1alpha1.PVCReclaimRetain // default if not specified
+	}
+
+	if policy == openragv1alpha1.PVCReclaimDelete {
 		pvc := &corev1.PersistentVolumeClaim{}
 		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-data"), Namespace: targetNS}, pvc)
 		if err == nil {
-			logger.Info("Deleting Langflow PVC as retainPVCOnDelete is set to false", "pvc", resourceName("lf-data"))
+			logger.Info("Deleting Langflow PVC per pvcReclaimPolicy", "pvc", resourceName("lf-data"), "policy", policy)
 			if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
 				logger.Error(err, "failed to delete PVC", "name", resourceName("lf-data"))
 			}
 		}
 	} else {
-		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "retainPVCOnDelete", true)
+		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "policy", policy)
 	}
 
 	// Delete network policy if enabled
