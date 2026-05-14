@@ -1,21 +1,23 @@
 """Provider health check endpoint."""
 
 import asyncio
-from typing import Optional
+
 import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
-from config.settings import get_openrag_config
+
 from api.provider_validation import validate_provider_setup
+from config.settings import get_openrag_config
 from dependencies import get_current_user
 from session_manager import User
+from utils import provider_health_cache
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 async def check_provider_health(
-    provider: Optional[str] = None,
+    provider: str | None = None,
     test_completion: bool = False,
     user: User = Depends(get_current_user),
 ):
@@ -66,8 +68,16 @@ async def check_provider_health(
                 project_id = getattr(provider_config, "project_id", None)
 
                 # Check if this provider is used for LLM or embedding
-                llm_model = current_config.agent.llm_model if provider == current_config.agent.llm_provider else None
-                embedding_model = current_config.knowledge.embedding_model if provider == current_config.knowledge.embedding_provider else None
+                llm_model = (
+                    current_config.agent.llm_model
+                    if provider == current_config.agent.llm_provider
+                    else None
+                )
+                embedding_model = (
+                    current_config.knowledge.embedding_model
+                    if provider == current_config.knowledge.embedding_provider
+                    else None
+                )
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
@@ -94,9 +104,31 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
-        
+
+            # Short-circuit identical concurrent polls from the provider-health
+            # banner so we don't fan out N watsonx round-trips per poll cycle.
+            # Only the polled (no `check_provider`) success path is cached; the
+            # 503 branch and the specific-provider branch always re-validate.
+            health_cache_key = provider_health_cache.cache_key(
+                provider=provider,
+                embedding_provider=embedding_provider,
+                test_completion=test_completion,
+                llm_model=llm_model,
+                embedding_model=embedding_model,
+                endpoint=endpoint,
+                project_id=project_id,
+                api_key=api_key,
+                embedding_api_key=embedding_api_key,
+                embedding_endpoint=embedding_endpoint,
+                embedding_project_id=embedding_project_id,
+            )
+            cached_payload = provider_health_cache.get(health_cache_key)
+            if cached_payload is not None:
+                logger.debug("Returning cached provider-health response")
+                return JSONResponse(cached_payload, status_code=200)
+
         logger.info(f"Checking health for provider: {provider}")
-        
+
         # Validate provider setup
         if check_provider:
             # Validate specific provider
@@ -160,9 +192,11 @@ async def check_provider_health(
                 and embedding_provider == "watsonx"
                 and llm_error is None
             ):
-                logger.info("Waiting 2 seconds before WatsonX embedding test (after completion test)")
+                logger.info(
+                    "Waiting 2 seconds before WatsonX embedding test (after completion test)"
+                )
                 await asyncio.sleep(2)
-            
+
             try:
                 await validate_provider_setup(
                     provider=embedding_provider,
@@ -179,10 +213,14 @@ async def check_provider_health(
                     logger.info(f"Embedding provider ({embedding_provider}) appears busy: {str(e)}")
                 else:
                     embedding_error = str(e)
-                    logger.error(f"Embedding provider ({embedding_provider}) validation timed out: {embedding_error}")
+                    logger.error(
+                        f"Embedding provider ({embedding_provider}) validation timed out: {embedding_error}"
+                    )
             except Exception as e:
                 embedding_error = str(e)
-                logger.error(f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}")
+                logger.error(
+                    f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
+                )
 
             # Return combined status
             if llm_error or embedding_error:
@@ -204,24 +242,23 @@ async def check_provider_health(
                     status_code=503,
                 )
 
-            return JSONResponse(
-                {
-                    "status": "healthy",
-                    "message": "Both providers properly configured and validated",
-                    "llm_provider": provider,
-                    "embedding_provider": embedding_provider,
-                    "details": {
-                        "llm_model": llm_model,
-                        "embedding_model": embedding_model,
-                    },
+            healthy_payload = {
+                "status": "healthy",
+                "message": "Both providers properly configured and validated",
+                "llm_provider": provider,
+                "embedding_provider": embedding_provider,
+                "details": {
+                    "llm_model": llm_model,
+                    "embedding_model": embedding_model,
                 },
-                status_code=200,
-            )
-        
+            }
+            provider_health_cache.set_(health_cache_key, healthy_payload)
+            return JSONResponse(healthy_payload, status_code=200)
+
     except Exception as e:
         error_message = str(e)
         logger.error(f"Provider health check failed for {provider}: {error_message}")
-        
+
         return JSONResponse(
             {
                 "status": "unhealthy",
@@ -230,4 +267,3 @@ async def check_provider_health(
             },
             status_code=503,
         )
-
