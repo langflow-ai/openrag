@@ -597,9 +597,7 @@ class LangflowFileService:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(
-            filename, content, owner=owner, jwt_token=jwt_token
-        )
+        task_id = await self.submit_to_docling(filename, content, owner=owner, jwt_token=jwt_token)
 
         if file_task is not None:
             file_task.docling_task_id = task_id
