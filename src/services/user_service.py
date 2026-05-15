@@ -124,7 +124,11 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
         # of the same identity and we can safely return it.
         if user.email:
             by_email = await user_repo.get_by_email(user.email)
-            if by_email and by_email.oauth_provider == provider and by_email.oauth_subject == subject:
+            if (
+                by_email
+                and by_email.oauth_provider == provider
+                and by_email.oauth_subject == subject
+            ):
                 await user_repo.update_last_login(by_email.id)
                 return by_email
 
