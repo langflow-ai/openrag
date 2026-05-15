@@ -25,15 +25,13 @@ class OneDriveOAuth:
         "Files.Read",
         "Files.Read.All",  # Access all files user can access
         "Files.Read.Selected",
-        "Sites.Read.All",  # Read SharePoint sites (for File Picker and OneDrive for Business)
         "offline_access"
     ]
     RESOURCE_SCOPES = [
         "User.Read",
         "Files.Read",
         "Files.Read.All",
-        "Files.Read.Selected",
-        "Sites.Read.All"
+        "Files.Read.Selected"
     ]
     SCOPES = AUTH_SCOPES  # Backward-compat alias if something references .SCOPES
 
