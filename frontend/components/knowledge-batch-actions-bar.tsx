@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 
 import { usePermissions } from "@/hooks/use-permissions";
 
