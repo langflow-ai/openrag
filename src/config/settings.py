@@ -84,6 +84,28 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
     "yes",
 )
 
+
+# Skip the OpenSearch security context setup (roles, role mappings,
+# all_access admin pin). When true, OpenRAG assumes the security context
+# is managed externally (e.g., by Traefik in CPD or by a SaaS platform
+# operator).
+#
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas / on_prem (CPD) -> "true" (the platform owns the security context)
+#   * anything else (oss)  -> "false" (today's behaviour preserved)
+# An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
+# operator can force-enable the setup in SaaS for a one-off bootstrap.
+def _resolve_skip_os_security_default() -> str:
+    run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
+    if run_mode in ("saas", "on_prem"):
+        return "true"
+    return "false"
+
+
+OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
+    "OPENRAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
+).lower() in ("true", "1", "yes")
+
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
 # logging-level "debug" or other unrelated debug flags.
