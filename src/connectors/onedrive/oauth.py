@@ -59,7 +59,7 @@ class OneDriveOAuth:
         self.authority = authority
         self.allow_json_refresh = allow_json_refresh
         self.token_cache = msal.SerializableTokenCache()
-        self._current_account = None
+        self._current_account: dict[str, Any] | None = None
 
         # Initialize MSAL Confidential Client
         self.app = msal.ConfidentialClientApplication(
@@ -104,9 +104,10 @@ class OneDriveOAuth:
                 accounts = self.app.get_accounts()
                 logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
                 if accounts:
-                    self._current_account = accounts[0]
+                    account = accounts[0]
+                    self._current_account = account
                     logger.debug(
-                        f"Set current account: {self._current_account.get('username', 'no username')}"
+                        f"Set current account: {account.get('username', 'no username')}"
                     )
 
                     if needs_upgrade:
@@ -164,9 +165,10 @@ class OneDriveOAuth:
                 accounts = self.app.get_accounts()
                 logger.debug(f"After refresh, found {len(accounts)} accounts")
                 if accounts:
-                    self._current_account = accounts[0]
+                    account = accounts[0]
+                    self._current_account = account
                     logger.debug(
-                        f"Set current account after refresh: {self._current_account.get('username', 'no username')}"
+                        f"Set current account after refresh: {account.get('username', 'no username')}"
                     )
                 return True
 

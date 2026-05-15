@@ -97,7 +97,7 @@ class OneDriveConnector(BaseConnector):
 
         # Graph API defaults
         self._graph_api_version = "v1.0"
-        self._default_params = {}
+        self._default_params: dict[str, Any] = {}
 
         # Selective sync support (similar to Google Drive)
         self.cfg = type(
@@ -427,8 +427,7 @@ class OneDriveConnector(BaseConnector):
         """
         try:
             # Get access token
-            token_data = self.oauth.get_access_token()
-            access_token = token_data.get("access_token")
+            access_token = self.oauth.get_access_token()
 
             if not access_token:
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
