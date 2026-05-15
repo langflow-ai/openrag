@@ -106,9 +106,7 @@ class OneDriveOAuth:
                 if accounts:
                     account = accounts[0]
                     self._current_account = account
-                    logger.debug(
-                        f"Set current account: {account.get('username', 'no username')}"
-                    )
+                    logger.debug(f"Set current account: {account.get('username', 'no username')}")
 
                     if needs_upgrade:
                         await self.save_cache()
