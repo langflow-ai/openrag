@@ -1,8 +1,8 @@
 import asyncio
 import json
-from dataclasses import dataclass
-from enum import Enum
 import platform
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,12 +29,11 @@ class DoclingConfig(BaseModel):
     picture_description_local: dict | None = None
 
 
-
 class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 
 
-class DoclingTaskState(str, Enum):
+class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
     PENDING = "pending"
@@ -49,8 +48,8 @@ class DoclingStatusSnapshot:
     """Single-point-in-time view of a Docling task's state."""
 
     state: DoclingTaskState
-    detail: Optional[str] = None
-    raw: Optional[dict] = None
+    detail: str | None = None
+    raw: dict | None = None
 
 
 def get_docling_preset_configs(
@@ -78,7 +77,7 @@ class DoclingService:
     _default_client: httpx.AsyncClient | None = None
 
     def __init__(
-        self, docling_url: Optional[str] = None, httpx_client: Optional[httpx.AsyncClient] = None
+        self, docling_url: str | None = None, httpx_client: httpx.AsyncClient | None = None
     ):
         """
         Initialize the DoclingService.
@@ -268,7 +267,7 @@ class DoclingService:
             return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, raw=payload)
         return DoclingStatusSnapshot(state=DoclingTaskState.PENDING, raw=payload)
 
-    async def fetch_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def fetch_task_result(self, task_id: str) -> dict[str, Any]:
         """
         Fetch the converted document for a Docling task that is already SUCCESS.
 
