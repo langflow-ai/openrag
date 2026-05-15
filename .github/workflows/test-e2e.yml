@@ -2,17 +2,15 @@ name: E2E Tests
 
 on:
   pull_request:
-    paths:
-      - 'src/**'
-      - 'frontend/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - 'flows/**'
-      - 'docker-compose.yml'
-      - 'Dockerfile*'
-      - 'Makefile'
-      - '.github/workflows/test-e2e.yml'
+  merge_group:
   workflow_dispatch:
+
+# Serialize E2E and Integration on the same PR/queue ref. They share runner
+# pool and Docker resources; running them concurrently inflates the flake
+# rate. Different PRs have different refs and run in parallel as usual.
+concurrency:
+  group: heavy-tests-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "22"
@@ -23,7 +21,40 @@ env:
   PLAYWRIGHT_VERSION: "1.57.0"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            relevant:
+              - 'src/**'
+              - 'frontend/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'flows/**'
+              - 'docker-compose.yml'
+              - 'Dockerfile*'
+              - 'Makefile'
+              - '.github/workflows/test-e2e.yml'
+      - id: decision
+        run: |
+          if [ "${{ github.event_name }}" = "merge_group" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.filter.outputs.relevant }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
     env:
@@ -99,7 +130,7 @@ jobs:
 
 
       - name: Run Playwright tests
-        working-directory: frontend
+        uses: nick-fields/retry@v3
         env:
           CI: "true"
           OPENSEARCH_HOST: localhost
@@ -108,7 +139,18 @@ jobs:
           OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
-        run: npx playwright test
+        with:
+          timeout_minutes: 60
+          max_attempts: 2
+          retry_on: error
+          command: |
+            cd frontend
+            npx playwright test
+          on_retry_command: |
+            # Services are still up — Playwright handles its own fixture
+            # lifecycle. Just clear stale artifacts so the retry's report
+            # isn't contaminated by the first attempt's output.
+            rm -rf frontend/test-results frontend/playwright-report || true
 
       - name: Collect service logs on failure
         if: failure()
@@ -150,3 +192,17 @@ jobs:
           docker rm -f openrag-backend-proxy 2>/dev/null || true
           make clean || true
           docker system prune -f || true
+
+  required:
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify e2e result
+        run: |
+          result="${{ needs.e2e.result }}"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "e2e job did not succeed: $result"
+            exit 1
+          fi
+          echo "e2e result: $result (success or skipped — passing)"

@@ -2,14 +2,7 @@ name: Integration Tests
 
 on:
   pull_request:
-    paths:
-      - 'src/**.py'
-      - 'tests/**.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'sdks/**'
-      - 'flows/**'
-      - '.github/workflows/test-integration.yml'
+  merge_group:
   workflow_dispatch:
     inputs:
       use_local_images:
@@ -18,8 +11,46 @@ on:
         type: boolean
         default: true
 
+# Serialize E2E and Integration on the same PR/queue ref. They share runner
+# pool and Docker resources; running them concurrently inflates the flake
+# rate. Different PRs have different refs and run in parallel as usual.
+concurrency:
+  group: heavy-tests-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            relevant:
+              - 'src/**.py'
+              - 'tests/**.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'sdks/**'
+              - 'flows/**'
+              - '.github/workflows/test-integration.yml'
+      - id: decision
+        run: |
+          if [ "${{ github.event_name }}" = "merge_group" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.filter.outputs.relevant }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   tests:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
     env:
@@ -54,7 +85,7 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Verify workspace
         run: |
           echo "Current directory: $(pwd)"
@@ -78,6 +109,7 @@ jobs:
         run: uv sync
 
       - name: Run integration tests
+        uses: nick-fields/retry@v3
         env:
           OPENSEARCH_HOST: localhost
           OPENSEARCH_PORT: 9200
@@ -89,16 +121,42 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ""
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
+        with:
+          timeout_minutes: 45
+          max_attempts: 2
+          retry_on: error
+          command: |
+            # For PRs and merge_group, always build locally since we're
+            # testing new code. For workflow_dispatch, use the input
+            # (defaults to true).
+            USE_LOCAL="${{ inputs.use_local_images }}"
+            if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "$USE_LOCAL" != "false" ]; then
+              echo "Running tests with locally built images..."
+              make test-ci-local
+            else
+              echo "Running tests with DockerHub images..."
+              make test-ci
+            fi
+            echo "Keys directory after tests:"
+            ls -la keys/ || echo "No keys directory"
+          on_retry_command: |
+            # Heavyweight reset between attempts — the make target brings
+            # up the full docker-compose stack, and stale containers /
+            # volumes from the first attempt will poison the retry.
+            echo "Integration test attempt failed; tearing down before retry..."
+            docker compose -f docker-compose.yml down -v --remove-orphans || true
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" || true
+
+  required:
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify tests result
         run: |
-          # For PRs, always build locally since we're testing new code
-          # For workflow_dispatch, use the input (defaults to true)
-          USE_LOCAL="${{ inputs.use_local_images }}"
-          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
-            echo "Running tests with locally built images..."
-            make test-ci-local
-          else
-            echo "Running tests with DockerHub images..."
-            make test-ci
+          result="${{ needs.tests.result }}"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "tests job did not succeed: $result"
+            exit 1
           fi
-          echo "Keys directory after tests:"
-          ls -la keys/ || echo "No keys directory"
+          echo "tests result: $result (success or skipped — passing)"

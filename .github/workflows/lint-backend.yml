@@ -2,12 +2,7 @@ name: Lint Backend
 
 on:
   pull_request:
-    paths:
-      - 'src/**/*.py'
-      - 'tests/**/*.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/lint-backend.yml'
+  merge_group:
 
 # Cancel in-flight runs on the same PR when a new push lands.
 concurrency:
@@ -15,7 +10,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            relevant:
+              - 'src/**/*.py'
+              - 'tests/**/*.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/lint-backend.yml'
+      - id: decision
+        run: |
+          # Skip on merge_group: lint runs on changed files only, so
+          # re-running on the queued ref would just re-check the same set
+          # the PR already passed. The required job below still reports
+          # green so the merge queue is not blocked.
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.filter.outputs.relevant }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     name: Ruff and mypy on changed files
     runs-on: ubuntu-latest
 
@@ -87,3 +115,17 @@ jobs:
           if [ "${#test_files[@]}" -gt 0 ]; then
             uv run mypy "${test_files[@]}"
           fi
+
+  required:
+    needs: lint
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify lint result
+        run: |
+          result="${{ needs.lint.result }}"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "lint job did not succeed: $result"
+            exit 1
+          fi
+          echo "lint result: $result (success or skipped — passing)"

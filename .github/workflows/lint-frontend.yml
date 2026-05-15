@@ -2,12 +2,36 @@ name: Frontend Lint
 
 on:
   pull_request:
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/lint-frontend.yml'
+  merge_group:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            relevant:
+              - 'frontend/**'
+              - '.github/workflows/lint-frontend.yml'
+      - id: decision
+        run: |
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.filter.outputs.relevant }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   biome:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     name: Biome
     runs-on: ubuntu-latest
     steps:
@@ -48,3 +72,16 @@ jobs:
       - name: TypeScript type check
         working-directory: frontend
         run: npm run typecheck
+  required:
+    needs: biome
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify biome result
+        run: |
+          result="${{ needs.biome.result }}"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "biome job did not succeed: $result"
+            exit 1
+          fi
+          echo "biome result: $result (success or skipped — passing)"
