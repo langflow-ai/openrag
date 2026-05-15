@@ -1,8 +1,7 @@
-import os
 import json
 import logging
-from typing import Optional, Dict, Any
-
+import os
+from typing import Any
 
 import msal
 
@@ -133,7 +132,7 @@ class OneDriveOAuth:
 
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] OneDrive credential load failed")
             return False
 
@@ -189,7 +188,7 @@ class OneDriveOAuth:
 
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] OneDrive JSON token refresh failed")
             return False
 
@@ -211,12 +210,12 @@ class OneDriveOAuth:
         except Exception as e:
             logger.error(f"Failed to save token cache: {e}")
 
-    def create_authorization_url(self, redirect_uri: str, state: Optional[str] = None) -> str:
+    def create_authorization_url(self, redirect_uri: str, state: str | None = None) -> str:
         """Create authorization URL for OAuth flow."""
         # Store redirect URI for later use in callback
         self._redirect_uri = redirect_uri
 
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             # Interactive auth includes offline_access
             "scopes": self.AUTH_SCOPES,
             "redirect_uri": redirect_uri,
@@ -324,7 +323,7 @@ class OneDriveOAuth:
             logger.warning(f"OneDrive is_authenticated: Fallback also failed, result: {result}")
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] OneDrive is_authenticated failed")
             return False
 
@@ -366,7 +365,7 @@ class OneDriveOAuth:
             logger.error(f"OneDrive get_access_token: All attempts failed, error: {error_msg}")
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] OneDrive get_access_token failed")
             raise
 
