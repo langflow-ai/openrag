@@ -39,10 +39,14 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
-LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID")
-LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
-LANGFLOW_URL_INGEST_FLOW_ID = os.getenv("LANGFLOW_URL_INGEST_FLOW_ID")
-NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
+LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+LANGFLOW_INGEST_FLOW_ID = (
+    os.getenv("LANGFLOW_INGEST_FLOW_ID") or "5488df7c-b93f-4f87-a446-b67028bc0813"
+)
+LANGFLOW_URL_INGEST_FLOW_ID = (
+    os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
+)
+NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID") or "ebc01d31-1976-46ce-a385-b0240327226c"
 
 
 # Langflow superuser credentials for API key generation

@@ -269,6 +269,12 @@ def register_internal_routes(app: FastAPI):
         methods=["POST", "GET"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/connectors/{connector_type}/{connection_id}/browse",
+        connectors.browse_connection_files,
+        methods=["GET"],
+        tags=["internal"],
+    )
 
     # Document endpoints
     app.add_api_route(
