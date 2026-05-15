@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -227,6 +226,6 @@ async def get_effective_provider_keys(session: AsyncSession, user_id: str) -> di
     return {}
 
 
-async def get_effective_agent_config(session: AsyncSession, user_id: str) -> Optional[dict]:
+async def get_effective_agent_config(session: AsyncSession, user_id: str) -> dict | None:
     """Phase-4 helper. Returns the per-user agent config overlay (or None)."""
     return None
