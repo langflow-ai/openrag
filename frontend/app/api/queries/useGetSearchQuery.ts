@@ -85,7 +85,7 @@ export { EMPTY_SEARCH_RESULT };
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<UseQueryOptions<SearchResult>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
   const getFileIdentity = (chunk: ChunkResult): string => {
