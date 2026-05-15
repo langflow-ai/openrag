@@ -248,7 +248,7 @@ class OneDriveConnector(BaseConnector):
                         logger.warning("_detect_onedrive_url: webUrl is empty in response")
                 else:
                     logger.warning(
-                        "[CONNECTOR] OneDrive detect URL failed", status_code=response.status_code
+                        f"[CONNECTOR] OneDrive detect URL failed, status_code: {response.status_code}"
                     )
 
         except Exception as e:
@@ -426,7 +426,7 @@ class OneDriveConnector(BaseConnector):
         """
         try:
             # Get access token
-            token_data = await self.oauth.get_access_token()
+            token_data = self.oauth.get_access_token()
             access_token = token_data.get("access_token")
 
             if not access_token:
@@ -509,8 +509,6 @@ class OneDriveConnector(BaseConnector):
 
                 acl = DocumentACL(
                     owner="",
-                    user_permissions={},
-                    group_permissions={},
                 )
 
                 return ConnectorDocument(
@@ -540,7 +538,7 @@ class OneDriveConnector(BaseConnector):
                     headers = {"Authorization": f"Bearer {token}"}
                     shares_content = await self._download_via_shares_endpoint(file_id, headers)
                     if shares_content is not None:
-                        acl = DocumentACL(owner="", user_permissions={}, group_permissions={})
+                        acl = DocumentACL(owner="")
                         return ConnectorDocument(
                             id=file_id,
                             filename="Unknown",
