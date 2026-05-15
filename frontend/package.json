@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
     "lint:fix": "biome check --write",
     "format": "biome format --write",
     "knip": "knip",
