@@ -31,10 +31,24 @@ const getMimeTypeLabel = (mimeType: string) => {
     "application/vnd.google-apps.folder": "Folder",
     "application/pdf": "PDF",
     "text/plain": "Text",
+    "text/csv": "CSV",
+    "text/html": "HTML",
+    "application/xml": "XML",
+    "application/json": "JSON",
+    "application/msword": "Word Doc",
+    "application/vnd.ms-excel": "Excel",
+    "application/vnd.ms-powerpoint": "PowerPoint",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       "Word Doc",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      "Excel",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation":
       "PowerPoint",
+    "application/octet-stream": "File",
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/gif": "GIF",
+    "image/svg+xml": "SVG",
   };
 
   return typeMap[mimeType] || mimeType?.split("/").pop() || "Document";
