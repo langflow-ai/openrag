@@ -1,3 +1,50 @@
+export type UploadContextResult =
+  | { type: "task"; taskId: string }
+  | { type: "direct"; filename: string; responseId: string };
+
+export async function uploadFileForContext(
+  file: File,
+  endpoint: string,
+  previousResponseId: string | null,
+): Promise<UploadContextResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("endpoint", endpoint);
+  if (previousResponseId) {
+    formData.append("previous_response_id", previousResponseId);
+  }
+
+  const response = await fetch("/api/upload_context", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to process document");
+  }
+
+  const result = await response.json();
+
+  if (response.status === 201) {
+    const taskId = result.task_id || result.id;
+    if (!taskId) {
+      throw new Error("No task ID received from server");
+    }
+    return { type: "task", taskId };
+  }
+
+  const filename: unknown = result.filename;
+  const responseId: unknown = result.response_id;
+  if (typeof filename !== "string" || !filename) {
+    throw new Error("Upload succeeded but server returned no filename");
+  }
+  if (typeof responseId !== "string" || !responseId) {
+    throw new Error("Upload succeeded but server returned no response_id");
+  }
+  return { type: "direct", filename, responseId };
+}
+
 export interface DuplicateCheckResponse {
   exists: boolean;
   [key: string]: unknown;
