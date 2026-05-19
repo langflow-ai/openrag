@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,20 +107,36 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     except IntegrityError:
         # The collision could be on any of the three unique constraints:
         # (oauth_provider, oauth_subject), email_lookup_hash, or id (PK).
-        # Only the FIRST means we hit our own identity (same logical
-        # user via concurrent insert by a peer process); the latter two
-        # mean a *different* identity already owns that id or email.
         await session.rollback()
+
+        # Case 1: (oauth_provider, oauth_subject) race — a peer process beat us
+        # to the INSERT for this exact identity.
         existing = await user_repo.get_by_oauth(provider, subject)
         if existing:
             await user_repo.update_last_login(existing.id)
             return existing
-        # PK collision across providers (different subject chose the
-        # same id). Retry with a UUID id; (provider, subject) and email
-        # differ from the conflicting row so this insert succeeds.
-        # email_lookup_hash collision is NOT recoverable here — that's
-        # a real conflict (two identities with the same email) and we
-        # let it propagate to the caller.
+
+        # Case 2: email_lookup_hash race — same email already inserted (most
+        # common for the synthetic anonymous@localhost user in no-auth mode when
+        # two concurrent requests both observe an empty table). Look up by email;
+        # if the row's (provider, subject) matches ours it's a concurrent insert
+        # of the same identity and we can safely return it.
+        if user.email:
+            by_email = await user_repo.get_by_email(user.email)
+            if (
+                by_email
+                and by_email.oauth_provider == provider
+                and by_email.oauth_subject == subject
+            ):
+                await user_repo.update_last_login(by_email.id)
+                return by_email
+
+        # Case 3: PK collision across providers (a different identity already
+        # occupies id=subject). Retry with a UUID; (provider, subject) differs
+        # from the conflicting row so the INSERT will succeed.
+        # If the collision was on email_lookup_hash for a genuinely different
+        # identity (two real users sharing an email) this insert also fails —
+        # that propagates to the caller as intended.
         new_id = str(uuid.uuid4())
         row = UserRow(
             id=new_id,
@@ -211,6 +226,6 @@ async def get_effective_provider_keys(session: AsyncSession, user_id: str) -> di
     return {}
 
 
-async def get_effective_agent_config(session: AsyncSession, user_id: str) -> Optional[dict]:
+async def get_effective_agent_config(session: AsyncSession, user_id: str) -> dict | None:
     """Phase-4 helper. Returns the per-user agent config overlay (or None)."""
     return None

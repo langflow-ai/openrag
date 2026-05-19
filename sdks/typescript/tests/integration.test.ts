@@ -251,7 +251,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       // due to embedding model component errors in layer 0
       expect(result.status).toBeDefined();
       expect((result as any).successful_files).toBeGreaterThanOrEqual(0);
-    });
+    }, 120_000);
 
     it("should ingest a document without waiting", async () => {
       // wait=false returns immediately with task_id
