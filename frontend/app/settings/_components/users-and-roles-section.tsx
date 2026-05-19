@@ -55,6 +55,10 @@ interface UserRowProps {
   onRevoke: (userId: string, roleId: string, roleName: string) => void;
   pending: boolean;
   selfDbId?: string;
+  /** When false, the role-assignment dropdown is disabled and the
+   * per-pill revoke (X) buttons are hidden — used in saas/on_prem where
+   * platform admins manage roles in the IdP. */
+  canMutateRoles: boolean;
 }
 
 function UserRow({
@@ -64,6 +68,7 @@ function UserRow({
   onRevoke,
   pending,
   selfDbId,
+  canMutateRoles,
 }: UserRowProps) {
   const [selectedRole, setSelectedRole] = useState<string>("");
   const isSelf = selfDbId && selfDbId === u.id;
@@ -117,7 +122,7 @@ function UserRow({
                       permissions={role.permissions}
                     />
                   )}
-                  {role && (
+                  {role && canMutateRoles && (
                     <button
                       type="button"
                       aria-label={`Remove ${r}`}
@@ -142,7 +147,7 @@ function UserRow({
             const role = roles.find((rr) => rr.id === v);
             if (role) onAssign(u.id, role.id);
           }}
-          disabled={pending || availableRoles.length === 0}
+          disabled={!canMutateRoles || pending || availableRoles.length === 0}
         >
           <SelectTrigger className="h-9 w-[160px] text-sm ml-auto">
             <SelectValue placeholder="+ Assign role" />
@@ -162,7 +167,7 @@ function UserRow({
 
 export function UsersAndRolesSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, rbacUiEnabled } = useAuth();
   const usersQuery = useGetAdminUsersQuery();
   const rolesQuery = useGetAdminRolesQuery();
   const assignMutation = useAssignRoleMutation();
@@ -335,6 +340,7 @@ export function UsersAndRolesSection() {
                       onRevoke={onRevoke}
                       pending={isMutating}
                       selfDbId={selfDbId}
+                      canMutateRoles={rbacUiEnabled}
                     />
                   ))}
                 </tbody>
@@ -342,8 +348,9 @@ export function UsersAndRolesSection() {
             </div>
           )}
 
-          {/* Available Roles strip + collapsible matrix */}
-          {roles.length > 0 && (
+          {/* Available Roles strip + collapsible matrix — hidden when the
+              local RBAC UI is disabled. */}
+          {rbacUiEnabled && roles.length > 0 && (
             <div className="pt-2 space-y-3">
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
@@ -368,7 +375,7 @@ export function UsersAndRolesSection() {
         </CardContent>
       </Card>
 
-      <AuditLogFeed />
+      {rbacUiEnabled && <AuditLogFeed />}
 
       <Dialog
         open={pendingRevoke !== null}

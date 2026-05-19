@@ -38,6 +38,13 @@ interface AuthContextType {
    * matches the backend behavior.
    */
   rbacEnforced: boolean;
+  /**
+   * Whether the in-app RBAC role-assignment UI is enabled
+   * (mirrors `OPENRAG_RBAC_UI_ENABLED`). When false, the users list
+   * still renders read-only but the role-change dropdown is disabled
+   * and the roles-management / audit-log surfaces are hidden.
+   */
+  rbacUiEnabled: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
    * GET /api/onboarding-status endpoint (no auth needed). */
   isOnboarded: boolean | null;
@@ -254,6 +261,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // load before /api/users/me responds. The backend is authoritative;
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
+  const [rbacUiEnabled, setRbacUiEnabled] = useState<boolean>(true);
 
   const fetchPermissions = useCallback(async () => {
     try {
@@ -273,6 +281,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Field is optional from older backends — default to true.
       setRbacEnforced(
         typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
+      );
+      setRbacUiEnabled(
+        typeof data?.rbac_ui_enabled === "boolean"
+          ? data.rbac_ui_enabled
+          : true,
       );
     } catch {
       setPermissions(new Set());
@@ -345,6 +358,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     permissions,
     roles,
     rbacEnforced,
+    rbacUiEnabled,
     isOnboarded,
     onboardingStep,
     can,

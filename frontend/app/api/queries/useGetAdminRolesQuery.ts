@@ -14,7 +14,10 @@ export const useGetAdminRolesQuery = (
   async function fetchRoles(): Promise<AdminRole[]> {
     const response = await fetch("/api/admin/roles");
     if (response.ok) return await response.json();
-    if (response.status === 403) return [];
+    // 403: caller lacks permission. 404: endpoint disabled via
+    // OPENRAG_RBAC_UI_ENABLED=false in saas/on_prem. Both render as
+    // an empty list so the read-only users surface still works.
+    if (response.status === 403 || response.status === 404) return [];
     throw new Error(`Failed to fetch roles (${response.status})`);
   }
 

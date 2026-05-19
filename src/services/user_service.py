@@ -34,12 +34,21 @@ def _noauth_role() -> str:
     return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
 
 
-async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
+async def ensure_user_row(
+    session: AsyncSession,
+    user: User,
+    jwt_roles: list[str] | None = None,
+) -> UserRow:
     """Ensure the authenticated `user` exists in the SQL `users` table.
 
-    First-ever user gets the `admin` role. All subsequent users get the
-    role named in `OPENRAG_DEFAULT_ROLE` (default `user`). The synthetic
-    no-auth user is granted `OPENRAG_NOAUTH_ROLE` (default `admin`).
+    Role assignment:
+
+    * ``jwt_roles is None`` — legacy behavior. First-ever user gets ``admin``;
+      subsequent users get ``OPENRAG_DEFAULT_ROLE`` (default ``user``); the
+      synthetic anonymous user gets ``OPENRAG_NOAUTH_ROLE`` (default ``admin``).
+    * ``jwt_roles is not None`` — JWT is authoritative. The user's DB role
+      assignments are reconciled against the list every call; the bootstrap-
+      admin shortcut is skipped (the first admin must come from the JWT).
 
     Returns the persisted UserRow. Caller commits.
     """
@@ -57,6 +66,8 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     existing = await user_repo.get_by_oauth(provider, subject)
     if existing:
         await user_repo.update_last_login(existing.id)
+        if jwt_roles is not None:
+            await _sync_jwt_roles(role_repo, audit_repo, existing.id, jwt_roles)
         return existing
 
     # Possible legacy row (oauth_provider='legacy', oauth_subject==user_id)
@@ -83,8 +94,11 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
             target_id=merged.id,
             audit_metadata={"provider": provider},
         )
-        # Legacy rows had no role assignment — give them the default.
-        await _assign_bootstrap_or_default(session, role_repo, audit_repo, merged.id)
+        if jwt_roles is not None:
+            await _sync_jwt_roles(role_repo, audit_repo, merged.id, jwt_roles)
+        else:
+            # Legacy rows had no role assignment — give them the default.
+            await _assign_bootstrap_or_default(session, role_repo, audit_repo, merged.id)
         return merged
 
     # Brand-new row.
@@ -169,8 +183,78 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
         )
         await user_repo.add(row)
 
-    await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
+    if jwt_roles is not None:
+        await _sync_jwt_roles(role_repo, audit_repo, row.id, jwt_roles)
+    else:
+        await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
     return row
+
+
+async def sync_jwt_roles(
+    session: AsyncSession, user_id: str, jwt_roles: list[str]
+) -> None:
+    """Public entry point for re-syncing a user's roles from JWT claims.
+
+    Used by the ensure-user cache fast path in ``dependencies.py``: when the
+    user row is already in the per-process cache we skip ``ensure_user_row``
+    but still need to reconcile roles each request. Caller commits.
+    """
+    role_repo = RoleRepo(session)
+    audit_repo = AuditRepo(session)
+    await _sync_jwt_roles(role_repo, audit_repo, user_id, jwt_roles)
+
+
+async def _sync_jwt_roles(
+    role_repo: RoleRepo,
+    audit_repo: AuditRepo,
+    user_id: str,
+    jwt_roles: list[str],
+) -> None:
+    """Reconcile ``user_roles`` for ``user_id`` against the JWT-derived list.
+
+    JWT is authoritative: roles missing from the JWT are revoked, new ones
+    are added. Role names not present in the ``roles`` table are skipped
+    (logged at WARNING). A single ``user.roles_synced`` audit row is written
+    when the role set changes.
+    """
+    current = await role_repo.list_user_roles(user_id)
+    current_by_name = {r.name: r for r in current}
+
+    desired: dict[str, str] = {}  # name -> role_id
+    for name in jwt_roles:
+        if name in desired:
+            continue
+        role = await role_repo.get_by_name(name)
+        if role is None:
+            logger.warning(
+                "JWT role not present in roles table; skipping",
+                role=name,
+                user_id=user_id,
+            )
+            continue
+        desired[name] = role.id
+
+    added: list[str] = []
+    removed: list[str] = []
+
+    for name, role_id in desired.items():
+        if name not in current_by_name:
+            await role_repo.assign_role(user_id, role_id)
+            added.append(name)
+
+    for name, role in current_by_name.items():
+        if name not in desired:
+            await role_repo.revoke_role(user_id, role.id)
+            removed.append(name)
+
+    if added or removed:
+        await audit_repo.write(
+            event="user.roles_synced",
+            actor_user_id=user_id,
+            target_type="user",
+            target_id=user_id,
+            audit_metadata={"added": added, "removed": removed, "source": "jwt"},
+        )
 
 
 async def _assign_bootstrap_or_default(

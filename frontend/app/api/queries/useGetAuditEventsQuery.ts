@@ -28,7 +28,9 @@ export const useGetAuditEventsQuery = (
     });
     const response = await fetch(`/api/admin/audit?${qs.toString()}`);
     if (response.ok) return await response.json();
-    if (response.status === 403) return [];
+    // 403/404: missing permission or feature disabled via
+    // OPENRAG_RBAC_UI_ENABLED=false. Both render as an empty feed.
+    if (response.status === 403 || response.status === 404) return [];
     throw new Error(`Failed to fetch audit log (${response.status})`);
   }
 

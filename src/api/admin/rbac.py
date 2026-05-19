@@ -63,6 +63,20 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _require_rbac_ui() -> None:
+    """Gate dependency: 404 when the local RBAC UI is disabled.
+
+    Applied to every role-mutation, role-CRUD, permissions-list, and
+    audit endpoint. GET /admin/users and GET /admin/users/{id} are
+    deliberately left open so the read-only users list can render in
+    saas/on_prem deployments.
+    """
+    from config.settings import OPENRAG_RBAC_UI_ENABLED
+
+    if not OPENRAG_RBAC_UI_ENABLED:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 # ---------------------------------------------------------------------------
 # Pydantic shapes
 # ---------------------------------------------------------------------------
@@ -193,6 +207,7 @@ async def update_user(
     user_id: str,
     body: UserPatch,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("users:invite")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -237,6 +252,7 @@ async def update_user(
 async def delete_user(
     user_id: str,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("users:delete")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -305,6 +321,7 @@ async def assign_role(
     user_id: str,
     body: AssignRoleBody,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:assign")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -338,6 +355,7 @@ async def revoke_role(
     user_id: str,
     role_id: str,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:assign")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -387,6 +405,7 @@ async def _role_to_out(session: AsyncSession, role: Role) -> RoleOut:
 
 @router.get("/roles", response_model=List[RoleOut])
 async def list_roles(
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:list")),
     session: AsyncSession = Depends(get_db_session),
 ) -> List[RoleOut]:
@@ -398,6 +417,7 @@ async def list_roles(
 async def create_role(
     body: RoleCreateBody,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:create")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -447,6 +467,7 @@ async def update_role(
     role_id: str,
     body: RolePatchBody,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:edit")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -501,6 +522,7 @@ async def update_role(
 async def delete_role(
     role_id: str,
     request: Request,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:delete")),
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
@@ -539,6 +561,7 @@ async def delete_role(
 
 @router.get("/permissions", response_model=List[PermissionOut])
 async def list_permissions(
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:list")),
     session: AsyncSession = Depends(get_db_session),
 ) -> List[PermissionOut]:
@@ -561,6 +584,7 @@ async def list_permissions(
 async def list_audit(
     limit: int = 100,
     offset: int = 0,
+    _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("audit:read")),
     session: AsyncSession = Depends(get_db_session),
 ) -> List[AuditOut]:
