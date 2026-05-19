@@ -1,3 +1,4 @@
+# For local kind/Colima (2-CPU nodes), use openrag_v1alpha1_openrag-kind-local.yaml instead.
 apiVersion: openr.ag/v1alpha1
 kind: OpenRAG
 metadata:
