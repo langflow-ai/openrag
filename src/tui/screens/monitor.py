@@ -186,7 +186,9 @@ class MonitorScreen(Screen):
                 images_set.add(img)
         # Ensure compose-declared images are also shown (e.g., langflow when stopped)
         try:
-            for img in await self.container_manager._parse_compose_images():  # best-effort, no YAML dep
+            for (
+                img
+            ) in await self.container_manager._parse_compose_images():  # best-effort, no YAML dep
                 if img:
                     images_set.add(img)
         except Exception:
