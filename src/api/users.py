@@ -30,6 +30,7 @@ async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set
     perms = await PermissionRepo(session).list_all()
     return {p.name for p in perms}
 
+
 # Backend routes are mounted WITHOUT the /api prefix because the Next.js
 # proxy at frontend/app/api/[...path]/route.ts strips it before forwarding.
 # Frontend reaches these via /api/users/me, /api/users/me/permissions.

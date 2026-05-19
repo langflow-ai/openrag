@@ -190,9 +190,7 @@ async def ensure_user_row(
     return row
 
 
-async def sync_jwt_roles(
-    session: AsyncSession, user_id: str, jwt_roles: list[str]
-) -> None:
+async def sync_jwt_roles(session: AsyncSession, user_id: str, jwt_roles: list[str]) -> None:
     """Public entry point for re-syncing a user's roles from JWT claims.
 
     Used by the ensure-user cache fast path in ``dependencies.py``: when the

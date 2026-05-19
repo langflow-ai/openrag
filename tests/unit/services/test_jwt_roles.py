@@ -46,16 +46,12 @@ def test_manager_claim_maps_to_developer_role():
 
 
 def test_multiple_roles_preserve_order_and_dedup():
-    result = extract_jwt_role_names(
-        {"openrag_roles": ["user", "admin", "user"]}
-    )
+    result = extract_jwt_role_names({"openrag_roles": ["user", "admin", "user"]})
     assert result == ["user", "admin"]
 
 
 def test_unknown_claim_values_are_skipped(monkeypatch, caplog):
-    result = extract_jwt_role_names(
-        {"openrag_roles": ["super-duper", "admin", "ghost"]}
-    )
+    result = extract_jwt_role_names({"openrag_roles": ["super-duper", "admin", "ghost"]})
     assert result == ["admin"]
 
 
@@ -79,9 +75,7 @@ def test_empty_list_returns_empty():
 
 def test_custom_claim_name(monkeypatch):
     monkeypatch.setenv("OPENRAG_JWT_ROLES_CLAIM", "groups")
-    assert extract_jwt_role_names({"groups": ["admin"], "openrag_roles": []}) == [
-        "admin"
-    ]
+    assert extract_jwt_role_names({"groups": ["admin"], "openrag_roles": []}) == ["admin"]
 
 
 def test_one_claim_value_maps_to_two_openrag_roles(monkeypatch):

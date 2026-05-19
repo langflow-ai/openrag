@@ -62,9 +62,7 @@ async def test_new_user_with_jwt_roles_skips_bootstrap(session):
 
 @pytest.mark.asyncio
 async def test_new_user_with_jwt_admin_becomes_admin(session):
-    row = await ensure_user_row(
-        session, _user(uid="oauth-1"), jwt_roles=["admin"]
-    )
+    row = await ensure_user_row(session, _user(uid="oauth-1"), jwt_roles=["admin"])
     await session.commit()
     roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
     assert roles == {"admin"}
@@ -85,9 +83,7 @@ async def test_existing_user_role_set_reconciled_on_relogin(session):
     again = await ensure_user_row(session, user, jwt_roles=["user"])
     await session.commit()
     assert again.id == row.id
-    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {
-        "user"
-    }
+    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"user"}
 
 
 @pytest.mark.asyncio
@@ -102,9 +98,7 @@ async def test_jwt_roles_none_keeps_legacy_bootstrap(session):
 @pytest.mark.asyncio
 async def test_unknown_role_names_skipped(session):
     """JWT carrying a role that doesn't exist in the roles table is ignored."""
-    row = await ensure_user_row(
-        session, _user(uid="oauth-1"), jwt_roles=["admin", "nonexistent"]
-    )
+    row = await ensure_user_row(session, _user(uid="oauth-1"), jwt_roles=["admin", "nonexistent"])
     await session.commit()
     roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
     assert roles == {"admin"}
@@ -117,16 +111,12 @@ async def test_sync_jwt_roles_standalone(session):
     # Pre-create a user with admin via the legacy path.
     row = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
-    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {
-        "admin"
-    }
+    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"admin"}
 
     # Now reconcile to just "user" through the standalone helper.
     await sync_jwt_roles(session, row.id, ["user"])
     await session.commit()
-    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {
-        "user"
-    }
+    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"user"}
 
 
 @pytest.mark.asyncio
@@ -151,9 +141,7 @@ async def test_empty_jwt_roles_list_revokes_all(session):
     user = _user(uid="oauth-1")
     row = await ensure_user_row(session, user, jwt_roles=["admin"])
     await session.commit()
-    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {
-        "admin"
-    }
+    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"admin"}
 
     await ensure_user_row(session, user, jwt_roles=[])
     await session.commit()

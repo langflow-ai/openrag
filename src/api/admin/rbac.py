@@ -81,6 +81,7 @@ def _require_rbac_ui() -> None:
 # Pydantic shapes
 # ---------------------------------------------------------------------------
 
+
 class UserOut(BaseModel):
     id: str
     oauth_provider: str
@@ -222,9 +223,7 @@ async def update_user(
         roles = await role_repo.list_user_roles(user_id)
         if any(r.name == "admin" for r in roles):
             if await role_repo.count_admins() <= 1:
-                raise HTTPException(
-                    400, {"error": "cannot_deactivate_last_admin"}
-                )
+                raise HTTPException(400, {"error": "cannot_deactivate_last_admin"})
 
     changed: dict = {}
     if body.is_active is not None and body.is_active != row.is_active:
@@ -284,9 +283,7 @@ async def delete_user(
     # nulling is belt-and-suspenders for older deployments where the
     # 0005_user_fk_ondelete migration hasn't run yet.)
     await session.execute(
-        update(AuditLog)
-        .where(AuditLog.actor_user_id == user_id)
-        .values(actor_user_id=None)
+        update(AuditLog).where(AuditLog.actor_user_id == user_id).values(actor_user_id=None)
     )
     # The 0005 migration sets ON DELETE CASCADE for user_roles and
     # user_preferences and ON DELETE SET NULL for granted_by /
@@ -294,10 +291,9 @@ async def delete_user(
     # propagates correctly. Keep the explicit deletes for the legacy
     # path (deployments that haven't applied 0005 yet); they're no-ops
     # under the new FK policy.
-    await session.execute(
-        UserRole.__table__.delete().where(UserRole.user_id == user_id)
-    )
+    await session.execute(UserRole.__table__.delete().where(UserRole.user_id == user_id))
     from db.models import UserPreferences
+
     await session.execute(
         UserPreferences.__table__.delete().where(UserPreferences.user_id == user_id)
     )
@@ -537,9 +533,7 @@ async def delete_role(
     await session.execute(
         RolePermission.__table__.delete().where(RolePermission.role_id == role.id)
     )
-    await session.execute(
-        UserRole.__table__.delete().where(UserRole.role_id == role.id)
-    )
+    await session.execute(UserRole.__table__.delete().where(UserRole.role_id == role.id))
     await session.delete(role)
     await AuditRepo(session).write(
         event="role.deleted",
@@ -568,7 +562,10 @@ async def list_permissions(
     perms = await PermissionRepo(session).list_all()
     return [
         PermissionOut(
-            id=p.id, name=p.name, resource=p.resource, action=p.action,
+            id=p.id,
+            name=p.name,
+            resource=p.resource,
+            action=p.action,
             description=p.description,
         )
         for p in perms
