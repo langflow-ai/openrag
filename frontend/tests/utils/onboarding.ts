@@ -191,6 +191,17 @@ export async function completeOnboarding(
     path.join(__dirname, "../assets", "test-document.md"),
   );
 
-  await expect(page.getByText("Done")).toBeVisible({ timeout: 60000 });
+  const uploadDoneLocator = page.getByText("Done");
+  const uploadErrorLocator = page.getByTestId("onboarding-upload-error");
+
+  await expect(uploadDoneLocator.or(uploadErrorLocator)).toBeVisible({
+    timeout: 60000,
+  });
+
+  if (await uploadErrorLocator.isVisible()) {
+    const errorText = await uploadErrorLocator.innerText();
+    throw new Error(`Onboarding document upload failed: ${errorText}`);
+  }
+
   await expect(page.getByTestId("onboarding-content")).toBeHidden();
 }
