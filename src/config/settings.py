@@ -87,8 +87,14 @@ OPENRAG_ROLE_CLAIM_USER = os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
 OPENRAG_ROLE_CLAIM_VIEWER = os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
-# ── Local UI feature flags (default off for saas / on_prem) ─────
-def _resolve_local_ui_default() -> str:
+# ── In-app RBAC mutation UI ─────────────────────────────────────
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas / on_prem -> "false" (platform IdP owns role management)
+#   * anything else  -> "true"
+# An explicit OPENRAG_RBAC_UI_ENABLED always wins, so operators in
+# saas / on_prem can flip the local admin UI back on for one-off
+# debugging.
+def _resolve_rbac_ui_default() -> str:
     run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
     if run_mode in ("saas", "on_prem"):
         return "false"
@@ -102,7 +108,7 @@ def _resolve_local_ui_default() -> str:
 #   * Role mutation + role-definition endpoints return 404.
 # GET endpoints needed to render the read-only users list stay open.
 OPENRAG_RBAC_UI_ENABLED = os.getenv(
-    "OPENRAG_RBAC_UI_ENABLED", _resolve_local_ui_default()
+    "OPENRAG_RBAC_UI_ENABLED", _resolve_rbac_ui_default()
 ).lower() in ("true", "1", "yes")
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")

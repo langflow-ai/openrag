@@ -130,6 +130,20 @@ async def test_sync_jwt_roles_standalone(session):
 
 
 @pytest.mark.asyncio
+async def test_rbac_off_with_no_claim_keeps_bootstrap_admin(session):
+    """Regression: when RBAC is disabled and the IBM JWT carries no roles
+    claim, ``_get_ibm_user`` must leave jwt_roles=None so ensure_user_row
+    falls back to the legacy bootstrap-admin path. Documented at the
+    ensure_user_row callsite — verified here by passing jwt_roles=None
+    (which is what the auth handler now sets when jwt_roles_enabled()
+    returns False)."""
+    row = await ensure_user_row(session, _user(uid="oauth-1"), jwt_roles=None)
+    await session.commit()
+    roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
+    assert roles == {"admin"}, "RBAC-off path must still bootstrap admin"
+
+
+@pytest.mark.asyncio
 async def test_empty_jwt_roles_list_revokes_all(session):
     """JWT-side decision: an explicit empty list (caller chose to pass it
     through) revokes every role. (In practice _get_ibm_user 401s before

@@ -429,16 +429,21 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 user_id = claims.get("username", sub)
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
-                jwt_roles = extract_jwt_role_names(claims)
-                if jwt_roles_enabled() and not jwt_roles:
-                    logger.warning(
-                        "IBM JWT carries no recognized OpenRAG role claim",
-                        user_id=user_id,
-                    )
-                    raise HTTPException(
-                        status_code=401,
-                        detail="User has no OpenRAG roles assigned",
-                    )
+                # Only consume the roles claim when JWT-role sync is
+                # active. When RBAC is off, leave jwt_roles as None so
+                # the legacy bootstrap-or-default-role path runs and the
+                # user's DB roles are NOT clobbered by an empty claim.
+                if jwt_roles_enabled():
+                    jwt_roles = extract_jwt_role_names(claims)
+                    if not jwt_roles:
+                        logger.warning(
+                            "IBM JWT carries no recognized OpenRAG role claim",
+                            user_id=user_id,
+                        )
+                        raise HTTPException(
+                            status_code=401,
+                            detail="User has no OpenRAG roles assigned",
+                        )
     request.state.jwt_roles = jwt_roles
 
     if lh_credentials and lh_credentials.strip() != "":
