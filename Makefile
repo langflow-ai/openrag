@@ -94,7 +94,7 @@ endef
 ######################
 # PHONY TARGETS
 ######################
-.PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
+.PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
@@ -181,6 +181,59 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make help_test$(NC)       - Testing commands"
 	@echo "  $(PURPLE)make help_local$(NC)      - Local development commands"
 	@echo "  $(PURPLE)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
+	@echo "  $(PURPLE)make help_operator$(NC)   - Kubernetes operator & kind commands"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+OPERATOR_DIR := kubernetes/operator
+
+help_operator: ## Show Kubernetes operator and kind local cluster commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)              KUBERNETES OPERATOR & KIND COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Docs:$(NC) $(OPERATOR_DIR)/README.md"
+	@echo ''
+	@echo "$(PURPLE)App images → kind (from repo root, Colima/Docker):$(NC)"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC)  - Build backend/frontend/langflow + load into kind"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC)  - Load already-built app images into kind"
+	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: openrag)"
+	@echo ''
+	@echo "$(PURPLE)Operator binary & CRD ($(OPERATOR_DIR)):$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deps$(NC)       - Install controller-gen, kustomize, envtest"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install OpenRAG CRD into current cluster"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make run$(NC)        - Run operator on host (uses kubeconfig)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make build$(NC)      - Compile operator to bin/manager"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make test$(NC)       - Operator unit tests (envtest)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make lint$(NC)       - golangci-lint"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make manifests$(NC)  - Regenerate CRD/RBAC YAML"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make generate$(NC)   - Regenerate DeepCopy code"
+	@echo ''
+	@echo "$(PURPLE)Operator in-cluster:$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deploy$(NC)     - Deploy operator (IMG=...)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make undeploy$(NC)   - Remove operator deployment"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make docker-build$(NC) - Build operator image (IMG=...)"
+	@echo "  $(PURPLE)kind load docker-image openrag-operator:dev --name openrag$(NC)"
+	@echo "  $(PURPLE)helm install openrag-operator ./kubernetes/helm/operator -n openrag-control --create-namespace$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Sample OpenRAG CR (after make run or make deploy):$(NC)"
+	@echo "  $(PURPLE)kubectl create namespace my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "                         (low CPU + imagePullPolicy: Never for local images)"
+	@echo "  $(PURPLE)kubectl get pods -n my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf$(NC)"
+	@echo "                         (after rebuilding and reloading images)"
+	@echo ''
+	@echo "$(PURPLE)Typical kind + local images workflow:$(NC)"
+	@echo "  1. $(CYAN)kind create cluster --name openrag$(NC)"
+	@echo "  2. $(CYAN)make kind-build-load-apps$(NC)"
+	@echo "  3. $(CYAN)cd $(OPERATOR_DIR) && make install && make run$(NC)"
+	@echo "  4. $(CYAN)kubectl create namespace my-tenant$(NC)"
+	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo ''
+	@echo "$(PURPLE)All operator Makefile targets:$(NC) $(CYAN)cd $(OPERATOR_DIR) && make help$(NC)"
 	@echo ''
 	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
