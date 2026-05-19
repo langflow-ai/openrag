@@ -1,6 +1,6 @@
 export type UploadContextResult =
   | { type: "task"; taskId: string }
-  | { type: "direct"; filename: string; responseId: string | null };
+  | { type: "direct"; filename: string; responseId: string };
 
 export async function uploadFileForContext(
   file: File,
@@ -34,11 +34,15 @@ export async function uploadFileForContext(
     return { type: "task", taskId };
   }
 
-  return {
-    type: "direct",
-    filename: result.filename ?? null,
-    responseId: result.response_id ?? null,
-  };
+  const filename: unknown = result.filename;
+  const responseId: unknown = result.response_id;
+  if (typeof filename !== "string" || !filename) {
+    throw new Error("Upload succeeded but server returned no filename");
+  }
+  if (typeof responseId !== "string" || !responseId) {
+    throw new Error("Upload succeeded but server returned no response_id");
+  }
+  return { type: "direct", filename, responseId };
 }
 
 export interface DuplicateCheckResponse {

@@ -202,7 +202,7 @@ function ChatPage() {
 
       if (result.type === "task") {
         addTask(result.taskId);
-        return null;
+        return { type: "task-queued" as const };
       }
 
       // Direct response path
@@ -218,23 +218,19 @@ function ChatPage() {
       };
       setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
 
-      if (result.filename) {
-        addConversationDoc(result.filename);
-      }
+      addConversationDoc(result.filename);
 
-      if (result.responseId) {
-        setPreviousResponseIds((prev) => ({
-          ...prev,
-          [endpoint]: result.responseId!,
-        }));
-        if (!currentConversationId) {
-          setCurrentConversationId(result.responseId);
-          refreshConversations(true);
-        } else {
-          refreshConversationsSilent();
-        }
-        return result.responseId;
+      setPreviousResponseIds((prev) => ({
+        ...prev,
+        [endpoint]: result.responseId,
+      }));
+      if (!currentConversationId) {
+        setCurrentConversationId(result.responseId);
+        refreshConversations(true);
+      } else {
+        refreshConversationsSilent();
       }
+      return result.responseId;
     } catch (error) {
       console.error("Upload failed:", error);
       setChatError(true);
@@ -742,17 +738,20 @@ function ChatPage() {
     // Check if there's an uploaded file and upload it first
     let uploadedResponseId: string | null = null;
     if (uploadedFile) {
-      // Upload the file first
-      const responseId = await handleFileUpload(uploadedFile);
-      // Clear the file after upload
+      const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
 
-      // If the upload resulted in a new conversation, store the response ID
-      if (responseId) {
-        uploadedResponseId = responseId;
+      if (uploadResult && typeof uploadResult === "object") {
+        // File is being processed asynchronously — don't send the message yet.
+        // The user can submit again once the task completes.
+        return;
+      }
+
+      if (uploadResult) {
+        uploadedResponseId = uploadResult;
         setPreviousResponseIds((prev) => ({
           ...prev,
-          [endpoint]: responseId,
+          [endpoint]: uploadResult,
         }));
       }
     }
