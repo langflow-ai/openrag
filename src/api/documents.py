@@ -1,10 +1,10 @@
 from fastapi import Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
 
-from dependencies import get_session_manager, get_current_user, require_permission
+from dependencies import get_current_user, get_session_manager, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -122,10 +122,24 @@ async def delete_documents_by_filename_core(
         )
 
 
+async def delete_chunks_by_document_ids(
+    document_ids: list[str],
+    opensearch_client,
+    index_name: str,
+) -> int:
+    """Bulk delete OpenSearch chunks by document_id. Returns deleted count."""
+    if not document_ids:
+        return 0
+    body = {"query": {"terms": {"document_id": document_ids}}}
+    res = await opensearch_client.delete_by_query(index=index_name, body=body, conflicts="proceed")
+    return res.get("deleted", 0)
+
+
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
+    from config.settings import IBM_AUTH_ENABLED
+    from config.settings import clients as app_clients
     from main import init_index
-    from config.settings import IBM_AUTH_ENABLED, clients as app_clients
 
     opensearch_client = None
     if IBM_AUTH_ENABLED and jwt_token:
@@ -147,8 +161,8 @@ async def check_filename_exists(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user.user_id, jwt_token)
 
-        from utils.opensearch_queries import build_filename_search_body
         from utils.file_utils import get_filename_aliases
+        from utils.opensearch_queries import build_filename_search_body
 
         candidate_filenames = get_filename_aliases(filename)
         if not candidate_filenames:

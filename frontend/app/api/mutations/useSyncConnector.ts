@@ -13,6 +13,27 @@ interface SyncResponse {
   errors?: Array<{ connector_type: string; error: string }> | null;
 }
 
+export interface OrphanFile {
+  document_id: string;
+  filename: string;
+}
+
+export interface SyncPreviewResponse {
+  connector_type: string;
+  synced_count: number;
+  orphans: OrphanFile[];
+  /** False when strict gating aborted orphan detection (e.g. an active
+   * connection was unauthenticated). UI should reflect that deletions
+   * cannot be predicted in that case. */
+  orphans_available: boolean;
+}
+
+export interface SyncAllPreviewResponse {
+  orphans_by_type: Record<string, OrphanFile[]>;
+  synced_count_by_type: Record<string, number>;
+  orphans_available_by_type: Record<string, boolean>;
+}
+
 // Sync all cloud connectors
 const syncAllConnectors = async (): Promise<SyncResponse> => {
   const response = await fetch("/api/connectors/sync-all", {
@@ -92,3 +113,44 @@ export const useSyncConnector = () => {
     },
   });
 };
+
+const syncConnectorPreview = async (
+  connectorType: string,
+): Promise<SyncPreviewResponse> => {
+  const response = await fetch(
+    `/api/connectors/${connectorType}/sync-preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.error || `Failed to preview sync for ${connectorType}`,
+    );
+  }
+
+  return response.json();
+};
+
+const syncAllConnectorsPreview = async (): Promise<SyncAllPreviewResponse> => {
+  const response = await fetch("/api/connectors/sync-all-preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to preview sync");
+  }
+
+  return response.json();
+};
+
+export const useSyncConnectorPreview = () =>
+  useMutation({ mutationFn: syncConnectorPreview });
+
+export const useSyncAllConnectorsPreview = () =>
+  useMutation({ mutationFn: syncAllConnectorsPreview });
