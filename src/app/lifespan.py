@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from config.settings import (
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
+    OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    PLATFORM_SERVICE_JWT,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
@@ -198,6 +200,32 @@ async def run_startup(app: FastAPI):
     if mcp_lifespan_ctx:
         await mcp_lifespan_ctx.__aenter__()
         logger.info("FastMCP lifespan started")
+
+    # One-shot OpenSearch security bootstrap driven by the platform's
+    # service JWT. Runs synchronously (before startup_tasks) so the
+    # admin role mapping is in place before any other startup work
+    # talks to OpenSearch. The corresponding call inside startup_tasks
+    # is suppressed when this flag is on.
+    if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+        if not PLATFORM_SERVICE_JWT:
+            raise RuntimeError(
+                "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
+                "PLATFORM_SERVICE_JWT is not set"
+            )
+        from auth.ibm_auth import admin_username_from_service_jwt
+        from utils.opensearch_init import wait_for_opensearch
+        from utils.opensearch_utils import setup_opensearch_security
+
+        admin_username = admin_username_from_service_jwt(PLATFORM_SERVICE_JWT)
+        if not admin_username:
+            raise RuntimeError(
+                "PLATFORM_SERVICE_JWT has no 'username' or 'sub' claim; "
+                "cannot bootstrap OpenSearch security"
+            )
+        await wait_for_opensearch()
+        logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
+        await setup_opensearch_security(clients.opensearch, admin_username=admin_username)
+        logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
 
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))

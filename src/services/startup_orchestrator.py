@@ -9,6 +9,7 @@ server URLs, and reapplies user settings if Langflow flows were reset.
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     FETCH_OPENRAG_DOCS_AT_STARTUP,
+    OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
     OPENRAG_SKIP_OS_SECURITY_SETUP,
     clients,
     get_openrag_config,
@@ -69,11 +70,17 @@ async def startup_tasks(services):
         # Setup OpenSearch security (roles and mappings) after connection is established.
         # Skip entirely when the platform manages the security context externally
         # (SaaS / CPD): the call would otherwise either fail with 403/401 or
-        # overwrite a curated config.
+        # overwrite a curated config. Also skip when the lifespan-level
+        # bootstrap (driven by PLATFORM_SERVICE_JWT) has already handled it.
         if OPENRAG_SKIP_OS_SECURITY_SETUP:
             logger.info(
                 "Skipping OpenSearch security setup at startup "
                 "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)"
+            )
+        elif OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+            logger.info(
+                "Skipping OpenSearch security setup in startup_tasks "
+                "(handled by lifespan bootstrap)"
             )
         else:
             try:

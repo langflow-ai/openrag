@@ -67,6 +67,11 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
 PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
+# Platform-issued service JWT. When present and
+# OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is on, lifespan decodes this
+# token to derive the admin username used to bootstrap the OpenSearch
+# security context (roles + all_access mapping).
+PLATFORM_SERVICE_JWT = os.getenv("PLATFORM_SERVICE_JWT")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
@@ -141,6 +146,18 @@ def _resolve_skip_os_security_default() -> str:
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
     "OPENRAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
+).lower() in ("true", "1", "yes")
+
+# Run setup_opensearch_security once during FastAPI lifespan startup,
+# using the admin username derived from PLATFORM_SERVICE_JWT. Intended
+# for platform-managed deployments (saas / on_prem) where the platform
+# issues a service token that identifies the admin user that must be
+# pinned into the all_access role mapping. Default off.
+#
+# When this flag is true the corresponding call inside startup_tasks()
+# is suppressed — bootstrap is the single source of truth on startup.
+OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
+    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
