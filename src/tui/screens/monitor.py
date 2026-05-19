@@ -5,11 +5,12 @@ import re
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
+from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Static
 
@@ -59,6 +60,8 @@ class MonitorScreen(Screen):
         self.refresh_timer = None
         self.operation_in_progress = False
         self._follow_task = None
+        self._follow_service: str | None = None
+        self._logs_buffer: list[str] = []
 
         # Track which table was last selected for mutual exclusion
         self._last_selected_table = None
@@ -67,7 +70,7 @@ class MonitorScreen(Screen):
     def container_manager(self) -> ContainerManager:
         """Get the shared container manager from the app."""
         if self._container_manager is None:
-            self._container_manager = self.app.container_manager
+            self._container_manager = cast(Any, self.app).container_manager
         return self._container_manager
 
     def compose(self) -> ComposeResult:
@@ -147,7 +150,7 @@ class MonitorScreen(Screen):
         """Initialize the screen when mounted."""
         await self._refresh_services()
         # Set up auto-refresh every 5 seconds
-        self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
+        self.refresh_timer = self.set_interval(5.0, self._auto_refresh_services)
 
         self._focus_services_table()
 
@@ -183,7 +186,7 @@ class MonitorScreen(Screen):
                 images_set.add(img)
         # Ensure compose-declared images are also shown (e.g., langflow when stopped)
         try:
-            for img in self.container_manager._parse_compose_images():  # best-effort, no YAML dep
+            for img in await self.container_manager._parse_compose_images():  # best-effort, no YAML dep
                 if img:
                     images_set.add(img)
         except Exception:
@@ -268,7 +271,7 @@ class MonitorScreen(Screen):
         }
         return status_styles.get(status, "white")
 
-    async def _auto_refresh(self) -> None:
+    async def _auto_refresh_services(self) -> None:
         """Auto-refresh services if not in operation."""
         if not self.operation_in_progress:
             await self._refresh_services()
@@ -426,7 +429,7 @@ class MonitorScreen(Screen):
                 # Show "this is the latest version" toast
                 self.notify(
                     f"You are running the latest version ({current_version}).",
-                    severity="success",
+                    severity="information",
                     timeout=5,
                 )
             else:
@@ -1091,7 +1094,7 @@ class MonitorScreen(Screen):
             return
 
         try:
-            table.cursor_coordinate = (row, 0)
+            table.cursor_coordinate = Coordinate(row, 0)
         except Exception:
             move_cursor = getattr(table, "move_cursor", None)
             if callable(move_cursor):
