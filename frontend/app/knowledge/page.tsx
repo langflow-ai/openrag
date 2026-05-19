@@ -55,9 +55,14 @@ import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
+import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
+import {
+  type SyncAllPreviewResponse,
+  useSyncAllConnectors,
+  useSyncAllConnectorsPreview,
+} from "../api/mutations/useSyncConnector";
 
 /** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
 function listFilesFilterParam(values?: string[]): string | undefined {
@@ -119,7 +124,51 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
+    null,
+  );
+
+  const handleOpenSyncDialog = useCallback(async () => {
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
+    try {
+      const preview = await syncAllPreviewMutation.mutateAsync();
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  }, [syncAllPreviewMutation]);
+
+  const handleConfirmSync = useCallback(async () => {
+    try {
+      const result = await syncAllConnectorsMutation.mutateAsync();
+      if (result.status === "no_files") {
+        toast.info(
+          result.message ||
+            "No cloud files to sync. Add files from cloud connectors first.",
+        );
+      } else if (
+        result.synced_connectors &&
+        result.synced_connectors.length > 0
+      ) {
+        toast.success(
+          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+        );
+      } else if (result.errors && result.errors.length > 0) {
+        toast.error("Some connectors failed to sync");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync connectors",
+      );
+    }
+  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -761,36 +810,14 @@ function SearchPage() {
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
-              disabled={syncAllConnectorsMutation.isPending}
-              onClick={async () => {
-                try {
-                  toast.info("Syncing all cloud connectors...");
-                  const result = await syncAllConnectorsMutation.mutateAsync();
-                  if (result.status === "no_files") {
-                    toast.info(
-                      result.message ||
-                        "No cloud files to sync. Add files from cloud connectors first.",
-                    );
-                  } else if (
-                    result.synced_connectors &&
-                    result.synced_connectors.length > 0
-                  ) {
-                    toast.success(
-                      `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-                    );
-                  } else if (result.errors && result.errors.length > 0) {
-                    toast.error("Some connectors failed to sync");
-                  }
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to sync connectors",
-                  );
-                }
-              }}
+              disabled={
+                syncAllConnectorsMutation.isPending ||
+                syncAllPreviewMutation.isPending
+              }
+              onClick={handleOpenSyncDialog}
             >
-              {syncAllConnectorsMutation.isPending ? (
+              {syncAllConnectorsMutation.isPending ||
+              syncAllPreviewMutation.isPending ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Syncing...
@@ -961,6 +988,18 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
+
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncAllConnectorsMutation.isPending}
+        isSyncAll
+        orphansByType={syncPreview?.orphans_by_type}
+        orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        syncedCountByType={syncPreview?.synced_count_by_type}
+      />
     </>
   );
 }

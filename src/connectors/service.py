@@ -1,11 +1,10 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from utils.file_utils import clean_connector_filename, get_file_extension
 from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
-from utils.file_utils import get_file_extension, clean_connector_filename
-
 
 logger = get_logger(__name__)
 
@@ -38,7 +37,7 @@ class ConnectorService:
         """Initialize the service by loading existing connections"""
         await self.connection_manager.load_connections()
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
@@ -50,7 +49,7 @@ class ConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
@@ -153,6 +152,9 @@ class ConnectorService:
                         "source": """
                             ctx._source.source_url = params.source_url;
                             ctx._source.connector_type = params.connector_type;
+                            if (params.filename != null) {
+                                ctx._source.filename = params.filename;
+                            }
                             if (params.created_time != null) {
                                 ctx._source.created_time = params.created_time;
                             }
@@ -166,6 +168,7 @@ class ConnectorService:
                         "params": {
                             "source_url": document.source_url,
                             "connector_type": connector_type,
+                            "filename": document.filename,
                             "created_time": document.created_time.isoformat()
                             if document.created_time
                             else None,
@@ -227,7 +230,7 @@ class ConnectorService:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
         # Collect files to process (limited by max_files)
-        files_to_process = []
+        files_to_process: list[dict[str, Any]] = []
         page_token = None
 
         # Calculate page size to minimize API calls
@@ -236,7 +239,7 @@ class ConnectorService:
         while True:
             # List files from connector with limit
             logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
-            file_list = await connector.list_files(page_token, limit=page_size)
+            file_list = await connector.list_files(page_token, max_files=page_size)
             logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
@@ -311,10 +314,10 @@ class ConnectorService:
         self,
         connection_id: str,
         user_id: str,
-        file_ids: List[str],
+        file_ids: list[str],
         jwt_token: str = None,
-        file_infos: List[Dict[str, Any]] = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        file_infos: list[dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -370,8 +373,8 @@ class ConnectorService:
         try:
             # Set the file_ids we want to sync in the connector's config
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = file_ids  # type: ignore
-                connector.cfg.folder_ids = None  # type: ignore
+                connector.cfg.file_ids = file_ids
+                connector.cfg.folder_ids = None
 
             # Get the expanded list of file IDs (folders will be expanded to their contents)
             # This uses the connector's list_files() which calls _iter_selected_items()
@@ -416,8 +419,8 @@ class ConnectorService:
         finally:
             # Restore original config values
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = original_file_ids  # type: ignore
-                connector.cfg.folder_ids = original_folder_ids  # type: ignore
+                connector.cfg.file_ids = original_file_ids
+                connector.cfg.folder_ids = original_folder_ids
 
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
@@ -456,6 +459,6 @@ class ConnectorService:
 
         return task_id
 
-    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def _get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID (alias for get_connector)"""
         return await self.get_connector(connection_id)

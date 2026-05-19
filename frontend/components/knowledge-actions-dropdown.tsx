@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
-import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
+import {
+  type SyncPreviewResponse,
+  useSyncConnector,
+  useSyncConnectorPreview,
+} from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import {
   DropdownMenu,
@@ -24,6 +28,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { RequirePermission } from "./require-permission";
+import { SyncConfirmDialog } from "./sync-confirm-dialog";
 import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
@@ -46,6 +51,11 @@ export const KnowledgeActionsDropdown = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
   const syncConnectorMutation = useSyncConnector();
+  const syncPreviewMutation = useSyncConnectorPreview();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncPreviewResponse | null>(
+    null,
+  );
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
 
@@ -81,11 +91,24 @@ export const KnowledgeActionsDropdown = ({
     }
   };
 
-  const handleSync = async () => {
+  const handleOpenSyncDialog = async () => {
     if (!connectorType || !isConnected) return;
-
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
     try {
-      toast.info(`Syncing ${connectorType}...`);
+      const preview = await syncPreviewMutation.mutateAsync(connectorType);
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  };
+
+  const handleConfirmSync = async () => {
+    if (!connectorType) return;
+    try {
       const result = await syncConnectorMutation.mutateAsync({ connectorType });
       if (result.status === "no_files") {
         toast.info(result.message || `No ${connectorType} files to sync.`);
@@ -129,16 +152,21 @@ export const KnowledgeActionsDropdown = ({
                   <div className="w-full">
                     <DropdownMenuItem
                       className="text-primary focus:text-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={syncConnectorMutation.isPending || !isConnected}
+                      disabled={
+                        syncConnectorMutation.isPending ||
+                        syncPreviewMutation.isPending ||
+                        !isConnected
+                      }
                       onClick={(e) => {
                         if (!isConnected) {
                           e.preventDefault();
                           return;
                         }
-                        handleSync();
+                        handleOpenSyncDialog();
                       }}
                     >
-                      {syncConnectorMutation.isPending ? (
+                      {syncConnectorMutation.isPending ||
+                      syncPreviewMutation.isPending ? (
                         <>
                           <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                           Syncing...
@@ -196,6 +224,17 @@ export const KnowledgeActionsDropdown = ({
         <p className="my-2">Document to be deleted:</p>
         {formatFilesToDelete([{ filename }])}
       </DeleteConfirmationDialog>
+
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncConnectorMutation.isPending}
+        connectorType={connectorType}
+        orphans={syncPreview?.orphans}
+        syncedCount={syncPreview?.synced_count}
+      />
     </>
   );
 };

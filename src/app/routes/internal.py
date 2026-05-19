@@ -240,8 +240,20 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/connectors/{connector_type}/sync-preview",
+        connectors.connector_sync_preview,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/connectors/sync-all",
         connectors.sync_all_connectors,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/sync-all-preview",
+        connectors.connectors_sync_all_preview,
         methods=["POST"],
         tags=["internal"],
     )

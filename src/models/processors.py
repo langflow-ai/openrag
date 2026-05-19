@@ -1,13 +1,28 @@
+import asyncio
+import datetime
+import mimetypes
+import os
+import time
 from typing import TYPE_CHECKING, Any
 
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from utils.document_processing import (
+    extract_relevant,
+    process_text_file,
+    resplit_chunks_character_windows,
+)
+from utils.embedding_fields import ensure_embedding_field_exists
 from utils.file_utils import (
+    auto_cleanup_tempfile,
     clean_connector_filename,
     get_file_extension,
     get_filename_aliases,
 )
+from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_filename_delete_body, build_filename_search_body
 
-from .tasks import FileTask, UploadTask
+from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
 
@@ -32,10 +47,6 @@ class TaskProcessor:
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
         """
-        import asyncio
-
-        from config.settings import get_index_name
-
         max_retries = 3
         retry_delay = 1.0
 
@@ -78,11 +89,6 @@ class TaskProcessor:
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
         """
-        import asyncio
-
-        from config.settings import get_index_name
-        from utils.opensearch_queries import build_filename_search_body
-
         max_retries = 3
         retry_delay = 1.0
 
@@ -149,9 +155,6 @@ class TaskProcessor:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
-        from config.settings import get_index_name
-        from utils.opensearch_queries import build_filename_delete_body
-
         try:
             deleted_count = 0
             candidate_filenames = get_filename_aliases(filename)
@@ -204,20 +207,7 @@ class TaskProcessor:
             chunk_overlap: Overlap between windows; must be less than ``chunk_size``.
             acl: DocumentACL instance with access control information
         """
-        import datetime
-
-        from config.settings import (
-            clients,
-            get_embedding_model,
-            get_index_name,
-            get_openrag_config,
-        )
         from services.document_service import chunk_texts_for_embeddings
-        from utils.document_processing import (
-            extract_relevant,
-            resplit_chunks_character_windows,
-        )
-        from utils.embedding_fields import ensure_embedding_field_exists
 
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
@@ -241,14 +231,10 @@ class TaskProcessor:
         )
 
         # Check if this is a .txt or .md file - use simple processing instead of docling
-        import os
-
         file_ext = os.path.splitext(file_path)[1].lower()
 
         if file_ext in (".txt", ".md"):
             # Simple text file processing without docling
-            from utils.document_processing import process_text_file
-
             logger.info(
                 "Processing as plain text file (bypassing docling)",
                 file_path=file_path,
@@ -418,12 +404,6 @@ class DocumentFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a regular file path using consolidated methods"""
-        import os
-        import time
-
-        from models.tasks import TaskStatus
-        from utils.hash_utils import hash_id
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -499,11 +479,6 @@ class ConnectorFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using consolidated methods"""
-        import time
-
-        from models.tasks import TaskStatus
-        from utils.hash_utils import hash_id
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -519,7 +494,23 @@ class ConnectorFileProcessor(TaskProcessor):
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
             # Get file content from connector
-            document = await connector.get_file_content(file_id)
+            try:
+                document = await connector.get_file_content(file_id)
+            except (FileNotFoundError, ValueError) as e:
+                msg = str(e).lower()
+                if "not found" in msg or "404" in msg:
+                    logger.warning(
+                        "File no longer exists at source — skipping",
+                        file_id=file_id,
+                        connection_id=self.connection_id,
+                        error=str(e),
+                    )
+                    file_task.status = TaskStatus.SKIPPED
+                    file_task.result = {"status": "skipped", "reason": "deleted_at_source"}
+                    file_task.updated_at = time.time()
+                    upload_task.successful_files += 1
+                    return
+                raise
 
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)
@@ -528,8 +519,6 @@ class ConnectorFileProcessor(TaskProcessor):
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
 
             # Create temporary file from document content
-            from utils.file_utils import auto_cleanup_tempfile
-
             suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
@@ -626,11 +615,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using LangflowConnectorService"""
-        import time
-
-        from models.tasks import TaskStatus
-        from utils.hash_utils import hash_id
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -655,8 +639,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
 
             # Create temporary file and compute hash to check for duplicates
-            from utils.file_utils import auto_cleanup_tempfile
-
             suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
@@ -734,18 +716,8 @@ class S3FileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
-        import time
-        import asyncio
-        import datetime
-        from config.settings import clients, get_embedding_model, get_index_name
-
-        from models.tasks import TaskStatus
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
-
-        from utils.file_utils import auto_cleanup_tempfile
-        from utils.hash_utils import hash_id
 
         try:
             with auto_cleanup_tempfile() as tmp_path:
@@ -827,12 +799,6 @@ class LangflowFileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
-        import mimetypes
-        import os
-        import time
-
-        from models.tasks import TaskStatus
-
         # Update task status
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
