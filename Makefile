@@ -94,7 +94,7 @@ endef
 ######################
 # PHONY TARGETS
 ######################
-.PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
+.PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
@@ -181,6 +181,59 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make help_test$(NC)       - Testing commands"
 	@echo "  $(PURPLE)make help_local$(NC)      - Local development commands"
 	@echo "  $(PURPLE)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
+	@echo "  $(PURPLE)make help_operator$(NC)   - Kubernetes operator & kind commands"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+OPERATOR_DIR := kubernetes/operator
+
+help_operator: ## Show Kubernetes operator and kind local cluster commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)              KUBERNETES OPERATOR & KIND COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Docs:$(NC) $(OPERATOR_DIR)/README.md"
+	@echo ''
+	@echo "$(PURPLE)App images → kind (from repo root, Colima/Docker):$(NC)"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC)  - Build backend/frontend/langflow + load into kind"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC)  - Load already-built app images into kind"
+	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: openrag)"
+	@echo ''
+	@echo "$(PURPLE)Operator binary & CRD ($(OPERATOR_DIR)):$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deps$(NC)       - Install controller-gen, kustomize, envtest"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install OpenRAG CRD into current cluster"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make run$(NC)        - Run operator on host (uses kubeconfig)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make build$(NC)      - Compile operator to bin/manager"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make test$(NC)       - Operator unit tests (envtest)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make lint$(NC)       - golangci-lint"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make manifests$(NC)  - Regenerate CRD/RBAC YAML"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make generate$(NC)   - Regenerate DeepCopy code"
+	@echo ''
+	@echo "$(PURPLE)Operator in-cluster:$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deploy$(NC)     - Deploy operator (IMG=...)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make undeploy$(NC)   - Remove operator deployment"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make docker-build$(NC) - Build operator image (IMG=...)"
+	@echo "  $(PURPLE)kind load docker-image openrag-operator:dev --name openrag$(NC)"
+	@echo "  $(PURPLE)helm install openrag-operator ./kubernetes/helm/operator -n openrag-control --create-namespace$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Sample OpenRAG CR (after make run or make deploy):$(NC)"
+	@echo "  $(PURPLE)kubectl create namespace my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "                         (low CPU + imagePullPolicy: Never for local images)"
+	@echo "  $(PURPLE)kubectl get pods -n my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf$(NC)"
+	@echo "                         (after rebuilding and reloading images)"
+	@echo ''
+	@echo "$(PURPLE)Typical kind + local images workflow:$(NC)"
+	@echo "  1. $(CYAN)kind create cluster --name openrag$(NC)"
+	@echo "  2. $(CYAN)make kind-build-load-apps$(NC)"
+	@echo "  3. $(CYAN)cd $(OPERATOR_DIR) && make install && make run$(NC)"
+	@echo "  4. $(CYAN)kubectl create namespace my-tenant$(NC)"
+	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo ''
+	@echo "$(PURPLE)All operator Makefile targets:$(NC) $(CYAN)cd $(OPERATOR_DIR) && make help$(NC)"
 	@echo ''
 	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
@@ -231,6 +284,8 @@ help_docker: ## Show Docker and container commands
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=openrag)"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC) - Load already-built app images into kind"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
@@ -651,6 +706,20 @@ build-lf: ## Build Langflow Docker image
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
 	@echo "$(PURPLE)Langflow image built.$(NC)"
+
+# kind cluster name for local Kubernetes (see kubernetes/operator/README.md)
+KIND_CLUSTER_NAME ?= openrag
+
+kind-load-app-images: ## Load OpenRAG app images into a kind cluster (Colima/Docker)
+	@command -v kind >/dev/null 2>&1 || { echo "$(RED)kind is not installed$(NC)"; exit 1; }
+	@echo "$(YELLOW)Loading app images into kind cluster '$(KIND_CLUSTER_NAME)'...$(NC)"
+	kind load docker-image langflowai/openrag-backend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-frontend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-langflow:latest --name $(KIND_CLUSTER_NAME)
+	@echo "$(PURPLE)Images loaded. Restart pods if they already exist:$(NC)"
+	@echo "  kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf"
+
+kind-build-load-apps: build-be build-fe build-lf kind-load-app-images ## Build app images and load into kind
 
 ######################
 # LOGGING
