@@ -3,34 +3,33 @@
 import asyncio
 import re
 import shutil
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Literal, Any, Optional, AsyncIterator
+from typing import Literal
 
-# Define button variant type
-ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
-
-from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, DataTable
-from textual.timer import Timer
 from rich.text import Text
-from rich.table import Table
+from textual.app import ComposeResult
+from textual.containers import Horizontal, ScrollableContainer
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Static
 
 from ..managers.container_manager import (
     ContainerManager,
-    ServiceStatus,
     ServiceInfo,
+    ServiceStatus,
     format_port_conflict_message,
 )
 from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
-from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
-from ..widgets.factory_reset_warning_modal import FactoryResetWarningModal
-from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
-from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
+from ..widgets.factory_reset_warning_modal import FactoryResetWarningModal
+from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
+from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
+from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
+
+# Define button variant type
+ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
 
 
 class MonitorScreen(Screen):
@@ -201,7 +200,7 @@ class MonitorScreen(Screen):
             self.images_table.clear()
 
         # Add container service rows
-        for service_name, service_info in services.items():
+        for _service_name, service_info in services.items():
             status_style = self._get_status_style(service_info.status)
 
             self.services_table.add_row(
@@ -277,7 +276,6 @@ class MonitorScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         button_id = event.button.id or ""
-        button_label = event.button.label or ""
 
         # Use button ID prefixes to determine action, ignoring any random suffix
         if button_id.startswith("start-btn"):
@@ -322,7 +320,7 @@ class MonitorScreen(Screen):
                 self.run_worker(self._show_logs(service_name))
                 self._start_follow(service_name)
 
-    async def _start_services(self, cpu_mode: Optional[bool] = None) -> None:
+    async def _start_services(self, cpu_mode: bool | None = None) -> None:
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
@@ -617,6 +615,7 @@ class MonitorScreen(Screen):
     def _check_flow_backups(self) -> bool:
         """Check if there are any flow backups in flows/backup directory."""
         from pathlib import Path
+
         from ..managers.env_manager import EnvManager
 
         # Get flows path from env config
