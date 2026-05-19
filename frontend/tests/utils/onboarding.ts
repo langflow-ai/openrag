@@ -195,7 +195,6 @@ export async function completeOnboarding(
   await fileChooser.setFiles(
     path.join(__dirname, "../assets", "test-document.md"),
   );
-  t;
 
   const uploadDoneLocator = page.getByText("Done");
   const uploadErrorLocator = page.getByTestId("onboarding-upload-error");
