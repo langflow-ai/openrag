@@ -534,6 +534,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Remove all volumes"; \
 	echo "  - Delete langflow-data directory"; \
 	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove OpenRAG images"; \
 	echo ""; \
@@ -558,6 +559,16 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		echo "Removing config..."; \
 		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
+	fi; \
+	if [ -d "data" ]; then \
+		echo "Removing data..."; \
+		rm -rf data; \
+		echo "$(PURPLE)data removed$(NC)"; \
+	fi; \
+	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+		echo "Removing $$OPENRAG_DATA_PATH..."; \
+		rm -rf "$$OPENRAG_DATA_PATH"; \
+		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
 	fi; \
 	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \

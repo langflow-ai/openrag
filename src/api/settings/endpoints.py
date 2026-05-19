@@ -1373,6 +1373,10 @@ async def rollback_onboarding(
         current_config.knowledge.embedding_model = ""
         current_config.onboarding.openrag_docs_ingested_version = None
         current_config.onboarding.openrag_docs_remote_signature = None
+        current_config.onboarding.assistant_message = None
+        current_config.onboarding.selected_nudge = None
+        current_config.onboarding.card_steps = None
+        current_config.onboarding.upload_steps = None
 
         embedding_only = body.embedding_only if body else False
 

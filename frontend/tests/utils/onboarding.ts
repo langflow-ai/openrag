@@ -54,14 +54,19 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
+  const isFirstStep = await page.getByTestId("openai-llm-tab").isVisible();
 
-  if (isCompleted) {
-    if (!reset) {
-      console.log("Onboarding already complete, skipping...");
-      return;
-    }
+  if (isCompleted && !reset) {
+    console.log("Onboarding already complete, skipping...");
+    return;
+  }
 
-    console.log("Onboarding complete and reset is true, rolling back...");
+  const needsRollback = reset && (isCompleted || !isFirstStep);
+
+  if (needsRollback) {
+    console.log(
+      "Onboarding complete or not on the first step, and reset is true, rolling back...",
+    );
     const response = await page.request.post("/api/onboarding/rollback");
     if (!response.ok()) {
       const text = await response.text();
@@ -141,9 +146,18 @@ export async function completeOnboarding(
     await page.getByTestId("onboarding-complete-button").click();
 
     await expect(page.getByText("Thinking")).toBeVisible();
-    await expect(page.getByText("Done")).toBeVisible({
+
+    const doneLocator = page.getByText("Done");
+    const errorLocator = page.getByTestId("onboarding-error");
+
+    await expect(doneLocator.or(errorLocator)).toBeVisible({
       timeout: isEmbedding ? 120000 : 60000,
     });
+
+    if (await errorLocator.isVisible()) {
+      const errorText = await errorLocator.innerText();
+      throw new Error(`Onboarding step failed: ${errorText}`);
+    }
   };
 
   // 1. LLM configuration
@@ -182,6 +196,17 @@ export async function completeOnboarding(
     path.join(__dirname, "../assets", "test-document.md"),
   );
 
-  await expect(page.getByText("Done")).toBeVisible({ timeout: 60000 });
+  const uploadDoneLocator = page.getByText("Done");
+  const uploadErrorLocator = page.getByTestId("onboarding-upload-error");
+
+  await expect(uploadDoneLocator.or(uploadErrorLocator)).toBeVisible({
+    timeout: 120000,
+  });
+
+  if (await uploadErrorLocator.isVisible()) {
+    const errorText = await uploadErrorLocator.innerText();
+    throw new Error(`Onboarding document upload failed: ${errorText}`);
+  }
+
   await expect(page.getByTestId("onboarding-content")).toBeHidden();
 }

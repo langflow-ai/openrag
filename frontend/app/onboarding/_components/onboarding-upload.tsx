@@ -24,6 +24,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
   const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const createFilterMutation = useCreateFilter();
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
@@ -62,6 +63,41 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       matchingTask.status === "pending" ||
       matchingTask.status === "running" ||
       matchingTask.status === "processing";
+
+    // Check if matching task failed or has error status
+    const failedTask =
+      matchingTask.status === "failed" || matchingTask.status === "error";
+
+    // Check if any file inside the task failed
+    const filesArray = matchingTask.files
+      ? (Object.values(matchingTask.files) as {
+          status: string;
+          error?: string;
+        }[])
+      : [];
+    const hasFailedFile = filesArray.some(
+      (file) => file.status === "failed" || file.status === "error",
+    );
+
+    if (failedTask || hasFailedFile) {
+      let errorMessage = "Document ingestion failed. Please try again.";
+      if (matchingTask.error) {
+        errorMessage = matchingTask.error;
+      } else {
+        const failedFile = filesArray.find(
+          (file) =>
+            (file.status === "failed" || file.status === "error") && file.error,
+        );
+        if (failedFile?.error) {
+          errorMessage = failedFile.error;
+        }
+      }
+
+      setError(errorMessage);
+      setCurrentStep(null);
+      setUploadedTaskId(null);
+      return;
+    }
 
     // If task is completed or has processed files, complete the onboarding step
     if (!isTaskActive || (matchingTask.processed_files ?? 0) > 0) {
@@ -169,6 +205,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const performUpload = async (file: File) => {
     setIsUploading(true);
+    setError(null);
     try {
       setCurrentStep(0);
       const result = await uploadFile(file, true, true); // Pass createFilter=true
@@ -193,6 +230,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       const errorMessage =
         error instanceof Error ? error.message : "Upload failed";
       console.error("Upload failed", errorMessage);
+      setError(errorMessage);
 
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
@@ -246,6 +284,25 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           exit={{ opacity: 0, y: -24 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}
         >
+          <AnimatePresence mode="wait">
+            {error && (
+              <motion.div
+                key="error"
+                initial={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+              >
+                <div className="pb-6 flex items-center gap-4">
+                  <X className="w-4 h-4 text-destructive shrink-0" />
+                  <span
+                    data-testid="onboarding-upload-error"
+                    className="text-mmd text-muted-foreground"
+                  >
+                    {error}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <Button
             size="sm"
             variant="outline"

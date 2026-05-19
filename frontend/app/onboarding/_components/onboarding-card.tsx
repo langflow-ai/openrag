@@ -510,7 +510,10 @@ const OnboardingCard = ({
                 >
                   <div className="pb-6 flex items-center gap-4">
                     <X className="w-4 h-4 text-destructive shrink-0" />
-                    <span className="text-mmd text-muted-foreground">
+                    <span
+                      data-testid="onboarding-error"
+                      className="text-mmd text-muted-foreground"
+                    >
                       {error}
                     </span>
                   </div>
