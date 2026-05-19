@@ -71,7 +71,21 @@ PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 # OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is on, lifespan decodes this
 # token to derive the admin username used to bootstrap the OpenSearch
 # security context (roles + all_access mapping).
-PLATFORM_SERVICE_JWT = os.getenv("PLATFORM_SERVICE_JWT")
+# Falls back to the pod's Kubernetes service account token when running
+# inside a cluster and no explicit JWT is injected.
+_DEFAULT_K8S_SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+K8S_SA_TOKEN_PATH = os.getenv("K8S_SA_TOKEN_PATH", _DEFAULT_K8S_SA_TOKEN_PATH)
+
+
+def _read_k8s_sa_token() -> str | None:
+    try:
+        with open(K8S_SA_TOKEN_PATH) as f:
+            return f.read().strip() or None
+    except (FileNotFoundError, PermissionError):
+        return None
+
+
+PLATFORM_SERVICE_JWT = os.getenv("PLATFORM_SERVICE_JWT") or _read_k8s_sa_token()
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
