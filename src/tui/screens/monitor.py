@@ -504,6 +504,14 @@ class MonitorScreen(Screen):
                     # Recreate empty config directory
                     tui_config_path.mkdir(parents=True, exist_ok=True)
 
+                # Clear backend data directory (database, session ownership, conversations, oauth tokens)
+                data_path = expand_path(env_manager.config.openrag_data_path)
+                if data_path.exists():
+                    success, msg = await self.container_manager.clear_directory_with_container(data_path)
+                    if not success:
+                        shutil.rmtree(data_path)
+                    data_path.mkdir(parents=True, exist_ok=True)
+
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
