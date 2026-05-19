@@ -141,9 +141,18 @@ export async function completeOnboarding(
     await page.getByTestId("onboarding-complete-button").click();
 
     await expect(page.getByText("Thinking")).toBeVisible();
-    await expect(page.getByText("Done")).toBeVisible({
+
+    const doneLocator = page.getByText("Done");
+    const errorLocator = page.getByTestId("onboarding-error");
+
+    await expect(doneLocator.or(errorLocator)).toBeVisible({
       timeout: isEmbedding ? 120000 : 60000,
     });
+
+    if (await errorLocator.isVisible()) {
+      const errorText = await errorLocator.innerText();
+      throw new Error(`Onboarding step failed: ${errorText}`);
+    }
   };
 
   // 1. LLM configuration
