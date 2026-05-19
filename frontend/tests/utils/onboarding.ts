@@ -54,14 +54,19 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
+  const isFirstStep = await page.getByTestId("openai-llm-tab").isVisible();
 
-  if (isCompleted) {
-    if (!reset) {
-      console.log("Onboarding already complete, skipping...");
-      return;
-    }
+  if (isCompleted && !reset) {
+    console.log("Onboarding already complete, skipping...");
+    return;
+  }
 
-    console.log("Onboarding complete and reset is true, rolling back...");
+  const needsRollback = reset && (isCompleted || !isFirstStep);
+
+  if (needsRollback) {
+    console.log(
+      "Onboarding complete or not on the first step, and reset is true, rolling back...",
+    );
     const response = await page.request.post("/api/onboarding/rollback");
     if (!response.ok()) {
       const text = await response.text();
