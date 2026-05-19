@@ -231,6 +231,8 @@ help_docker: ## Show Docker and container commands
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=openrag)"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC) - Load already-built app images into kind"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
@@ -640,6 +642,20 @@ build-lf: ## Build Langflow Docker image
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
 	@echo "$(PURPLE)Langflow image built.$(NC)"
+
+# kind cluster name for local Kubernetes (see kubernetes/operator/README.md)
+KIND_CLUSTER_NAME ?= openrag
+
+kind-load-app-images: ## Load OpenRAG app images into a kind cluster (Colima/Docker)
+	@command -v kind >/dev/null 2>&1 || { echo "$(RED)kind is not installed$(NC)"; exit 1; }
+	@echo "$(YELLOW)Loading app images into kind cluster '$(KIND_CLUSTER_NAME)'...$(NC)"
+	kind load docker-image langflowai/openrag-backend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-frontend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-langflow:latest --name $(KIND_CLUSTER_NAME)
+	@echo "$(PURPLE)Images loaded. Restart pods if they already exist:$(NC)"
+	@echo "  kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf"
+
+kind-build-load-apps: build-be build-fe build-lf kind-load-app-images ## Build app images and load into kind
 
 ######################
 # LOGGING
