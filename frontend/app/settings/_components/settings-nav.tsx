@@ -3,7 +3,9 @@
 import { usePathname, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { cn } from "@/lib/utils";
 
 const TABS = [
   { value: "connectors", label: "Connectors" },
@@ -14,6 +16,7 @@ const TABS = [
 ] as const;
 
 export function SettingsNav() {
+  const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, rbacEnforced } =
@@ -32,13 +35,16 @@ export function SettingsNav() {
 
   return (
     <Tabs value={currentTab}>
-      <TabsList className="mb-6 p-2 rounded-full">
+      <TabsList
+        variant={isCloudBrand ? "line" : "default"}
+        className={cn(!isCloudBrand && "mb-6 p-2 rounded-full")}
+      >
         {visibleTabs.map((tab) => (
           <TabsTrigger
             key={tab.value}
             value={tab.value}
             onClick={() => router.push(`/settings/${tab.value}`)}
-            className="p-3 rounded-full"
+            className={cn(!isCloudBrand && "p-3 rounded-full")}
           >
             {tab.label}
           </TabsTrigger>
