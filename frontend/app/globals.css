@@ -378,6 +378,32 @@
     }
   }
 
+  /* IBM settings: line-variant tabs — transparent default, blue active/hover */
+  [data-theme="ibm"]
+    .ibm-settings-page
+    [data-slot="tabs-list"][data-variant="line"]
+    [data-slot="tabs-trigger"] {
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    border-bottom-color: transparent;
+    background: transparent;
+    color: hsl(var(--text-text-01));
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 18px;
+    letter-spacing: 0.16px;
+
+    &:hover,
+    &[data-state="active"] {
+      border-bottom-color: var(--border-border-interactive) !important;
+    }
+
+    &[data-state="active"] {
+      font-weight: 600 !important;
+    }
+  }
+
   /* IBM Settings: inline links (Link/link-primary) */
   [data-theme="ibm"] .ibm-settings-page a[href] {
     color: hsl(var(--link-primary));
