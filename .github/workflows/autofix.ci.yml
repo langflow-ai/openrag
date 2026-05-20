@@ -1,7 +1,7 @@
 # autofix.ci enforces that any workflow invoking `autofix-ci/action` is
-# named exactly `autofix.ci`. Applies ruff safe lint fixes and formatting
-# on changed files; strict lint (--no-fix) and mypy live in
-# `.github/workflows/lint-backend.yml`.
+# named exactly `autofix.ci`. Applies ruff safe lint fixes (excluding F401
+# to preserve side-effect imports) and formatting on changed files; strict
+# lint (--no-fix) and mypy live in `.github/workflows/lint-backend.yml`.
 #
 # Setup: install https://github.com/apps/autofix-ci on the repo (free for
 # public repos) and enable auto-apply in the autofix.ci dashboard so the
@@ -65,7 +65,8 @@ jobs:
 
       - name: Ruff lint fix (in-place)
         if: steps.changed.outputs.files != ''
-        run: uv run ruff check --fix ${{ steps.changed.outputs.files }}
+        continue-on-error: true
+        run: uv run ruff check --fix --extend-ignore F401 ${{ steps.changed.outputs.files }}
 
       - name: Ruff format (in-place)
         if: steps.changed.outputs.files != ''
