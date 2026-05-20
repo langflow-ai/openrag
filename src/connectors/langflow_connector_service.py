@@ -69,7 +69,7 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
-            
+
             # Clean filename and ensure we don't add a double extension
             processed_filename = clean_connector_filename(document.filename, document.mimetype)
 
@@ -125,9 +125,7 @@ class LangflowConnectorService:
 
             langflow_file_id = None  # Initialize to track if upload succeeded
             try:
-                upload_result = await self.langflow_service.upload_user_file(
-                    file_tuple, jwt_token
-                )
+                upload_result = await self.langflow_service.upload_user_file(file_tuple, jwt_token)
                 langflow_file_id = upload_result["id"]
                 langflow_file_path = upload_result["path"]
 
@@ -138,9 +136,7 @@ class LangflowConnectorService:
                 )
 
                 # Step 2: Run ingestion flow with the uploaded file
-                logger.debug(
-                    "Running Langflow ingestion flow", file_path=langflow_file_path
-                )
+                logger.debug("Running Langflow ingestion flow", file_path=langflow_file_path)
 
                 connector_tweak_settings = None
                 if isinstance(ingest_settings, dict):
@@ -223,7 +219,6 @@ class LangflowConnectorService:
                         )
                 raise
 
-
     async def sync_connector_files(
         self,
         connection_id: str,
@@ -245,9 +240,7 @@ class LangflowConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         logger.debug("Got connector", authenticated=connector.is_authenticated)
 
@@ -263,13 +256,9 @@ class LangflowConnectorService:
 
         while True:
             # List files from connector with limit
-            logger.debug(
-                "Calling list_files", page_size=page_size, page_token=page_token
-            )
+            logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
             file_list = await connector.list_files(page_token, limit=page_size)
-            logger.debug(
-                "Got files from connector", file_count=len(file_list.get("files", []))
-            )
+            logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
             if not files:
@@ -332,7 +321,7 @@ class LangflowConnectorService:
         """
         Sync specific files by their IDs using Langflow processing.
         Automatically expands folders to their contents.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -348,9 +337,7 @@ class LangflowConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
@@ -365,7 +352,7 @@ class LangflowConnectorService:
 
         # If file_infos provided, cache them in the connector for later use
         # This allows get_file_content to use download URLs directly
-        if file_infos and hasattr(connector, 'set_file_infos'):
+        if file_infos and hasattr(connector, "set_file_infos"):
             connector.set_file_infos(file_infos)
             logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
 
@@ -432,9 +419,7 @@ class LangflowConnectorService:
         original_filenames = {}
         if file_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype")
-                )
+                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
                 for f in file_infos
                 if "id" in f and "name" in f
             }

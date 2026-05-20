@@ -60,9 +60,7 @@ async def test_deletes_each_visible_chunk_id_by_primary_id():
     # Search query must target the document_id field with terms(...).
     search_call = opensearch_client.search.await_args
     assert search_call.kwargs["index"] == "test-index"
-    assert search_call.kwargs["body"]["query"] == {
-        "terms": {"document_id": ["doc-a", "doc-b"]}
-    }
+    assert search_call.kwargs["body"]["query"] == {"terms": {"document_id": ["doc-a", "doc-b"]}}
 
     # One primary-id delete per visible chunk, refresh=True so the delete is
     # immediately visible to the re-index that typically follows.
