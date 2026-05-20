@@ -63,8 +63,8 @@ jobs:
           # safe-classified fixes still include things like F401 (unused
           # imports), which can break side-effect imports used by the
           # connector registration pattern.
-          # Formatting is enforced + auto-applied by the separate
-          # `.github/workflows/autofix.ci.yml` workflow.
+          # Safe lint fixes and formatting are auto-applied by
+          # `.github/workflows/autofix.ci.yml`.
           uv run ruff check --no-fix --output-format=github ${{ steps.changed.outputs.files }}
 
       - name: Mypy
