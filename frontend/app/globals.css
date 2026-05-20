@@ -368,10 +368,13 @@
     line-height: 18px;
     letter-spacing: 0.16px;
 
-    &:hover,
+    &:hover {
+      border-bottom-color: var(--border-border-interactive);
+    }
+
     &[data-state="active"] {
       border-bottom-color: var(--border-border-interactive);
-      font-weight: 600;
+      font-weight: 600 !important;
     }
   }
 

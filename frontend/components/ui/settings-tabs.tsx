@@ -66,7 +66,7 @@ function TabsTrigger({
       className={cn(
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=default]/tabs-list:hover:bg-accent group-data-[variant=default]/tabs-list:hover:text-accent-foreground group-data-[variant=default]/tabs-list:data-[state=active]:bg-background group-data-[variant=default]/tabs-list:data-[state=active]:text-foreground group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm dark:group-data-[variant=default]/tabs-list:hover:bg-neutral-900 dark:group-data-[variant=default]/tabs-list:hover:text-white dark:group-data-[variant=default]/tabs-list:focus-visible:bg-neutral-900 dark:group-data-[variant=default]/tabs-list:focus-visible:text-white dark:group-data-[variant=default]/tabs-list:focus-visible:ring-0 dark:group-data-[variant=default]/tabs-list:focus-visible:ring-offset-0 dark:group-data-[variant=default]/tabs-list:data-[state=active]:bg-neutral-900 dark:group-data-[variant=default]/tabs-list:data-[state=active]:text-white",
-        "group-data-[variant=line]/tabs-list:flex-none group-data-[variant=line]/tabs-list:h-auto group-data-[variant=line]/tabs-list:flex-shrink-0 group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:border-0 group-data-[variant=line]/tabs-list:px-4 group-data-[variant=line]/tabs-list:py-[11px] group-data-[variant=line]/tabs-list:shadow-none group-data-[variant=line]/tabs-list:transition-none group-data-[variant=line]/tabs-list:hover:bg-accent group-data-[variant=line]/tabs-list:data-[state=active]:hover:bg-transparent group-data-[variant=line]/tabs-list:after:hidden",
+        "group-data-[variant=line]/tabs-list:box-border group-data-[variant=line]/tabs-list:flex-none group-data-[variant=line]/tabs-list:h-auto group-data-[variant=line]/tabs-list:flex-shrink-0 group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:border-0 group-data-[variant=line]/tabs-list:border-b-2 group-data-[variant=line]/tabs-list:border-b-transparent group-data-[variant=line]/tabs-list:px-4 group-data-[variant=line]/tabs-list:py-[11px] group-data-[variant=line]/tabs-list:font-normal group-data-[variant=line]/tabs-list:shadow-none group-data-[variant=line]/tabs-list:transition-none group-data-[variant=line]/tabs-list:hover:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:font-semibold group-data-[variant=line]/tabs-list:data-[state=active]:hover:bg-transparent group-data-[variant=line]/tabs-list:after:hidden",
         className,
       )}
       {...props}
@@ -74,4 +74,17 @@ function TabsTrigger({
   );
 }
 
-export { Tabs, TabsList, TabsTrigger };
+function TabsContent({
+  className,
+  ...props
+}: ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 text-sm outline-none", className)}
+      {...props}
+    />
+  );
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent };
