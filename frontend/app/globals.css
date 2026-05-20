@@ -234,6 +234,7 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --border-border-interactive: #4589ff;
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
@@ -324,6 +325,7 @@
     --text-text-01: 0 0% 96%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
+    --border-border-interactive: #4589ff;
 
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
@@ -350,14 +352,30 @@
     letter-spacing: 0;
   }
 
-  [data-theme="ibm"] .ibm-body-compact {
+  /* IBM settings: line-variant tabs — transparent default, blue active/hover */
+  [data-theme="ibm"]
+    .ibm-settings-page
+    [data-slot="tabs-list"][data-variant="line"]
+    [data-slot="tabs-trigger"] {
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    border-bottom-color: transparent;
+    background: transparent;
     color: hsl(var(--text-text-01));
-    font-family: inherit;
-    font-size: 14px !important;
-    font-weight: 400 !important;
-    line-height: 18px !important;
-    font-style: normal;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 18px;
     letter-spacing: 0.16px;
+
+    &:hover {
+      border-bottom-color: var(--border-border-interactive);
+    }
+
+    &[data-state="active"] {
+      border-bottom-color: var(--border-border-interactive);
+      font-weight: 600 !important;
+    }
   }
 
   /* IBM Settings: inline links (Link/link-primary) */
