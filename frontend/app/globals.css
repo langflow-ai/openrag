@@ -370,11 +370,8 @@
 
     &:hover,
     &[data-state="active"] {
-      border-bottom-color: var(--border-border-interactive) !important;
-    }
-
-    &[data-state="active"] {
-      font-weight: 600 !important;
+      border-bottom-color: var(--border-border-interactive);
+      font-weight: 600;
     }
   }
 
