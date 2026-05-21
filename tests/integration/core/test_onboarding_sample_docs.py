@@ -40,6 +40,8 @@ _RELOAD_MODULES = [
     "utils.opensearch_init",
 ]
 
+_EXCLUDED_DEFAULT_DOCS = {"warmup_ocr.pdf"}
+
 
 def _reload_openrag_modules() -> None:
     for module_name in _RELOAD_MODULES:
@@ -66,21 +68,20 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     if not os.getenv("OPENAI_API_KEY"):
         pytest.skip("OPENAI_API_KEY is required for onboarding sample-doc ingestion")
 
-    docs_dir = tmp_path / "openrag-documents"
+    docs_dir = Path(__file__).resolve().parents[3] / "openrag-documents"
+    expected_filenames = sorted(
+        path.name
+        for path in docs_dir.rglob("*")
+        if path.is_file() and path.name not in _EXCLUDED_DEFAULT_DOCS
+    )
+    if not expected_filenames:
+        pytest.fail(f"No default docs found in {docs_dir}")
+
     config_dir = tmp_path / "config"
     data_dir = tmp_path / "data"
     keys_dir = tmp_path / "keys"
-    for directory in (docs_dir, config_dir, data_dir, keys_dir):
+    for directory in (config_dir, data_dir, keys_dir):
         directory.mkdir()
-
-    sample_text = "onboarding sample docs fixture marker 7f0f2ad7"
-    sample_file = docs_dir / "sample-onboarding-doc.md"
-    sample_file.write_text(
-        "# Sample Onboarding Doc\n\n"
-        f"{sample_text}\n\n"
-        "This fixture is intentionally tiny so onboarding sample-doc coverage does not depend on the full docs corpus.\n",
-        encoding="utf-8",
-    )
 
     index_name = f"documents_onboarding_sample_{uuid4().hex}"
     db_path = tmp_path / "openrag.db"
@@ -112,8 +113,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     try:
         yield {
             "index_name": index_name,
-            "sample_file": sample_file,
-            "sample_text": sample_text,
+            "expected_filenames": expected_filenames,
         }
     finally:
         try:
@@ -132,7 +132,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         _reload_openrag_modules()
 
 
-async def _wait_for_task(task_service, task_id: str, timeout_s: float = 180.0) -> dict:
+async def _wait_for_task(task_service, task_id: str, timeout_s: float = 900.0) -> dict:
     deadline = asyncio.get_event_loop().time() + timeout_s
     last_status = None
     while asyncio.get_event_loop().time() < deadline:
@@ -196,7 +196,9 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
 
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
         assert task_status["status"] == "completed"
-        assert task_status["successful_files"] == 1
+        assert task_status["successful_files"] == len(
+            isolated_onboarding_docs_workspace["expected_filenames"]
+        )
         assert task_status["failed_files"] == 0
 
         config = config_manager.get_config()
@@ -209,27 +211,32 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         search_response = await clients.opensearch.search(
             index=isolated_onboarding_docs_workspace["index_name"],
             body={
-                "query": {"match_all": {}},
-                "_source": [
-                    "connector_type",
-                    "filename",
-                    "is_sample_data",
-                    "text",
-                ],
-                "size": 10,
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"connector_type": "openrag_docs"}},
+                            {"term": {"is_sample_data": "true"}},
+                        ]
+                    }
+                },
+                "aggs": {"filenames": {"terms": {"field": "filename", "size": 100}}},
+                "size": 0,
             },
         )
-        hits = search_response.get("hits", {}).get("hits", [])
-        assert hits, "Expected onboarding sample document chunks to be indexed"
+        total = search_response.get("hits", {}).get("total", {})
+        total_value = total.get("value", 0) if isinstance(total, dict) else total
+        assert total_value > 0, "Expected onboarding sample document chunks to be indexed"
 
-        sources = [hit["_source"] for hit in hits]
-        assert any(
-            source.get("filename") == isolated_onboarding_docs_workspace["sample_file"].name
-            and source.get("connector_type") == "openrag_docs"
-            and source.get("is_sample_data") == "true"
-            and isolated_onboarding_docs_workspace["sample_text"] in source.get("text", "")
-            for source in sources
+        filename_buckets = (
+            search_response.get("aggregations", {})
+            .get("filenames", {})
+            .get("buckets", [])
         )
+        indexed_filenames = {bucket["key"] for bucket in filename_buckets}
+        assert set(isolated_onboarding_docs_workspace["expected_filenames"]).issubset(
+            indexed_filenames
+        )
+        assert indexed_filenames.isdisjoint(_EXCLUDED_DEFAULT_DOCS)
     finally:
         if startup_complete:
             await app.router.shutdown()
