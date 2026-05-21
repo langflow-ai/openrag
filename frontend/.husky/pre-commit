@@ -1,1 +1,1 @@
-.husky/_/pre-commit
+cd frontend && npx lint-staged
