@@ -7,7 +7,9 @@ from typing import Optional
 
 
 @contextmanager
-def auto_cleanup_tempfile(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None):
+def auto_cleanup_tempfile(
+    suffix: str | None = None, prefix: str | None = None, dir: str | None = None
+):
     """
     Context manager for temporary files that automatically cleans up.
 
@@ -101,9 +103,7 @@ def clean_connector_filename(filename: str, mimetype: str) -> str:
     return clean_name
 
 
-def langflow_safe_filename_and_mimetype(
-    filename: str, mimetype: str | None
-) -> tuple[str, str]:
+def langflow_safe_filename_and_mimetype(filename: str, mimetype: str | None) -> tuple[str, str]:
     """Apply the .txt -> .md workaround for Langflow ingestion.
 
     Langflow's docling component fails on text/plain (see commit f6b9fe0).

@@ -44,9 +44,7 @@ from utils.file_utils import langflow_safe_filename_and_mimetype  # noqa: E402
         ("", None, "", "application/octet-stream"),
     ],
 )
-def test_helper_applies_txt_to_md_rule(
-    filename, mimetype, expected_filename, expected_mimetype
-):
+def test_helper_applies_txt_to_md_rule(filename, mimetype, expected_filename, expected_mimetype):
     out_filename, out_mimetype = langflow_safe_filename_and_mimetype(filename, mimetype)
     assert out_filename == expected_filename
     assert out_mimetype == expected_mimetype
@@ -63,8 +61,6 @@ def test_helper_does_not_match_txt_substring_in_middle_of_name():
     assert out_mimetype == "application/octet-stream"
 
     # Different real case: `mytxt.pdf` — txt is just part of the stem.
-    out_filename, out_mimetype = langflow_safe_filename_and_mimetype(
-        "mytxt.pdf", "application/pdf"
-    )
+    out_filename, out_mimetype = langflow_safe_filename_and_mimetype("mytxt.pdf", "application/pdf")
     assert out_filename == "mytxt.pdf"
     assert out_mimetype == "application/pdf"

@@ -39,9 +39,7 @@ def _make_service():
     # OpenSearch mock for the pre-delete step (collect+delete). Empty result
     # so the pre-delete is a no-op; the test isn't about that path.
     opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(
-        return_value={"_scroll_id": None, "hits": {"hits": []}}
-    )
+    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
     opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
 
     session_manager = MagicMock()
