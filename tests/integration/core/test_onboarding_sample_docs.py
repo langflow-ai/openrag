@@ -93,7 +93,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENSEARCH_INDEX_NAME", index_name)
     monkeypatch.setenv("INGEST_SAMPLE_DATA", "true")
     monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "files")
-    monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "true")
+    monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
     monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "")
@@ -132,7 +132,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         _reload_openrag_modules()
 
 
-async def _wait_for_task(task_service, task_id: str, timeout_s: float = 90.0) -> dict:
+async def _wait_for_task(task_service, task_id: str, timeout_s: float = 180.0) -> dict:
     deadline = asyncio.get_event_loop().time() + timeout_s
     last_status = None
     while asyncio.get_event_loop().time() < deadline:
