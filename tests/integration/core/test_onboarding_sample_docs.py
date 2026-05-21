@@ -228,9 +228,7 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         assert total_value > 0, "Expected onboarding sample document chunks to be indexed"
 
         filename_buckets = (
-            search_response.get("aggregations", {})
-            .get("filenames", {})
-            .get("buckets", [])
+            search_response.get("aggregations", {}).get("filenames", {}).get("buckets", [])
         )
         indexed_filenames = {bucket["key"] for bucket in filename_buckets}
         assert set(isolated_onboarding_docs_workspace["expected_filenames"]).issubset(
