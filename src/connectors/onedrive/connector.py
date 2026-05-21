@@ -29,6 +29,7 @@ class OneDriveConnector(BaseConnector):
     @classmethod
     def get_oauth_class(cls):
         from .oauth import OneDriveOAuth
+
         return OneDriveOAuth
 
     def __init__(self, config: dict[str, Any]):

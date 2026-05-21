@@ -12,4 +12,4 @@ from connectors.base import BaseConnector
 
 from .connectors.ibm_cos import IBMCOSConnector
 
-ADDITIONAL_CONNECTORS: List[Type[BaseConnector]] = [IBMCOSConnector]
+ADDITIONAL_CONNECTORS: list[type[BaseConnector]] = [IBMCOSConnector]

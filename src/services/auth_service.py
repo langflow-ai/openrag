@@ -111,7 +111,11 @@ class AuthService:
 
         # Look up connector + OAuth class pair via the registry.
         connector_class = get_connector_class(connector_type)
-        oauth_class = connector_class.get_oauth_class() if connector_class and hasattr(connector_class, "get_oauth_class") else None
+        oauth_class = (
+            connector_class.get_oauth_class()
+            if connector_class and hasattr(connector_class, "get_oauth_class")
+            else None
+        )
         if not connector_class or not oauth_class:
             raise ValueError(f"No classes found for connector type: {connector_type}")
 

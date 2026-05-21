@@ -1049,6 +1049,7 @@ async def sync_all_connectors(
 
 def _cloud_connector_types() -> list[str]:
     from connectors.registry import get_connector_classes
+
     return [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
 
