@@ -15,6 +15,7 @@ from dependencies import (
     get_optional_user,
 )
 from session_manager import User
+from utils.file_utils import langflow_safe_filename_and_mimetype
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -45,11 +46,11 @@ async def upload_user_file(
         logger.debug("Processing file", filename=file.filename, size=file.size)
 
         content = await file.read()
-        file_tuple = (
-            file.filename,
-            content,
-            file.content_type or "application/octet-stream",
+        # Langflow's docling chokes on text/plain — rename .txt -> .md.
+        upload_filename, upload_mimetype = langflow_safe_filename_and_mimetype(
+            file.filename, file.content_type
         )
+        file_tuple = (upload_filename, content, upload_mimetype)
 
         jwt_token = user.jwt_token if user else session_manager.get_effective_jwt_token(None, None)
 
