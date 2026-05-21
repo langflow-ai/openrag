@@ -51,9 +51,8 @@ def _load_additional() -> list[type[BaseConnector]]:
         return []
     except Exception:
         import logging
-        logging.getLogger(__name__).exception(
-            "ADDITIONAL_CONNECTORS import failed"
-        )
+
+        logging.getLogger(__name__).exception("ADDITIONAL_CONNECTORS import failed")
         raise
     return list(ADDITIONAL_CONNECTORS)
 
