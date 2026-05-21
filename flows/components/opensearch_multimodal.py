@@ -23,6 +23,7 @@ from lfx.io import (
 )
 from lfx.log import logger
 from lfx.schema.data import Data
+from lfx.schema.dataframe import Table
 from opensearchpy import OpenSearch, helpers
 from opensearchpy.exceptions import OpenSearchException, RequestError
 
@@ -2231,21 +2232,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             for hit in hits
         ]
 
-    def search_documents(self) -> list[Data]:
-        """Search documents and return results as Data objects.
-
-        This is the main interface method that performs the multi-model search using the
-        configured search_query and returns results in Langflow's Data format.
-
-        Always builds the vector store (triggering ingestion if needed), then performs
-        search only if a query is provided.
-
-        Returns:
-            List of Data objects containing search results with text and metadata
-
-        Raises:
-            Exception: If search operation fails
-        """
+    def search_documents(self) -> Table:
+        """Search documents and return results as a Table."""
         try:
             # Always build/cache the vector store to ensure ingestion happens
             logger.info(f"Search query: {self.search_query}")
@@ -2256,11 +2244,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             search_query = (self.search_query or "").strip()
             if not search_query:
                 self.log("No search query provided - ingestion completed, returning empty results")
-                return []
+                return Table(data=[])
 
             # Perform search with the provided query
             raw = self.search(search_query)
-            return [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
+            raw_list = [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
+            return Table(data=raw_list)
         except Exception as e:
             self.log(f"search_documents error: {e}")
             raise
