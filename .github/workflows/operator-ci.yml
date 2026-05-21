@@ -108,5 +108,8 @@ jobs:
           file: kubernetes/operator/Dockerfile
           platforms: linux/amd64
           push: false
+          build-args: |
+            TARGETOS=linux
+            TARGETARCH=amd64
           cache-from: type=gha,scope=operator-amd64
           cache-to: type=gha,mode=max,scope=operator-amd64
