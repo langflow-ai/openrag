@@ -46,15 +46,50 @@ class IBMCOSConnector(BaseConnector):
         connection_id (str): Connection identifier used for logging.
     """
 
+    CONNECTOR_TYPE = "ibm_cos"
+    CONNECTOR_KIND = "bucket"
     CONNECTOR_NAME = "IBM Cloud Object Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from IBM Cloud Object Storage"
     CONNECTOR_ICON = "ibm-cos"
+    SECRET_CONFIG_KEYS = ("ibm_api_key", "service_instance_id")
 
     # BaseConnector uses these to check env-var availability for IAM mode.
     # HMAC-only setups will show as "unavailable" in the UI but can still be
     # used when credentials are supplied in the config dict directly.
     CLIENT_ID_ENV_VAR = "IBM_COS_API_KEY"
     CLIENT_SECRET_ENV_VAR = "IBM_COS_SERVICE_INSTANCE_ID"
+
+    @classmethod
+    def is_available(cls, manager, user_id=None) -> bool:
+        return os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+
+    @classmethod
+    def register_routes(cls, app) -> None:
+        from .api import (
+            ibm_cos_bucket_status,
+            ibm_cos_configure,
+            ibm_cos_defaults,
+            ibm_cos_list_buckets,
+        )
+        # Registered before generic /{connector_type}/... to avoid shadowing.
+        app.add_api_route(
+            "/connectors/ibm_cos/defaults", ibm_cos_defaults, methods=["GET"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/configure", ibm_cos_configure, methods=["POST"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/{connection_id}/buckets",
+            ibm_cos_list_buckets,
+            methods=["GET"],
+            tags=["internal"],
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/{connection_id}/bucket-status",
+            ibm_cos_bucket_status,
+            methods=["GET"],
+            tags=["internal"],
+        )
 
     def get_client_id(self) -> str:
         """Return IAM API key, or HMAC access key ID as fallback."""

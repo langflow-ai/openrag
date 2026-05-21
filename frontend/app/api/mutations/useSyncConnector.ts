@@ -70,7 +70,7 @@ const syncConnector = async ({
     settings?: any;
     /** When true, ingest all files from the connector (bypasses the re-sync gate). */
     sync_all?: boolean;
-    /** Restrict ingest to these bucket names (IBM COS). */
+    /** Restrict ingest to these bucket names (bucket connectors). */
     bucket_filter?: string[];
   };
 }): Promise<SyncResponse> => {

@@ -50,11 +50,7 @@ import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import AwsLogo from "../../components/icons/aws-logo";
-import GoogleDriveIcon from "../../components/icons/google-drive-logo";
-import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
-import OneDriveIcon from "../../components/icons/one-drive-logo";
-import SharePointIcon from "../../components/icons/share-point-logo";
+import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
@@ -75,26 +71,16 @@ function listFilesFilterParam(values?: string[]): string | undefined {
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
+  if (connectorType) {
+    const Icon = getConnectorDescriptor(connectorType)?.Icon;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+  }
   switch (connectorType) {
-    case "google_drive":
-      return (
-        <GoogleDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
-    case "onedrive":
-      return <OneDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "sharepoint":
-      return (
-        <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
     case "openrag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "ibm_cos":
-      return <IBMCOSIcon className="h-4 w-4 flex-shrink-0" />;
-    case "aws_s3":
-      return <AwsLogo className="h-4 w-4 flex-shrink-0" />;
     default:
       return (
         <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />

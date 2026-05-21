@@ -1,8 +1,16 @@
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
 # This module is intended to be imported as the first line in entry points
 # to ensure environment variables and logging are available to all subsequent imports.
+
+# Make the repo root importable so the top-level `enhancements/` package is
+# discoverable alongside `src/`. Safe to no-op when the path is already present.
+_REPO_ROOT = str(Path(__file__).parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 
 def load_env():
     """Load .env then immediately configure structured logging so all subsequent

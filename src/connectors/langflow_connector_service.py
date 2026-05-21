@@ -369,9 +369,9 @@ class LangflowConnectorService:
         expanded_file_ids = file_ids  # Default to original IDs
 
         # Only attempt folder expansion for connectors that use cfg-based filtering
-        # (Google Drive, OneDrive, SharePoint). Connectors without a cfg attribute
-        # (e.g. IBM COS) receive pre-filtered file IDs and must NOT call list_files()
-        # here — doing so would re-list all files from all buckets, overwriting the
+        # (Google Drive, OneDrive, SharePoint). Bucket-kind connectors without a cfg
+        # attribute receive pre-filtered file IDs and must NOT call list_files() here
+        # — doing so would re-list all files from all buckets, overwriting the
         # carefully selected IDs passed in.
         if cfg is not None:
             try:

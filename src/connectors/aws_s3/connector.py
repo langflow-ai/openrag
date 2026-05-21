@@ -44,12 +44,39 @@ class S3Connector(BaseConnector):
         connection_id (str): Connection identifier used for logging.
     """
 
+    CONNECTOR_TYPE = "aws_s3"
+    CONNECTOR_KIND = "bucket"
     CONNECTOR_NAME = "Amazon S3"
     CONNECTOR_DESCRIPTION = "Add knowledge from Amazon S3 or any S3-compatible storage"
     CONNECTOR_ICON = "aws-s3"
+    SECRET_CONFIG_KEYS = ("aws_secret_access_key",)
 
     CLIENT_ID_ENV_VAR = "AWS_ACCESS_KEY_ID"
     CLIENT_SECRET_ENV_VAR = "AWS_SECRET_ACCESS_KEY"
+
+    @classmethod
+    def is_available(cls, manager, user_id=None) -> bool:
+        # Gated by feature flag in OSS; SaaS / enterprise can flip it on.
+        return os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+
+    @classmethod
+    def register_routes(cls, app) -> None:
+        from .api import s3_bucket_status, s3_configure, s3_defaults, s3_list_buckets
+        # Registered before generic /{connector_type}/... to avoid shadowing.
+        app.add_api_route("/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"])
+        app.add_api_route("/connectors/aws_s3/configure", s3_configure, methods=["POST"], tags=["internal"])
+        app.add_api_route(
+            "/connectors/aws_s3/{connection_id}/buckets",
+            s3_list_buckets,
+            methods=["GET"],
+            tags=["internal"],
+        )
+        app.add_api_route(
+            "/connectors/aws_s3/{connection_id}/bucket-status",
+            s3_bucket_status,
+            methods=["GET"],
+            tags=["internal"],
+        )
 
     def get_client_id(self) -> str:
         """Return access key from config dict, or AWS_ACCESS_KEY_ID env var as fallback."""

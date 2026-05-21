@@ -3,6 +3,7 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import type React from "react";
 import type { OrphanFile } from "@/app/api/mutations/useSyncConnector";
+import { getConnectorLabel } from "@/lib/connectors/registry";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -16,16 +17,8 @@ import {
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 
-const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
-  google_drive: "Google Drive",
-  onedrive: "OneDrive",
-  sharepoint: "SharePoint",
-  ibm_cos: "IBM Cloud Object Storage",
-  aws_s3: "Amazon S3",
-};
-
 const formatConnectorLabel = (type: string): string =>
-  CONNECTOR_DISPLAY_NAMES[type] ?? type;
+  getConnectorLabel(type) ?? type;
 
 interface SyncConfirmDialogProps {
   open: boolean;
