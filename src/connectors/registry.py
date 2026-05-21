@@ -45,8 +45,15 @@ GENERAL_SECRET_KEYS = frozenset({
 def _load_additional() -> List[Type[BaseConnector]]:
     try:
         from enhancements import ADDITIONAL_CONNECTORS  # type: ignore
-    except Exception:
+    except ModuleNotFoundError:
+        # No enhancements package installed — bare OSS build.
         return []
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "ADDITIONAL_CONNECTORS import failed"
+        )
+        raise
     return list(ADDITIONAL_CONNECTORS)
 
 

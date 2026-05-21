@@ -22,6 +22,7 @@ export function IBMCOSBucketView({
   const {
     data: buckets,
     isLoading,
+    error: bucketsError,
     refetch,
   } = useIBMCOSBucketStatusQuery(connector.connectionId, { enabled: true });
   return (
@@ -29,6 +30,7 @@ export function IBMCOSBucketView({
       connector={connector}
       buckets={buckets}
       isLoading={isLoading}
+      bucketsError={bucketsError as Error | null}
       onRefetch={refetch}
       invalidateQueryKey={["ibm-cos-bucket-status", connector.connectionId]}
       syncMutation={syncMutation}

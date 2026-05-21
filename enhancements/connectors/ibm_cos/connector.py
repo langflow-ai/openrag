@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from posixpath import basename
 from typing import Any, Dict, List, Optional
 
+from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -51,7 +52,9 @@ class IBMCOSConnector(BaseConnector):
     CONNECTOR_NAME = "IBM Cloud Object Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from IBM Cloud Object Storage"
     CONNECTOR_ICON = "ibm-cos"
-    SECRET_CONFIG_KEYS = ("ibm_api_key", "service_instance_id")
+    # api_key/hmac_access_key/hmac_secret_key are already in GENERAL_SECRET_KEYS;
+    # only service_instance_id is IBM-specific.
+    SECRET_CONFIG_KEYS = ("service_instance_id",)
 
     # BaseConnector uses these to check env-var availability for IAM mode.
     # HMAC-only setups will show as "unavailable" in the UI but can still be
@@ -61,7 +64,7 @@ class IBMCOSConnector(BaseConnector):
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
-        return os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+        return IBM_AUTH_ENABLED
 
     @classmethod
     def register_routes(cls, app) -> None:

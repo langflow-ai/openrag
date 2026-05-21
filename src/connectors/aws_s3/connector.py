@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from posixpath import basename
 from typing import Any, Dict, List, Optional
 
+from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -57,7 +58,7 @@ class S3Connector(BaseConnector):
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
         # Gated by feature flag in OSS; SaaS / enterprise can flip it on.
-        return os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+        return IBM_AUTH_ENABLED
 
     @classmethod
     def register_routes(cls, app) -> None:

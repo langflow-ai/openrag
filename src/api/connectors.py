@@ -890,8 +890,7 @@ async def sync_all_connectors(
         jwt_token = user.jwt_token
 
         # Cloud connector types to sync
-        from connectors.registry import get_connector_classes
-        cloud_connector_types = [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
+        cloud_connector_types = _cloud_connector_types()
 
         all_task_ids = []
         synced_connectors = []
