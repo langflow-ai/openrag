@@ -9,7 +9,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "pb-6",
+        "pb-6 w-full",
         isCloudBrand && "font-ibm-plex-sans ibm-settings-page",
       )}
     >

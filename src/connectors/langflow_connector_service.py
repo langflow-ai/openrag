@@ -1,13 +1,13 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Create custom processor for connector files using Langflow
 from models.processors import LangflowConnectorFileProcessor
 from services.langflow_file_service import LangflowFileService
+from utils.file_utils import clean_connector_filename, get_file_extension
 from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
-from utils.file_utils import get_file_extension, clean_connector_filename
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,7 @@ class LangflowConnectorService:
         """Initialize the service by loading existing connections"""
         await self.connection_manager.load_connections()
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
@@ -46,8 +46,8 @@ class LangflowConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        ingest_settings: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Process a document from a connector using LangflowFileService pattern"""
 
         logger.debug(
@@ -69,7 +69,7 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
-            
+
             # Clean filename and ensure we don't add a double extension
             processed_filename = clean_connector_filename(document.filename, document.mimetype)
 
@@ -79,24 +79,53 @@ class LangflowConnectorService:
                 document.mimetype or "application/octet-stream",
             )
 
-            # Step 0: Delete existing chunks for this file before re-ingesting
-            # This prevents duplicate chunks when syncing files
+            # Step 0: Delete existing chunks for this file before re-ingesting.
+            # Match on document_id (the stable connector item ID, e.g. the
+            # SharePoint Graph item id) — NOT on filename. On a rename, the
+            # `processed_filename` here is the NEW name while OpenSearch chunks
+            # still carry the OLD name, so a filename-keyed delete misses them
+            # and the re-ingest leaves duplicate chunks (same document_id, two
+            # different filenames). Also use enumerate-then-delete-by-id rather
+            # than delete_by_query, which is silently no-opped under DLS.
             if self.session_manager:
+                from config.settings import get_index_name
+                from utils.opensearch_delete import (
+                    collect_visible_document_ids,
+                    delete_document_ids,
+                )
+
+                opensearch_client = self.session_manager.get_user_opensearch_client(
+                    owner_user_id, jwt_token
+                )
                 try:
-                    from config.settings import get_index_name
-                    opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
-                    delete_body = {"query": {"term": {"filename": processed_filename}}}
-                    delete_result = await opensearch_client.delete_by_query(index=get_index_name(), body=delete_body)
-                    deleted_count = delete_result.get("deleted", 0)
-                    logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
+                    chunk_ids = await collect_visible_document_ids(
+                        opensearch_client,
+                        index=get_index_name(),
+                        query={"term": {"document_id": document.id}},
+                    )
+                    deleted_count = await delete_document_ids(
+                        opensearch_client,
+                        index=get_index_name(),
+                        document_ids=chunk_ids,
+                        refresh=True,
+                    )
+                    logger.info(
+                        "Deleted existing chunks before re-ingestion",
+                        document_id=document.id,
+                        filename=processed_filename,
+                        deleted_count=deleted_count,
+                    )
                 except Exception as delete_err:
-                    logger.warning("Failed to delete existing chunks before re-ingestion", filename=processed_filename, error=str(delete_err))
+                    logger.warning(
+                        "Failed to delete existing chunks before re-ingestion",
+                        document_id=document.id,
+                        filename=processed_filename,
+                        error=str(delete_err),
+                    )
 
             langflow_file_id = None  # Initialize to track if upload succeeded
             try:
-                upload_result = await self.langflow_service.upload_user_file(
-                    file_tuple, jwt_token
-                )
+                upload_result = await self.langflow_service.upload_user_file(file_tuple, jwt_token)
                 langflow_file_id = upload_result["id"]
                 langflow_file_path = upload_result["path"]
 
@@ -107,9 +136,7 @@ class LangflowConnectorService:
                 )
 
                 # Step 2: Run ingestion flow with the uploaded file
-                logger.debug(
-                    "Running Langflow ingestion flow", file_path=langflow_file_path
-                )
+                logger.debug("Running Langflow ingestion flow", file_path=langflow_file_path)
 
                 connector_tweak_settings = None
                 if isinstance(ingest_settings, dict):
@@ -192,7 +219,6 @@ class LangflowConnectorService:
                         )
                 raise
 
-
     async def sync_connector_files(
         self,
         connection_id: str,
@@ -214,9 +240,7 @@ class LangflowConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         logger.debug("Got connector", authenticated=connector.is_authenticated)
 
@@ -224,7 +248,7 @@ class LangflowConnectorService:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
         # Collect files to process (limited by max_files)
-        files_to_process = []
+        files_to_process: list[dict[str, Any]] = []
         page_token = None
 
         # Calculate page size to minimize API calls
@@ -232,13 +256,9 @@ class LangflowConnectorService:
 
         while True:
             # List files from connector with limit
-            logger.debug(
-                "Calling list_files", page_size=page_size, page_token=page_token
-            )
-            file_list = await connector.list_files(page_token, limit=page_size)
-            logger.debug(
-                "Got files from connector", file_count=len(file_list.get("files", []))
-            )
+            logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
+            file_list = await connector.list_files(page_token, max_files=page_size)
+            logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
             if not files:
@@ -293,15 +313,15 @@ class LangflowConnectorService:
         self,
         connection_id: str,
         user_id: str,
-        file_ids: List[str],
+        file_ids: list[str],
         jwt_token: str = None,
-        file_infos: List[Dict[str, Any]] = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        file_infos: list[dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
         Automatically expands folders to their contents.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -317,9 +337,7 @@ class LangflowConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
@@ -334,7 +352,7 @@ class LangflowConnectorService:
 
         # If file_infos provided, cache them in the connector for later use
         # This allows get_file_content to use download URLs directly
-        if file_infos and hasattr(connector, 'set_file_infos'):
+        if file_infos and hasattr(connector, "set_file_infos"):
             connector.set_file_infos(file_infos)
             logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
 
@@ -357,8 +375,8 @@ class LangflowConnectorService:
         # carefully selected IDs passed in.
         if cfg is not None:
             try:
-                cfg.file_ids = file_ids  # type: ignore
-                cfg.folder_ids = None  # type: ignore
+                cfg.file_ids = file_ids
+                cfg.folder_ids = None
 
                 # Expand file IDs — folders become their individual file contents
                 result = await connector.list_files()
@@ -383,8 +401,8 @@ class LangflowConnectorService:
                 # Fallback to original file_ids if expansion fails
                 expanded_file_ids = file_ids
             finally:
-                cfg.file_ids = original_file_ids  # type: ignore
-                cfg.folder_ids = original_folder_ids  # type: ignore
+                cfg.file_ids = original_file_ids
+                cfg.folder_ids = original_folder_ids
 
         processor = LangflowConnectorFileProcessor(
             self,
@@ -401,9 +419,7 @@ class LangflowConnectorService:
         original_filenames = {}
         if file_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype")
-                )
+                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
                 for f in file_infos
                 if "id" in f and "name" in f
             }
@@ -414,6 +430,6 @@ class LangflowConnectorService:
 
         return task_id
 
-    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def _get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID (alias for get_connector)"""
         return await self.get_connector(connection_id)
