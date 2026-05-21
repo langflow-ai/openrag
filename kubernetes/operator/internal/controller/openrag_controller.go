@@ -1101,6 +1101,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
 	}
 
+	// Only create initContainer if FlowsRef is specified
+	// Use nil (not empty slice) to ensure initContainers are removed when FlowsRef is cleared
 	var initContainers []corev1.Container
 	if spec.FlowsRef != "" {
 		volumes = append(volumes, corev1.Volume{
@@ -1126,6 +1128,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 				},
 			},
 		}
+	} else {
+		// Explicitly set to nil when FlowsRef is empty to ensure initContainers are removed
+		initContainers = nil
 	}
 
 	// All sensitive values are now consolidated in the .env file
