@@ -1,8 +1,8 @@
-import IBMCOSSettingsDialog from "./connectors/ibm-cos/settings-dialog";
+import type { ConnectorUIDescriptor } from "@/lib/connectors/types";
 import { IBMCOSBucketView } from "./connectors/ibm-cos/components/bucket-view";
 import IBMCOSIcon from "./connectors/ibm-cos/icon";
+import IBMCOSSettingsDialog from "./connectors/ibm-cos/settings-dialog";
 import { useIBMCOSDefaultsQuery } from "./connectors/ibm-cos/useIBMCOSDefaultsQuery";
-import type { ConnectorUIDescriptor } from "@/lib/connectors/types";
 
 /**
  * Connector descriptors layered on top of the OSS builtins.

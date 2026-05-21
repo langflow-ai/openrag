@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
-import { getConnectorDescriptor, getConnectorDescriptors } from "@/lib/connectors/registry";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +35,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  getConnectorDescriptor,
+  getConnectorDescriptors,
+} from "@/lib/connectors/registry";
 import {
   duplicateCheck,
   uploadFiles,

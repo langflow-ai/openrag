@@ -19,7 +19,6 @@ import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 
-
 // CloudFile interface is now imported from the unified cloud picker
 
 export default function UploadProviderPage() {

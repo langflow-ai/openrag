@@ -1,5 +1,5 @@
-import type { ComponentType } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
+import type { ComponentType } from "react";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 
 export type ConnectorKind = "oauth" | "bucket";
@@ -53,7 +53,9 @@ export interface ConnectorUIDescriptor {
   /** Page-level view rendered on /upload/[provider] for bucket connectors. */
   BucketView?: ComponentType<ConnectorBucketViewProps>;
   /** Hook returning connector-specific defaults (server-side env presence, etc). */
-  useDefaultsQuery?: (options?: { enabled?: boolean }) => UseQueryResult<unknown>;
+  useDefaultsQuery?: (options?: {
+    enabled?: boolean;
+  }) => UseQueryResult<unknown>;
   /** Entry in the "add knowledge" dropdown. */
   menuItem?: ConnectorMenuItem;
 }

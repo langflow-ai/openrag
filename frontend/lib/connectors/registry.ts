@@ -1,10 +1,10 @@
+import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
+import S3SettingsDialog from "@/app/settings/_components/s3-settings-dialog";
 import { S3BucketView } from "@/components/connectors/aws-s3/bucket-view";
 import AwsLogo from "@/components/icons/aws-logo";
 import GoogleDriveLogo from "@/components/icons/google-drive-logo";
 import OneDriveLogo from "@/components/icons/one-drive-logo";
 import SharePointLogo from "@/components/icons/share-point-logo";
-import S3SettingsDialog from "@/app/settings/_components/s3-settings-dialog";
-import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import { ADDITIONAL_CONNECTORS } from "@/enhancements";
 import type { ConnectorUIDescriptor } from "./types";
 

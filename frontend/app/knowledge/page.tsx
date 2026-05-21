@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -50,7 +51,6 @@ import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
