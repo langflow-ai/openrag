@@ -162,7 +162,7 @@ export function TaskErrorContent({
                       className={cn(
                         "task-failed-file-card min-w-0",
                         isCloudBrand
-                          ? "flex h-[90px] flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] border-l-destructive bg-border p-2"
+                          ? "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] border-l-destructive bg-border p-2"
                           : "flex flex-col gap-1 rounded border-destructive/20 bg-failure-soft py-mmd px-4",
                       )}
                     >

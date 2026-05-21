@@ -1,6 +1,4 @@
-//formatting error displayed
-//waiting for backend step pf failure, cause etc
-//in meantime make sure we display only one line and search for opensearch, docling or langflow
+// Will update when backend is ready (error_summary, failing_step, component_cause).
 
 export const FILE_ERROR_MAX_LINE_LENGTH = 80;
 

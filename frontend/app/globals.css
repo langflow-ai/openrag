@@ -89,7 +89,7 @@
     --failure-message: hsl(var(--foreground));
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
-    --failure-component-cause: #525252; /* IBM Gray 70 — OSS component label beside flag */
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   .dark {
@@ -158,7 +158,7 @@
     --failure-message: #ffc9c9cc;
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
-    --failure-component-cause: #525252;
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   /* IBM Light */
@@ -242,11 +242,10 @@
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
 
-    /* IBM task panel status pills */
-    --task-status-failed-bg: #a2191f; /* IBM Red 70 */
-    --task-status-failed-fg: #ffd7d9; /* IBM Red 20 */
-    --task-status-complete-bg: #0e6027; /* IBM Green 70 */
-    --task-status-complete-fg: #a7f0ba; /* IBM Green 20 */
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM: match OSS switch colors — black track when checked, white thumb always */
@@ -339,10 +338,10 @@
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
 
-    --task-status-failed-bg: #a2191f;
-    --task-status-failed-fg: #ffd7d9;
-    --task-status-complete-bg: #0e6027;
-    --task-status-complete-fg: #a7f0ba;
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
