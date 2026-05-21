@@ -244,13 +244,12 @@ class AuthService:
 
             # Get token endpoint from connector type
             connector_type = connection_config.connector_type
-            connector_class_map = {
-                "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
-                "onedrive": (OneDriveConnector, OneDriveOAuth),
-                "sharepoint": (SharePointConnector, SharePointOAuth),
-            }
-
-            connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
+            connector_class = get_connector_class(connector_type)
+            oauth_class = (
+                connector_class.get_oauth_class()
+                if connector_class and hasattr(connector_class, "get_oauth_class")
+                else None
+            )
             if not connector_class or not oauth_class:
                 raise ValueError(f"No classes found for connector type: {connector_type}")
 
