@@ -6,7 +6,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from config.settings import get_index_name
-from dependencies import get_connector_service, get_session_manager, get_current_user
+from dependencies import get_connector_service, get_current_user, get_session_manager
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -42,20 +42,22 @@ async def ibm_cos_defaults(
         """Prefer connection config value over env var."""
         return conn_config.get(conn_key) or env_val
 
-    return JSONResponse({
-        "api_key_set": bool(api_key or conn_config.get("api_key")),
-        "service_instance_id": _pick("service_instance_id", service_instance_id),
-        "endpoint": _pick("endpoint_url", endpoint),
-        "hmac_access_key_set": bool(hmac_access_key or conn_config.get("hmac_access_key")),
-        "hmac_secret_key_set": bool(hmac_secret_key or conn_config.get("hmac_secret_key")),
-        "auth_mode": conn_config.get(
-            "auth_mode",
-            "hmac" if (disable_iam or not (api_key or conn_config.get("api_key"))) else "iam",
-        ),
-        "disable_iam": disable_iam,
-        "bucket_names": conn_config.get("bucket_names", []),
-        "connection_id": connections[0].connection_id if connections else None,
-    })
+    return JSONResponse(
+        {
+            "api_key_set": bool(api_key or conn_config.get("api_key")),
+            "service_instance_id": _pick("service_instance_id", service_instance_id),
+            "endpoint": _pick("endpoint_url", endpoint),
+            "hmac_access_key_set": bool(hmac_access_key or conn_config.get("hmac_access_key")),
+            "hmac_secret_key_set": bool(hmac_secret_key or conn_config.get("hmac_secret_key")),
+            "auth_mode": conn_config.get(
+                "auth_mode",
+                "hmac" if (disable_iam or not (api_key or conn_config.get("api_key"))) else "iam",
+            ),
+            "disable_iam": disable_iam,
+            "bucket_names": conn_config.get("bucket_names", []),
+            "connection_id": connections[0].connection_id if connections else None,
+        }
+    )
 
 
 async def ibm_cos_configure(
@@ -169,17 +171,11 @@ async def ibm_cos_bucket_status(
     # 2. Count indexed documents per bucket from OpenSearch
     ingested_counts: dict = {}
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user.user_id, user.jwt_token
-        )
+        opensearch_client = session_manager.get_user_opensearch_client(user.user_id, user.jwt_token)
         query_body = {
             "size": 0,
             "query": {"term": {"connector_type": "ibm_cos"}},
-            "aggs": {
-                "doc_ids": {
-                    "terms": {"field": "document_id", "size": 50000}
-                }
-            },
+            "aggs": {"doc_ids": {"terms": {"field": "document_id", "size": 50000}}},
         }
         index_name = get_index_name()
         os_resp = opensearch_client.search(index=index_name, body=query_body)

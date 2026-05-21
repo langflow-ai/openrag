@@ -891,6 +891,7 @@ async def sync_all_connectors(
 
         # Cloud connector types to sync
         from connectors.registry import get_connector_classes
+
         cloud_connector_types = [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
         all_task_ids = []
@@ -1050,6 +1051,7 @@ async def sync_all_connectors(
 
 def _cloud_connector_types() -> list[str]:
     from connectors.registry import get_connector_classes
+
     return [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
 
