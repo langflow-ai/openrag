@@ -1056,8 +1056,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 8000, 45, 30),
-							ReadinessProbe:  httpProbe("/health", 8000, 45, 10),
+							LivenessProbe:   httpProbe("/health", 8000, 125, 30),
+							ReadinessProbe:  httpProbe("/health", 8000, 125, 15),
 						},
 					},
 				},
@@ -1174,8 +1174,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 7860, 90, 30),
-							ReadinessProbe:  httpProbe("/health", 7860, 90, 30),
+							LivenessProbe:   httpProbe("/health", 7860, 110, 30),
+							ReadinessProbe:  httpProbe("/health", 7860, 110, 30),
 						},
 					},
 				},
@@ -2690,7 +2690,7 @@ func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
 		FailureThreshold:    5,
-		TimeoutSeconds:      10,
+		TimeoutSeconds:      15,
 	}
 }
 
