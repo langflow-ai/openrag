@@ -30,6 +30,9 @@ class GroupACLService:
         if user is None or not user.user_id:
             return []
 
+        if self.cache_ttl_seconds <= 0:
+            return await self._resolve_user_group_roles(user)
+
         if self.cache_ttl_seconds > 0:
             cached = self._cache.get(user.user_id)
             now = time.monotonic()

@@ -130,7 +130,8 @@ class SessionManager:
             with open(self.public_key_path, "rb") as f:
                 self.public_key = serialization.load_pem_public_key(f.read())
 
-            self.public_key_pem = open(self.public_key_path).read()
+            with open(self.public_key_path) as f:
+                self.public_key_pem = f.read()
 
         except FileNotFoundError as e:
             raise Exception(f"RSA key files not found: {e}") from e

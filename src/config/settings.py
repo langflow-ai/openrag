@@ -60,7 +60,7 @@ LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
 LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
-SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
+SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-production"
 # Optional explicit JWT signing key. When set (and IBM auth is off),
 # RSA keypair generation is skipped. Read here so callers don't poke
 # os.environ directly.

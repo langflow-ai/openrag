@@ -85,6 +85,53 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
 
 
 @pytest.mark.asyncio
+async def test_langflow_ingest_callback_rejects_foreign_chunk_ids():
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="doc-1",
+        filename="source.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        ingest_run_id="run-1",
+    )
+    token = token_service.create_token(context)
+
+    class Writer:
+        def __init__(self):
+            self.calls = []
+
+        async def index_chunks(self, context, chunks, *, final=False):
+            self.calls.append((context, chunks, final))
+            return {"indexed_chunks": len(chunks)}
+
+    writer = Writer()
+    body = LangflowIngestBatch(
+        ingest_run_id="run-1",
+        batch_id=1,
+        final=True,
+        chunks=[
+            LangflowIngestChunk(
+                id="other-doc_0",
+                text="hello",
+                vector=[0.1, 0.2],
+            )
+        ],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await ingest_langflow_chunks(
+            body,
+            authorization=f"Bearer {token}",
+            x_openrag_ingest_token=None,
+            token_service=token_service,
+            writer=writer,
+        )
+
+    assert exc.value.status_code == 403
+    assert writer.calls == []
+
+
+@pytest.mark.asyncio
 async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypatch):
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
     captured = {}
@@ -119,6 +166,7 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
             knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
         ),
     )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "unit-documents")
 
     service = LangflowFileService(ingest_token_service=token_service)
     result = await service.run_ingestion_flow(
@@ -148,7 +196,61 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
     assert decoded_context.filename == "source.pdf"
     assert decoded_context.mimetype == "application/pdf"
     assert decoded_context.file_size == len(b"content")
+    assert decoded_context.index_name == "unit-documents"
+    assert decoded_context.is_sample_data is False
     assert headers["X-Langflow-Global-Var-DOCUMENT_ID"] == decoded_context.document_id
+
+
+@pytest.mark.asyncio
+async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(monkeypatch):
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    captured = {}
+
+    class Response:
+        status_code = 200
+        reason_phrase = "OK"
+        headers = {"content-type": "application/json"}
+        text = '{"status":"ok"}'
+
+        def json(self):
+            return {"status": "ok"}
+
+    async def langflow_request(method, endpoint, **kwargs):
+        captured.update({"method": method, "endpoint": endpoint, **kwargs})
+        return Response()
+
+    async def add_provider_credentials_to_headers(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "services.langflow_file_service.clients",
+        SimpleNamespace(langflow_request=langflow_request),
+    )
+    monkeypatch.setattr(
+        "utils.langflow_headers.add_provider_credentials_to_headers",
+        add_provider_credentials_to_headers,
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
+        ),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "unit-documents")
+
+    service = LangflowFileService(ingest_token_service=token_service)
+    await service.run_ingestion_flow(
+        file_paths=["/tmp/source.pdf"],
+        file_tuples=[("source.pdf", b"content", "application/pdf")],
+        jwt_token="user-token",
+        connector_type="openrag_docs",
+    )
+
+    decoded_context, _ = token_service.validate_token(
+        captured["headers"]["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
+    )
+    assert decoded_context.index_name == "unit-documents"
+    assert decoded_context.is_sample_data is True
 
 
 @pytest.mark.parametrize(

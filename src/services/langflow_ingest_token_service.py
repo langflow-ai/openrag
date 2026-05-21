@@ -61,6 +61,11 @@ class LangflowIngestTokenService:
                 audience=self.audience,
             )
         except jwt.PyJWTError as e:
+            logger.warning(
+                "Invalid Langflow ingest token",
+                jwt_error=e.__class__.__name__,
+                detail=str(e),
+            )
             raise ValueError("Invalid Langflow ingest token") from e
 
         if payload.get("scope") != "ingest:chunks":

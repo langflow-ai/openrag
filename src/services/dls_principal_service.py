@@ -52,6 +52,9 @@ class DLSPrincipalService:
         if user is None or not user.user_id:
             return []
 
+        if self.refresh_ttl_seconds <= 0:
+            return await self._refresh_user_principals_uncached(user, group_roles=group_roles)
+
         cache_key = self._refresh_cache_key(user, group_roles)
         if self.refresh_ttl_seconds > 0:
             cached = self._cache.get(cache_key)

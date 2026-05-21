@@ -126,6 +126,43 @@ async def test_group_acl_service_uses_connector_hooks_generically():
     )
 
     assert roles == ["g:m365:t:g1", "g:m365:t:g2", "g:custom:t:g2"]
+    assert service._cache == {}
+    assert service._locks == {}
+
+
+@pytest.mark.asyncio
+async def test_group_acl_service_disabled_cache_does_not_retain_locks():
+    from services.group_acl_service import GroupACLService
+    from session_manager import User
+
+    @dataclass
+    class Connection:
+        connection_id: str
+        connector_type: str
+        is_active: bool = True
+
+    class ConnectionManager:
+        async def list_connections(self, user_id=None):
+            return [Connection(f"{user_id}-connection", "custom")]
+
+    class Connector:
+        async def get_current_user_group_roles(self):
+            return ["g:custom:t:g1"]
+
+    class ConnectorService:
+        connection_manager = ConnectionManager()
+
+        async def get_connector(self, connection_id):
+            return Connector()
+
+    service = GroupACLService(ConnectorService(), cache_ttl_seconds=0)
+
+    for user_id in ("user-1", "user-2"):
+        roles = await service.get_user_group_roles(User(user_id=user_id, email=None, name=None))
+        assert roles == ["g:custom:t:g1"]
+
+    assert service._cache == {}
+    assert service._locks == {}
 
 
 def test_group_acl_service_invalidation_drops_cache_and_locks():
@@ -340,6 +377,52 @@ async def test_dls_principal_service_caches_and_coalesces_lookup_refreshes():
         "ibmlhapikey_user-1",
         "user-1",
     }
+
+
+@pytest.mark.asyncio
+async def test_dls_principal_service_disabled_refresh_cache_does_not_retain_locks():
+    from services.dls_principal_service import DLSPrincipalService
+    from session_manager import User
+
+    class ConnectionManager:
+        async def list_connections(self, user_id=None):
+            return []
+
+        def get_auth_user_principals(self, user):
+            return [f"u:test:{user.user_id}"]
+
+    class ConnectorService:
+        connection_manager = ConnectionManager()
+
+    class Indices:
+        async def exists(self, index):
+            return True
+
+    class OpenSearchClient:
+        indices = Indices()
+
+        def __init__(self):
+            self.index_calls = []
+
+        async def index(self, **kwargs):
+            self.index_calls.append(kwargs)
+
+    opensearch_client = OpenSearchClient()
+    service = DLSPrincipalService(
+        ConnectorService(),
+        opensearch_client=opensearch_client,
+        refresh_ttl_seconds=0,
+    )
+
+    for user_id in ("user-1", "user-2"):
+        principals = await service.refresh_user_principals(
+            User(user_id=user_id, email=None, name=None, provider="test")
+        )
+        assert principals == [f"u:test:{user_id}"]
+
+    assert len(opensearch_client.index_calls) == 2
+    assert service._cache == {}
+    assert service._locks == {}
 
 
 @pytest.mark.asyncio

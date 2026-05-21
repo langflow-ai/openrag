@@ -197,6 +197,8 @@ class LangflowFileService:
         if self.ingest_token_service is None:
             return None, None
 
+        from config.settings import get_index_name
+
         ingest_run_id = f"{document_id}-{uuid.uuid4().hex}"
         context = DocumentIndexContext(
             document_id=document_id,
@@ -213,12 +215,15 @@ class LangflowFileService:
             allowed_groups=allowed_groups or [],
             allowed_principals=allowed_principals or [],
             ingest_run_id=ingest_run_id,
+            is_sample_data=connector_type == "openrag_docs",
+            index_name=get_index_name(),
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
             "[LF] Configured backend ingest callback",
             document_id=document_id,
             ingest_run_id=ingest_run_id,
+            index_name=context.index_name,
             callback_url=f"{OPENRAG_BACKEND_INTERNAL_URL}/internal/ingest/chunks",
         )
         return token, ingest_run_id
