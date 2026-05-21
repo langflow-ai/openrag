@@ -87,16 +87,22 @@ run: manifests generate fmt vet ## Run the operator locally (uses current kubeco
 	go run ./cmd/main.go
 
 .PHONY: docker-build
-docker-build: ## Build the operator container image.
-	$(CONTAINER_TOOL) build -t $(IMG) .
+docker-build: ## Build the operator container image for the local platform.
+	$(CONTAINER_TOOL) build -t $(IMG) \
+		--build-arg TARGETOS=linux \
+		--build-arg TARGETARCH=$$(go env GOARCH) \
+		.
 
 .PHONY: docker-push
 docker-push: ## Push the operator container image.
 	$(CONTAINER_TOOL) push $(IMG)
 
 .PHONY: docker-buildx
-docker-buildx: ## Build and push multi-arch image via buildx.
-	$(CONTAINER_TOOL) buildx build --platform linux/amd64,linux/arm64 --push -t $(IMG) .
+docker-buildx: ## Build and push multi-arch image (amd64 + arm64) via buildx.
+	$(CONTAINER_TOOL) buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg TARGETOS=linux \
+		--push -t $(IMG) .
 
 ##@ Deployment
 
