@@ -52,6 +52,7 @@ export function TaskErrorContent({
   const isFailedStatus =
     isTerminalFailedTask(task) || isCompletedTotalFailure(task);
   const statusLabel = isFailedStatus ? "Failed" : "Complete";
+  // Pill colors: failed (red) vs partial success (amber/orange), each with IBM tokens or OSS borders.
   const statusPillClassName = cn(
     "shrink-0 rounded-full px-2 py-1 text-xs",
     isFailedStatus
@@ -84,6 +85,7 @@ export function TaskErrorContent({
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          // TODO: open report-incident dialog
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
