@@ -1,7 +1,6 @@
 import json
 import os
 import tempfile
-from typing import List, Optional
 
 from fastapi import Depends, File, Form, UploadFile
 from pydantic import BaseModel
@@ -22,23 +21,23 @@ logger = get_logger(__name__)
 
 
 class RunIngestionBody(BaseModel):
-    file_paths: List[str] = []
-    file_ids: Optional[List[str]] = None
-    file_metadata: Optional[List[dict]] = None
-    session_id: Optional[str] = None
-    tweaks: Optional[dict] = None
-    settings: Optional[dict] = None
+    file_paths: list[str] = []
+    file_ids: list[str] | None = None
+    file_metadata: list[dict] | None = None
+    session_id: str | None = None
+    tweaks: dict | None = None
+    settings: dict | None = None
 
 
 class DeleteFilesBody(BaseModel):
-    file_ids: List[str]
+    file_ids: list[str]
 
 
 async def upload_user_file(
     file: UploadFile = File(...),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Upload a file to Langflow's Files API"""
     try:
@@ -133,9 +132,9 @@ async def run_ingestion(
 
 async def upload_and_ingest_user_file(
     file: UploadFile = File(...),
-    session_id: Optional[str] = Form(None),
-    settings_json: Optional[str] = Form(None, alias="settings"),
-    tweaks_json: Optional[str] = Form(None, alias="tweaks"),
+    session_id: str | None = Form(None),
+    settings_json: str | None = Form(None, alias="settings"),
+    tweaks_json: str | None = Form(None, alias="tweaks"),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
