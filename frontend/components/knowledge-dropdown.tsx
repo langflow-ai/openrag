@@ -624,8 +624,7 @@ export function KnowledgeDropdown() {
   const cloudConnectorItems = Object.entries(cloudConnectors)
     .filter(([type, info]) => {
       if (!info.available) return false;
-      if (isCloudBrand && (type === "google_drive" || type === "onedrive"))
-        return false;
+      if (isCloudBrand && type === "onedrive") return false;
       return true;
     })
     .map(([type, info]) => ({
