@@ -321,6 +321,36 @@ class TaskProcessor:
         if document_index_writer is None:
             document_index_writer = DocumentIndexWriter()
 
+        # Clear stale chunks from a prior indexing of this document. Chunks are
+        # stored under ids {file_hash}_{i}; if the new chunk count is lower
+        # than the prior one, trailing chunks would otherwise survive the
+        # writer's idempotent upsert.
+        # DLS-safe: enumerate then delete by primary _id (delete_by_query is
+        # silently filtered under DLS).
+        try:
+            from utils.opensearch_delete import (
+                collect_visible_document_ids,
+                delete_document_ids,
+            )
+
+            stale_chunk_ids = await collect_visible_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                query={"term": {"document_id": file_hash}},
+            )
+            await delete_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                document_ids=stale_chunk_ids,
+                refresh=True,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to clear stale chunks before re-index; proceeding",
+                file_hash=file_hash,
+                error=str(e),
+            )
+
         if acl:
             owner = acl.owner if acl.owner else owner_user_id
             allowed_users = acl.allowed_users or []

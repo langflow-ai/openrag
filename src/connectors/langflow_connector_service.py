@@ -114,39 +114,46 @@ class LangflowConnectorService:
                 document.mimetype or "application/octet-stream",
             )
 
-            # Step 0: Delete existing chunks for this file before re-ingesting
-            # This prevents duplicate chunks when syncing files
+            # Step 0: Delete existing chunks for this file before re-ingesting.
+            # Match on document_id (the stable connector item ID, e.g. the
+            # SharePoint Graph item id) — NOT on filename. On a rename, the
+            # `processed_filename` here is the NEW name while OpenSearch chunks
+            # still carry the OLD name, so a filename-keyed delete misses them
+            # and the re-ingest leaves duplicate chunks (same document_id, two
+            # different filenames). Also use enumerate-then-delete-by-id rather
+            # than delete_by_query, which is silently no-opped under DLS.
             if self.session_manager:
-                try:
-                    from config.settings import clients, get_index_name
-                    from utils.opensearch_delete import (
-                        collect_visible_document_ids,
-                        delete_document_ids,
-                    )
-                    from utils.opensearch_queries import build_owned_filename_query
+                from config.settings import get_index_name
+                from utils.opensearch_delete import (
+                    collect_visible_document_ids,
+                    delete_document_ids,
+                )
 
-                    opensearch_client = self.session_manager.get_user_opensearch_client(
-                        owner_user_id, jwt_token
-                    )
-                    index_name = get_index_name()
-                    document_ids = await collect_visible_document_ids(
+                opensearch_client = self.session_manager.get_user_opensearch_client(
+                    owner_user_id, jwt_token
+                )
+                try:
+                    chunk_ids = await collect_visible_document_ids(
                         opensearch_client,
-                        index=index_name,
-                        query=build_owned_filename_query(processed_filename, owner_user_id),
+                        index=get_index_name(),
+                        query={"term": {"document_id": document.id}},
                     )
                     deleted_count = await delete_document_ids(
-                        clients.opensearch,
-                        index=index_name,
-                        document_ids=document_ids,
+                        opensearch_client,
+                        index=get_index_name(),
+                        document_ids=chunk_ids,
+                        refresh=True,
                     )
                     logger.info(
                         "Deleted existing chunks before re-ingestion",
+                        document_id=document.id,
                         filename=processed_filename,
                         deleted_count=deleted_count,
                     )
                 except Exception as delete_err:
                     logger.warning(
                         "Failed to delete existing chunks before re-ingestion",
+                        document_id=document.id,
                         filename=processed_filename,
                         error=str(delete_err),
                     )
@@ -291,7 +298,7 @@ class LangflowConnectorService:
         while True:
             # List files from connector with limit
             logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
-            file_list = await connector.list_files(page_token, limit=page_size)
+            file_list = await connector.list_files(page_token, max_files=page_size)
             logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 

@@ -165,16 +165,43 @@ async def compute_orphans_for_connector_type(
                     connection_id=conn.connection_id,
                 )
                 return None
-            page_token = None
-            while True:
-                page = await connector.list_files(page_token=page_token)
-                for f in page.get("files", []):
-                    fid = f.get("id")
-                    if fid:
-                        remote_ids.add(fid)
-                page_token = page.get("nextPageToken") or page.get("next_page_token")
-                if not page_token:
-                    break
+
+            # Drive the per-id existence check via cfg.file_ids when the
+            # connector supports it (SharePoint / OneDrive / Google Drive).
+            # The flat default of list_files() only returns the *root* listing
+            # (e.g. /drive/root/children for SharePoint, files-only, no folder
+            # traversal), so any folder-internal file in OpenSearch would be
+            # absent from remote_ids and wrongly flagged as an orphan.
+            # _list_selected_files iterates each id via _get_file_metadata_by_id
+            # and silently drops missing ids, so the resulting `remote_ids` is
+            # exactly "the subset of existing_file_ids that still exists at
+            # source" — which is what orphan detection actually needs.
+            cfg = getattr(connector, "cfg", None)
+            scoped_listing = cfg is not None and bool(existing_file_ids)
+
+            original_file_ids = None
+            original_folder_ids = None
+            if scoped_listing:
+                original_file_ids = getattr(cfg, "file_ids", None)
+                original_folder_ids = getattr(cfg, "folder_ids", None)
+                cfg.file_ids = list(existing_file_ids)
+                cfg.folder_ids = None
+
+            try:
+                page_token = None
+                while True:
+                    page = await connector.list_files(page_token=page_token)
+                    for f in page.get("files", []):
+                        fid = f.get("id")
+                        if fid:
+                            remote_ids.add(fid)
+                    page_token = page.get("nextPageToken") or page.get("next_page_token")
+                    if not page_token:
+                        break
+            finally:
+                if scoped_listing:
+                    cfg.file_ids = original_file_ids
+                    cfg.folder_ids = original_folder_ids
         except Exception as e:
             logger.warning(
                 "Skipping orphan compute — listing failed",

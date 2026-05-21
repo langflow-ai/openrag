@@ -51,7 +51,13 @@ async def delete_document_ids(
     document_ids: Iterable[str],
     refresh: bool = True,
 ) -> int:
-    """Delete concrete OpenSearch document IDs through the caller's client."""
+    """Delete concrete OpenSearch document IDs through the caller's client.
+
+    delete_by_query is silently no-opped under DLS / certain security plugins
+    (returns deleted:N but leaves the docs in place). Single deletes keyed on
+    the primary _id are reliable, so enumerate visible IDs first and then issue
+    a delete per ID.
+    """
     deleted_count = 0
     for document_id in document_ids:
         try:
