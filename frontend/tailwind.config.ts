@@ -199,6 +199,10 @@ const config = {
             DEFAULT: "hsl(var(--task-status-failed-bg))",
             foreground: "hsl(var(--task-status-failed-fg))",
           },
+          partial: {
+            DEFAULT: "hsl(var(--task-status-partial-bg))",
+            foreground: "hsl(var(--task-status-partial-fg))",
+          },
           complete: {
             DEFAULT: "hsl(var(--task-status-complete-bg))",
             foreground: "hsl(var(--task-status-complete-fg))",

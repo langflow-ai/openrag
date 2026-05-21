@@ -1,7 +1,7 @@
 "use client";
 
 import { ErrorFilled, FlagFilled, IncidentReporter } from "@carbon/icons-react";
-import { ChevronDown } from "lucide-react";
+import { AlertCircle, ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   Accordion,
@@ -27,6 +27,7 @@ interface TaskErrorContentProps {
   mode?: "recent" | "past";
   nowMs?: number;
   showHeader?: boolean;
+  defaultExpanded?: boolean;
 }
 
 export function TaskErrorContent({
@@ -34,9 +35,12 @@ export function TaskErrorContent({
   mode = "recent",
   nowMs = Date.now(),
   showHeader = true,
+  defaultExpanded = false,
 }: TaskErrorContentProps) {
   const isCloudBrand = useIsCloudBrand();
-  const [accordionValue, setAccordionValue] = useState("");
+  const [accordionValue, setAccordionValue] = useState(
+    defaultExpanded ? "failed-files" : "",
+  );
   const isExpanded = accordionValue === "failed-files";
 
   const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
@@ -50,11 +54,13 @@ export function TaskErrorContent({
   const statusLabel = isFailedStatus ? "Failed" : "Complete";
   const statusPillClassName = cn(
     "shrink-0 rounded-full px-2 py-1 text-xs",
-    isCloudBrand
-      ? isFailedStatus
+    isFailedStatus
+      ? isCloudBrand
         ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
-        : "border-0 bg-task-status-complete text-task-status-complete-foreground"
-      : "border border-failure-pill bg-failure-soft text-destructive",
+        : "border border-failure-pill bg-failure-soft text-destructive"
+      : isCloudBrand
+        ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
+        : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
   );
 
   if (failedCount <= 0 && failedEntries.length === 0) {
@@ -105,9 +111,18 @@ export function TaskErrorContent({
           <div
             className={cn("flex min-w-0 w-full", ossIconColumn && "gap-2.5")}
           >
-            {ossIconColumn && (
-              <ErrorFilled className="size-5 shrink-0 text-destructive" />
-            )}
+            {ossIconColumn &&
+              (isFailedStatus ? (
+                <ErrorFilled
+                  className="size-5 shrink-0 text-destructive"
+                  aria-hidden
+                />
+              ) : (
+                <AlertCircle
+                  className="size-5 shrink-0 text-brand-amber"
+                  aria-hidden
+                />
+              ))}
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex min-w-0 items-center justify-between gap-1.5">
                 <p className="text-mmd truncate">
