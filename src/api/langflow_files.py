@@ -3,15 +3,15 @@ import os
 import tempfile
 
 from fastapi import Depends, File, Form, UploadFile
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from dependencies import (
+    get_current_user,
     get_langflow_file_service,
+    get_optional_user,
     get_session_manager,
     get_task_service,
-    get_current_user,
-    get_optional_user,
 )
 from session_manager import User
 from utils.file_utils import langflow_safe_filename_and_mimetype
@@ -60,6 +60,7 @@ async def upload_user_file(
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
+
         logger.error("Full traceback", traceback=traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -111,6 +112,7 @@ async def run_ingestion(
 
     if jwt_token:
         from auth_context import set_auth_context
+
         set_auth_context(user.user_id, jwt_token)
 
     try:
@@ -191,6 +193,7 @@ async def upload_and_ingest_user_file(
             )
         except Exception:
             from utils.file_utils import safe_unlink
+
             safe_unlink(temp_path)
             raise
 
