@@ -17,6 +17,16 @@ from auth_context import set_auth_context, set_score_threshold, set_search_filte
 from dependencies import get_chat_service, get_session_manager, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
+from utils.logging_config import get_logger
+from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
+from dependencies import (
+    get_chat_service,
+    get_session_manager,
+    get_api_key_user_async,
+    get_knowledge_filter_service,
+)
+from session_manager import User
+from api.v1._filter_resolution import resolve_filter_id
 
 logger = get_logger(__name__)
 
@@ -115,6 +125,7 @@ async def chat_create_endpoint(
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("chat:use")),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
     message = body.message.strip()
@@ -130,10 +141,28 @@ async def chat_create_endpoint(
 
         await _assert_owns(body.chat_id, storage_user_id)
 
-    if body.filters:
-        set_search_filters(body.filters)
-    set_search_limit(body.limit)
-    set_score_threshold(body.score_threshold)
+    resolved_filters = body.filters
+    resolved_limit = body.limit
+    resolved_score_threshold = body.score_threshold
+    if body.filter_id:
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=jwt_token,
+        )
+        # Inline values override per-field; defaults (10 / 0) fall back to the filter.
+        if not body.filters:
+            resolved_filters = resolved["filters"]
+        if body.limit == 10:
+            resolved_limit = resolved["limit"]
+        if body.score_threshold == 0:
+            resolved_score_threshold = resolved["score_threshold"]
+
+    if resolved_filters:
+        set_search_filters(resolved_filters)
+    set_search_limit(resolved_limit)
+    set_score_threshold(resolved_score_threshold)
     set_auth_context(user_id, jwt_token)
     start = time.perf_counter()
 

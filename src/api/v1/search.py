@@ -15,6 +15,15 @@ from dependencies import get_search_service, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
+from utils.logging_config import get_logger
+from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
+from dependencies import (
+    get_search_service,
+    get_api_key_user_async,
+    get_knowledge_filter_service,
+)
+from session_manager import User
+from api.v1._filter_resolution import resolve_filter_id
 
 logger = get_logger(__name__)
 
@@ -24,25 +33,45 @@ class SearchV1Body(BaseModel):
     filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
+    filter_id: Optional[str] = None
 
 
 async def search_endpoint(
     body: SearchV1Body,
     search_service=Depends(get_search_service),
     user: User = Depends(require_api_key_permission("search:use")),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Perform semantic search on documents. POST /v1/search"""
     query = body.query.strip()
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
 
+    resolved_filters = body.filters
+    resolved_limit = body.limit
+    resolved_score_threshold = body.score_threshold
+    if body.filter_id:
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=None,
+        )
+        if not body.filters:
+            resolved_filters = resolved["filters"]
+        if body.limit == 10:
+            resolved_limit = resolved["limit"]
+        if body.score_threshold == 0:
+            resolved_score_threshold = resolved["score_threshold"]
+
     logger.debug(
         "Public API search request",
         user_id=user.user_id,
         query=query,
-        filters=body.filters,
-        limit=body.limit,
-        score_threshold=body.score_threshold,
+        filters=resolved_filters,
+        limit=resolved_limit,
+        score_threshold=resolved_score_threshold,
+        filter_id=body.filter_id,
     )
 
     try:
@@ -50,9 +79,9 @@ async def search_endpoint(
             query,
             user_id=user.user_id,
             jwt_token=None,  # API key auth has no JWT
-            filters=body.filters or {},
-            limit=body.limit,
-            score_threshold=body.score_threshold,
+            filters=resolved_filters or {},
+            limit=resolved_limit,
+            score_threshold=resolved_score_threshold,
         )
 
         results = [
