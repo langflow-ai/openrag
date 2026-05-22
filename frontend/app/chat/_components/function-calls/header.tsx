@@ -22,8 +22,8 @@ export function FunctionCallsHeader({
     >
       <Settings className="h-4 w-4 text-blue-400" />
       <span className="text-sm font-medium text-blue-400 flex-1">
-        {uniqueToolCount} {uniqueToolCount === 1 ? "tool" : "tools"},{" "}
-        {totalCalls} calls
+        Used {uniqueToolCount} {uniqueToolCount === 1 ? "tool" : "tools"} (
+        {totalCalls} calls)
       </span>
       {isExpanded ? (
         <ChevronDown className="h-4 w-4 text-blue-400" />
