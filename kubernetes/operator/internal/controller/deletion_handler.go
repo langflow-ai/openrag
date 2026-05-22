@@ -52,13 +52,19 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 			} else {
 				logger.Info(".env secret has no finalizer to remove", "name", envSecretName)
 			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			logger.Info("deleting .env secret", "name", envSecretName)
-			if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete env secret", "name", envSecretName)
-				return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
+
+			// Only explicitly delete secrets in cross-namespace case (owner refs don't work across namespaces)
+			// In same namespace, owner references will automatically delete the secret when CR is deleted
+			if targetNS != o.Namespace {
+				logger.Info("deleting .env secret (cross-namespace deployment)", "name", envSecretName)
+				if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete env secret", "name", envSecretName)
+					return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
+				}
+				logger.Info("successfully deleted .env secret", "name", envSecretName)
+			} else {
+				logger.Info(".env secret will be automatically deleted by Kubernetes garbage collection via owner reference", "name", envSecretName)
 			}
-			logger.Info("successfully deleted .env secret", "name", envSecretName)
 		} else if !errors.IsNotFound(err) {
 			logger.Error(err, "failed to get env secret", "name", envSecretName)
 			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
@@ -112,13 +118,19 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 			} else {
 				logger.Info("default secret has no finalizer to remove", "name", secretName)
 			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			logger.Info("deleting default secret", "name", secretName)
-			if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete default secret", "name", secretName)
-				return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
+
+			// Only explicitly delete secrets in cross-namespace case (owner refs don't work across namespaces)
+			// In same namespace, owner references will automatically delete the secret when CR is deleted
+			if targetNS != o.Namespace {
+				logger.Info("deleting default secret (cross-namespace deployment)", "name", secretName)
+				if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "failed to delete default secret", "name", secretName)
+					return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
+				}
+				logger.Info("successfully deleted default secret", "name", secretName)
+			} else {
+				logger.Info("default secret will be automatically deleted by Kubernetes garbage collection via owner reference", "name", secretName)
 			}
-			logger.Info("successfully deleted default secret", "name", secretName)
 		} else if !errors.IsNotFound(err) {
 			logger.Error(err, "failed to get default secret", "name", secretName)
 			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
@@ -153,6 +165,7 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	}
 	// If same namespace, owner references handle cleanup automatically
 
+	// remove the CR finalizer
 	controllerutil.RemoveFinalizer(o, finalizer)
 	return r.Update(ctx, o)
 }
