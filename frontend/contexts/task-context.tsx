@@ -20,7 +20,12 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
-import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
+import {
+  getFailedFileCount,
+  getSuccessfulFileCount,
+  hasFailedFileEntries,
+  isTerminalFailedTask,
+} from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
 export type { Task };
@@ -328,20 +333,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           previousTask.status !== "completed" &&
           currentTask.status === "completed"
         ) {
-          // Task just completed - show success toast with file counts
-          const successfulFiles = currentTask.successful_files || 0;
-          const failedFiles = currentTask.failed_files || 0;
+          const successfulFiles = getSuccessfulFileCount(currentTask);
+          const failedFiles = getFailedFileCount(currentTask);
+          const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
-          trackProcessSuccess({
-            processType: "Ingestion",
-            process: "Document Upload",
-            category: "Knowledge",
-            task_id: currentTask.task_id,
-            total_files: currentTask.total_files,
-            successful_files: successfulFiles,
-            failed_files: failedFiles,
-            duration_seconds: currentTask.duration_seconds,
-          });
+          if (isTotalFailure) {
+            trackProcessFailure({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+            });
+          } else {
+            trackProcessSuccess({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              successful_files: successfulFiles,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+            });
+          }
 
           let description = "";
           if (failedFiles > 0) {
@@ -356,17 +373,27 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             } uploaded successfully`;
           }
           if (!isOnboardingActive) {
-            toast.success("Task completed", {
-              description,
-              action: {
-                label: "View",
-                onClick: () => {
-                  selectTask(currentTask.task_id);
-                  setIsMenuOpen(true);
-                  setIsRecentTasksExpanded(true);
-                },
+            const toastAction = {
+              label: "View",
+              onClick: () => {
+                selectTask(currentTask.task_id);
+                setIsMenuOpen(true);
+                setIsRecentTasksExpanded(true);
               },
-            });
+            };
+            if (isTotalFailure) {
+              toast.error("Task failed", {
+                description: `${failedFiles} file${
+                  failedFiles !== 1 ? "s" : ""
+                } failed`,
+                action: toastAction,
+              });
+            } else {
+              toast.success("Task completed", {
+                description,
+                action: toastAction,
+              });
+            }
           }
 
           const completedHasFailures = hasFailedFileEntries(currentTask);
