@@ -12,15 +12,20 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
-import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
+import {
+  getFailedFileCount,
+  getSuccessfulFileCount,
+  hasFailedFileEntries,
+  isTerminalFailedTask,
+} from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
 export type { Task };
@@ -123,22 +128,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Get settings to check if onboarding is active
-  const { data: settings } = useGetSettingsQuery();
-
-  // Helper function to check if onboarding is active
-  const isOnboardingActive = useCallback(() => {
-    const TOTAL_ONBOARDING_STEPS = 4;
-    // Onboarding is active if current_step < 4
-    return (
-      settings?.onboarding?.current_step !== undefined &&
-      settings.onboarding.current_step < TOTAL_ONBOARDING_STEPS
-    );
-  }, [settings?.onboarding?.current_step]);
+  const { isOnboardingActive } = useOnboardingState();
 
   const refetchSearch = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: ["search"],
+      exact: false,
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["listFiles"],
       exact: false,
     });
   }, [queryClient]);
@@ -326,7 +324,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               });
               return changed ? updated : prevFiles;
             });
-            setTimeout(() => refetchSearch(), 500);
+            refetchSearch();
           }
         }
         if (
@@ -335,20 +333,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           previousTask.status !== "completed" &&
           currentTask.status === "completed"
         ) {
-          // Task just completed - show success toast with file counts
-          const successfulFiles = currentTask.successful_files || 0;
-          const failedFiles = currentTask.failed_files || 0;
+          const successfulFiles = getSuccessfulFileCount(currentTask);
+          const failedFiles = getFailedFileCount(currentTask);
+          const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
-          trackProcessSuccess({
-            processType: "Ingestion",
-            process: "Document Upload",
-            category: "Knowledge",
-            task_id: currentTask.task_id,
-            total_files: currentTask.total_files,
-            successful_files: successfulFiles,
-            failed_files: failedFiles,
-            duration_seconds: currentTask.duration_seconds,
-          });
+          if (isTotalFailure) {
+            trackProcessFailure({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+            });
+          } else {
+            trackProcessSuccess({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              successful_files: successfulFiles,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+            });
+          }
 
           let description = "";
           if (failedFiles > 0) {
@@ -362,42 +372,68 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               successfulFiles !== 1 ? "s" : ""
             } uploaded successfully`;
           }
-          if (!isOnboardingActive()) {
-            toast.success("Task completed", {
-              description,
-              action: {
-                label: "View",
-                onClick: () => {
-                  selectTask(currentTask.task_id);
-                  setIsMenuOpen(true);
-                  setIsRecentTasksExpanded(true);
-                },
+          if (!isOnboardingActive) {
+            const toastAction = {
+              label: "View",
+              onClick: () => {
+                selectTask(currentTask.task_id);
+                setIsMenuOpen(true);
+                setIsRecentTasksExpanded(true);
               },
-            });
+            };
+            if (isTotalFailure) {
+              toast.error("Task failed", {
+                description: `${failedFiles} file${
+                  failedFiles !== 1 ? "s" : ""
+                } failed`,
+                action: toastAction,
+              });
+            } else {
+              toast.success("Task completed", {
+                description,
+                action: toastAction,
+              });
+            }
           }
 
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
-          setTimeout(() => {
-            // Remove overlay rows for this completed task so backend becomes
-            // source of truth. For partial-success completions, keep failed
-            // rows visible in the table.
-            setFiles((prevFiles) =>
-              prevFiles.filter(
-                (file) =>
-                  file.task_id !== currentTask.task_id ||
-                  (completedHasFailures && file.status === "failed"),
-              ),
-            );
-            refetchSearch();
-          }, 500);
+          async function refetchKnowledgeAfterTaskCompletion() {
+            // Refetch before dropping overlays (wildcard uses listFiles, not only search).
+            try {
+              await Promise.all([
+                queryClient.refetchQueries({
+                  queryKey: ["search"],
+                  exact: false,
+                }),
+                queryClient.refetchQueries({
+                  queryKey: ["listFiles"],
+                  exact: false,
+                }),
+              ]);
+            } catch (e) {
+              console.error(
+                "Knowledge refetch after task completion failed",
+                e,
+              );
+            } finally {
+              setFiles((prevFiles) =>
+                prevFiles.filter(
+                  (file) =>
+                    file.task_id !== currentTask.task_id ||
+                    (completedHasFailures && file.status === "failed"),
+                ),
+              );
+            }
+          }
+          void refetchKnowledgeAfterTaskCompletion();
         } else if (
           shouldShowToast &&
           previousTask &&
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
-          if (!isOnboardingActive()) {
+          if (!isOnboardingActive) {
             selectTask(currentTask.task_id);
             setIsMenuOpen(true);
             setIsRecentTasksExpanded(true);

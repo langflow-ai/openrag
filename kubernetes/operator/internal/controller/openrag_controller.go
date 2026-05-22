@@ -32,6 +32,14 @@ const (
 	userSecretFinalizer = "openr.ag/user-secret-protection"
 	specHashAnnotation  = "openr.ag/spec-hash"
 	immutableAnnotation = "openr.ag/immutable"
+
+	// Condition types
+	conditionBackendReady = "BackendReady"
+
+	// Phase values
+	phaseReconciled = "Reconciled"
+	phaseRunning    = "Running"
+	phaseError      = "Error"
 )
 
 // OpenRAGReconciler reconciles an OpenRAG object.
@@ -67,141 +75,74 @@ func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler
 func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	logger.Info("reconcile triggered", "name", req.Name, "namespace", req.Namespace)
+
 	instance := &openragv1alpha1.OpenRAG{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
+			logger.Info("CR not found - already deleted or never existed", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("CR retrieved", "name", instance.Name, "deletionTimestamp", instance.DeletionTimestamp)
+
 	if !instance.DeletionTimestamp.IsZero() {
+		logger.Info("CR has deletionTimestamp - calling handleDeletion", "name", instance.Name)
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
 	targetNS := targetNamespace(instance)
-	if targetNS != instance.Namespace {
-		if !controllerutil.ContainsFinalizer(instance, finalizer) {
-			controllerutil.AddFinalizer(instance, finalizer)
-			if err := r.Update(ctx, instance); err != nil {
-				return ctrl.Result{}, err
-			}
-			// Return immediately after adding finalizer to avoid duplicate reconciliation.
-			// The update will trigger a new reconcile that will do the actual work.
-			logger.Info("added finalizer, will reconcile again")
-			return ctrl.Result{}, nil
+	logger.Info("target namespace determined", "targetNS", targetNS, "crNamespace", instance.Namespace)
+
+	// Always add finalizer to CR so handleDeletion() can clean up .env secret finalizers
+	// .env secrets have envSecretFinalizer that must be removed before secrets can be deleted
+	if !controllerutil.ContainsFinalizer(instance, finalizer) {
+		logger.Info("adding finalizer to CR", "finalizer", finalizer, "reason", "needed to cleanup secret finalizers")
+		controllerutil.AddFinalizer(instance, finalizer)
+		if err := r.Update(ctx, instance); err != nil {
+			return ctrl.Result{}, err
 		}
+		// Return immediately after adding finalizer to avoid duplicate reconciliation.
+		// The update will trigger a new reconcile that will do the actual work.
+		logger.Info("added finalizer, will reconcile again")
+		return ctrl.Result{}, nil
+	} else {
+		logger.Info("CR already has finalizer", "finalizer", finalizer)
 	}
 
+	// Reconcile all resources
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("namespace: %w", err)
+		return r.updateStatusError(ctx, instance, "namespace", err)
 	}
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("service accounts: %w", err)
+		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
 	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("env secrets: %w", err)
+		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("pvcs: %w", err)
+		return r.updateStatusError(ctx, instance, "pvcs", err)
 	}
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("services: %w", err)
+		return r.updateStatusError(ctx, instance, "services", err)
 	}
 	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("deployments: %w", err)
+		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
-		return ctrl.Result{}, fmt.Errorf("docling components: %w", err)
+		return r.updateStatusError(ctx, instance, "docling components", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
-			return ctrl.Result{}, fmt.Errorf("network policy: %w", err)
+			return r.updateStatusError(ctx, instance, "network policy", err)
 		}
 	}
 
+	// Update status to success
 	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
-	return ctrl.Result{}, nil
-}
-
-func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
-	if !controllerutil.ContainsFinalizer(o, finalizer) {
-		return nil
-	}
-
-	targetNS := targetNamespace(o)
-
-	// Remove finalizers from .env secrets so they can be deleted
-	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
-		envSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
-				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
-				if err := r.Update(ctx, envSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
-				}
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
-		}
-	}
-
-	// Remove finalizers from user-provided secrets so they can be deleted
-	userSecretRefs := collectProtectedSecrets(o)
-	for _, secretRef := range userSecretRefs {
-		userSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
-				if err := r.Update(ctx, userSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
-				}
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
-		}
-	}
-
-	// Remove finalizers from auto-generated default secrets so they can be deleted
-	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
-	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default",
-		o.Name + "-jwt-private-key-default",
-		o.Name + "-langflow-secret-key-default",
-	}
-	for _, secretName := range defaultSecretNames {
-		defaultSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, defaultSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
-				if err := r.Update(ctx, defaultSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
-				}
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
-		}
-	}
-
-	// Delete managed namespace if it exists
-	ns := &corev1.Namespace{}
-	err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-	if err == nil {
-		if ns.Labels[managedByLabel] == o.Name {
-			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
-				return err
-			}
-		}
-	}
-
-	controllerutil.RemoveFinalizer(o, finalizer)
-	return r.Update(ctx, o)
+	return r.updateStatusSuccess(ctx, instance, targetNS)
 }
 
 func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
@@ -323,11 +264,11 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Get or generate JWT signing key (base64 secret)
-	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_PRIVATE_KEY", resourceName("be-env"), generateBase64SecretKey)
+	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", resourceName("be-env"), generateBase64SecretKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
 	}
-	envVars["JWT_PRIVATE_KEY"] = jwtSigningKey
+	envVars["JWT_SIGNING_KEY"] = jwtSigningKey
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
@@ -716,6 +657,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
+					SecurityContext:    spec.PodSecurityContext,
 					Containers: []corev1.Container{
 						{
 							Name:            "frontend",
@@ -725,9 +667,10 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							Env: append([]corev1.EnvVar{
 								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
-							Resources:      spec.Resources,
-							LivenessProbe:  httpProbe("/", 3000, 30, 10),
-							ReadinessProbe: httpProbe("/", 3000, 10, 5),
+							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
+							LivenessProbe:   httpProbe("/", 3000, 30, 10),
+							ReadinessProbe:  httpProbe("/", 3000, 10, 5),
 						},
 					},
 				},
@@ -802,13 +745,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000),
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					Volumes: volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "backend",
@@ -817,9 +755,10 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 8000, 45, 30),
-							ReadinessProbe:  httpProbe("/health", 8000, 45, 10),
+							LivenessProbe:   httpProbe("/health", 8000, 125, 30),
+							ReadinessProbe:  httpProbe("/health", 8000, 125, 15),
 						},
 					},
 				},
@@ -863,6 +802,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
 	}
 
+	// Only create initContainer if FlowsRef is specified
+	// Use nil (not empty slice) to ensure initContainers are removed when FlowsRef is cleared
 	var initContainers []corev1.Container
 	if spec.FlowsRef != "" {
 		volumes = append(volumes, corev1.Volume{
@@ -888,6 +829,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 				},
 			},
 		}
+	} else {
+		// Explicitly set to nil when FlowsRef is empty to ensure initContainers are removed
+		initContainers = nil
 	}
 
 	// All sensitive values are now consolidated in the .env file
@@ -921,14 +865,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup:      ptr.To[int64](1000), // Allow volume access for non-root users
-						RunAsUser:    ptr.To[int64](1000),
-						RunAsGroup:   ptr.To[int64](1000),
-						RunAsNonRoot: ptr.To(true),
-					},
-					InitContainers: initContainers,
-					Volumes:        volumes,
+					SecurityContext:    spec.PodSecurityContext,
+					InitContainers:     initContainers,
+					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
 							Name:            "langflow",
@@ -939,9 +878,10 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
+							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 7860, 90, 30),
-							ReadinessProbe:  httpProbe("/health", 7860, 90, 30),
+							LivenessProbe:   httpProbe("/health", 7860, 110, 30),
+							ReadinessProbe:  httpProbe("/health", 7860, 110, 30),
 						},
 					},
 				},
@@ -2456,7 +2396,7 @@ func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
 		FailureThreshold:    5,
-		TimeoutSeconds:      10,
+		TimeoutSeconds:      15,
 	}
 }
 

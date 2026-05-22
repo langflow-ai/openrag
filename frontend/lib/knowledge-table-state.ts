@@ -63,10 +63,24 @@ export function buildKnowledgeTableRows(
     const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
     if (taskFile) {
       const backendStatus = file.status ?? "active";
-      return { ...file, ...taskFile, status: backendStatus };
+      return {
+        ...file,
+        filename: taskFile.filename,
+        source_url: taskFile.source_url,
+        connector_type: taskFile.connector_type,
+        status: backendStatus,
+        error: taskFile.error,
+        embedding_model: taskFile.embedding_model ?? file.embedding_model,
+        embedding_dimensions:
+          taskFile.embedding_dimensions ?? file.embedding_dimensions,
+      };
     }
     return file;
   });
+
+  const backendIdentities = new Set(
+    backendFiles.map((f) => getKnowledgeFileIdentity(f)),
+  );
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
@@ -78,14 +92,12 @@ export function buildKnowledgeTableRows(
     if (taskFile.connector_type === "openrag_docs") {
       return false;
     }
-    return (
-      taskFile.status !== "active" &&
-      !backendFiles.some(
-        (backendFile) =>
-          getKnowledgeFileIdentity(backendFile) ===
-          getKnowledgeFileIdentity(taskFile),
-      )
-    );
+    const identity = getKnowledgeFileIdentity(taskFile);
+    if (backendIdentities.has(identity)) {
+      return false;
+    }
+    // Keep "active" overlays until the index lists the file (task drops key before refetch).
+    return true;
   });
 
   if (hasActiveFilter) {

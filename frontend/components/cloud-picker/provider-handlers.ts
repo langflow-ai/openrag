@@ -159,17 +159,20 @@ export class OneDriveHandler {
   private clientId: string;
   private provider: CloudProvider;
   private baseUrl?: string;
+  private onPickerStateChange?: (isOpen: boolean) => void;
 
   constructor(
     accessToken: string,
     clientId: string,
     provider: CloudProvider = "onedrive",
     baseUrl?: string,
+    onPickerStateChange?: (isOpen: boolean) => void,
   ) {
     this.accessToken = accessToken;
     this.clientId = clientId;
     this.provider = provider;
     this.baseUrl = baseUrl;
+    this.onPickerStateChange = onPickerStateChange;
   }
 
   async loadPickerApi(): Promise<boolean> {
@@ -206,57 +209,111 @@ export class OneDriveHandler {
         console.log("OneDrive picker success callback:", response);
         if (!response || !response.value) {
           console.warn("OneDrive picker returned no value");
+          this.onPickerStateChange?.(false);
           return;
         }
 
-        const newFiles: CloudFile[] =
-          response.value?.map((item: any) => {
-            // Extract mimeType from file object or infer from name
-            let mimeType = item.file?.mimeType;
-            if (!mimeType && item.name) {
-              // Infer from extension if mimeType not provided
-              const ext = item.name.split(".").pop()?.toLowerCase();
-              const mimeTypes: { [key: string]: string } = {
-                pdf: "application/pdf",
-                doc: "application/msword",
-                docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                xls: "application/vnd.ms-excel",
-                xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ppt: "application/vnd.ms-powerpoint",
-                pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                txt: "text/plain",
-                csv: "text/csv",
-                json: "application/json",
-                xml: "application/xml",
-                html: "text/html",
-                jpg: "image/jpeg",
-                jpeg: "image/jpeg",
-                png: "image/png",
-                gif: "image/gif",
-                svg: "image/svg+xml",
-              };
-              mimeType = mimeTypes[ext || ""] || "application/octet-stream";
-            }
+        // v7.2 action:"query" returns stubs with only id/endpoint/parentReference.
+        // Enrich each item by fetching full metadata from the Graph API.
+        const enrichItems = async () => {
+          const enriched = await Promise.all(
+            response.value.map(async (item: any) => {
+              const driveId =
+                item.parentReference?.driveId || item.id?.split("!")[0];
+              const itemId = item.id;
 
-            return {
-              id: item.id,
-              name: item.name || `${this.getProviderName()} File`,
-              mimeType: mimeType || "application/octet-stream",
-              webUrl: item.webUrl || "",
-              downloadUrl: item["@microsoft.graph.downloadUrl"] || "",
-              size: item.size,
-              modifiedTime: item.lastModifiedDateTime,
-              isFolder: !!item.folder,
-            };
-          }) || [];
+              if (driveId && itemId) {
+                try {
+                  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}`;
+                  const res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${this.accessToken}` },
+                  });
+                  if (res.ok) {
+                    const meta = await res.json();
+                    console.log(
+                      "OneDrive enriched metadata:",
+                      meta.name,
+                      meta.file?.mimeType,
+                    );
 
-        onFileSelected(newFiles);
+                    let mimeType = meta.file?.mimeType;
+                    if (!mimeType && meta.name) {
+                      const ext = meta.name.split(".").pop()?.toLowerCase();
+                      const mimeTypes: { [key: string]: string } = {
+                        pdf: "application/pdf",
+                        doc: "application/msword",
+                        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        xls: "application/vnd.ms-excel",
+                        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        ppt: "application/vnd.ms-powerpoint",
+                        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        txt: "text/plain",
+                        csv: "text/csv",
+                        json: "application/json",
+                        xml: "application/xml",
+                        html: "text/html",
+                        jpg: "image/jpeg",
+                        jpeg: "image/jpeg",
+                        png: "image/png",
+                        gif: "image/gif",
+                        svg: "image/svg+xml",
+                      };
+                      mimeType =
+                        mimeTypes[ext || ""] || "application/octet-stream";
+                    }
+
+                    return {
+                      id: meta.id,
+                      name: meta.name || `${this.getProviderName()} File`,
+                      mimeType: mimeType || "application/octet-stream",
+                      webUrl: meta.webUrl || "",
+                      downloadUrl: meta["@microsoft.graph.downloadUrl"] || "",
+                      size: meta.size,
+                      modifiedTime: meta.lastModifiedDateTime,
+                      isFolder: !!meta.folder,
+                    } as CloudFile;
+                  } else {
+                    console.warn(
+                      "Graph API metadata fetch failed:",
+                      res.status,
+                      await res.text(),
+                    );
+                  }
+                } catch (e) {
+                  console.warn("Graph API metadata fetch error:", e);
+                }
+              }
+
+              // Fallback: use stub data if Graph call fails
+              return {
+                id: item.id,
+                name: item.name || `${this.getProviderName()} File`,
+                mimeType: "application/octet-stream",
+                webUrl: item.webUrl || "",
+                downloadUrl: item["@microsoft.graph.downloadUrl"] || "",
+                size: item.size,
+                modifiedTime: item.lastModifiedDateTime,
+                isFolder: !!item.folder,
+              } as CloudFile;
+            }),
+          );
+
+          onFileSelected(enriched);
+          this.onPickerStateChange?.(false);
+        };
+
+        enrichItems().catch((e) => {
+          console.error("Failed to enrich OneDrive items:", e);
+          this.onPickerStateChange?.(false);
+        });
       },
       cancel: () => {
         console.log("Picker cancelled");
+        this.onPickerStateChange?.(false);
       },
       error: (error: any) => {
         console.error("Picker error callback:", error);
+        this.onPickerStateChange?.(false);
       },
     });
   }
@@ -310,7 +367,13 @@ export const createProviderHandler = (
       if (!clientId) {
         throw new Error("Client ID required for OneDrive");
       }
-      return new OneDriveHandler(accessToken, clientId, provider, baseUrl);
+      return new OneDriveHandler(
+        accessToken,
+        clientId,
+        provider,
+        baseUrl,
+        onPickerStateChange,
+      );
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }

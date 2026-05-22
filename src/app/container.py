@@ -5,6 +5,7 @@ Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 
 from api.connector_router import ConnectorRouter
 from config.settings import (
+    ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
     JWT_SIGNING_KEY,
     SESSION_SECRET,
@@ -19,6 +20,7 @@ from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
+from services.docling_polling_service import DoclingPollingService
 from services.document_service import DocumentService
 from services.flows_service import FlowsService
 from services.knowledge_filter_service import KnowledgeFilterService
@@ -69,11 +71,24 @@ async def initialize_services():
     )
     search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
+
+    # Backend-side Docling polling coordinator. Constructed once as a
+    # singleton (it is stateless) and gated by ENABLE_BACKEND_DOCLING_POLLING
+    # so operators can roll back to the legacy single-call ingestion path
+    # without code changes. When disabled, downstream callers receive None
+    # and fall through to the legacy flow.
+    docling_polling_service = (
+        DoclingPollingService(clients.docling_service)
+        if ENABLE_BACKEND_DOCLING_POLLING and clients.docling_service is not None
+        else None
+    )
+
     task_service = TaskService(
         document_service,
         models_service,
         ingestion_timeout=INGESTION_TIMEOUT,
         docling_service=clients.docling_service,
+        docling_polling_service=docling_polling_service,
     )
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
@@ -197,6 +212,7 @@ async def initialize_services():
         "api_key_service": api_key_service,
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
+        "docling_polling_service": docling_polling_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
     }

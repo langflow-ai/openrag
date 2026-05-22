@@ -10,7 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { INITIAL_ASSISTANT_MESSAGE } from "@/app/chat/_types/types";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 
 export type EndpointType = "chat" | "langflow";
 
@@ -87,6 +88,8 @@ interface ChatContextType {
   setChatError: (hasError: boolean) => void;
   isOnboardingComplete: boolean;
   setOnboardingComplete: (complete: boolean) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -117,32 +120,12 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
   const [hasChatError, setChatError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Get settings to check if onboarding was completed (settings.edited)
-  const { data: settings } = useGetSettingsQuery();
+  const { isOnboardingComplete } = useOnboardingState();
 
-  // Check if onboarding is complete
-  // Onboarding is complete if:
-  // 1. settings.edited is true (backend confirms onboarding was completed)
-  // 2. AND onboarding step key is null (local onboarding flow is done)
-  const [isOnboardingComplete, setIsOnboardingComplete] = useState(() => {
-    if (typeof window === "undefined") return false;
-    // Default to false if settings not loaded yet
-    return false;
-  });
-
-  // Sync onboarding completion state with settings from backend
-  useEffect(() => {
-    const TOTAL_ONBOARDING_STEPS = 4;
-    // Onboarding is complete if current_step >= 4
-    const isComplete =
-      settings?.onboarding?.current_step !== undefined &&
-      settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS;
-    setIsOnboardingComplete(isComplete);
-  }, [settings?.onboarding?.current_step]);
-
-  const setOnboardingComplete = useCallback((complete: boolean) => {
-    setIsOnboardingComplete(complete);
+  const setOnboardingComplete = useCallback((_complete: boolean) => {
+    // no-op: onboarding completion is now derived from settings via useOnboardingState
   }, []);
 
   // Listen for ingestion failures and set chat error flag
@@ -343,7 +326,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       messages: [
         {
           role: "assistant",
-          content: "How can I assist?",
+          content: INITIAL_ASSISTANT_MESSAGE.content,
           timestamp: new Date().toISOString(),
         },
       ],
@@ -450,6 +433,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setChatError,
       isOnboardingComplete,
       setOnboardingComplete,
+      loading,
+      setLoading,
     }),
     [
       endpoint,
@@ -473,6 +458,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       hasChatError,
       isOnboardingComplete,
       setOnboardingComplete,
+      loading,
     ],
   );
 

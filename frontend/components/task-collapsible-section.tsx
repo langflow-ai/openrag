@@ -33,14 +33,14 @@ export function TaskCollapsibleSection<T>({
       >
         <h3 className="font-semibold text-sm flex items-center gap-2 text-muted-foreground">
           {title}
-          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted-foreground text-[10px] font-semibold text-background">
+          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted-foreground text-xxs font-semibold text-background">
             {items.length}
           </span>
         </h3>
         {isOpen ? (
-          <ChevronDown className="h-[14px] w-[14px] text-foreground" />
+          <ChevronDown className="size-3.5 text-foreground" />
         ) : (
-          <ChevronUp className="h-[14px] w-[14px] text-foreground" />
+          <ChevronUp className="size-3.5 text-foreground" />
         )}
       </button>
 

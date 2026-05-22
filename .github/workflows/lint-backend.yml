@@ -45,7 +45,7 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           # Diff against the merge base so we only see files touched in the PR.
           merge_base=$(git merge-base "$base" "$head")
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$merge_base" "$head" -- '*.py')
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$merge_base" "$head" -- '*.py' ':!flows/components/*')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No Python files changed."
             echo "files=" >> "$GITHUB_OUTPUT"
@@ -63,8 +63,8 @@ jobs:
           # safe-classified fixes still include things like F401 (unused
           # imports), which can break side-effect imports used by the
           # connector registration pattern.
-          # Formatting is enforced + auto-applied by the separate
-          # `.github/workflows/autofix.ci.yml` workflow.
+          # Safe lint fixes and formatting are auto-applied by
+          # `.github/workflows/autofix.ci.yml`.
           uv run ruff check --no-fix --output-format=github ${{ steps.changed.outputs.files }}
 
       - name: Mypy

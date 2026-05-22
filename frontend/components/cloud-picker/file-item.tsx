@@ -31,10 +31,24 @@ const getMimeTypeLabel = (mimeType: string) => {
     "application/vnd.google-apps.folder": "Folder",
     "application/pdf": "PDF",
     "text/plain": "Text",
+    "text/csv": "CSV",
+    "text/html": "HTML",
+    "application/xml": "XML",
+    "application/json": "JSON",
+    "application/msword": "Word Doc",
+    "application/vnd.ms-excel": "Excel",
+    "application/vnd.ms-powerpoint": "PowerPoint",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       "Word Doc",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      "Excel",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation":
       "PowerPoint",
+    "application/octet-stream": "File",
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/gif": "GIF",
+    "image/svg+xml": "SVG",
   };
 
   return typeMap[mimeType] || mimeType?.split("/").pop() || "Document";
@@ -71,10 +85,18 @@ export const FileItem = ({ file, onRemove, provider }: FileItemProps) => (
     className="flex items-center justify-between p-1.5 rounded-md text-xs"
   >
     <div className="flex items-center gap-2 flex-1 min-w-0">
-      {provider ? getProviderIcon(provider) : getFileIcon(file.mimeType)}
+      {file.isFolder ? (
+        <Folder className="h-6 w-6" />
+      ) : provider ? (
+        getProviderIcon(provider)
+      ) : (
+        getFileIcon(file.mimeType)
+      )}
       <span className="truncate font-medium text-sm mr-2">{file.name}</span>
       <span className="text-sm text-muted-foreground">
-        {getMimeTypeLabel(file.mimeType)}
+        {file.isFolder
+          ? "Folder — all contents will be ingested"
+          : getMimeTypeLabel(file.mimeType)}
       </span>
     </div>
     <div className="flex items-center gap-1">

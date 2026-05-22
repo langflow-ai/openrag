@@ -12,6 +12,8 @@ import asyncio
 from fastapi import FastAPI
 
 from config.settings import (
+    JWT_CLAIMS_CACHE_MAX_SIZE,
+    JWT_CLAIMS_CACHE_TTL_SECONDS,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
@@ -132,6 +134,12 @@ async def run_startup(app: FastAPI):
         workers=UVICORN_WORKER_COUNT,
         perm_cache_ttl_s=RBAC_PERMISSION_CACHE_TTL_SECONDS,
     )
+    logger.info(
+        "JWT claims cache configured",
+        backend="memory",
+        ttl_s=JWT_CLAIMS_CACHE_TTL_SECONDS,
+        maxsize=JWT_CLAIMS_CACHE_MAX_SIZE,
+    )
 
     # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes
     # every authenticated user effectively admin — log loudly so
@@ -176,6 +184,13 @@ async def run_startup(app: FastAPI):
         logger.error("Runtime DB migration failed", error=str(e))
         raise
 
+    try:
+        wcs = services.get("workspace_config_service")
+        if wcs is not None:
+            await wcs.hydrate_on_startup()
+    except Exception as e:
+        logger.error("Workspace config hydration failed at startup", error=str(e))
+
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_STARTED)
 
     # FastMCP requires its own lifespan to be entered before requests
@@ -217,9 +232,7 @@ async def run_shutdown(app: FastAPI):
         task.cancel()
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
-        logger.info(
-            "Background tasks cancelled at shutdown", count=len(background_tasks)
-        )
+        logger.info("Background tasks cancelled at shutdown", count=len(background_tasks))
 
     # Drain any pending workspace_config DB-mirror tasks before we
     # tear down the engine. Without this, a save_config triggered

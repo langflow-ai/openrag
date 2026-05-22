@@ -1,11 +1,10 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from utils.file_utils import clean_connector_filename, get_file_extension
 from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
-from utils.file_utils import get_file_extension, clean_connector_filename
-
 
 logger = get_logger(__name__)
 
@@ -38,7 +37,7 @@ class ConnectorService:
         """Initialize the service by loading existing connections"""
         await self.connection_manager.load_connections()
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
@@ -50,20 +49,23 @@ class ConnectorService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
         from utils.file_utils import auto_cleanup_tempfile
 
-        with auto_cleanup_tempfile(
-            suffix=get_file_extension(document.mimetype)
-        ) as tmp_path:
+        with auto_cleanup_tempfile(suffix=get_file_extension(document.mimetype)) as tmp_path:
             # Write document content to temp file
             with open(tmp_path, "wb") as f:
                 f.write(document.content)
 
-            logger.info("[CONNECTOR] Processing document", document_id=document.id, connector_type=connector_type, filename=document.filename)
+            logger.info(
+                "[CONNECTOR] Processing document",
+                document_id=document.id,
+                connector_type=connector_type,
+                filename=document.filename,
+            )
 
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
@@ -86,7 +88,11 @@ class ConnectorService:
                 acl=document.acl,
             )
 
-            logger.info("[CONNECTOR] Document processed", document_id=document.id, status=result.get("status"))
+            logger.info(
+                "[CONNECTOR] Document processed",
+                document_id=document.id,
+                status=result.get("status"),
+            )
 
             # If successfully indexed or already exists, update the indexed documents with connector metadata
             if result["status"] in ["indexed", "unchanged"]:
@@ -130,8 +136,7 @@ class ConnectorService:
             logger.debug(f"ACL unchanged for {document.id}, skipped update")
         elif acl_result["status"] == "updated":
             logger.info(
-                f"Updated ACL for {document.id}, "
-                f"{acl_result['chunks_updated']} chunks updated"
+                f"Updated ACL for {document.id}, {acl_result['chunks_updated']} chunks updated"
             )
         elif acl_result["status"] == "error":
             logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
@@ -147,6 +152,9 @@ class ConnectorService:
                         "source": """
                             ctx._source.source_url = params.source_url;
                             ctx._source.connector_type = params.connector_type;
+                            if (params.filename != null) {
+                                ctx._source.filename = params.filename;
+                            }
                             if (params.created_time != null) {
                                 ctx._source.created_time = params.created_time;
                             }
@@ -160,6 +168,7 @@ class ConnectorService:
                         "params": {
                             "source_url": document.source_url,
                             "connector_type": connector_type,
+                            "filename": document.filename,
                             "created_time": document.created_time.isoformat()
                             if document.created_time
                             else None,
@@ -167,9 +176,9 @@ class ConnectorService:
                             if document.modified_time
                             else None,
                             "metadata": document.metadata,
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             )
             logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
@@ -179,7 +188,6 @@ class ConnectorService:
                 error=str(e),
             )
             raise
-
 
     async def sync_connector_files(
         self,
@@ -191,7 +199,7 @@ class ConnectorService:
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -214,9 +222,7 @@ class ConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         logger.debug("Got connector", authenticated=connector.is_authenticated)
 
@@ -224,7 +230,7 @@ class ConnectorService:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
         # Collect files to process (limited by max_files)
-        files_to_process = []
+        files_to_process: list[dict[str, Any]] = []
         page_token = None
 
         # Calculate page size to minimize API calls
@@ -232,13 +238,9 @@ class ConnectorService:
 
         while True:
             # List files from connector with limit
-            logger.debug(
-                "Calling list_files", page_size=page_size, page_token=page_token
-            )
-            file_list = await connector.list_files(page_token, limit=page_size)
-            logger.debug(
-                "Got files from connector", file_count=len(file_list.get("files", []))
-            )
+            logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
+            file_list = await connector.list_files(page_token, max_files=page_size)
+            logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
             if not files:
@@ -312,15 +314,15 @@ class ConnectorService:
         self,
         connection_id: str,
         user_id: str,
-        file_ids: List[str],
+        file_ids: list[str],
         jwt_token: str = None,
-        file_infos: List[Dict[str, Any]] = None,
-        ingest_settings: Optional[Dict[str, Any]] = None,
+        file_infos: list[dict[str, Any]] = None,
+        ingest_settings: dict[str, Any] | None = None,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
         Automatically expands folders to their contents.
-        
+
         Args:
             connection_id: The connection ID
             user_id: The user ID
@@ -338,9 +340,7 @@ class ConnectorService:
 
         connector = await self.get_connector(connection_id)
         if not connector:
-            raise ValueError(
-                f"Connection '{connection_id}' not found or not authenticated"
-            )
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
@@ -355,7 +355,7 @@ class ConnectorService:
 
         # If file_infos provided, cache them in the connector for later use
         # This allows get_file_content to use download URLs directly
-        if file_infos and hasattr(connector, 'set_file_infos'):
+        if file_infos and hasattr(connector, "set_file_infos"):
             connector.set_file_infos(file_infos)
             logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
 
@@ -373,8 +373,8 @@ class ConnectorService:
         try:
             # Set the file_ids we want to sync in the connector's config
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = file_ids  # type: ignore
-                connector.cfg.folder_ids = None  # type: ignore
+                connector.cfg.file_ids = file_ids
+                connector.cfg.folder_ids = None
 
             # Get the expanded list of file IDs (folders will be expanded to their contents)
             # This uses the connector's list_files() which calls _iter_selected_items()
@@ -389,21 +389,38 @@ class ConnectorService:
                 )
                 # If we have file_infos with download URLs, use original file_ids
                 # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                # Exclude folders — they have no downloadable content on their own.
                 if file_infos:
-                    logger.info("Using original file IDs with cached download URLs")
-                    expanded_file_ids = file_ids
+                    non_folder_infos = [f for f in file_infos if not f.get("isFolder")]
+                    non_folder_ids = [f["id"] for f in non_folder_infos if f.get("id")]
+                    if non_folder_ids:
+                        logger.info(
+                            "Using original file IDs with cached download URLs (folders excluded)"
+                        )
+                        expanded_file_ids = non_folder_ids
+                    else:
+                        raise ValueError("No files to sync after expanding folders")
                 else:
                     raise ValueError("No files to sync after expanding folders")
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")
-            # Fallback to original file_ids if expansion fails
-            expanded_file_ids = file_ids
+            # Preserve intentional validation failures (e.g., folders-only selection)
+            if isinstance(e, ValueError):
+                raise
+            # Fallback path: still exclude known folders when metadata is available
+            if file_infos:
+                non_folder_ids = [
+                    f["id"] for f in file_infos if f.get("id") and not f.get("isFolder")
+                ]
+                expanded_file_ids = non_folder_ids or file_ids
+            else:
+                expanded_file_ids = file_ids
         finally:
             # Restore original config values
             if hasattr(connector, "cfg"):
-                connector.cfg.file_ids = original_file_ids  # type: ignore
-                connector.cfg.folder_ids = original_folder_ids  # type: ignore
+                connector.cfg.file_ids = original_file_ids
+                connector.cfg.folder_ids = original_folder_ids
 
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
@@ -431,9 +448,7 @@ class ConnectorService:
         original_filenames = {}
         if file_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype")
-                )
+                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
                 for f in file_infos
                 if "id" in f and "name" in f
             }
@@ -444,6 +459,6 @@ class ConnectorService:
 
         return task_id
 
-    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def _get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get a connector by connection ID (alias for get_connector)"""
         return await self.get_connector(connection_id)

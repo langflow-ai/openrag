@@ -8,7 +8,10 @@ that need to (re)create the documents index after onboarding completes.
 from config.settings import (
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
+    IBM_AUTH_ENABLED,
     INDEX_BODY,
+    OPENRAG_SKIP_OS_SECURITY_SETUP,
+    PLATFORM_AUTH_DEV_MODE,
     clients,
     get_index_name,
     get_openrag_config,
@@ -41,6 +44,10 @@ async def wait_for_opensearch(opensearch_client=None):
 
 async def configure_alerting_security():
     """Configure OpenSearch alerting plugin security settings"""
+    if IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE:
+        logger.info("Skipping alerting security configuration in IBM dev mode.")
+        return
+
     try:
         alerting_settings = {
             "persistent": {
@@ -58,6 +65,10 @@ async def configure_alerting_security():
 
 async def _ensure_opensearch_index():
     """Ensure OpenSearch index exists when using traditional connector service."""
+    if IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE:
+        logger.info("Skipping OpenSearch index creation in IBM dev mode.")
+        return
+
     try:
         index_name = get_index_name()
         if await clients.opensearch.indices.exists(index=index_name):
@@ -89,9 +100,20 @@ async def init_index(opensearch_client=None, admin_username: str = None):
     try:
         await wait_for_opensearch(opensearch_client)
 
-        from utils.opensearch_utils import setup_opensearch_security
+        # Skip security setup when the platform manages it externally
+        # (SaaS / CPD). Index creation below still runs — SaaS / CPD
+        # deployments still need indices, they just don't want OpenRAG
+        # touching roles or role mappings.
+        if OPENRAG_SKIP_OS_SECURITY_SETUP:
+            logger.info(
+                "Skipping OpenSearch security setup during init_index "
+                "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)",
+                admin_username=admin_username,
+            )
+        else:
+            from utils.opensearch_utils import setup_opensearch_security
 
-        await setup_opensearch_security(os_client, admin_username=admin_username)
+            await setup_opensearch_security(os_client, admin_username=admin_username)
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
@@ -111,22 +133,29 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             )
         else:
             logger.info(
-                "Index already exists, skipping creation and changing number of replicas",
+                "Index already exists, skipping creation",
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
-            current = await os_client.indices.get_settings(index=index_name)
-            current_replicas = int(
-                current[index_name]["settings"]["index"].get("number_of_replicas", 1)
-            )
-            if current_replicas != 0:
-                await os_client.indices.put_settings(
-                    index=index_name,
-                    body={"index": {"number_of_replicas": 0}},
-                )
-                logger.info(
-                    "Updated documents index settings",
-                )
+            if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
+                # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
+                try:
+                    current = await os_client.indices.get_settings(index=index_name)
+                    current_replicas = int(
+                        current[index_name]["settings"]["index"].get("number_of_replicas", 1)
+                    )
+                    if current_replicas != 0:
+                        await os_client.indices.put_settings(
+                            index=index_name,
+                            body={"index": {"number_of_replicas": 0}},
+                        )
+                        logger.info("Updated documents index settings")
+                except Exception as e:
+                    logger.warning(
+                        "Failed to check or update index replicas",
+                        index_name=index_name,
+                        error=str(e),
+                    )
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
             )
@@ -169,20 +198,28 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 index_name=knowledge_filter_index_name,
             )
 
-            current = await os_client.indices.get_settings(index=knowledge_filter_index_name)
-            current_replicas = int(
-                current[knowledge_filter_index_name]["settings"]["index"].get(
-                    "number_of_replicas", 1
-                )
-            )
-            if current_replicas != 0:
-                await os_client.indices.put_settings(
-                    index=knowledge_filter_index_name,
-                    body={"index": {"number_of_replicas": 0}},
-                )
-                logger.info(
-                    "Updated knowledge filters index settings",
-                )
+            if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
+                try:
+                    current = await os_client.indices.get_settings(
+                        index=knowledge_filter_index_name
+                    )
+                    current_replicas = int(
+                        current[knowledge_filter_index_name]["settings"]["index"].get(
+                            "number_of_replicas", 1
+                        )
+                    )
+                    if current_replicas != 0:
+                        await os_client.indices.put_settings(
+                            index=knowledge_filter_index_name,
+                            body={"index": {"number_of_replicas": 0}},
+                        )
+                        logger.info("Updated knowledge filters index settings")
+                except Exception as e:
+                    logger.warning(
+                        "Failed to check or update knowledge filter index replicas",
+                        index_name=knowledge_filter_index_name,
+                        error=str(e),
+                    )
 
         if not await os_client.indices.exists(index=API_KEYS_INDEX_NAME):
             await os_client.indices.create(index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY)
@@ -199,9 +236,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error
 
         if is_disk_space_error(e):
-            logger.error(
-                "OpenSearch disk space exceeded watermark. Index creation failed."
-            )
+            logger.error("OpenSearch disk space exceeded watermark. Index creation failed.")
             raise OpenSearchDiskSpaceError(
                 "OpenSearch disk space is full (watermark exceeded). "
                 "Please free up disk space on your Docker volume or host machine to continue."

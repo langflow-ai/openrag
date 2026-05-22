@@ -53,12 +53,25 @@ import {
 import AwsLogo from "../../components/icons/aws-logo";
 import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
-import IBMLogo from "../../components/icons/ibm-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
+import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
+import {
+  type SyncAllPreviewResponse,
+  useSyncAllConnectors,
+  useSyncAllConnectorsPreview,
+} from "../api/mutations/useSyncConnector";
+
+/** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
+function listFilesFilterParam(values?: string[]): string | undefined {
+  const raw = values?.[0]?.trim();
+  if (!raw || raw === "*") {
+    return undefined;
+  }
+  return raw;
+}
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -101,7 +114,8 @@ function SearchPage() {
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
-  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
+  const { parsedFilterData, queryOverride, selectedFilter } =
+    useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
@@ -110,7 +124,51 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
+    null,
+  );
+
+  const handleOpenSyncDialog = useCallback(async () => {
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
+    try {
+      const preview = await syncAllPreviewMutation.mutateAsync();
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  }, [syncAllPreviewMutation]);
+
+  const handleConfirmSync = useCallback(async () => {
+    try {
+      const result = await syncAllConnectorsMutation.mutateAsync();
+      if (result.status === "no_files") {
+        toast.info(
+          result.message ||
+            "No cloud files to sync. Add files from cloud connectors first.",
+        );
+      } else if (
+        result.synced_connectors &&
+        result.synced_connectors.length > 0
+      ) {
+        toast.success(
+          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+        );
+      } else if (result.errors && result.errors.length > 0) {
+        toast.error("Some connectors failed to sync");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync connectors",
+      );
+    }
+  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -210,12 +268,12 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
-  // Use server-side file listing for default/wildcard view,
-  // fall back to search-based aggregation for semantic queries
+  // Use server-side file listing for default/wildcard view; search otherwise.
+  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
+  const effectiveSearchText =
+    queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const isWildcardQuery =
-    !queryOverride ||
-    queryOverride.trim() === "" ||
-    queryOverride.trim() === "*";
+    effectiveSearchText === "" || effectiveSearchText === "*";
 
   const {
     data: listFilesData,
@@ -226,9 +284,11 @@ function SearchPage() {
     {
       pageSize: 100,
       search: isWildcardQuery ? undefined : queryOverride,
-      connectorType: parsedFilterData?.filters?.connector_types?.[0],
-      mimetype: parsedFilterData?.filters?.document_types?.[0],
-      owner: parsedFilterData?.filters?.owners?.[0],
+      connectorType: listFilesFilterParam(
+        parsedFilterData?.filters?.connector_types,
+      ),
+      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
+      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
     },
     {
       refetchInterval: 5000,
@@ -242,9 +302,9 @@ function SearchPage() {
     error: searchError,
     isError: isSearchError,
   } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    refetchInterval: 5000,
     enabled: !isWildcardQuery,
   });
+
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
 
@@ -347,10 +407,11 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
+  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    !!parsedFilterData,
+    Boolean(selectedFilter),
   );
 
   const gridRows = fileResults;
@@ -749,36 +810,14 @@ function SearchPage() {
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
-              disabled={syncAllConnectorsMutation.isPending}
-              onClick={async () => {
-                try {
-                  toast.info("Syncing all cloud connectors...");
-                  const result = await syncAllConnectorsMutation.mutateAsync();
-                  if (result.status === "no_files") {
-                    toast.info(
-                      result.message ||
-                        "No cloud files to sync. Add files from cloud connectors first.",
-                    );
-                  } else if (
-                    result.synced_connectors &&
-                    result.synced_connectors.length > 0
-                  ) {
-                    toast.success(
-                      `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-                    );
-                  } else if (result.errors && result.errors.length > 0) {
-                    toast.error("Some connectors failed to sync");
-                  }
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to sync connectors",
-                  );
-                }
-              }}
+              disabled={
+                syncAllConnectorsMutation.isPending ||
+                syncAllPreviewMutation.isPending
+              }
+              onClick={handleOpenSyncDialog}
             >
-              {syncAllConnectorsMutation.isPending ? (
+              {syncAllConnectorsMutation.isPending ||
+              syncAllPreviewMutation.isPending ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Syncing...
@@ -830,7 +869,7 @@ function SearchPage() {
             </div>
           </div>
         )}
-        {searchWarnings.length > 0 && (
+        {!isWildcardQuery && searchWarnings.length > 0 && (
           <div className="mb-4 flex flex-col gap-2">
             {searchWarnings.map((warning, idx) => {
               const isEmbeddingWarning =
@@ -949,6 +988,18 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
+
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncAllConnectorsMutation.isPending}
+        isSyncAll
+        orphansByType={syncPreview?.orphans_by_type}
+        orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        syncedCountByType={syncPreview?.synced_count_by_type}
+      />
     </>
   );
 }

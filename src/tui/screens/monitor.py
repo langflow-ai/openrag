@@ -3,29 +3,34 @@
 import asyncio
 import re
 import shutil
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Literal, Any, Optional, AsyncIterator
+from typing import Any, Literal, cast
 
-# Define button variant type
-ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
-
-from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, DataTable
-from textual.timer import Timer
 from rich.text import Text
-from rich.table import Table
+from textual.app import ComposeResult
+from textual.containers import Horizontal, ScrollableContainer
+from textual.coordinate import Coordinate
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Static
 
-from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo, format_port_conflict_message
+from ..managers.container_manager import (
+    ContainerManager,
+    ServiceInfo,
+    ServiceStatus,
+    format_port_conflict_message,
+)
 from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
-from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
-from ..widgets.factory_reset_warning_modal import FactoryResetWarningModal
-from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
-from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
+from ..widgets.factory_reset_warning_modal import FactoryResetWarningModal
+from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
+from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
+from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
+
+# Define button variant type
+ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
 
 
 class MonitorScreen(Screen):
@@ -55,6 +60,8 @@ class MonitorScreen(Screen):
         self.refresh_timer = None
         self.operation_in_progress = False
         self._follow_task = None
+        self._follow_service: str | None = None
+        self._logs_buffer: list[str] = []
 
         # Track which table was last selected for mutual exclusion
         self._last_selected_table = None
@@ -63,9 +70,8 @@ class MonitorScreen(Screen):
     def container_manager(self) -> ContainerManager:
         """Get the shared container manager from the app."""
         if self._container_manager is None:
-            self._container_manager = self.app.container_manager
+            self._container_manager = cast(Any, self.app).container_manager
         return self._container_manager
-
 
     def compose(self) -> ComposeResult:
         """Create the monitoring screen layout."""
@@ -98,9 +104,7 @@ class MonitorScreen(Screen):
         yield Horizontal(id="services-controls", classes="button-row")
         # Create services table with image + digest info
         self.services_table = DataTable(id="services-table")
-        self.services_table.add_columns(
-            "Service", "Status", "Health", "Ports", "Image", "Digest"
-        )
+        self.services_table.add_columns("Service", "Status", "Health", "Ports", "Image", "Digest")
         yield self.services_table
         yield Static(" ")
 
@@ -118,12 +122,8 @@ class MonitorScreen(Screen):
         status_text = Text()
 
         if not self.container_manager.is_available():
-            status_text.append(
-                "WARNING: No container runtime available\n", style="bold red"
-            )
-            status_text.append(
-                "Please install Docker or Podman to continue.\n", style="dim"
-            )
+            status_text.append("WARNING: No container runtime available\n", style="bold red")
+            status_text.append("Please install Docker or Podman to continue.\n", style="dim")
             return status_text
 
         runtime_info = self.container_manager.get_runtime_info()
@@ -150,7 +150,7 @@ class MonitorScreen(Screen):
         """Initialize the screen when mounted."""
         await self._refresh_services()
         # Set up auto-refresh every 5 seconds
-        self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
+        self.refresh_timer = self.set_interval(5.0, self._auto_refresh_services)
 
         self._focus_services_table()
 
@@ -186,9 +186,9 @@ class MonitorScreen(Screen):
                 images_set.add(img)
         # Ensure compose-declared images are also shown (e.g., langflow when stopped)
         try:
-            for img in (
-                self.container_manager._parse_compose_images()
-            ):  # best-effort, no YAML dep
+            for (
+                img
+            ) in await self.container_manager._parse_compose_images():  # best-effort, no YAML dep
                 if img:
                     images_set.add(img)
         except Exception:
@@ -205,7 +205,7 @@ class MonitorScreen(Screen):
             self.images_table.clear()
 
         # Add container service rows
-        for service_name, service_info in services.items():
+        for _service_name, service_info in services.items():
             status_style = self._get_status_style(service_info.status)
 
             self.services_table.add_row(
@@ -238,9 +238,7 @@ class MonitorScreen(Screen):
             if (docling_running or docling_starting)
             else "N/A"
         )
-        docling_pid = (
-            str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
-        )
+        docling_pid = str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
 
         if self.docling_table:
             self.docling_table.add_row(
@@ -275,7 +273,7 @@ class MonitorScreen(Screen):
         }
         return status_styles.get(status, "white")
 
-    async def _auto_refresh(self) -> None:
+    async def _auto_refresh_services(self) -> None:
         """Auto-refresh services if not in operation."""
         if not self.operation_in_progress:
             await self._refresh_services()
@@ -283,7 +281,6 @@ class MonitorScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         button_id = event.button.id or ""
-        button_label = event.button.label or ""
 
         # Use button ID prefixes to determine action, ignoring any random suffix
         if button_id.startswith("start-btn"):
@@ -328,7 +325,7 @@ class MonitorScreen(Screen):
                 self.run_worker(self._show_logs(service_name))
                 self._start_follow(service_name)
 
-    async def _start_services(self, cpu_mode: Optional[bool] = None) -> None:
+    async def _start_services(self, cpu_mode: bool | None = None) -> None:
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
@@ -365,6 +362,7 @@ class MonitorScreen(Screen):
                 # This ensures docker compose reads the correct version
                 try:
                     from ..managers.env_manager import EnvManager
+
                     env_manager = EnvManager()
                     env_manager.ensure_openrag_version()
                     # Small delay to ensure .env file is written and flushed
@@ -433,7 +431,7 @@ class MonitorScreen(Screen):
                 # Show "this is the latest version" toast
                 self.notify(
                     f"You are running the latest version ({current_version}).",
-                    severity="success",
+                    severity="information",
                     timeout=5,
                 )
             else:
@@ -442,9 +440,7 @@ class MonitorScreen(Screen):
                     UpgradeInstructionsModal(current_version, latest_version)
                 )
         except Exception as e:
-            self.notify(
-                f"Error checking version: {str(e)}", severity="error", timeout=10
-            )
+            self.notify(f"Error checking version: {str(e)}", severity="error", timeout=10)
         finally:
             self.operation_in_progress = False
 
@@ -453,9 +449,7 @@ class MonitorScreen(Screen):
         self.operation_in_progress = True
         try:
             # Show factory reset warning modal first
-            should_continue = await self.app.push_screen_wait(
-                FactoryResetWarningModal()
-            )
+            should_continue = await self.app.push_screen_wait(FactoryResetWarningModal())
             if not should_continue:
                 self.notify("Factory reset cancelled", severity="information")
                 return
@@ -475,6 +469,7 @@ class MonitorScreen(Screen):
             try:
                 # Get paths from env config
                 from ..managers.env_manager import EnvManager
+
                 env_manager = EnvManager()
                 env_manager.load_existing_env()
 
@@ -487,7 +482,9 @@ class MonitorScreen(Screen):
 
                 if config_path.exists():
                     # Use container to handle files owned by container user
-                    success, msg = await self.container_manager.clear_directory_with_container(config_path)
+                    success, msg = await self.container_manager.clear_directory_with_container(
+                        config_path
+                    )
                     if not success:
                         # Fallback to regular rmtree if container method fails
                         shutil.rmtree(config_path)
@@ -497,18 +494,32 @@ class MonitorScreen(Screen):
                 # Also delete legacy TUI config folder if it exists (~/.openrag/tui/config/)
                 tui_config_path = expand_path(env_manager.config.openrag_tui_config_path_legacy)
                 if tui_config_path.exists():
-                    success, msg = await self.container_manager.clear_directory_with_container(tui_config_path)
+                    success, msg = await self.container_manager.clear_directory_with_container(
+                        tui_config_path
+                    )
                     if not success:
                         # Fallback to regular rmtree if container method fails
                         shutil.rmtree(tui_config_path)
                     # Recreate empty config directory
                     tui_config_path.mkdir(parents=True, exist_ok=True)
 
+                # Clear backend data directory (database, session ownership, conversations, oauth tokens)
+                data_path = expand_path(env_manager.config.openrag_data_path)
+                if data_path.exists():
+                    success, msg = await self.container_manager.clear_directory_with_container(
+                        data_path
+                    )
+                    if not success:
+                        shutil.rmtree(data_path)
+                    data_path.mkdir(parents=True, exist_ok=True)
+
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
                         # Use container to handle files owned by container user
-                        success, msg = await self.container_manager.clear_directory_with_container(flows_backup_path)
+                        success, msg = await self.container_manager.clear_directory_with_container(
+                            flows_backup_path
+                        )
                         if not success:
                             # Fallback to regular rmtree if container method fails
                             shutil.rmtree(flows_backup_path)
@@ -516,8 +527,10 @@ class MonitorScreen(Screen):
                         flows_backup_path.mkdir(parents=True, exist_ok=True)
                         self.notify("Flow backups deleted", severity="information")
                     else:
-                        self.notify(f"Flow backups preserved in {flows_backup_path}", severity="information")
-                
+                        self.notify(
+                            f"Flow backups preserved in {flows_backup_path}", severity="information"
+                        )
+
             except Exception as e:
                 self.notify(
                     f"Error clearing config: {str(e)}",
@@ -548,12 +561,14 @@ class MonitorScreen(Screen):
 
         # Get data paths from env config
         from ..managers.env_manager import EnvManager
+
         env_manager = EnvManager()
         env_manager.load_existing_env()
 
         # Delete langflow-data directory (mirrors Makefile factory-reset behaviour)
         yield False, "Clearing Langflow data..."
         from tui.main import _resolve_langflow_data_path
+
         langflow_data_path = _resolve_langflow_data_path(Path.home() / ".openrag").resolve()
         home = Path.home().resolve()
         if not str(langflow_data_path).startswith(str(home) + "/"):
@@ -575,13 +590,13 @@ class MonitorScreen(Screen):
         try:
             # Show prune options modal
             from tui.widgets.prune_options_modal import PruneOptionsModal
-            
+
             prune_choice = await self.app.push_screen_wait(PruneOptionsModal())
-            
+
             if prune_choice == "cancel":
                 self.notify("Prune cancelled", severity="information")
                 return
-            
+
             # Choose the appropriate pruning method based on user choice
             if prune_choice == "all":
                 # Stop services and prune all images
@@ -591,7 +606,7 @@ class MonitorScreen(Screen):
                 # Prune only unused images (default)
                 command_generator = self.container_manager.prune_old_images()
                 modal_title = "Pruning Unused Images"
-            
+
             # Show command output in modal dialog
             modal = CommandOutputModal(
                 modal_title,
@@ -605,12 +620,15 @@ class MonitorScreen(Screen):
     def _check_flow_backups(self) -> bool:
         """Check if there are any flow backups in flows/backup directory."""
         from pathlib import Path
+
         from ..managers.env_manager import EnvManager
 
         # Get flows path from env config
         env_manager = EnvManager()
         env_manager.load_existing_env()
-        flows_path = Path(env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))).expanduser()
+        flows_path = Path(
+            env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))
+        ).expanduser()
         backup_dir = flows_path / "backup"
         if not backup_dir.exists():
             return False
@@ -651,9 +669,7 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(
-                    f"Failed to start docling serve: {message}", severity="error"
-                )
+                self.notify(f"Failed to start docling serve: {message}", severity="error")
             # Refresh again to show final status (running or stopped)
             await self._refresh_services()
         except Exception as e:
@@ -671,9 +687,7 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(
-                    f"Failed to stop docling serve: {message}", severity="error"
-                )
+                self.notify(f"Failed to stop docling serve: {message}", severity="error")
             # Refresh the services table to show updated status
             await self._refresh_services()
         except Exception as e:
@@ -689,9 +703,7 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(
-                    f"Failed to restart docling serve: {message}", severity="error"
-                )
+                self.notify(f"Failed to restart docling serve: {message}", severity="error")
             # Refresh the services table to show updated status
             await self._refresh_services()
         except Exception as e:
@@ -780,9 +792,7 @@ class MonitorScreen(Screen):
                 except Exception:
                     pass
         except Exception as e:
-            notify_with_diagnostics(
-                self.app, f"Error following logs: {e}", severity="error"
-            )
+            notify_with_diagnostics(self.app, f"Error following logs: {e}", severity="error")
 
     def action_refresh(self) -> None:
         """Refresh services manually."""
@@ -861,9 +871,7 @@ class MonitorScreen(Screen):
             self._update_mode_row()
             self.action_refresh()
         except Exception as e:
-            notify_with_diagnostics(
-                self.app, f"Failed to toggle mode: {e}", severity="error"
-            )
+            notify_with_diagnostics(self.app, f"Failed to toggle mode: {e}", severity="error")
 
     def _update_controls(self, services: list[ServiceInfo]) -> None:
         """Update control buttons based on running state."""
@@ -886,31 +894,19 @@ class MonitorScreen(Screen):
             # Add appropriate buttons based on service state
             if any_running:
                 # When services are running, show stop and restart
-                controls.mount(
-                    Button("Stop Services", variant="error", id=f"stop-btn{suffix}")
-                )
-                controls.mount(
-                    Button("Restart", variant="primary", id=f"restart-btn{suffix}")
-                )
+                controls.mount(Button("Stop Services", variant="error", id=f"stop-btn{suffix}"))
+                controls.mount(Button("Restart", variant="primary", id=f"restart-btn{suffix}"))
             else:
                 # When services are not running, show start
-                controls.mount(
-                    Button("Start Services", variant="success", id=f"start-btn{suffix}")
-                )
+                controls.mount(Button("Start Services", variant="success", id=f"start-btn{suffix}"))
 
             # Always show upgrade, prune, and reset buttons
-            controls.mount(
-                Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
-            )
-            controls.mount(
-                Button("Prune Images", variant="default", id=f"prune-btn{suffix}")
-            )
+            controls.mount(Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}"))
+            controls.mount(Button("Prune Images", variant="default", id=f"prune-btn{suffix}"))
             controls.mount(Button("Factory Reset", variant="error", id=f"reset-btn{suffix}"))
 
         except Exception as e:
-            notify_with_diagnostics(
-                self.app, f"Error updating controls: {e}", severity="error"
-            )
+            notify_with_diagnostics(self.app, f"Error updating controls: {e}", severity="error")
 
         # Update docling controls separately
         self._update_docling_controls()
@@ -940,9 +936,7 @@ class MonitorScreen(Screen):
                     Button("Stop", variant="error", id=f"docling-stop-btn{suffix}")
                 )
                 docling_controls.mount(
-                    Button(
-                        "Restart", variant="primary", id=f"docling-restart-btn{suffix}"
-                    )
+                    Button("Restart", variant="primary", id=f"docling-restart-btn{suffix}")
                 )
             elif docling_starting:
                 # Show disabled button or no button when starting
@@ -1102,7 +1096,7 @@ class MonitorScreen(Screen):
             return
 
         try:
-            table.cursor_coordinate = (row, 0)
+            table.cursor_coordinate = Coordinate(row, 0)
         except Exception:
             move_cursor = getattr(table, "move_cursor", None)
             if callable(move_cursor):
@@ -1111,9 +1105,7 @@ class MonitorScreen(Screen):
                 except Exception:
                     pass
 
-    def _focus_services_table(
-        self, row: str | None = None, set_last: bool = True
-    ) -> None:
+    def _focus_services_table(self, row: str | None = None, set_last: bool = True) -> None:
         """Focus the services table and update selection."""
         if not self.services_table:
             return

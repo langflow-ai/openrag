@@ -1,9 +1,10 @@
-import json
 import asyncio
+import json
 import time
-import httpx
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import httpx
 
 from config.settings import (
     LANGFLOW_INGEST_FLOW_ID,
@@ -41,9 +42,9 @@ class LangflowFileService:
 
     @staticmethod
     def merge_ui_ingest_settings_into_tweaks(
-        tweaks: Optional[Dict[str, Any]],
-        settings: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        tweaks: dict[str, Any] | None,
+        settings: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         """Merge UI ingest dict (camelCase) into Langflow run ``tweaks``.
 
         - ``chunkSize`` / ``chunkOverlap`` / ``separator`` update the flow's
@@ -58,27 +59,19 @@ class LangflowFileService:
         if not settings:
             return final_tweaks
 
-        if (
-            settings.get("chunkSize")
-            or settings.get("chunkOverlap")
-            or settings.get("separator")
-        ):
+        if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
             if "SplitText-QIKhg" not in final_tweaks:
                 final_tweaks["SplitText-QIKhg"] = {}
             if settings.get("chunkSize"):
                 final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
             if settings.get("chunkOverlap"):
-                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
-                    "chunkOverlap"
-                ]
+                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings["chunkOverlap"]
             if settings.get("separator"):
                 final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
 
         return final_tweaks
 
-    async def upload_user_file(
-        self, file_tuple, jwt_token: Optional[str] = None
-    ) -> Dict[str, Any]:
+    async def upload_user_file(self, file_tuple, jwt_token: str | None = None) -> dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
         """
@@ -125,22 +118,22 @@ class LangflowFileService:
 
     async def run_ingestion_flow(
         self,
-        file_paths: List[str],
+        file_paths: list[str],
         file_tuples: list[tuple[str, str, str]],
-        jwt_token: Optional[str] = None,
-        session_id: Optional[str] = None,
-        tweaks: Optional[Dict[str, Any]] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,
-        document_id: Optional[str] = None,
-        source_url: Optional[str] = None,
-        allowed_users: Optional[List[str]] = None,
-        allowed_groups: Optional[List[str]] = None,
-        selected_embedding_model: Optional[str] = None,
-        docling_task_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        jwt_token: str | None = None,
+        session_id: str | None = None,
+        tweaks: dict[str, Any] | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        connector_type: str | None = None,
+        document_id: str | None = None,
+        source_url: str | None = None,
+        allowed_users: list[str] | None = None,
+        allowed_groups: list[str] | None = None,
+        selected_embedding_model: str | None = None,
+        docling_task_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
         The flow must expose a File component path in input schema or accept files parameter.
@@ -149,7 +142,7 @@ class LangflowFileService:
             logger.error("[LF] LANGFLOW_INGEST_FLOW_ID is not configured")
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "input_value": "Ingest files",
             "input_type": "chat",
             "output_type": "text",  # Changed from "json" to "text"
@@ -188,15 +181,11 @@ class LangflowFileService:
             bool(jwt_token),
         )
         # To compute the file size in bytes, use len() on the file content (which should be bytes)
-        file_size_bytes = (
-            len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
-        )
+        file_size_bytes = len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         # Extract file metadata if file_tuples is provided
-        filename = (
-            str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
-        )
+        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
         mimetype = (
             str(file_tuples[0][2])
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
@@ -222,9 +211,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id)
-            if document_id
-            else "",
+            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
             if docling_task_id
@@ -234,13 +221,9 @@ class LangflowFileService:
         # Serialize ACL lists as JSON strings for Langflow global vars
         # (flows will parse these back into lists before indexing)
         if allowed_users is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(
-                allowed_users or []
-            )
+            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(allowed_users or [])
         if allowed_groups is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(
-                allowed_groups or []
-            )
+            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(allowed_groups or [])
 
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(
@@ -327,20 +310,20 @@ class LangflowFileService:
         self,
         docs_url: str,
         crawl_depth: int,
-        jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
         connector_type: str = "url",
         prevent_outside: bool = True,
-        tweaks: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        tweaks: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run URL-based docs ingestion flow using Langflow global variable passthrough."""
         if not docs_url:
             raise ValueError("DEFAULT_DOCS_URL is not configured")
         flow_id = await self._ensure_url_ingest_flow_id()
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "input_value": docs_url,
             "input_type": "chat",
             "output_type": "text",
@@ -428,8 +411,7 @@ class LangflowFileService:
         flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
         if not flow_file.exists():
             raise ValueError(
-                "LANGFLOW_URL_INGEST_FLOW_ID is invalid and "
-                f"flow file was not found at {flow_file}"
+                f"LANGFLOW_URL_INGEST_FLOW_ID is invalid and flow file was not found at {flow_file}"
             )
         with flow_file.open("r", encoding="utf-8") as f:
             flow_payload = json.load(f)
@@ -502,9 +484,7 @@ class LangflowFileService:
                 flow_data = create_resp.json()
                 imported_flow_id = flow_data.get("id")
                 if not imported_flow_id:
-                    raise ValueError(
-                        "Langflow flow import succeeded but no flow id was returned"
-                    )
+                    raise ValueError("Langflow flow import succeeded but no flow id was returned")
 
                 self.flow_id_url_ingest = imported_flow_id
                 logger.warning(
@@ -535,73 +515,157 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
-    async def upload_and_ingest_file(
+    async def submit_to_docling(
         self,
-        file_tuple,
-        session_id: Optional[str] = None,
-        tweaks: Optional[Dict[str, Any]] = None,
-        settings: Optional[Dict[str, Any]] = None,
-        jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        filename: str,
+        content: bytes,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+    ) -> str:
+        """Upload a file to Docling Serve and return the task_id immediately.
+
+        Phase 1 of the two-phase ingestion model. The caller is responsible
+        for polling Docling (typically via DoclingPollingService) and only
+        invoking Langflow once Docling reports SUCCESS.
         """
-        Combined Docling upload and Langflow ingest operation.
-        First uploads the file to Docling, then runs ingestion on it via Langflow
-        using the Docling task ID.
-
-        Args:
-            file_tuple: File tuple (filename, content, content_type)
-            session_id: Optional session ID for the ingestion flow
-            tweaks: Optional tweaks for the ingestion flow
-            settings: Optional UI settings to convert to component tweaks
-            jwt_token: Optional JWT token for authentication
-
-        Returns:
-            Combined result with Docling task info and ingestion result
-        """
-        logger.debug("[LF] Starting Docling-based upload and ingest operation")
-
         if self.docling_service is None:
             raise RuntimeError(
                 "DoclingService is not configured. Ensure DOCLING_SERVE_URL is set "
                 "and the service was injected correctly."
             )
+        try:
+            task_id = await self.docling_service.upload_to_docling_direct_async(
+                filename, content, user_id=owner, auth_header=jwt_token
+            )
+            logger.debug(
+                "[LF] Docling submission accepted",
+                extra={"task_id": task_id, "filename": filename},
+            )
+            return task_id
+        except Exception as e:
+            logger.error(
+                "[LF] Docling submission failed",
+                extra={"error": str(e), "filename": filename},
+            )
+            raise Exception(f"Docling upload failed: {str(e)}") from e
+
+    async def upload_and_ingest_file(
+        self,
+        file_tuple,
+        session_id: str | None = None,
+        tweaks: dict[str, Any] | None = None,
+        settings: dict[str, Any] | None = None,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        connector_type: str | None = None,
+        docling_polling_service: Any | None = None,
+        file_task: Any | None = None,
+    ) -> dict[str, Any]:
+        """
+        Two-phase Docling upload + Langflow ingest operation.
+
+        Phase 1: submit the file to Docling, receive a task_id. If a
+        ``docling_polling_service`` is provided, poll the backend for Docling
+        completion before invoking Langflow. This keeps Langflow execution
+        slots free during long Docling conversions.
+
+        Phase 2: trigger the Langflow ingestion flow once Docling has
+        succeeded. The task_id is forwarded so the flow's DoclingRemote
+        component fetches the already-completed result instead of re-uploading
+        or re-polling.
+
+        When ``docling_polling_service`` is None, falls back to the legacy
+        single-step behavior (Langflow polls Docling itself), preserving
+        backward compatibility.
+
+        Args:
+            file_tuple: (filename, content, content_type)
+            docling_polling_service: optional DoclingPollingService for the
+                two-phase flow. When None, Langflow handles polling.
+            file_task: optional FileTask for phase / status tracking.
+        """
+        from models.tasks import DoclingPhaseStatus, IngestionPhase
+
+        logger.debug("[LF] Starting two-phase Docling+Langflow ingest")
 
         filename, content, _ = file_tuple
 
-        # Step 1: Upload the file to Docling
-        try:
-            task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content
+        # ── Phase 1: submit to Docling ──────────────────────────────────
+        if file_task is not None:
+            file_task.phase = IngestionPhase.DOCLING
+            file_task.docling_status = DoclingPhaseStatus.PENDING
+
+        task_id = await self.submit_to_docling(filename, content, owner=owner, jwt_token=jwt_token)
+
+        if file_task is not None:
+            file_task.docling_task_id = task_id
+            file_task.docling_status = DoclingPhaseStatus.PROCESSING
+
+        # ── Phase 1b: backend-side polling (optional) ───────────────────
+        if docling_polling_service is not None:
+            from config.settings import (
+                DOCLING_POLL_BACKOFF_FACTOR,
+                DOCLING_POLL_INTERVAL_SECONDS,
+                DOCLING_POLL_MAX_INTERVAL_SECONDS,
+                DOCLING_POLL_MAX_SECONDS,
+                DOCLING_POLL_TRANSIENT_RETRIES,
             )
-            logger.debug(
-                "[LF] Docling upload completed successfully",
+            from services.docling_polling_service import PollOutcome
+
+            poll_result = await docling_polling_service.poll_until_ready(
+                task_id=task_id,
+                poll_interval=DOCLING_POLL_INTERVAL_SECONDS,
+                max_seconds=DOCLING_POLL_MAX_SECONDS,
+                max_interval=DOCLING_POLL_MAX_INTERVAL_SECONDS,
+                backoff_factor=DOCLING_POLL_BACKOFF_FACTOR,
+                transient_retry_budget=DOCLING_POLL_TRANSIENT_RETRIES,
+            )
+
+            if poll_result.outcome != PollOutcome.SUCCESS:
+                if file_task is not None:
+                    if poll_result.outcome == PollOutcome.EXPIRED:
+                        file_task.docling_status = DoclingPhaseStatus.EXPIRED
+                    else:
+                        file_task.docling_status = DoclingPhaseStatus.FAILED
+                logger.error(
+                    "[LF] Docling polling did not reach SUCCESS; skipping Langflow",
+                    extra={
+                        "task_id": task_id,
+                        "filename": filename,
+                        "outcome": poll_result.outcome.value,
+                        "detail": poll_result.detail,
+                        "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
+                    },
+                )
+                raise Exception(
+                    f"Docling conversion did not complete ({poll_result.outcome.value}): "
+                    f"{poll_result.detail or 'no detail provided'}"
+                )
+
+            if file_task is not None:
+                file_task.docling_status = DoclingPhaseStatus.SUCCESS
+            logger.info(
+                "[LF] Docling conversion ready; proceeding to Langflow",
                 extra={
                     "task_id": task_id,
                     "filename": filename,
+                    "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                 },
             )
-        except Exception as e:
-            logger.error(
-                "[LF] Docling upload failed during combined operation",
-                extra={"error": str(e)},
-            )
-            raise Exception(f"Docling upload failed: {str(e)}")
 
-        # Step 2: Prepare for ingestion
-        final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
-            tweaks, settings
-        )
+        # ── Phase 2: trigger Langflow ingestion ─────────────────────────
+        final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(tweaks, settings)
         if settings:
             logger.debug(
                 "[LF] Applying ingestion settings",
                 extra={"settings": settings, "tweaks": final_tweaks},
             )
 
-        # Step 3: Run ingestion via Langflow
+        if file_task is not None:
+            file_task.phase = IngestionPhase.LANGFLOW
+
         try:
             total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
@@ -623,10 +687,18 @@ class LangflowFileService:
                 "[LF] Ingestion failed during combined operation",
                 extra={"error": str(e), "filename": filename},
             )
-            # Can't cancel Docling task because API for that does not exist
+            # Docling Serve has no cancel endpoint; let any orphan task expire.
             raise
 
-        # Return combined result
+        if file_task is not None:
+            file_task.phase = IngestionPhase.COMPLETE
+            # Legacy path leaves docling_status at PROCESSING because the
+            # backend never observed Docling completion directly. Langflow
+            # returning success implies its DoclingRemote component consumed
+            # the task, so Docling succeeded — mark SUCCESS to keep status
+            # fields coherent. Idempotent for the polling path.
+            file_task.docling_status = DoclingPhaseStatus.SUCCESS
+
         return {
             "status": "success",
             "docling_task_id": task_id,
