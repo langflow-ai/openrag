@@ -2,15 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { type Task } from "@/contexts/task-context";
 import { parseTimestampMs } from "@/lib/time-utils";
+import { cn } from "@/lib/utils";
 
 interface FailedTasksInfoProps {
   failedTasks: Task[];
 }
 
 export const FailedTasksInfo = ({ failedTasks }: FailedTasksInfoProps) => {
+  const isCloudBrand = useIsCloudBrand();
   const [openSections, setOpenSections] = useState<
     Record<"recent" | "past", boolean>
   >({
@@ -76,7 +79,12 @@ export const FailedTasksInfo = ({ failedTasks }: FailedTasksInfoProps) => {
   );
 
   return (
-    <div className="h-full bg-background border-l overflow-y-auto">
+    <div
+      className={cn(
+        "h-full bg-background border-l overflow-y-auto",
+        isCloudBrand && "ibm-tasks-panel",
+      )}
+    >
       <TaskPanelHeader onClose={closePanelOnly} />
 
       {failedTasks.length === 0 ? (
@@ -98,6 +106,12 @@ export const FailedTasksInfo = ({ failedTasks }: FailedTasksInfoProps) => {
                 }))
               }
               emptyText={section.emptyText}
+              contentClassName={cn(
+                "flex flex-col",
+                isCloudBrand
+                  ? "p-0 [&>*:last-child]:border-b [&>*:last-child]:border-muted"
+                  : "gap-2 p-4",
+              )}
               renderItem={(task) => (
                 <TaskErrorContent
                   key={`${section.sectionKey}-${task.task_id}`}
