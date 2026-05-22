@@ -9,7 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
@@ -420,6 +420,7 @@ export default function UploadProviderPage() {
     nonDuplicateFiles: CloudFile[];
     duplicateNames: string[];
   } | null>(null);
+  const isOverwriteConfirmedRef = useRef(false);
 
   const accessToken = tokenData?.access_token || null;
   const isLoading =
@@ -529,6 +530,7 @@ export default function UploadProviderPage() {
 
   const handleOverwriteDuplicates = () => {
     if (!pendingSync) return;
+    isOverwriteConfirmedRef.current = true;
     const { connector, allFiles } = pendingSync;
     submitSync(connector, allFiles, true);
     setPendingSync(null);
@@ -536,14 +538,20 @@ export default function UploadProviderPage() {
 
   const handleDuplicateDialogOpenChange = (open: boolean) => {
     if (!open && pendingSync) {
-      // Closing without overwrite means "skip duplicates" — submit just the rest.
-      const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
-      if (nonDuplicateFiles.length > 0) {
-        submitSync(connector, nonDuplicateFiles, false);
+      if (isOverwriteConfirmedRef.current) {
+        // Overwrite already submitted in handleOverwriteDuplicates; this close
+        // event fires immediately after and would otherwise re-enter the
+        // "skip duplicates" branch.
+        isOverwriteConfirmedRef.current = false;
       } else {
-        toast.info(
-          `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
-        );
+        const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
+        if (nonDuplicateFiles.length > 0) {
+          submitSync(connector, nonDuplicateFiles, false);
+        } else {
+          toast.info(
+            `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
+          );
+        }
       }
       setPendingSync(null);
     }
