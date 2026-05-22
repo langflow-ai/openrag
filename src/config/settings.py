@@ -157,6 +157,15 @@ GROUP_ACL_CACHE_TTL_SECONDS = get_env_int("OPENRAG_GROUP_ACL_CACHE_TTL", 0)
 # stale for up to this many seconds; set to 0 for strict per-request refresh.
 DLS_PRINCIPAL_REFRESH_TTL_SECONDS = get_env_int("OPENRAG_DLS_PRINCIPAL_REFRESH_TTL", 60)
 
+# TTL (seconds) for the in-process JWT claims cache. A cached entry is also
+# checked against the token's own `exp` claim on every hit, so a revoked token
+# can linger at most min(this value, token_remaining_lifetime) seconds.
+JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
+
+# Maximum number of distinct tokens kept in the JWT claims cache.
+# Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
+JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
+
 # Docling service URL configuration
 # Priority:
 # 1. DOCLING_SERVE_URL environment variable
