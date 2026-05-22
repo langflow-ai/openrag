@@ -350,15 +350,12 @@ func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
 	manager.EnsureRequiredEnvVars(envVars)
 
 	// Parse the required variables list
-	requiredVars := []string{}
-	for _, v := range []string{"JWT", "OPENRAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
+	requiredVars := []string{"JWT", "OPENRAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
 		"OPENSEARCH_INDEX_NAME", "DOCLING_SERVE_URL", "DOCLING_TASK_ID", "OWNER", "OWNER_NAME",
 		"OWNER_EMAIL", "CONNECTOR_TYPE", "DOCUMENT_ID", "SOURCE_URL", "ALLOWED_USERS",
 		"ALLOWED_GROUPS", "FILENAME", "MIMETYPE", "FILESIZE", "SELECTED_EMBEDDING_MODEL",
 		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "WATSONX_API_KEY", "WATSONX_ENDPOINT",
-		"WATSONX_PROJECT_ID", "OLLAMA_BASE_URL"} {
-		requiredVars = append(requiredVars, v)
-	}
+		"WATSONX_PROJECT_ID", "OLLAMA_BASE_URL"}
 
 	// Verify all required variables exist in the envVars map
 	for _, varName := range requiredVars {
