@@ -6,7 +6,7 @@ Uses API key authentication. Routes through Langflow (chat_service.langflow_chat
 """
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
