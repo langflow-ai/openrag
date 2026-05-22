@@ -157,7 +157,6 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	return r.Update(ctx, o)
 }
 
-
 // deleteResources explicitly deletes all resources created by the operator in the target namespace
 // This is necessary when deploying to an existing namespace that we don't manage
 func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
