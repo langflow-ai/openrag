@@ -69,6 +69,14 @@ func NewEnvVarManager() *EnvVarManager {
 			"FILESIZE":                 "0",
 			"SELECTED_EMBEDDING_MODEL": "",
 
+			// OpenSearch defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
+			"OPENSEARCH_PASSWORD":   "None",
+			"OPENSEARCH_URL":        "None",
+			"OPENSEARCH_INDEX_NAME": "None",
+
+			// Docling defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
+			"DOCLING_SERVE_URL": "None",
+
 			// Provider API keys (defaults to None, overridden by CR spec)
 			"OPENAI_API_KEY":     "None",
 			"ANTHROPIC_API_KEY":  "None",
@@ -214,6 +222,34 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// EnsureRequiredEnvVars ensures all variables listed in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT
+// exist in the envVars map with at least a "None" value. This is critical because Langflow components
+// expect these variables to be present in the environment, and the list can be customized via CR spec,
+// operator env vars (OPTLF_LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT), or defaults.
+func (m *EnvVarManager) EnsureRequiredEnvVars(envVars map[string]string) {
+	// Get the list of required variables
+	requiredVarsStr, exists := envVars["LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT"]
+	if !exists || requiredVarsStr == "" {
+		return
+	}
+
+	// Parse comma-separated list
+	requiredVars := strings.Split(requiredVarsStr, ",")
+
+	// Ensure each variable exists with at least "None" value
+	for _, varName := range requiredVars {
+		varName = strings.TrimSpace(varName)
+		if varName == "" {
+			continue
+		}
+
+		// Only add if not already present
+		if _, exists := envVars[varName]; !exists {
+			envVars[varName] = "None"
+		}
+	}
 }
 
 // Generates a base64-encoded string of exactly 32 bytes for Fernet
