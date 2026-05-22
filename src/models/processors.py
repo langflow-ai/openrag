@@ -492,6 +492,7 @@ class ConnectorFileProcessor(TaskProcessor):
         document_service=None,
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -506,6 +507,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using consolidated methods"""
@@ -547,6 +549,18 @@ class ConnectorFileProcessor(TaskProcessor):
 
             if not self.user_id:
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
+
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                self.user_id, self.jwt_token
+            )
+            if await self.check_filename_exists(document.filename, opensearch_client):
+                if not self.replace_duplicates:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"File with name '{document.filename}' already exists"
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                await self.delete_document_by_filename(document.filename, opensearch_client)
 
             # Create temporary file from document content
             suffix = get_file_extension(document.mimetype)
@@ -624,6 +638,7 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ):
         super().__init__(
             document_service=langflow_connector_service.task_service.document_service
@@ -642,6 +657,7 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using LangflowConnectorService"""
@@ -668,6 +684,20 @@ class LangflowConnectorFileProcessor(TaskProcessor):
             if not self.user_id:
                 raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
 
+            opensearch_client = (
+                self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                    self.user_id, self.jwt_token
+                )
+            )
+            if await self.check_filename_exists(document.filename, opensearch_client):
+                if not self.replace_duplicates:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"File with name '{document.filename}' already exists"
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                await self.delete_document_by_filename(document.filename, opensearch_client)
+
             # Create temporary file and compute hash to check for duplicates
             suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -678,12 +708,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 # Compute hash and check if already exists
                 file_hash = hash_id(tmp_path)
 
-                # Check if document already exists
-                opensearch_client = (
-                    self.langflow_connector_service.session_manager.get_user_opensearch_client(
-                        self.user_id, self.jwt_token
-                    )
-                )
                 if await self.check_document_exists(file_hash, opensearch_client):
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}

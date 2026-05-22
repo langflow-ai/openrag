@@ -72,6 +72,8 @@ const syncConnector = async ({
     sync_all?: boolean;
     /** Restrict ingest to these bucket names (IBM COS). */
     bucket_filter?: string[];
+    /** When true, replace any indexed document with the same filename. */
+    replace_duplicates?: boolean;
   };
 }): Promise<SyncResponse> => {
   const response = await fetch(`/api/connectors/${connectorType}/sync`, {
