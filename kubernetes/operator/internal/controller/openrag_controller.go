@@ -75,30 +75,41 @@ func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler
 func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	logger.Info("reconcile triggered", "name", req.Name, "namespace", req.Namespace)
+
 	instance := &openragv1alpha1.OpenRAG{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
+			logger.Info("CR not found - already deleted or never existed", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("CR retrieved", "name", instance.Name, "deletionTimestamp", instance.DeletionTimestamp)
+
 	if !instance.DeletionTimestamp.IsZero() {
+		logger.Info("CR has deletionTimestamp - calling handleDeletion", "name", instance.Name)
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
 	targetNS := targetNamespace(instance)
-	if targetNS != instance.Namespace {
-		if !controllerutil.ContainsFinalizer(instance, finalizer) {
-			controllerutil.AddFinalizer(instance, finalizer)
-			if err := r.Update(ctx, instance); err != nil {
-				return ctrl.Result{}, err
-			}
-			// Return immediately after adding finalizer to avoid duplicate reconciliation.
-			// The update will trigger a new reconcile that will do the actual work.
-			logger.Info("added finalizer, will reconcile again")
-			return ctrl.Result{}, nil
+	logger.Info("target namespace determined", "targetNS", targetNS, "crNamespace", instance.Namespace)
+
+	// Always add finalizer to CR so handleDeletion() can clean up .env secret finalizers
+	// .env secrets have envSecretFinalizer that must be removed before secrets can be deleted
+	if !controllerutil.ContainsFinalizer(instance, finalizer) {
+		logger.Info("adding finalizer to CR", "finalizer", finalizer, "reason", "needed to cleanup secret finalizers")
+		controllerutil.AddFinalizer(instance, finalizer)
+		if err := r.Update(ctx, instance); err != nil {
+			return ctrl.Result{}, err
 		}
+		// Return immediately after adding finalizer to avoid duplicate reconciliation.
+		// The update will trigger a new reconcile that will do the actual work.
+		logger.Info("added finalizer, will reconcile again")
+		return ctrl.Result{}, nil
+	} else {
+		logger.Info("CR already has finalizer", "finalizer", finalizer)
 	}
 
 	// Reconcile all resources
@@ -132,316 +143,6 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Update status to success
 	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
 	return r.updateStatusSuccess(ctx, instance, targetNS)
-}
-
-func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
-	logger := log.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(o, finalizer) {
-		return nil
-	}
-
-	targetNS := targetNamespace(o)
-
-	// Remove finalizers from .env secrets and delete them
-	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
-		envSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
-		if err == nil {
-			// Remove finalizer first
-			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
-				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
-				if err := r.Update(ctx, envSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
-				}
-			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
-		}
-	}
-
-	// Remove finalizers from user-provided secrets so they can be deleted
-	userSecretRefs := collectProtectedSecrets(o)
-	for _, secretRef := range userSecretRefs {
-		userSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
-				if err := r.Update(ctx, userSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
-				}
-				logger.Info("removed finalizer from user-supplied secret", "secret", secretRef.Name, "namespace", targetNS, "finalizer", userSecretFinalizer)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
-		}
-	}
-
-	// Remove finalizers from auto-generated default secrets and delete them
-	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
-	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default",
-		o.Name + "-jwt-private-key-default",
-		o.Name + "-langflow-secret-key-default",
-	}
-	for _, secretName := range defaultSecretNames {
-		defaultSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, defaultSecret)
-		if err == nil {
-			// Remove finalizer first
-			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
-				if err := r.Update(ctx, defaultSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
-				}
-			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
-		}
-	}
-
-	// If targetNamespace is different from CR namespace, we need to clean up resources
-	// We can only delete the namespace if WE created it (has managedByLabel)
-	// Otherwise, we must delete resources individually
-	if targetNS != o.Namespace {
-		ns := &corev1.Namespace{}
-		err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
-		if err != nil && !errors.IsNotFound(err) {
-			return err
-		}
-
-		// Check if we created this namespace
-		if err == nil && ns.Labels[managedByLabel] == o.Name {
-			// We created it, safe to delete the entire namespace
-			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
-				return err
-			}
-		} else {
-			// Namespace exists but we didn't create it (user-provided)
-			// Must delete resources individually to avoid orphans
-			if err := r.deleteResources(ctx, o, targetNS); err != nil {
-				return fmt.Errorf("failed to delete resources in namespace %s: %w", targetNS, err)
-			}
-		}
-	}
-	// If same namespace, owner references handle cleanup automatically
-
-	controllerutil.RemoveFinalizer(o, finalizer)
-	return r.Update(ctx, o)
-}
-
-// deleteResources explicitly deletes all resources created by the operator in the target namespace
-// This is necessary when deploying to an existing namespace that we don't manage
-func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	logger := log.FromContext(ctx)
-
-	// Delete deployments
-	for _, name := range []string{resourceName("fe"), resourceName("be"), resourceName("lf")} {
-		deployment := &appsv1.Deployment{}
-		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
-		if err == nil {
-			if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete deployment", "name", name)
-			}
-		}
-	}
-
-	// Delete services
-	for _, name := range []string{getServiceName(o, "fe"), getServiceName(o, "be"), getServiceName(o, "lf")} {
-		service := &corev1.Service{}
-		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-		if err == nil {
-			if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete service", "name", name)
-			}
-		}
-	}
-
-	// Delete service accounts (only if we created them)
-	for _, role := range []string{"fe", "be", "lf"} {
-		if shouldCreateServiceAccount(o, role) {
-			name := getServiceAccountName(o, role)
-			sa := &corev1.ServiceAccount{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
-			if err == nil {
-				if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete service account", "name", name)
-				}
-			}
-		}
-	}
-
-	// Delete PVCs based on pvcReclaimPolicy
-	// Default is "Retain" to preserve user data
-	policy := o.Spec.Langflow.PVCReclaimPolicy
-	if policy == "" {
-		policy = openragv1alpha1.PVCReclaimRetain // default if not specified
-	}
-
-	if policy == openragv1alpha1.PVCReclaimDelete {
-		pvc := &corev1.PersistentVolumeClaim{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-data"), Namespace: targetNS}, pvc)
-		if err == nil {
-			logger.Info("Deleting Langflow PVC per pvcReclaimPolicy", "pvc", resourceName("lf-data"), "policy", policy)
-			if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete PVC", "name", resourceName("lf-data"))
-			}
-		}
-	} else {
-		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "policy", policy)
-	}
-
-	// Delete network policy if enabled
-	if o.Spec.NetworkPolicy.Enabled {
-		np := &networkingv1.NetworkPolicy{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-netpol"), Namespace: targetNS}, np)
-		if err == nil {
-			logger.Info("Deleting NetworkPolicy", "name", resourceName("lf-netpol"), "namespace", targetNS)
-			if err := r.Delete(ctx, np); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete network policy", "name", resourceName("lf-netpol"))
-			}
-		} else if !errors.IsNotFound(err) {
-			logger.Error(err, "failed to get network policy for deletion", "name", resourceName("lf-netpol"))
-		}
-	}
-
-	// Delete Docling components if enabled
-	if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Enabled {
-		// Delete Docling deployments (ds and dw)
-		for _, name := range []string{resourceName("ds"), resourceName("dw")} {
-			deployment := &appsv1.Deployment{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
-			if err == nil {
-				logger.Info("Deleting Docling deployment", "name", name)
-				if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling deployment", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling services
-		for _, name := range []string{getServiceName(o, "ds"), getServiceName(o, "dw")} {
-			service := &corev1.Service{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-			if err == nil {
-				logger.Info("Deleting Docling service", "name", name)
-				if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling service", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling service accounts (only if we created them)
-		for _, role := range []string{"ds", "dw"} {
-			if shouldCreateServiceAccount(o, role) {
-				name := getServiceAccountName(o, role)
-				sa := &corev1.ServiceAccount{}
-				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
-				if err == nil {
-					logger.Info("Deleting Docling service account", "name", name)
-					if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Docling service account", "name", name)
-					}
-				}
-			}
-		}
-
-		// Delete Docling HPAs if enabled
-		for _, name := range []string{resourceName("ds-hpa"), resourceName("dw-hpa")} {
-			hpa := &autoscalingv2.HorizontalPodAutoscaler{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, hpa)
-			if err == nil {
-				logger.Info("Deleting Docling HPA", "name", name)
-				if err := r.Delete(ctx, hpa); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling HPA", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling PVCs if storage is enabled
-		// Note: Could add reclaim policy for Docling PVCs in future
-		for _, name := range []string{resourceName("ds-data"), resourceName("dw-data")} {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, pvc)
-			if err == nil {
-				logger.Info("Deleting Docling PVC", "name", name)
-				if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling PVC", "name", name)
-				}
-			}
-		}
-
-		// Delete Valkey resources if enabled
-		if o.Spec.DoclingComponents.Valkey != nil {
-			// Delete Valkey StatefulSet
-			sts := &appsv1.StatefulSet{}
-			err := r.Get(ctx, client.ObjectKey{Name: resourceName("valkey"), Namespace: targetNS}, sts)
-			if err == nil {
-				logger.Info("Deleting Valkey StatefulSet", "name", resourceName("valkey"))
-				if err := r.Delete(ctx, sts); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey StatefulSet")
-				}
-			}
-
-			// Delete Valkey services
-			for _, name := range []string{resourceName("valkey"), resourceName("valkey-headless")} {
-				service := &corev1.Service{}
-				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-				if err == nil {
-					logger.Info("Deleting Valkey service", "name", name)
-					if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Valkey service", "name", name)
-					}
-				}
-			}
-
-			// Delete Valkey ConfigMap
-			cm := &corev1.ConfigMap{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-config"), Namespace: targetNS}, cm)
-			if err == nil {
-				logger.Info("Deleting Valkey ConfigMap", "name", resourceName("valkey-config"))
-				if err := r.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey ConfigMap")
-				}
-			}
-
-			// Delete Valkey Secret
-			secret := &corev1.Secret{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-auth"), Namespace: targetNS}, secret)
-			if err == nil {
-				logger.Info("Deleting Valkey Secret", "name", resourceName("valkey-auth"))
-				if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey Secret")
-				}
-			}
-
-			// Delete Valkey PVCs (from StatefulSet)
-			// Note: StatefulSet PVCs have format: data-<statefulset-name>-<ordinal>
-			// We should delete these to avoid orphaned PVCs
-			for i := 0; i < 1; i++ { // Default replicas is 1
-				pvcName := fmt.Sprintf("data-%s-%d", resourceName("valkey"), i)
-				pvc := &corev1.PersistentVolumeClaim{}
-				err := r.Get(ctx, client.ObjectKey{Name: pvcName, Namespace: targetNS}, pvc)
-				if err == nil {
-					logger.Info("Deleting Valkey PVC", "name", pvcName)
-					if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Valkey PVC", "name", pvcName)
-					}
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
