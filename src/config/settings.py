@@ -346,7 +346,7 @@ API_KEYS_INDEX_BODY = {
     "mappings": {
         "properties": {
             "key_id": {"type": "keyword"},
-            "key_hash": {"type": "keyword"},  # SHA-256 hash, never store plaintext
+            "key_hash": {"type": "keyword"},  # Keyed digest, never store plaintext
             "key_prefix": {"type": "keyword"},  # First 8 chars for display (e.g., "orag_abc1")
             "user_id": {"type": "keyword"},
             "user_email": {"type": "keyword"},

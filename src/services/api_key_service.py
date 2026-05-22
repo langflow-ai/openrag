@@ -3,6 +3,7 @@ API Key Service for managing user API keys for public API authentication.
 """
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime
 from typing import Any
@@ -11,6 +12,7 @@ from config.settings import API_KEYS_INDEX_NAME
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+API_KEY_HASH_PREFIX = "hmac-sha256:"
 
 
 class APIKeyService:
@@ -26,7 +28,7 @@ class APIKeyService:
         Returns:
             Tuple of (full_key, key_hash, key_prefix)
             - full_key: The complete API key to return to user (only shown once)
-            - key_hash: SHA-256 hash of the key for storage
+            - key_hash: keyed HMAC digest of the key for storage
             - key_prefix: First 12 chars for display (e.g., "orag_abc12345")
         """
         # Generate 32 bytes of random data, encode as base64url (no padding)
@@ -35,8 +37,7 @@ class APIKeyService:
         # Create the full key with prefix
         full_key = f"orag_{random_bytes}"
 
-        # Hash the full key for storage
-        key_hash = hashlib.sha256(full_key.encode()).hexdigest()
+        key_hash = self._hash_key(full_key)
 
         # Create prefix for display (orag_ + first 8 chars of random part)
         key_prefix = f"orag_{random_bytes[:8]}"
@@ -65,8 +66,26 @@ class APIKeyService:
         return clients.opensearch
 
     def _hash_key(self, api_key: str) -> str:
-        """Hash an API key for lookup."""
-        return hashlib.sha256(api_key.encode()).hexdigest()
+        """Create the keyed lookup digest stored in OpenSearch."""
+        from config.settings import SESSION_SECRET
+
+        digest = hmac.digest(
+            SESSION_SECRET.encode("utf-8"),
+            api_key.encode("utf-8"),
+            "sha256",
+        ).hex()
+        return f"{API_KEY_HASH_PREFIX}{digest}"
+
+    def _legacy_hash_key(self, api_key: str) -> str:
+        """Return the pre-HMAC lookup digest for backwards compatibility."""
+        digest = hashlib.new("sha256", usedforsecurity=False)  # nosec B324
+        digest.update(api_key.encode("utf-8"))
+        return digest.hexdigest()
+
+    def _candidate_hashes(self, api_key: str) -> list[str]:
+        keyed_hash = self._hash_key(api_key)
+        legacy_hash = self._legacy_hash_key(api_key)
+        return [keyed_hash, legacy_hash]
 
     async def create_key(
         self,
@@ -156,8 +175,8 @@ class APIKeyService:
             if not api_key or not api_key.startswith("orag_"):
                 return None
 
-            # Hash the incoming key
             key_hash = self._hash_key(api_key)
+            candidate_hashes = self._candidate_hashes(api_key)
 
             opensearch_client = self._get_opensearch_client()
 
@@ -166,7 +185,7 @@ class APIKeyService:
                 "query": {
                     "bool": {
                         "must": [
-                            {"term": {"key_hash": key_hash}},
+                            {"terms": {"key_hash": candidate_hashes}},
                             {"term": {"revoked": False}},
                         ]
                     }
@@ -185,13 +204,18 @@ class APIKeyService:
 
             key_doc = hits[0]["_source"]
 
-            # Update last_used_at (fire and forget)
+            matched_hash = key_doc.get("key_hash")
+
+            # Update last_used_at and opportunistically migrate legacy hashes.
             try:
                 write_client = self._get_write_opensearch_client()
+                update_doc = {"last_used_at": datetime.utcnow().isoformat()}
+                if matched_hash != key_hash:
+                    update_doc["key_hash"] = key_hash
                 await write_client.update(
                     index=API_KEYS_INDEX_NAME,
                     id=key_doc["key_id"],
-                    body={"doc": {"last_used_at": datetime.utcnow().isoformat()}},
+                    body={"doc": update_doc},
                 )
             except Exception:
                 pass  # Don't fail validation if update fails
