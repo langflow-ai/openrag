@@ -418,7 +418,7 @@ export default function UploadProviderPage() {
     connector: { connectionId?: string; type: string };
     allFiles: CloudFile[];
     nonDuplicateFiles: CloudFile[];
-    duplicateCount: number;
+    duplicateNames: string[];
   } | null>(null);
 
   const accessToken = tokenData?.access_token || null;
@@ -519,7 +519,7 @@ export default function UploadProviderPage() {
         connector,
         allFiles: selectedFiles,
         nonDuplicateFiles: nonDuplicates,
-        duplicateCount: duplicates.length,
+        duplicateNames: duplicates.map((r) => r.file.name),
       });
       setDuplicateDialogOpen(true);
     } finally {
@@ -537,12 +537,12 @@ export default function UploadProviderPage() {
   const handleDuplicateDialogOpenChange = (open: boolean) => {
     if (!open && pendingSync) {
       // Closing without overwrite means "skip duplicates" — submit just the rest.
-      const { connector, nonDuplicateFiles, duplicateCount } = pendingSync;
+      const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
       if (nonDuplicateFiles.length > 0) {
         submitSync(connector, nonDuplicateFiles, false);
       } else {
         toast.info(
-          `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
+          `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
         );
       }
       setPendingSync(null);
@@ -764,7 +764,7 @@ export default function UploadProviderPage() {
         onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteDuplicates}
         isLoading={isIngesting}
-        duplicateCount={pendingSync?.duplicateCount}
+        duplicateNames={pendingSync?.duplicateNames}
       />
     </>
   );
