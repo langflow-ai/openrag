@@ -105,7 +105,12 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     },
     ("/v1/documents", "DELETE"): {
         "name": "openrag_delete_document",
-        "description": "Delete a document from the OpenRAG knowledge base by filename.",
+        "description": (
+            "Delete document(s) from the OpenRAG knowledge base. "
+            "Provide exactly one of: `filename` to delete a single file, "
+            "or `filter_id` to delete every filename listed in that "
+            "knowledge filter's `data_sources` (wildcards rejected for safety)."
+        ),
     },
     # Settings endpoints
     ("/v1/settings", "GET"): {
