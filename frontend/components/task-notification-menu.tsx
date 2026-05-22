@@ -1,6 +1,5 @@
 "use client";
 
-import { ErrorFilled } from "@carbon/icons-react";
 import {
   AlertCircle,
   Bell,
@@ -8,6 +7,7 @@ import {
   Clock,
   Loader2,
   X,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
@@ -114,14 +114,14 @@ export function TaskNotificationMenu() {
       case "completed":
         if (hasFailedFiles) {
           if (isTotalFailure) {
-            return <ErrorFilled className="size-4 text-destructive" />;
+            return <XCircle className="size-4 text-destructive" />;
           }
           return <AlertCircle className="h-4 w-4 text-brand-amber" />;
         }
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case "failed":
       case "error":
-        return <ErrorFilled className="size-4 text-destructive" />;
+        return <XCircle className="size-4 text-destructive" />;
       case "pending":
         return <Clock className="h-4 w-4 text-yellow-500" />;
       case "running":

@@ -1,8 +1,8 @@
 "use client";
 
-import { ErrorFilled, FlagFilled, IncidentReporter } from "@carbon/icons-react";
-import { AlertCircle, ChevronDown } from "lucide-react";
+import { AlertCircle, ChevronDown, Flag, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
+import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import {
   Accordion,
   AccordionContent,
@@ -85,11 +85,10 @@ export function TaskErrorContent({
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          // TODO: open report-incident dialog
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <IncidentReporter className="size-4" />
+        <IncidentReporterIcon className="size-4" />
       </button>
     </div>
   );
@@ -115,7 +114,7 @@ export function TaskErrorContent({
           >
             {ossIconColumn &&
               (isFailedStatus ? (
-                <ErrorFilled
+                <XCircle
                   className="size-5 shrink-0 text-destructive"
                   aria-hidden
                 />
@@ -206,7 +205,7 @@ export function TaskErrorContent({
                       </p>
                       {componentCause ? (
                         <div className="flex min-w-0 items-center gap-1">
-                          <FlagFilled
+                          <Flag
                             className="size-3 shrink-0 text-destructive"
                             aria-hidden
                           />
