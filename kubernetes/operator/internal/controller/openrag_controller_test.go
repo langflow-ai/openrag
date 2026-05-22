@@ -61,6 +61,14 @@ func reconciler(s *runtime.Scheme, objs ...client.Object) (*OpenRAGReconciler, c
 
 func reconcileOnce(t *testing.T, r *OpenRAGReconciler, cr *openragv1alpha1.OpenRAG) ctrl.Result {
 	t.Helper()
+	// First reconcile: adds finalizer and returns early
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
+	})
+	require.NoError(t, err)
+
+	// Second reconcile: actually creates resources
+	// This is needed because adding finalizer triggers an Update() which returns early
 	res, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
 	})
@@ -287,7 +295,7 @@ func TestReconcile_AddsFinalizer_WhenTargetNamespaceDiffers(t *testing.T) {
 	assert.True(t, controllerutil.ContainsFinalizer(updated, finalizer))
 }
 
-func TestReconcile_NoFinalizer_WhenSameNamespace(t *testing.T) {
+func TestReconcile_AlwaysAddsFinalizer_SameNamespace(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")
 	r, c := reconciler(s, cr)
@@ -297,7 +305,8 @@ func TestReconcile_NoFinalizer_WhenSameNamespace(t *testing.T) {
 	updated := &openragv1alpha1.OpenRAG{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}, updated))
-	assert.False(t, controllerutil.ContainsFinalizer(updated, finalizer))
+	// Finalizer is always added (even for same namespace) to ensure .env secret finalizers are cleaned up on deletion
+	assert.True(t, controllerutil.ContainsFinalizer(updated, finalizer))
 }
 
 func TestReconcile_ResourcesInTargetNamespace(t *testing.T) {
