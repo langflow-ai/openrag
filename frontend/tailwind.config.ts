@@ -192,12 +192,31 @@ const config = {
           message: "var(--failure-message)",
           scroll: "var(--failure-scroll)",
           muted: "var(--failure-muted)",
+          "component-cause": "hsl(var(--failure-component-cause))",
         },
+        "task-status": {
+          failed: {
+            DEFAULT: "hsl(var(--task-status-failed-bg))",
+            foreground: "hsl(var(--task-status-failed-fg))",
+          },
+          partial: {
+            DEFAULT: "hsl(var(--task-status-partial-bg))",
+            foreground: "hsl(var(--task-status-partial-fg))",
+          },
+          complete: {
+            DEFAULT: "hsl(var(--task-status-complete-bg))",
+            foreground: "hsl(var(--task-status-complete-fg))",
+          },
+        },
+      },
+      spacing: {
+        mmd: "13px",
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        mmd: "var(--radius-mmd)",
       },
       fontFamily: {
         sans: ["var(--font-sans)", ...fontFamily.sans],
