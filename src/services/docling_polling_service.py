@@ -32,8 +32,8 @@ class PollOutcome(str, Enum):
 @dataclass
 class DoclingPollResult:
     outcome: PollOutcome
-    detail: Optional[str] = None
-    last_snapshot: Optional[DoclingStatusSnapshot] = None
+    detail: str | None = None
+    last_snapshot: DoclingStatusSnapshot | None = None
     elapsed_seconds: float = 0.0
 
 
@@ -53,12 +53,12 @@ class DoclingPollingService:
         transient_retry_budget: int = 5,
     ) -> DoclingPollResult:
         """Loop on Docling status until terminal or until max_seconds elapses.
-        
+
         A SUCCESS status is treated as ready only after the result endpoint
         returns a payload with usable ``document.json_content``. This prevents
         handing Langflow a task that Docling accepted but failed to convert
         into a consumable document.
-        
+
         Transient errors (network, 5xx, NOT_FOUND seen briefly before the task
         is registered server-side) are absorbed up to ``transient_retry_budget``
         before being surfaced as failures. The interval grows by
@@ -74,7 +74,7 @@ class DoclingPollingService:
         deadline = start + max_seconds
         interval = poll_interval
         consecutive_not_found = 0
-        last_snapshot: Optional[DoclingStatusSnapshot] = None
+        last_snapshot: DoclingStatusSnapshot | None = None
 
         logger.debug("Starting Docling polling", task_id=task_id)
 
@@ -102,7 +102,7 @@ class DoclingPollingService:
                         last_snapshot=snapshot,
                         elapsed_seconds=elapsed,
                     )
-                
+
                 logger.debug(
                     "Docling task reached SUCCESS and result is available",
                     task_id=task_id,

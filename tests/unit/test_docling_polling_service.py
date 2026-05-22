@@ -6,8 +6,9 @@ Docling state without ever invoking Langflow, so that Langflow execution
 slots are reserved for chunking / embedding / indexing only.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from services.docling_polling_service import (
     DoclingPollingService,
@@ -43,7 +44,7 @@ def no_sleep():
 async def test_returns_success_immediately_when_already_done(polling_service, mock_docling_service):
     mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
     mock_docling_service.fetch_task_result.return_value = {"body": "ok"}
-    
+
     result = await polling_service.poll_until_ready(
         task_id="t1", poll_interval=1.0, max_seconds=10.0
     )
@@ -51,6 +52,7 @@ async def test_returns_success_immediately_when_already_done(polling_service, mo
     assert result.outcome == PollOutcome.SUCCESS
     assert mock_docling_service.check_task_status.call_count == 1
     mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+
 
 @pytest.mark.asyncio
 async def test_loops_through_processing_then_success(
@@ -89,6 +91,7 @@ async def test_success_status_requires_fetchable_result(polling_service, mock_do
     assert result.outcome == PollOutcome.FAILED
     assert "missing document.json_content" in (result.detail or "")
     mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+
 
 @pytest.mark.asyncio
 async def test_returns_failed_on_docling_failure(polling_service, mock_docling_service):
