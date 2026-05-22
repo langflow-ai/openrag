@@ -75,30 +75,41 @@ func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler
 func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	logger.Info("reconcile triggered", "name", req.Name, "namespace", req.Namespace)
+
 	instance := &openragv1alpha1.OpenRAG{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
+			logger.Info("CR not found - already deleted or never existed", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("CR retrieved", "name", instance.Name, "deletionTimestamp", instance.DeletionTimestamp)
+
 	if !instance.DeletionTimestamp.IsZero() {
+		logger.Info("CR has deletionTimestamp - calling handleDeletion", "name", instance.Name)
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
 	targetNS := targetNamespace(instance)
-	if targetNS != instance.Namespace {
-		if !controllerutil.ContainsFinalizer(instance, finalizer) {
-			controllerutil.AddFinalizer(instance, finalizer)
-			if err := r.Update(ctx, instance); err != nil {
-				return ctrl.Result{}, err
-			}
-			// Return immediately after adding finalizer to avoid duplicate reconciliation.
-			// The update will trigger a new reconcile that will do the actual work.
-			logger.Info("added finalizer, will reconcile again")
-			return ctrl.Result{}, nil
+	logger.Info("target namespace determined", "targetNS", targetNS, "crNamespace", instance.Namespace)
+
+	// Always add finalizer to CR so handleDeletion() can clean up .env secret finalizers
+	// .env secrets have envSecretFinalizer that must be removed before secrets can be deleted
+	if !controllerutil.ContainsFinalizer(instance, finalizer) {
+		logger.Info("adding finalizer to CR", "finalizer", finalizer, "reason", "needed to cleanup secret finalizers")
+		controllerutil.AddFinalizer(instance, finalizer)
+		if err := r.Update(ctx, instance); err != nil {
+			return ctrl.Result{}, err
 		}
+		// Return immediately after adding finalizer to avoid duplicate reconciliation.
+		// The update will trigger a new reconcile that will do the actual work.
+		logger.Info("added finalizer, will reconcile again")
+		return ctrl.Result{}, nil
+	} else {
+		logger.Info("CR already has finalizer", "finalizer", finalizer)
 	}
 
 	// Reconcile all resources
@@ -134,16 +145,12 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return r.updateStatusSuccess(ctx, instance, targetNS)
 }
 
-func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+// deleteResources explicitly deletes all resources created by the operator in the target namespace
+// This is necessary when deploying to an existing namespace that we don't manage
+func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	logger := log.FromContext(ctx)
 
-	if !controllerutil.ContainsFinalizer(o, finalizer) {
-		return nil
-	}
-
-	targetNS := targetNamespace(o)
-
-	// Remove finalizers from .env secrets and delete them
+	// Delete .env secrets with finalizers first
 	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
 		envSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
@@ -152,42 +159,26 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
 				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
 				if err := r.Update(ctx, envSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
+					logger.Error(err, "failed to remove finalizer from env secret", "name", envSecretName)
+				} else {
+					logger.Info("Removed finalizer from .env secret", "name", envSecretName, "finalizer", envSecretFinalizer)
 				}
 			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
+			// Then delete the secret
 			if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
+				logger.Error(err, "failed to delete env secret", "name", envSecretName)
+			} else {
+				logger.Info("Deleted .env secret", "name", envSecretName)
 			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
 		}
 	}
 
-	// Remove finalizers from user-provided secrets so they can be deleted
-	userSecretRefs := collectProtectedSecrets(o)
-	for _, secretRef := range userSecretRefs {
-		userSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
-				if err := r.Update(ctx, userSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
-				}
-				logger.Info("removed finalizer from user-supplied secret", "secret", secretRef.Name, "namespace", targetNS, "finalizer", userSecretFinalizer)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
-		}
-	}
-
-	// Remove finalizers from auto-generated default secrets and delete them
-	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
+	// Delete auto-generated default secrets with finalizers
+	// These names must match getOrGenerateSecret() logic: o.Name + "-" + strings.ToLower(strings.ReplaceAll(envKeyName, "_", "-")) + "-default"
 	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default",
-		o.Name + "-jwt-private-key-default",
-		o.Name + "-langflow-secret-key-default",
+		o.Name + "-openrag-encryption-key-default", // OPENRAG_ENCRYPTION_KEY
+		o.Name + "-jwt-signing-key-default",        // JWT_SIGNING_KEY (not jwt-private-key!)
+		o.Name + "-langflow-secret-key-default",    // LANGFLOW_SECRET_KEY
 	}
 	for _, secretName := range defaultSecretNames {
 		defaultSecret := &corev1.Secret{}
@@ -197,52 +188,36 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
 				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
 				if err := r.Update(ctx, defaultSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
+					logger.Error(err, "failed to remove finalizer from default secret", "name", secretName)
+				} else {
+					logger.Info("Removed finalizer from default secret", "name", secretName, "finalizer", userSecretFinalizer)
 				}
 			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
+			// Then delete the secret
 			if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
-		}
-	}
-
-	// If targetNamespace is different from CR namespace, we need to clean up resources
-	// We can only delete the namespace if WE created it (has managedByLabel)
-	// Otherwise, we must delete resources individually
-	if targetNS != o.Namespace {
-		ns := &corev1.Namespace{}
-		err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
-		if err != nil && !errors.IsNotFound(err) {
-			return err
-		}
-
-		// Check if we created this namespace
-		if err == nil && ns.Labels[managedByLabel] == o.Name {
-			// We created it, safe to delete the entire namespace
-			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
-				return err
-			}
-		} else {
-			// Namespace exists but we didn't create it (user-provided)
-			// Must delete resources individually to avoid orphans
-			if err := r.deleteResources(ctx, o, targetNS); err != nil {
-				return fmt.Errorf("failed to delete resources in namespace %s: %w", targetNS, err)
+				logger.Error(err, "failed to delete default secret", "name", secretName)
+			} else {
+				logger.Info("Deleted default secret", "name", secretName)
 			}
 		}
 	}
-	// If same namespace, owner references handle cleanup automatically
 
-	controllerutil.RemoveFinalizer(o, finalizer)
-	return r.Update(ctx, o)
-}
-
-// deleteResources explicitly deletes all resources created by the operator in the target namespace
-// This is necessary when deploying to an existing namespace that we don't manage
-func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	logger := log.FromContext(ctx)
+	// Remove finalizers from user-supplied secrets (but don't delete them)
+	userSecretRefs := collectProtectedSecrets(o)
+	for _, secretRef := range userSecretRefs {
+		userSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
+		if err == nil {
+			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
+				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
+				if err := r.Update(ctx, userSecret); err != nil {
+					logger.Error(err, "failed to remove finalizer from user secret", "name", secretRef.Name)
+				} else {
+					logger.Info("Removed finalizer from user-supplied secret", "secret", secretRef.Name, "finalizer", userSecretFinalizer)
+				}
+			}
+		}
+	}
 
 	// Delete deployments
 	for _, name := range []string{resourceName("fe"), resourceName("be"), resourceName("lf")} {
