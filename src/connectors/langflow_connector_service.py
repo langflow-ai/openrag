@@ -317,6 +317,7 @@ class LangflowConnectorService:
         jwt_token: str = None,
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
@@ -413,6 +414,7 @@ class LangflowConnectorService:
             owner_name=owner_name,
             owner_email=owner_email,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
         # Create custom task using TaskService

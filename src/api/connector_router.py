@@ -57,6 +57,7 @@ class ConnectorRouter:
         jwt_token: str = None,
         file_infos: list = None,
         ingest_settings: dict = None,
+        replace_duplicates: bool = False,
     ):
         """Sync specific files using the active service."""
         return await self.get_active_service().sync_specific_files(
@@ -66,6 +67,7 @@ class ConnectorRouter:
             jwt_token,
             file_infos=file_infos,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
     def __getattr__(self, name):
