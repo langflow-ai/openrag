@@ -218,3 +218,173 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	// Verify Frontend defaults (empty for now)
 	assert.NotNil(t, manager.DefaultOpenRagFEEnvVars)
 }
+
+func TestEnvVarManager_EnsureRequiredEnvVars(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputEnvVars   map[string]string
+		expectedResult map[string]string
+		description    string
+	}{
+		{
+			name: "adds missing variables with None",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,VAR2,VAR3",
+				"VAR1": "existing_value",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,VAR2,VAR3",
+				"VAR1": "existing_value",
+				"VAR2": "None",
+				"VAR3": "None",
+			},
+			description: "Should add VAR2 and VAR3 with 'None' value, preserve VAR1",
+		},
+		{
+			name: "handles whitespace in variable list",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1, VAR2 , VAR3",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1, VAR2 , VAR3",
+				"VAR1": "None",
+				"VAR2": "None",
+				"VAR3": "None",
+			},
+			description: "Should trim whitespace from variable names",
+		},
+		{
+			name: "skips empty variable names",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,,VAR2,  ,VAR3",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,,VAR2,  ,VAR3",
+				"VAR1": "None",
+				"VAR2": "None",
+				"VAR3": "None",
+			},
+			description: "Should skip empty strings and whitespace-only entries",
+		},
+		{
+			name: "does nothing when LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT is missing",
+			inputEnvVars: map[string]string{
+				"VAR1": "value1",
+			},
+			expectedResult: map[string]string{
+				"VAR1": "value1",
+			},
+			description: "Should not modify envVars when the list variable is missing",
+		},
+		{
+			name: "does nothing when LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT is empty",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "",
+				"VAR1": "value1",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "",
+				"VAR1": "value1",
+			},
+			description: "Should not modify envVars when the list is empty",
+		},
+		{
+			name: "preserves existing values including empty strings",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,VAR2,VAR3",
+				"VAR1": "",
+				"VAR2": "0",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "VAR1,VAR2,VAR3",
+				"VAR1": "",
+				"VAR2": "0",
+				"VAR3": "None",
+			},
+			description: "Should preserve empty string and '0' values, only add missing VAR3",
+		},
+		{
+			name: "handles real-world variable list",
+			inputEnvVars: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL",
+				"JWT":                 "token123",
+				"OPENSEARCH_PASSWORD": "secret",
+			},
+			expectedResult: map[string]string{
+				"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL",
+				"JWT":                 "token123",
+				"OPENSEARCH_PASSWORD": "secret",
+				"OPENSEARCH_URL":      "None",
+				"DOCLING_SERVE_URL":   "None",
+			},
+			description: "Should add missing OpenSearch and Docling variables",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &EnvVarManager{}
+
+			// Call the function
+			manager.EnsureRequiredEnvVars(tt.inputEnvVars)
+
+			// Verify the result
+			assert.Equal(t, tt.expectedResult, tt.inputEnvVars, tt.description)
+		})
+	}
+}
+
+func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
+	// Test with the actual default configuration
+	manager := NewEnvVarManager()
+
+	// Get the default Langflow env vars
+	envVars := manager.GetLangflowEnvVars(nil)
+
+	// Verify LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exists
+	requiredVarsStr, exists := envVars["LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT"]
+	assert.True(t, exists, "LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT should exist in defaults")
+	assert.NotEmpty(t, requiredVarsStr, "LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT should not be empty")
+
+	// Call EnsureRequiredEnvVars
+	manager.EnsureRequiredEnvVars(envVars)
+
+	// Parse the required variables list
+	requiredVars := []string{"JWT", "OPENRAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
+		"OPENSEARCH_INDEX_NAME", "DOCLING_SERVE_URL", "DOCLING_TASK_ID", "OWNER", "OWNER_NAME",
+		"OWNER_EMAIL", "CONNECTOR_TYPE", "DOCUMENT_ID", "SOURCE_URL", "ALLOWED_USERS",
+		"ALLOWED_GROUPS", "FILENAME", "MIMETYPE", "FILESIZE", "SELECTED_EMBEDDING_MODEL",
+		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "WATSONX_API_KEY", "WATSONX_ENDPOINT",
+		"WATSONX_PROJECT_ID", "OLLAMA_BASE_URL"}
+
+	// Verify all required variables exist in the envVars map
+	for _, varName := range requiredVars {
+		_, exists := envVars[varName]
+		assert.True(t, exists, "Variable %s should exist in envVars", varName)
+		// Note: Some variables may have empty string as their default value (e.g., DOCUMENT_ID, SOURCE_URL, SELECTED_EMBEDDING_MODEL)
+		// The important thing is that they exist in the map
+	}
+
+	// Verify the newly added defaults are present
+	assert.Equal(t, "None", envVars["OPENSEARCH_PASSWORD"], "OPENSEARCH_PASSWORD should have default 'None'")
+	assert.Equal(t, "None", envVars["OPENSEARCH_URL"], "OPENSEARCH_URL should have default 'None'")
+	assert.Equal(t, "None", envVars["OPENSEARCH_INDEX_NAME"], "OPENSEARCH_INDEX_NAME should have default 'None'")
+	assert.Equal(t, "None", envVars["DOCLING_SERVE_URL"], "DOCLING_SERVE_URL should have default 'None'")
+}
+
+func TestEnvVarManager_EnsureRequiredEnvVars_CustomList(t *testing.T) {
+	// Test with a custom LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT value
+	manager := &EnvVarManager{
+		DefaultLangflowEnvVars: map[string]string{
+			"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "CUSTOM_VAR1,CUSTOM_VAR2",
+			"CUSTOM_VAR1": "value1",
+		},
+	}
+
+	envVars := manager.GetLangflowEnvVars(nil)
+	manager.EnsureRequiredEnvVars(envVars)
+
+	// Verify custom variables are handled
+	assert.Equal(t, "value1", envVars["CUSTOM_VAR1"], "CUSTOM_VAR1 should preserve existing value")
+	assert.Equal(t, "None", envVars["CUSTOM_VAR2"], "CUSTOM_VAR2 should be added with 'None'")
+}
