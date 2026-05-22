@@ -282,7 +282,7 @@ class SessionManager:
             return self.get_user(payload["user_id"])
         return None
 
-    def get_user_opensearch_client(self, user_or_id: Union[User, str], jwt_token: str = None):
+    def get_user_opensearch_client(self, user_or_id: User | str, jwt_token: str = None):
         """Get or create OpenSearch client for user with their JWT"""
         if isinstance(user_or_id, User):
             user_id = user_or_id.user_id
