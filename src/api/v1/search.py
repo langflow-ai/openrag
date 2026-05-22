@@ -19,6 +19,7 @@ from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpace
 from utils.logging_config import get_logger
 from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
 from api.v1._filter_resolution import resolve_filter_id
+from auth_context import set_auth_context
 from dependencies import (
     get_api_key_user_async,
     get_knowledge_filter_service,
@@ -49,6 +50,11 @@ async def search_endpoint(
     query = body.query.strip()
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
+
+    # API-key auth has no JWT; the gate inside search_service.search()
+    # skips set_auth_context() in that case, leaving search_tool() unable to
+    # resolve the user. Set it explicitly here, mirroring v1 chat.
+    set_auth_context(user.user_id, user.jwt_token)
 
     resolved_filters = body.filters
     resolved_limit = body.limit
@@ -81,7 +87,7 @@ async def search_endpoint(
         result = await search_service.search(
             query,
             user_id=user.user_id,
-            jwt_token=None,  # API key auth has no JWT
+            jwt_token=user.jwt_token,
             filters=resolved_filters or {},
             limit=resolved_limit,
             score_threshold=resolved_score_threshold,
