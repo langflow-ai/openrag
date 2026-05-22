@@ -77,6 +77,15 @@ export interface DeleteDocumentResponse {
   filename?: string | null;
   message?: string | null;
   error?: string | null;
+  // Populated when deleting by filter_id — one entry per resolved data_source.
+  filenames?: string[] | null;
+  filter_id?: string | null;
+  per_file?: Array<Record<string, unknown>> | null;
+}
+
+export interface DeleteDocumentOptions {
+  filename?: string;
+  filterId?: string;
 }
 
 // Chat history types
