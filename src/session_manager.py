@@ -148,7 +148,7 @@ class SessionManager:
             with open(self.public_key_path, "rb") as f:
                 self.public_key = serialization.load_pem_public_key(f.read())
 
-            self.public_key_pem = open(self.public_key_path, "r").read()
+            self.public_key_pem = open(self.public_key_path).read()
 
         except FileNotFoundError as e:
             raise Exception(f"RSA key files not found: {e}") from e
@@ -246,7 +246,8 @@ class SessionManager:
         """Verify JWT token and return decoded claims, using an in-process cache."""
         if IBM_AUTH_ENABLED:
             return None
-        raw = token.removeprefix("Bearer ")
+        scheme, _, value = token.partition(" ")
+        raw = value if scheme.lower() == "bearer" and value else token
 
         cached = _JWT_CLAIMS_CACHE.get(raw)
         if cached is not None:
