@@ -43,7 +43,11 @@ func Example_envVarPriority() {
 	// LANGFLOW_WORKERS: 8 (from operator env)
 	// LANGFLOW_LOG_LEVEL: ERROR (from CR spec)
 	//
+<<<<<<< group-dls-part-2
 	// .env file generated: true
+=======
+	// .env file would contain 1475 bytes
+>>>>>>> main
 }
 
 // Example showing how different components use different prefixes
