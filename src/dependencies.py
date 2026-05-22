@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from session_manager import User
 from utils.logging_config import get_logger
+from config.settings import OPENRAG_RUN_MODE
 
 logger = get_logger(__name__)
 
@@ -367,6 +368,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         IBM_SESSION_COOKIE_NAME,
         PLATFORM_PASSWORD,
         PLATFORM_USERNAME,
+        ONPREM_OS_JWT_HEADER
     )
 
     # ── Option -1: Environment variable override (local dev/calls) ───────
@@ -394,6 +396,9 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
 
     lh_credentials = request.headers.get(IBM_CREDENTIALS_HEADER, "")
     ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
+    if OPENRAG_RUN_MODE == "on_prem":
+        ibm_token = request.headers.get(ONPREM_OS_JWT_HEADER)
+        
     user_id = None
     email = None
     name = None
@@ -412,7 +417,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
 
-    if lh_credentials and lh_credentials.strip() != "":
+    if lh_credentials and lh_credentials.strip() != "" and OPENRAG_RUN_MODE != "on_prem":
         logger.debug("[AUTH] IBM LH credentials found in request headers")
         opensearch_username, _ = extract_ibm_credentials(lh_credentials)
         logger.debug("[AUTH] IBM LH credentials extracted successfully")
@@ -458,7 +463,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         opensearch_username = None
         opensearch_credentials = None
         jwt_token = f"Bearer {ibm_token}"
-        if lh_credentials and lh_credentials.strip() != "":
+        if lh_credentials and lh_credentials.strip() != "" and OPENRAG_RUN_MODE != "on_prem":
             logger.debug("[AUTH] IBM LH credentials found in connections.json")
             opensearch_username, _ = extract_ibm_credentials(lh_credentials)
             logger.debug("[AUTH] IBM LH credentials extracted successfully")

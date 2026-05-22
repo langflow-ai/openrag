@@ -157,6 +157,40 @@ spec:
 - `LANGFLOW_LOG_LEVEL=ERROR` (from CR, overrides operator env if set)
 - `LANGFLOW_AUTO_LOGIN=true` (from hardcoded defaults)
 
+## Langflow SQLite on PVC
+
+When `spec.langflow.storage.enabled` is true, the operator mounts a PVC at `/app/data` and sets:
+
+- `LANGFLOW_DATABASE_URL=sqlite:////app/data/langflow.db` (unchanged from defaults unless you override it)
+- `LANGFLOW_CONFIG_DIR=/app/data` (upgraded from the `/tmp` default so config survives restarts on the same volume)
+
+Disable storage only for throwaway/dev installs; production should use the PVC.
+
+## Docling serve URL (Langflow and backend)
+
+The operator auto-sets `DOCLING_SERVE_URL` in the Langflow (`lf-env`) and backend (`be-env`) `.env` secrets from the CR, matching docker-compose / Helm behavior:
+
+| CR configuration | `DOCLING_SERVE_URL` |
+|------------------|---------------------|
+| `spec.doclingComponents.enabled: true` with `serve` | `http://<docling-serve-service>:<port>` (in-cluster service name) |
+| `spec.docling` (external host) | `{scheme}://{host}:{port}` (defaults: `http`, port `5001`) |
+
+Priority: `doclingComponents` wins over `spec.docling` when both are set.
+
+`DOCLING_SERVE_URL` is listed in `LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT` so ingestion flows can read it. WatsonX flow globals use docker-compose-style aliases (`WATSONX_APIKEY`, `WATSONX_URL`) derived from `WATSONX_API_KEY` and `WATSONX_ENDPOINT`.
+
+To override the derived URL for a single instance:
+
+```yaml
+spec:
+  langflow:
+    env:
+      - name: DOCLING_SERVE_URL
+        value: http://custom-docling:5001
+```
+
+If `DOCLING_SERVE_URL` is already set (via `spec.langflow.env`, `OPTLF_DOCLING_SERVE_URL`, or defaults), the operator does not overwrite it.
+
 ## API Reference
 
 ### EnvVarManager
@@ -232,7 +266,7 @@ See `env_test.go` for comprehensive test coverage of:
 
 Run tests:
 ```bash
-go test -v ./internal/controller -run TestEnvVarManager
+go test -v ./internal/controller -run 'TestEnvVarManager|TestResolveDoclingServeURL|TestSetDoclingServeURL|TestApplyLangflowWatsonxAliases|TestNewEnvVarManager'
 ```
 
 ## Best Practices

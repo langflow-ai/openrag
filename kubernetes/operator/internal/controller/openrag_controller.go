@@ -709,27 +709,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 		}
 	}
 
-	// Docling configuration from CR spec
-	// Priority: DoclingComponents (operator-managed) > Docling (external)
-	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
-		// Use operator-managed docling-serve
-		port := int32(5001)
-		if dc.Serve.Port > 0 {
-			port = dc.Serve.Port
-		}
-		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port)
-	} else if d := o.Spec.Docling; d != nil {
-		// Use external docling service
-		scheme := d.Scheme
-		if scheme == "" {
-			scheme = "http"
-		}
-		port := d.Port
-		if port == 0 {
-			port = 5001
-		}
-		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
-	}
+	setDoclingServeURLIfUnset(envVars, o)
 
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
@@ -778,6 +758,7 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 			envVars["WATSONX_PROJECT_ID"] = wx.ProjectID
 		}
 	}
+	applyLangflowWatsonxAliases(envVars)
 
 	// LLM configuration from CR spec
 	if l := o.Spec.LLM; l != nil {
@@ -799,18 +780,8 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 		}
 	}
 
-	// Docling configuration from CR spec
-	if d := o.Spec.Docling; d != nil {
-		scheme := d.Scheme
-		if scheme == "" {
-			scheme = "http"
-		}
-		port := d.Port
-		if port == 0 {
-			port = 5001
-		}
-		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
-	}
+	setDoclingServeURLIfUnset(envVars, o)
+	applyLangflowPersistencePaths(envVars, o)
 
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
@@ -1659,15 +1630,10 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 		{Name: "DOCLING_WORKSPACE_DIR", Value: "/app/workspace"},
 	}
 
-	// Add DOCLING_SERVE_URL if serve component is enabled
-	if o.Spec.DoclingComponents.Serve != nil {
-		port := int32(5001)
-		if o.Spec.DoclingComponents.Serve.Port > 0 {
-			port = o.Spec.DoclingComponents.Serve.Port
-		}
+	if url, ok := resolveDoclingServeURL(o); ok {
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  "DOCLING_SERVE_URL",
-			Value: fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port),
+			Value: url,
 		})
 	}
 
@@ -2527,6 +2493,71 @@ func shouldCreateServiceAccount(o *openragv1alpha1.OpenRAG, role string) bool {
 		return true
 	}
 	return *createFlag
+}
+
+// resolveDoclingServeURL returns the Docling serve URL from the CR spec.
+// Priority: doclingComponents (operator-managed) > docling (external).
+func resolveDoclingServeURL(o *openragv1alpha1.OpenRAG) (string, bool) {
+	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+		return fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port), true
+	}
+	if d := o.Spec.Docling; d != nil {
+		scheme := d.Scheme
+		if scheme == "" {
+			scheme = "http"
+		}
+		port := d.Port
+		if port == 0 {
+			port = 5001
+		}
+		return fmt.Sprintf("%s://%s:%d", scheme, d.Host, port), true
+	}
+	return "", false
+}
+
+// setDoclingServeURLIfUnset sets DOCLING_SERVE_URL from the CR when not already configured.
+func setDoclingServeURLIfUnset(envVars map[string]string, o *openragv1alpha1.OpenRAG) {
+	if envVars["DOCLING_SERVE_URL"] != "" {
+		return
+	}
+	if url, ok := resolveDoclingServeURL(o); ok {
+		envVars["DOCLING_SERVE_URL"] = url
+	}
+}
+
+const (
+	langflowDataMountPath     = "/app/data"
+	langflowSQLiteDatabaseURL = "sqlite:////app/data/langflow.db"
+)
+
+// applyLangflowPersistencePaths aligns Langflow DB/config paths with the PVC mounted at /app/data.
+// Requires spec.langflow.storage.enabled; LANGFLOW_DATABASE_URL is not changed when storage is off.
+func applyLangflowPersistencePaths(envVars map[string]string, o *openragv1alpha1.OpenRAG) {
+	st := o.Spec.Langflow.Storage
+	if st == nil || !st.Enabled {
+		return
+	}
+	if envVars["LANGFLOW_DATABASE_URL"] == "" {
+		envVars["LANGFLOW_DATABASE_URL"] = langflowSQLiteDatabaseURL
+	}
+	// Move runtime config off emptyDir /tmp onto the PVC (docker-compose uses one volume for both).
+	if envVars["LANGFLOW_CONFIG_DIR"] == "" || envVars["LANGFLOW_CONFIG_DIR"] == "/tmp" {
+		envVars["LANGFLOW_CONFIG_DIR"] = langflowDataMountPath
+	}
+}
+
+// applyLangflowWatsonxAliases mirrors docker-compose Langflow env names for flow globals.
+func applyLangflowWatsonxAliases(envVars map[string]string) {
+	if v := envVars["WATSONX_API_KEY"]; v != "" && v != "None" {
+		envVars["WATSONX_APIKEY"] = v
+	}
+	if v := envVars["WATSONX_ENDPOINT"]; v != "" && v != "None" {
+		envVars["WATSONX_URL"] = v
+	}
 }
 
 // getServiceName returns the Service name for a component.

@@ -284,19 +284,40 @@ spec:
   langflow:
     image: langflowai/openrag-langflow:latest
     envSecret: my-langflow-env
+    # PVC at /app/data — SQLite DB + Langflow config (recommended for production)
     storage:
       enabled: true
       size: 10Gi
+    # Operator sets: LANGFLOW_DATABASE_URL=sqlite:////app/data/langflow.db
+    #                LANGFLOW_CONFIG_DIR=/app/data (when storage.enabled)
   opensearch:
     host: opensearch-coordinating.opensearch.svc.cluster.local
     credentialsSecret: opensearch-credentials   # keys: username, password
-  # docling:                        # optional
+  # docling:                        # optional external Docling serve
   #   host: docling-serve.docling.svc.cluster.local
+  #   port: 5001
+  # doclingComponents:              # optional in-cluster Docling (sets DOCLING_SERVE_URL for Langflow/backend)
+  #   enabled: true
+  #   serve:
+  #     image: ghcr.io/docling-project/docling-serve-cpu:v1.15.1
   networkPolicy:
     enabled: false
 ```
 
 See [`config/samples/openrag_v1alpha1_openrag.yaml`](config/samples/openrag_v1alpha1_openrag.yaml) for a full annotated example.
+
+### Langflow persistence (PVC)
+
+Enable `spec.langflow.storage` so the operator creates a PVC (`lf-data` by default) and mounts it at **`/app/data`**. The Langflow `.env` secret then uses:
+
+| Variable | Value (with PVC) |
+|----------|------------------|
+| `LANGFLOW_DATABASE_URL` | `sqlite:////app/data/langflow.db` |
+| `LANGFLOW_CONFIG_DIR` | `/app/data` |
+
+`LANGFLOW_DATABASE_URL` is **not** rewritten when `storage.enabled` is false (defaults still point at `/app/data`, but without a mount that path is ephemeral inside the container). For durable Langflow state, keep `storage.enabled: true` (default in samples).
+
+Override either variable via `spec.langflow.env` or `OPTLF_*` operator env if you use external Postgres instead of SQLite.
 
 ## Release Process
 

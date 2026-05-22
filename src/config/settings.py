@@ -84,6 +84,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
     "yes",
 )
 
+OPENRAG_RUN_MODE = os.getenv("OPENRAG_RUN_MODE", "oss").strip().lower()
+
+ONPREM_OS_JWT_HEADER = os.getenv("ONPREM_OS_JWT_HEADER", "X-OpenSearch-JWT")
 
 # Skip the OpenSearch security context setup (roles, role mappings,
 # all_access admin pin). When true, OpenRAG assumes the security context
