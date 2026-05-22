@@ -1,6 +1,7 @@
 """
 API Key Service for managing user API keys for public API authentication.
 """
+
 import hashlib
 import secrets
 from datetime import datetime
@@ -50,6 +51,7 @@ class APIKeyService:
         can stay read-only.
         """
         from config.settings import IBM_AUTH_ENABLED, clients
+
         if IBM_AUTH_ENABLED and jwt_token and self.session_manager:
             return clients.create_user_opensearch_client(jwt_token)
         return clients.opensearch
@@ -189,11 +191,7 @@ class APIKeyService:
                 await write_client.update(
                     index=API_KEYS_INDEX_NAME,
                     id=key_doc["key_id"],
-                    body={
-                        "doc": {
-                            "last_used_at": datetime.utcnow().isoformat()
-                        }
-                    },
+                    body={"doc": {"last_used_at": datetime.utcnow().isoformat()}},
                 )
             except Exception:
                 pass  # Don't fail validation if update fails
@@ -229,9 +227,7 @@ class APIKeyService:
 
             # Search for user's keys
             search_body = {
-                "query": {
-                    "term": {"user_id": user_id}
-                },
+                "query": {"term": {"user_id": user_id}},
                 "sort": [{"created_at": {"order": "desc"}}],
                 "_source": [
                     "key_id",
@@ -297,11 +293,7 @@ class APIKeyService:
             result = await write_client.update(
                 index=API_KEYS_INDEX_NAME,
                 id=key_id,
-                body={
-                    "doc": {
-                        "revoked": True
-                    }
-                },
+                body={"doc": {"revoked": True}},
                 refresh="wait_for",
             )
 
