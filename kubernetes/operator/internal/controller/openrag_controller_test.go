@@ -1368,7 +1368,7 @@ func TestDeployment_ContainsEnvHashAnnotation(t *testing.T) {
 		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy))
 
 	// Check for hash annotation
-	annotations := backendDeploy.Spec.Template.ObjectMeta.Annotations
+	annotations := backendDeploy.Spec.Template.Annotations
 	require.NotNil(t, annotations, "Pod template should have annotations")
 	assert.Contains(t, annotations, "openr.ag/backend-env-hash", "Backend pod should have env hash annotation")
 	assert.NotEmpty(t, annotations["openr.ag/backend-env-hash"], "Hash annotation should not be empty")
@@ -1380,7 +1380,7 @@ func TestDeployment_ContainsEnvHashAnnotation(t *testing.T) {
 		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, langflowDeploy))
 
 	// Check for hash annotation
-	lfAnnotations := langflowDeploy.Spec.Template.ObjectMeta.Annotations
+	lfAnnotations := langflowDeploy.Spec.Template.Annotations
 	require.NotNil(t, lfAnnotations, "Langflow pod template should have annotations")
 	assert.Contains(t, lfAnnotations, "openr.ag/langflow-env-hash", "Langflow pod should have env hash annotation")
 	assert.NotEmpty(t, lfAnnotations["openr.ag/langflow-env-hash"], "Hash annotation should not be empty")
@@ -1403,7 +1403,7 @@ func TestDeployment_HashChangeTriggersUpdate(t *testing.T) {
 	backendDeploy1 := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy1))
-	hash1 := backendDeploy1.Spec.Template.ObjectMeta.Annotations["openr.ag/backend-env-hash"]
+	hash1 := backendDeploy1.Spec.Template.Annotations["openr.ag/backend-env-hash"]
 	require.NotEmpty(t, hash1, "Initial hash should exist")
 
 	// Update CR with different env value
@@ -1422,7 +1422,7 @@ func TestDeployment_HashChangeTriggersUpdate(t *testing.T) {
 	backendDeploy2 := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy2))
-	hash2 := backendDeploy2.Spec.Template.ObjectMeta.Annotations["openr.ag/backend-env-hash"]
+	hash2 := backendDeploy2.Spec.Template.Annotations["openr.ag/backend-env-hash"]
 	require.NotEmpty(t, hash2, "Updated hash should exist")
 
 	// Hash should have changed
@@ -1445,7 +1445,7 @@ func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
 	backendDeploy1 := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy1))
-	hash1 := backendDeploy1.Spec.Template.ObjectMeta.Annotations["openr.ag/backend-env-hash"]
+	hash1 := backendDeploy1.Spec.Template.Annotations["openr.ag/backend-env-hash"]
 
 	// Reconcile again without changing env
 	reconcileOnce(t, r, cr)
@@ -1454,7 +1454,7 @@ func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
 	backendDeploy2 := &appsv1.Deployment{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy2))
-	hash2 := backendDeploy2.Spec.Template.ObjectMeta.Annotations["openr.ag/backend-env-hash"]
+	hash2 := backendDeploy2.Spec.Template.Annotations["openr.ag/backend-env-hash"]
 
 	// Hash should be identical (no unnecessary pod restart)
 	assert.Equal(t, hash1, hash2, "Hash should remain same when env unchanged (avoids unnecessary restarts)")
