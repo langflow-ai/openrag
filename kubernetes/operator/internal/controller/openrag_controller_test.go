@@ -62,14 +62,14 @@ func reconciler(s *runtime.Scheme, objs ...client.Object) (*OpenRAGReconciler, c
 func reconcileOnce(t *testing.T, r *OpenRAGReconciler, cr *openragv1alpha1.OpenRAG) ctrl.Result {
 	t.Helper()
 	// First reconcile: adds finalizer and returns early
-	res, err := r.Reconcile(context.Background(), ctrl.Request{
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
 	})
 	require.NoError(t, err)
 
 	// Second reconcile: actually creates resources
 	// This is needed because adding finalizer triggers an Update() which returns early
-	res, err = r.Reconcile(context.Background(), ctrl.Request{
+	res, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
 	})
 	require.NoError(t, err)
