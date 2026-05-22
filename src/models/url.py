@@ -86,9 +86,7 @@ class LangflowUrlProcessor(TaskProcessor):
         )
         return int(response.get("count", 0))
 
-    async def process_item(
-        self, upload_task: UploadTask, item: str, file_task: FileTask
-    ) -> None:
+    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process one URL ingestion item through Langflow."""
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()

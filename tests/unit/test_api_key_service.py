@@ -84,9 +84,9 @@ async def test_validate_key_accepts_and_migrates_legacy_hash(monkeypatch):
         "user_email": "user@example.com",
         "name": "legacy key",
     }
-    terms = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["must"][0][
-        "terms"
-    ]["key_hash"]
+    terms = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["must"][0]["terms"][
+        "key_hash"
+    ]
     assert terms == [keyed_hash, legacy_hash]
 
     update_doc = opensearch_client.update.await_args.kwargs["body"]["doc"]
