@@ -7,11 +7,11 @@ inline `filters`. This helper performs that lookup + normalization server-side.
 Wildcard handling mirrors `frontend/lib/filter-normalization.ts::buildSearchPayloadFilters`:
 a dimension like `data_sources: ["*"]` collapses to `[]` (i.e. "no filter on this field").
 """
+
 import json
 from typing import Any
 
 from fastapi import HTTPException
-
 
 _FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types")
 

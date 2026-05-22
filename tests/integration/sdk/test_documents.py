@@ -6,7 +6,6 @@ import uuid
 from pathlib import Path
 
 import pytest
-
 from openrag_sdk.exceptions import OpenRAGError
 
 pytestmark = pytest.mark.skipif(
@@ -138,21 +137,23 @@ class TestDeleteByFilterId:
         return alpha, beta
 
     async def _create_filter(self, client, data_sources: list[str]) -> str:
-        result = await client.knowledge_filters.create({
-            "name": f"SDK delete-filter {uuid.uuid4().hex[:6]}",
-            "description": "Auto-created by SDK delete-by-filter test",
-            "queryData": {
-                "query": "",
-                "filters": {
-                    "data_sources": data_sources,
-                    "document_types": ["*"],
-                    "owners": ["*"],
-                    "connector_types": ["*"],
+        result = await client.knowledge_filters.create(
+            {
+                "name": f"SDK delete-filter {uuid.uuid4().hex[:6]}",
+                "description": "Auto-created by SDK delete-by-filter test",
+                "queryData": {
+                    "query": "",
+                    "filters": {
+                        "data_sources": data_sources,
+                        "document_types": ["*"],
+                        "owners": ["*"],
+                        "connector_types": ["*"],
+                    },
+                    "limit": 10,
+                    "scoreThreshold": 0,
                 },
-                "limit": 10,
-                "scoreThreshold": 0,
-            },
-        })
+            }
+        )
         assert result.success is True, f"Failed to create filter: {result.error}"
         return result.id
 

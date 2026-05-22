@@ -10,7 +10,6 @@ import uuid
 from pathlib import Path
 
 import pytest
-
 from openrag_sdk.exceptions import OpenRAGError
 
 pytestmark = pytest.mark.skipif(
@@ -42,21 +41,23 @@ async def _ingest_pair(client, tmp_path: Path) -> tuple[Path, Path]:
 
 async def _create_filter_for(client, name: str, data_sources: list[str]) -> str:
     """Create a knowledge filter scoped to the given filenames. Returns filter_id."""
-    result = await client.knowledge_filters.create({
-        "name": name,
-        "description": f"Auto-created by SDK test ({uuid.uuid4().hex[:6]})",
-        "queryData": {
-            "query": "",
-            "filters": {
-                "data_sources": data_sources,
-                "document_types": ["*"],
-                "owners": ["*"],
-                "connector_types": ["*"],
+    result = await client.knowledge_filters.create(
+        {
+            "name": name,
+            "description": f"Auto-created by SDK test ({uuid.uuid4().hex[:6]})",
+            "queryData": {
+                "query": "",
+                "filters": {
+                    "data_sources": data_sources,
+                    "document_types": ["*"],
+                    "owners": ["*"],
+                    "connector_types": ["*"],
+                },
+                "limit": 10,
+                "scoreThreshold": 0,
             },
-            "limit": 10,
-            "scoreThreshold": 0,
-        },
-    })
+        }
+    )
     assert result.success is True, f"Failed to create filter: {result.error}"
     return result.id
 
@@ -67,15 +68,17 @@ class TestKnowledgeFilters:
     @pytest.mark.asyncio
     async def test_knowledge_filter_crud(self, client):
         """Full CRUD lifecycle for a knowledge filter."""
-        create_result = await client.knowledge_filters.create({
-            "name": "Python SDK Test Filter",
-            "description": "Filter created by Python SDK integration tests",
-            "queryData": {
-                "query": "test documents",
-                "limit": 10,
-                "scoreThreshold": 0.5,
-            },
-        })
+        create_result = await client.knowledge_filters.create(
+            {
+                "name": "Python SDK Test Filter",
+                "description": "Filter created by Python SDK integration tests",
+                "queryData": {
+                    "query": "test documents",
+                    "limit": 10,
+                    "scoreThreshold": 0.5,
+                },
+            }
+        )
         assert create_result.success is True
         assert create_result.id is not None
         filter_id = create_result.id
@@ -116,9 +119,7 @@ class TestFilterIdInChat:
     async def test_filter_id_in_chat_actually_filters(self, client, tmp_path):
         """Sources returned must only include the file in the filter's data_sources."""
         alpha, beta = await _ingest_pair(client, tmp_path)
-        filter_id = await _create_filter_for(
-            client, "SDK chat filter scope", [alpha.name]
-        )
+        filter_id = await _create_filter_for(client, "SDK chat filter scope", [alpha.name])
 
         try:
             response = await client.chat.create(
@@ -129,9 +130,7 @@ class TestFilterIdInChat:
             source_names = [s.filename for s in response.sources]
             # Beta must NOT appear; alpha may or may not (RAG can return empty),
             # but anything that does come back must be alpha.
-            assert beta.name not in source_names, (
-                f"Filter leaked: beta in sources {source_names}"
-            )
+            assert beta.name not in source_names, f"Filter leaked: beta in sources {source_names}"
         finally:
             await client.knowledge_filters.delete(filter_id)
             await client.documents.delete(alpha.name)
@@ -141,9 +140,7 @@ class TestFilterIdInChat:
     async def test_filter_id_in_chat_inline_overrides(self, client, tmp_path):
         """Inline `filters` win over filter_id per the v1 override contract."""
         alpha, beta = await _ingest_pair(client, tmp_path)
-        filter_id = await _create_filter_for(
-            client, "SDK chat inline-override", [alpha.name]
-        )
+        filter_id = await _create_filter_for(client, "SDK chat inline-override", [alpha.name])
 
         try:
             response = await client.chat.create(
@@ -165,9 +162,7 @@ class TestFilterIdInChat:
     async def test_filter_id_in_chat_streaming_also_filters(self, client, tmp_path):
         """Streaming path must apply the resolved filter just like non-streaming."""
         alpha, beta = await _ingest_pair(client, tmp_path)
-        filter_id = await _create_filter_for(
-            client, "SDK chat stream filter", [alpha.name]
-        )
+        filter_id = await _create_filter_for(client, "SDK chat stream filter", [alpha.name])
 
         try:
             collected_sources: list[str] = []
@@ -204,9 +199,7 @@ class TestFilterIdInSearch:
     async def test_filter_id_in_search_actually_filters(self, client, tmp_path):
         """All search results must come from the filter's data_sources only."""
         alpha, beta = await _ingest_pair(client, tmp_path)
-        filter_id = await _create_filter_for(
-            client, "SDK search filter scope", [alpha.name]
-        )
+        filter_id = await _create_filter_for(client, "SDK search filter scope", [alpha.name])
 
         try:
             results = await client.search.query("animals", filter_id=filter_id)
@@ -224,9 +217,7 @@ class TestFilterIdInSearch:
     async def test_filter_id_in_search_inline_overrides(self, client, tmp_path):
         """Inline filters override the resolved filter_id per-field."""
         alpha, beta = await _ingest_pair(client, tmp_path)
-        filter_id = await _create_filter_for(
-            client, "SDK search inline-override", [alpha.name]
-        )
+        filter_id = await _create_filter_for(client, "SDK search inline-override", [alpha.name])
 
         try:
             results = await client.search.query(

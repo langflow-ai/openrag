@@ -5,6 +5,8 @@ Provides document ingestion and management.
 Uses API key authentication.
 """
 
+from typing import List, Optional
+
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,15 +14,10 @@ from pydantic import BaseModel
 from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
 from api.v1._filter_resolution import resolve_filter_id
-from utils.logging_config import get_logger
 from dependencies import (
-    get_document_service,
-    get_task_service,
-    get_session_manager,
-    get_langflow_file_service,
-    get_knowledge_filter_service,
     get_api_key_user_async,
     get_document_service,
+    get_knowledge_filter_service,
     get_langflow_file_service,
     get_session_manager,
     get_task_service,
@@ -33,8 +30,8 @@ logger = get_logger(__name__)
 
 
 class DeleteDocV1Body(BaseModel):
-    filename: Optional[str] = None
-    filter_id: Optional[str] = None
+    filename: str | None = None
+    filter_id: str | None = None
 
 
 async def ingest_endpoint(

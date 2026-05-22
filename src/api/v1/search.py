@@ -6,6 +6,7 @@ Uses API key authentication.
 """
 
 from typing import Any
+from typing import Any, Dict, Optional
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -17,13 +18,15 @@ from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 from utils.logging_config import get_logger
 from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
+from api.v1._filter_resolution import resolve_filter_id
 from dependencies import (
-    get_search_service,
     get_api_key_user_async,
     get_knowledge_filter_service,
+    get_search_service,
 )
 from session_manager import User
-from api.v1._filter_resolution import resolve_filter_id
+from utils.logging_config import get_logger
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
 
@@ -33,7 +36,7 @@ class SearchV1Body(BaseModel):
     filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
-    filter_id: Optional[str] = None
+    filter_id: str | None = None
 
 
 async def search_endpoint(
