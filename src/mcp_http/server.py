@@ -40,6 +40,7 @@ Usage (MCP client config):
       }
     }
 """
+
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import (
@@ -50,6 +51,7 @@ from fastmcp.server.providers.openapi import (
     RouteMap,
 )
 from fastmcp.server.providers.openapi.routing import HTTPRoute
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -99,8 +101,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     ("/v1/tasks/{task_id}", "GET"): {
         "name": "openrag_get_task_status",
         "description": (
-            "Check the status of an ingestion task. "
-            "Use the task_id returned from openrag_ingest."
+            "Check the status of an ingestion task. Use the task_id returned from openrag_ingest."
         ),
     },
     ("/v1/documents", "DELETE"): {
