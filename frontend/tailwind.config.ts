@@ -166,6 +166,10 @@ const config = {
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
+        "function-call-header": {
+          DEFAULT: "var(--function-call-header)",
+          hover: "var(--function-call-header-hover)",
+        },
         badge: {
           DEFAULT: "hsl(var(--badge))",
           foreground: "hsl(var(--badge-foreground))",
