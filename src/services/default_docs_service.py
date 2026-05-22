@@ -372,6 +372,10 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
     from session_manager import AnonymousUser
     from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
 
+    write_client = clients.opensearch
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
+
     if session_manager is None:
         logger.warning(
             "Session manager unavailable; skipping default docs cleanup before reingestion"
@@ -414,7 +418,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         query=delete_query["query"],
     )
     deleted_chunks = await delete_document_ids(
-        clients.opensearch,
+        write_client,
         index=index_name,
         document_ids=document_ids,
     )

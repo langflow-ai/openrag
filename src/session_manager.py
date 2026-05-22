@@ -1,3 +1,4 @@
+import hashlib
 import os
 import time
 from dataclasses import dataclass
@@ -128,7 +129,7 @@ class SessionManager:
                 self.algorithm = "HS256"
         else:
             if IBM_AUTH_ENABLED:
-                # IBM Auth Mode: Traefik handles auth (no local JWT signing required)
+                # External auth handles authentication; local signing is not required.
                 self.private_key = None
                 self.public_key = None
                 self.public_key_pem = None
@@ -241,7 +242,7 @@ class SessionManager:
         }
 
         if self.private_key is None:
-            logger.error("JWT signing requested but signing is disabled (IBM auth mode)")
+            logger.error("JWT signing requested but signing is disabled")
             return None
         token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return f"Bearer {token}"
@@ -316,20 +317,35 @@ class SessionManager:
         else:
             user_id = user_or_id
 
+        provided_jwt_token = jwt_token
+
         # Get the effective JWT token (handles anonymous JWT creation)
         jwt_token = self.get_effective_jwt_token(user_id, jwt_token)
 
         from config.settings import clients
 
-        # User tokens can carry short-lived group roles, and IBM credentials can
-        # rotate per request. Build a client for the effective token we have now.
-        return clients.create_user_opensearch_client(jwt_token)
+        # Upstream credentials may rotate per request.
+        if IBM_AUTH_ENABLED:
+            return clients.create_user_opensearch_client(jwt_token)
+
+        if provided_jwt_token:
+            token_hash = hashlib.sha256(jwt_token.encode("utf-8")).hexdigest()
+            cache_key = f"{user_id}:{token_hash}"
+        else:
+            cache_key = user_id or "anonymous"
+
+        if cache_key not in self.user_opensearch_clients:
+            self.user_opensearch_clients[cache_key] = clients.create_user_opensearch_client(
+                jwt_token
+            )
+
+        return self.user_opensearch_clients[cache_key]
 
     def get_effective_jwt_token(self, user_id: str, jwt_token: str) -> str:
         """Get the effective JWT token, creating anonymous JWT if needed in no-auth mode"""
         from config.settings import is_no_auth_mode
 
-        # IBM JWT is used as-is — never override with an anonymous OpenRAG JWT
+        # Upstream JWT is used as-is; never override it with an anonymous token.
         if IBM_AUTH_ENABLED and jwt_token:
             return jwt_token
 
@@ -338,7 +354,7 @@ class SessionManager:
 
         # No token — create one
         if is_no_auth_mode() or user_id in (None, AnonymousUser().user_id):
-            # IBM Auth Mode: No anonymous JWT concept (disable signing)
+            # No anonymous JWT concept when local signing is disabled.
             if self.private_key is None:
                 return None
             # anonymous JWT (cached)

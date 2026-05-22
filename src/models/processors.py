@@ -159,6 +159,10 @@ class TaskProcessor:
         from utils.opensearch_queries import build_owned_filename_query
 
         try:
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
+
             deleted_count = 0
             if not owner_user_id:
                 logger.warning(
@@ -181,7 +185,7 @@ class TaskProcessor:
                     query=build_owned_filename_query(candidate, owner_user_id),
                 )
                 deleted_count += await delete_document_ids(
-                    clients.opensearch,
+                    write_client,
                     index=get_index_name(),
                     document_ids=document_ids,
                 )
@@ -325,13 +329,17 @@ class TaskProcessor:
         # stored under ids {file_hash}_{i}; if the new chunk count is lower
         # than the prior one, trailing chunks would otherwise survive the
         # writer's idempotent upsert.
-        # DLS-safe: enumerate then delete by primary _id (delete_by_query is
-        # silently filtered under DLS).
+        # DLS-safe: enumerate visible chunk ids with the scoped user client,
+        # then delete concrete ids with the trusted backend client.
         try:
             from utils.opensearch_delete import (
                 collect_visible_document_ids,
                 delete_document_ids,
             )
+
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
 
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
@@ -339,7 +347,7 @@ class TaskProcessor:
                 query={"term": {"document_id": file_hash}},
             )
             await delete_document_ids(
-                opensearch_client,
+                write_client,
                 index=get_index_name(),
                 document_ids=stale_chunk_ids,
                 refresh=True,

@@ -61,16 +61,14 @@ class LangflowConnectorService:
                 name=user_id,
                 provider="connector",
             )
+            self.session_manager.users[user_id] = user
         if user is None:
             return self.session_manager.get_effective_jwt_token(user_id, jwt_token)
 
-        from services.group_acl_service import GroupACLService
-
-        return await GroupACLService(self, cache_ttl_seconds=0).create_opensearch_jwt(
-            self.session_manager,
-            user,
-            fallback_jwt_token=jwt_token,
-        )
+        effective_token = jwt_token or user.jwt_token
+        if effective_token is None and getattr(self.session_manager, "private_key", None) is not None:
+            return self.session_manager.create_jwt_token(user)
+        return self.session_manager.get_effective_jwt_token(user.user_id, effective_token)
 
     async def process_connector_document(
         self,
@@ -120,14 +118,19 @@ class LangflowConnectorService:
             # `processed_filename` here is the NEW name while OpenSearch chunks
             # still carry the OLD name, so a filename-keyed delete misses them
             # and the re-ingest leaves duplicate chunks (same document_id, two
-            # different filenames). Also use enumerate-then-delete-by-id rather
-            # than delete_by_query, which is silently no-opped under DLS.
+            # different filenames). Enumerate visible chunks with the scoped
+            # user client, then delete concrete ids with the trusted backend
+            # client; direct user writes are intentionally not required.
             if self.session_manager:
-                from config.settings import get_index_name
+                from config.settings import clients, get_index_name
                 from utils.opensearch_delete import (
                     collect_visible_document_ids,
                     delete_document_ids,
                 )
+
+                write_client = clients.opensearch
+                if write_client is None:
+                    raise RuntimeError("Backend OpenSearch write client is unavailable")
 
                 opensearch_client = self.session_manager.get_user_opensearch_client(
                     owner_user_id, jwt_token
@@ -139,7 +142,7 @@ class LangflowConnectorService:
                         query={"term": {"document_id": document.id}},
                     )
                     deleted_count = await delete_document_ids(
-                        opensearch_client,
+                        write_client,
                         index=get_index_name(),
                         document_ids=chunk_ids,
                         refresh=True,
@@ -411,10 +414,9 @@ class LangflowConnectorService:
 
         expanded_file_ids = file_ids  # Default to original IDs
 
-        # Only attempt folder expansion for connectors that use cfg-based filtering
-        # (Google Drive, OneDrive, SharePoint). Connectors without a cfg attribute
-        # (e.g. IBM COS) receive pre-filtered file IDs and must NOT call list_files()
-        # here — doing so would re-list all files from all buckets, overwriting the
+        # Only attempt folder expansion for connectors that use cfg-based filtering.
+        # Direct-sync connectors receive pre-filtered file IDs and must NOT call
+        # list_files() here — doing so would re-list all files, overwriting the
         # carefully selected IDs passed in.
         if cfg is not None:
             try:

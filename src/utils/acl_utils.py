@@ -92,7 +92,10 @@ async def should_update_acl(document_id: str, new_acl: DocumentACL, opensearch_c
 
 
 async def update_document_acl(
-    document_id: str, acl: DocumentACL, opensearch_client
+    document_id: str,
+    acl: DocumentACL,
+    opensearch_client,
+    write_opensearch_client=None,
 ) -> dict[str, Any]:
     """
     Update ACL for all chunks of a document.
@@ -103,7 +106,8 @@ async def update_document_acl(
     Args:
         document_id: Document identifier
         acl: New ACL to apply
-        opensearch_client: OpenSearch client instance
+        opensearch_client: user-scoped OpenSearch client for visibility checks
+        write_opensearch_client: trusted OpenSearch client for mutations
 
     Returns:
         Dict with status ("unchanged" or "updated") and chunks_updated count
@@ -114,9 +118,13 @@ async def update_document_acl(
     if not should_update:
         return {"status": "unchanged", "chunks_updated": 0}
 
+    write_client = write_opensearch_client
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
+
     # Bulk update all chunks for this document
     try:
-        response = await opensearch_client.update_by_query(
+        response = await write_client.update_by_query(
             index="documents",
             body={
                 "query": {"term": {"document_id": document_id}},
@@ -145,7 +153,9 @@ async def update_document_acl(
 
 
 async def batch_update_acls(
-    acl_updates: list[tuple[str, DocumentACL]], opensearch_client
+    acl_updates: list[tuple[str, DocumentACL]],
+    opensearch_client,
+    write_opensearch_client=None,
 ) -> dict[str, Any]:
     """
     Batch update ACLs for multiple documents.
@@ -157,7 +167,8 @@ async def batch_update_acls(
 
     Args:
         acl_updates: List of (document_id, acl) tuples
-        opensearch_client: OpenSearch client instance
+        opensearch_client: user-scoped OpenSearch client for visibility checks
+        write_opensearch_client: trusted OpenSearch client for mutations
 
     Returns:
         Dict with status, documents_updated count, and chunks_updated count
@@ -184,9 +195,13 @@ async def batch_update_acls(
             "skipped": len(acl_updates),
         }
 
+    write_client = write_opensearch_client
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
+
     # Bulk update chunks for each document (parallelized)
     update_tasks = [
-        opensearch_client.update_by_query(
+        write_client.update_by_query(
             index="documents",
             body={
                 "query": {"term": {"document_id": doc_id}},

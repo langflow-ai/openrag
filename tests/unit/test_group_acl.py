@@ -46,7 +46,6 @@ def test_opensearch_jwt_does_not_include_connector_group_roles(monkeypatch):
     from session_manager import SessionManager, User
 
     monkeypatch.setenv("JWT_SIGNING_KEY", "unit-test-secret-with-32-bytes!!")
-    monkeypatch.delenv("OPENSEARCH_JWT_TOKEN", raising=False)
 
     manager = SessionManager("test")
     user = User(user_id="user-1", email="user@example.com", name="User")
@@ -67,7 +66,6 @@ def test_opensearch_jwt_default_ttl_tracks_ingestion_timeout(monkeypatch):
     from session_manager import SessionManager, User
 
     monkeypatch.setenv("JWT_SIGNING_KEY", "unit-test-secret-with-32-bytes!!")
-    monkeypatch.delenv("OPENSEARCH_JWT_TOKEN", raising=False)
     monkeypatch.delenv("OPENRAG_OPENSEARCH_JWT_TTL", raising=False)
     monkeypatch.setattr("config.settings.INGESTION_TIMEOUT", 3600)
 
@@ -191,6 +189,19 @@ def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
         index_permissions = roles["openrag_user_role"]["index_permissions"]
+        cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
+        assert "indices:data/write/bulk" not in cluster_permissions
+        assert "indices:data/write/index" not in cluster_permissions
+        assert not any("alerting" in permission for permission in cluster_permissions)
+
+        document_permission = index_permissions[0]
+        document_actions = document_permission["allowed_actions"]
+        assert "read" in document_actions
+        assert "crud" not in document_actions
+        assert "indices:data/write/index" not in document_actions
+        assert "indices:data/write/update/byquery" not in document_actions
+        assert "indices:admin/mappings/put" not in document_actions
+
         dls = index_permissions[0]["dls"]
         assert '{"term":{"owner":"${user.name}"}}' in dls
         assert '{"term":{"owner":"${attr.jwt.email}"}}' in dls
@@ -536,7 +547,6 @@ async def test_connector_services_mint_plain_jwt_when_session_user_is_missing(
     from session_manager import SessionManager
 
     monkeypatch.setenv("JWT_SIGNING_KEY", "unit-test-secret-with-32-bytes!!")
-    monkeypatch.delenv("OPENSEARCH_JWT_TOKEN", raising=False)
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     @dataclass

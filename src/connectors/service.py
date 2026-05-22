@@ -60,16 +60,14 @@ class ConnectorService:
                 name=user_id,
                 provider="connector",
             )
+            self.session_manager.users[user_id] = user
         if user is None:
             return self.session_manager.get_effective_jwt_token(user_id, jwt_token)
 
-        from services.group_acl_service import GroupACLService
-
-        return await GroupACLService(self, cache_ttl_seconds=0).create_opensearch_jwt(
-            self.session_manager,
-            user,
-            fallback_jwt_token=jwt_token,
-        )
+        effective_token = jwt_token or user.jwt_token
+        if effective_token is None and getattr(self.session_manager, "private_key", None) is not None:
+            return self.session_manager.create_jwt_token(user)
+        return self.session_manager.get_effective_jwt_token(user.user_id, effective_token)
 
     async def process_connector_document(
         self,
@@ -154,12 +152,16 @@ class ConnectorService:
         opensearch_client = self.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
         )
+        write_client = self.clients.opensearch
+        if write_client is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
 
         # Update ACL if changed (hash-based skip optimization)
         acl_result = await update_document_acl(
             document_id=document.id,
             acl=document.acl,
             opensearch_client=opensearch_client,
+            write_opensearch_client=write_client,
         )
 
         # Log ACL update result
@@ -173,9 +175,10 @@ class ConnectorService:
             logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
 
         # Update other metadata fields (source_url, timestamps, etc.)
-        # Use update_by_query for efficiency
+        # Use the backend client for writes; the scoped client above is only
+        # used for DLS visibility/ACL-change checks.
         try:
-            await opensearch_client.update_by_query(
+            await write_client.update_by_query(
                 index=self.index_name,
                 body={
                     "query": {"term": {"document_id": document.id}},

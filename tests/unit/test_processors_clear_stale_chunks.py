@@ -53,7 +53,7 @@ def _make_processor_with_mocks():
     return processor, opensearch_client
 
 
-def _patch_embedding_pipeline(monkeypatch, chunk_count: int):
+def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     """Stub out the docling / embedding / index-mapping side of
     process_document_standard so the test focuses on the OpenSearch write
     ordering. `chunk_count` controls how many chunks the simulated text-file
@@ -99,6 +99,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int):
     )
     fake_clients = MagicMock()
     fake_clients.patched_embedding_client = fake_embed_client
+    fake_clients.opensearch = write_client
     monkeypatch.setattr(processors_mod, "clients", fake_clients)
 
 
@@ -112,7 +113,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     DLS and must NOT be used.
     """
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=3)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=3, write_client=opensearch_client)
 
     stale_chunk_ids = ["abc123_0", "abc123_1", "abc123_2", "abc123_3", "abc123_4"]
     op_order: list[tuple[str, dict]] = []
@@ -201,7 +202,7 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
     """A transient delete failure must be logged and swallowed — the per-chunk
     upsert still runs so the sync isn't worse off than today's behavior."""
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=2)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=2, write_client=opensearch_client)
 
     # Have the enumerate step itself blow up — that's the only "delete failure"
     # surface the helper exposes, since per-id delete swallows NotFoundError.

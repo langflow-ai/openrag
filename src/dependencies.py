@@ -268,11 +268,8 @@ async def _attach_opensearch_jwt(
     if user is None:
         return None
 
-    from config.settings import IBM_AUTH_ENABLED
-
     services = getattr(getattr(request, "app", None), "state", None)
     services = getattr(services, "services", {}) or {}
-    group_acl_service = services.get("group_acl_service")
     dls_principal_service = services.get("dls_principal_service")
 
     if dls_principal_service is not None:
@@ -288,22 +285,9 @@ async def _attach_opensearch_jwt(
 
     request.state.opensearch_group_roles = []
 
-    # IBM uses the upstream OpenSearch credential/JWT path. We still refresh
-    # the DLS lookup row above so connector groups and aliases can be resolved
-    # without relying on JWT role claims.
-    if IBM_AUTH_ENABLED:
-        return user
-
-    if group_acl_service is not None:
-        jwt_token = await group_acl_service.create_opensearch_jwt(
-            session_manager,
-            user,
-            fallback_jwt_token=user.jwt_token,
-        )
-    else:
-        jwt_token = session_manager.create_opensearch_jwt_token(user)
-    if jwt_token:
-        return dataclasses.replace(user, jwt_token=jwt_token)
+    # Keep the user's existing OpenSearch credential/session token. Connector
+    # groups and aliases are refreshed above into the DLS lookup index, so we
+    # do not mint a per-request OpenSearch JWT.
     return user
 
 
@@ -415,20 +399,16 @@ def require_all_permissions(required_perms: Sequence[str]):
 
 
 # ─────────────────────────────────────────────
-# IBM AMS authentication helper
+# Upstream authentication helper
 # ─────────────────────────────────────────────
 
 
 async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
-    """Authenticate via IBM AMS.
+    """Authenticate via upstream auth.
 
-    0. X-IBM-LH-Credentials header (configurable via IBM_CREDENTIALS_HEADER) —
-       injected by Traefik on every forwarded request. Contains Basic credentials
-       for OpenSearch. Decoded and persisted to connections.json per user.
-    1. ibm-openrag-session cookie — set by Traefik after validating credentials
-       with AMS. JWT is decoded without re-validation (Traefik already validated).
-    2. ibm-auth-basic cookie — local dev fallback set by our ibm_login endpoint
-       when Traefik is not present.
+    0. Configured credentials header.
+    1. Configured session cookie.
+    2. Local dev basic-auth cookie.
 
     If *required* is True, raises HTTP 401 when none is present.
     If *required* is False, returns None instead of raising.
@@ -518,8 +498,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = user
         return user
 
-    # ── Option 1: ibm-openrag-session cookie (production via Traefik) ───
-    # ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
     if ibm_token and user_id:
         logger.debug("[AUTH] IBM JWT cookie present and user_id found")
         logger.debug("[AUTH] LH credentials not available in header, reading from connections.json")
@@ -564,7 +542,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = None
         return None
 
-    # ── Option 2: ibm-auth-basic cookie (local dev, no Traefik) ─────────
     auth_header = request.cookies.get("ibm-auth-basic", "")
     if auth_header.startswith("Basic "):
         logger.debug("[AUTH] Debug mode enabled, extracting IBM LH credentials from cookie")
@@ -609,7 +586,7 @@ async def get_current_user(
     from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
     from session_manager import AnonymousUser
 
-    # IBM AMS cookie auth takes priority when enabled
+    # Upstream cookie auth takes priority when enabled.
     if IBM_AUTH_ENABLED:
         logger.debug("[AUTH] IBM auth mode enabled, getting current user")
         user = await _get_ibm_user(request, required=True)
@@ -645,7 +622,7 @@ async def get_optional_user(
     from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
     from session_manager import AnonymousUser
 
-    # IBM AMS cookie auth takes priority when enabled
+    # Upstream cookie auth takes priority when enabled.
     if IBM_AUTH_ENABLED:
         logger.debug("[AUTH] IBM auth mode enabled, getting optional user")
         user = await _get_ibm_user(request, required=False)
@@ -679,18 +656,18 @@ async def get_api_key_user_async(
     session_manager=Depends(get_session_manager),
 ) -> User:
     """
-    Async dependency: require API key or IBM authentication.
+    Async dependency: require API key or upstream authentication.
 
     Accepts:
       - X-API-Key: orag_... header
       - Authorization: Bearer orag_... header
-      - X-Username + X-Api-Key headers (when IBM_AUTH_ENABLED)
+      - X-Username + X-Api-Key headers when upstream auth mode is enabled
 
     Raises HTTP 401 if no valid credentials are provided.
     """
     from config.settings import IBM_AUTH_ENABLED
 
-    # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
+    # Upstream auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK.
     if IBM_AUTH_ENABLED:
         ibm_username = request.headers.get("X-Username")
         ibm_api_key = request.headers.get("X-Api-Key")

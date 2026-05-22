@@ -16,7 +16,9 @@ class KnowledgeFilterService:
         # performs trusted writes with the admin client.
         from config.settings import clients
 
-        return clients.opensearch or self._user_client(user_id, jwt_token)
+        if clients.opensearch is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
+        return clients.opensearch
 
     async def create_knowledge_filter(
         self, filter_doc: dict[str, Any], user_id: str = None, jwt_token: str = None
