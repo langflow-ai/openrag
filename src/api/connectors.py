@@ -1122,8 +1122,10 @@ async def connector_sync_preview(
             status_code=200,
         )
     except Exception as e:
-        logger.error("Sync preview failed", connector_type=connector_type, error=str(e))
-        return JSONResponse({"error": f"Sync preview failed: {str(e)}"}, status_code=500)
+        logger.error(
+            "Sync preview failed", connector_type=connector_type, error=str(e), exc_info=True
+        )
+        return JSONResponse({"error": "Sync preview failed"}, status_code=500)
 
 
 async def connectors_sync_all_preview(
@@ -1174,8 +1176,8 @@ async def connectors_sync_all_preview(
             status_code=200,
         )
     except Exception as e:
-        logger.error("Sync-all preview failed", error=str(e))
-        return JSONResponse({"error": f"Sync-all preview failed: {str(e)}"}, status_code=500)
+        logger.error("Sync-all preview failed", error=str(e), exc_info=True)
+        return JSONResponse({"error": "Sync-all preview failed"}, status_code=500)
 
 
 async def connector_token(
