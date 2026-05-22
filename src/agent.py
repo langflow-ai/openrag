@@ -1,3 +1,5 @@
+from typing import Any
+
 from services.conversation_persistence_service import conversation_persistence
 from utils.logging_config import get_logger
 
@@ -5,6 +7,64 @@ logger = get_logger(__name__)
 
 # In-memory storage for active conversation threads (preserves function calls)
 active_conversations: dict[str, dict[str, dict]] = {}
+
+
+def _as_mapping(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump()
+        return dumped if isinstance(dumped, dict) else None
+    if hasattr(value, "__dict__"):
+        return vars(value)
+    return None
+
+
+def _source_from_mapping(value: dict[str, Any]) -> dict[str, Any] | None:
+    if "text" not in value:
+        return None
+    if not any(key in value for key in ("filename", "mimetype", "source_url", "page", "score")):
+        return None
+    return {
+        "filename": value.get("filename", ""),
+        "text": value.get("text", ""),
+        "score": value.get("score", 0),
+        "page": value.get("page"),
+        "mimetype": value.get("mimetype"),
+    }
+
+
+def _extract_retrieval_sources(value: Any, *, max_depth: int = 16) -> list[dict[str, Any]]:
+    """Extract retrieval result rows from Langflow/OpenAI response shapes."""
+    sources: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+
+    def visit(item: Any, depth: int) -> None:
+        if depth > max_depth or item is None:
+            return
+
+        mapping = _as_mapping(item)
+        if mapping is not None:
+            source = _source_from_mapping(mapping)
+            if source is not None:
+                key = (
+                    source.get("filename"),
+                    source.get("page"),
+                    source.get("text"),
+                )
+                if key not in seen:
+                    seen.add(key)
+                    sources.append(source)
+            for child in mapping.values():
+                visit(child, depth + 1)
+            return
+
+        if isinstance(item, (list, tuple)):
+            for child in item:
+                visit(child, depth + 1)
+
+    visit(value, 0)
+    return sources
 
 
 def _extract_delta_text(delta) -> str:
@@ -715,61 +775,9 @@ async def async_langflow_chat(
             message_count=len(conversation_state["messages"]),
         )
 
-    # Extract sources from retrieval tool calls in the response
-    sources = []
+    sources = _extract_retrieval_sources(response_obj)
 
-    # Layer 1: Structured output items (OpenAI Responses API format).
-    # Relaxed: check for any output item with a non-empty `results` field,
-    # regardless of `type` string (Langflow may use different type names).
-    if hasattr(response_obj, "output") and response_obj.output:
-        for output_item in response_obj.output:
-            for result in getattr(output_item, "results", None) or []:
-                rd = (
-                    result.model_dump()
-                    if hasattr(result, "model_dump")
-                    else (result if isinstance(result, dict) else {})
-                )
-                if "text" in rd:
-                    sources.append(
-                        {
-                            "filename": rd.get("filename", ""),
-                            "text": rd.get("text", ""),
-                            "score": rd.get("score", 0),
-                            "page": rd.get("page"),
-                            "mimetype": rd.get("mimetype"),
-                        }
-                    )
-
-    # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
-    # Langflow may embed retrieval results directly in the response dict rather than
-    # inside typed output items.
-    if not sources:
-        resp_dict = (
-            response_obj.model_dump()
-            if hasattr(response_obj, "model_dump")
-            else getattr(response_obj, "__dict__", {})
-        )
-        implicit_results = (
-            resp_dict.get("results")
-            or resp_dict.get("outputs")
-            or resp_dict.get("retrieved_documents")
-            or resp_dict.get("retrieval_results")
-            or []
-        )
-        if isinstance(implicit_results, list):
-            for result in implicit_results:
-                if isinstance(result, dict) and "text" in result:
-                    sources.append(
-                        {
-                            "filename": result.get("filename", ""),
-                            "text": result.get("text", ""),
-                            "score": result.get("score", 0),
-                            "page": result.get("page"),
-                            "mimetype": result.get("mimetype"),
-                        }
-                    )
-
-    # Layer 3: Citation-text fallback.
+    # Citation-text fallback.
     # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.
     # This is the last-resort fallback when Langflow's response object carries no
     # structured retrieval data.

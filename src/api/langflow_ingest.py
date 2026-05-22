@@ -41,19 +41,11 @@ def _extract_ingest_token(
     return token
 
 
-def _validate_chunk_ids(body: LangflowIngestBatch, document_id: str) -> None:
-    """Ensure Langflow can only submit chunk ids for the token's document."""
+def _authorized_chunk_id(body: LangflowIngestBatch, document_id: str, index: int) -> str:
+    """Build a backend-owned chunk id inside the token's document namespace."""
     if not document_id:
         raise HTTPException(status_code=403, detail="Langflow ingest token is missing document id")
-
-    prefix = f"{document_id}_"
-    for chunk in body.chunks:
-        suffix = chunk.id.removeprefix(prefix)
-        if suffix == chunk.id or not suffix.isdigit():
-            raise HTTPException(
-                status_code=403,
-                detail="Langflow ingest chunk id is outside the authorized document",
-            )
+    return f"{document_id}_{body.batch_id}_{index}"
 
 
 async def ingest_langflow_chunks(
@@ -71,17 +63,16 @@ async def ingest_langflow_chunks(
 
     if body.ingest_run_id != context.ingest_run_id:
         raise HTTPException(status_code=403, detail="Ingest run mismatch")
-    _validate_chunk_ids(body, context.document_id)
 
     chunks = [
         DocumentIndexChunk(
-            chunk_id=chunk.id,
+            chunk_id=_authorized_chunk_id(body, context.document_id, index),
             text=chunk.text,
             vector=chunk.vector,
             page=chunk.page,
-            metadata=chunk.metadata,
+            metadata={**chunk.metadata, "langflow_chunk_id": chunk.id},
         )
-        for chunk in body.chunks
+        for index, chunk in enumerate(body.chunks)
     ]
     try:
         result = await writer.index_chunks(context, chunks, final=body.final)

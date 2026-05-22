@@ -5,15 +5,16 @@ Provides chat functionality with streaming support and conversation history.
 Uses API key authentication. Routes through Langflow (chat_service.langflow_chat).
 """
 import json
-from typing import Optional, Any, Dict
+from typing import Any
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
-from utils.logging_config import get_logger
-from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
-from dependencies import get_chat_service, get_session_manager, get_api_key_user_async
+from pydantic import BaseModel
+
+from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from dependencies import get_api_key_user_async, get_chat_service, get_session_manager
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,26 +26,18 @@ def _openrag_user_id(user: User) -> str:
 class ChatV1Body(BaseModel):
     message: str
     stream: bool = False
-    chat_id: Optional[str] = None
-    filters: Optional[Dict[str, Any]] = None
+    chat_id: str | None = None
+    filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
-    filter_id: Optional[str] = None
+    filter_id: str | None = None
 
 
 def _extract_sources(item: dict) -> list[dict]:
     """Extract sources from a retrieval tool call item."""
-    sources = []
-    for result in item.get("results", []):
-        if isinstance(result, dict) and "text" in result:
-            sources.append({
-                "filename": result.get("filename", ""),
-                "text": result.get("text", ""),
-                "score": result.get("score", 0),
-                "page": result.get("page"),
-                "mimetype": result.get("mimetype"),
-            })
-    return sources
+    from agent import _extract_retrieval_sources
+
+    return _extract_retrieval_sources(item)
 
 
 async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
@@ -141,7 +134,7 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        chat_id_container = {}
+        chat_id_container: dict[str, str | None] = {}
         return StreamingResponse(
             _transform_stream_to_sse(raw_stream, chat_id_container),
             media_type="text/event-stream",

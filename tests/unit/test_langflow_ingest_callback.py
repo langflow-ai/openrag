@@ -70,7 +70,8 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
     assert indexed_context.owner == "user-1"
     assert indexed_context.allowed_users == ["user@example.com"]
     assert indexed_context.allowed_principals == ["u:ms:tenant:user"]
-    assert chunks[0].chunk_id == "doc-1_0"
+    assert chunks[0].chunk_id == "doc-1_1_0"
+    assert chunks[0].metadata["langflow_chunk_id"] == "doc-1_0"
     assert chunks[0].metadata["owner"] == "forged-owner"
     assert final is True
 
@@ -85,7 +86,7 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
 
 
 @pytest.mark.asyncio
-async def test_langflow_ingest_callback_rejects_foreign_chunk_ids():
+async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
     context = DocumentIndexContext(
         document_id="doc-1",
@@ -118,17 +119,17 @@ async def test_langflow_ingest_callback_rejects_foreign_chunk_ids():
         ],
     )
 
-    with pytest.raises(HTTPException) as exc:
-        await ingest_langflow_chunks(
-            body,
-            authorization=f"Bearer {token}",
-            x_openrag_ingest_token=None,
-            token_service=token_service,
-            writer=writer,
-        )
+    await ingest_langflow_chunks(
+        body,
+        authorization=f"Bearer {token}",
+        x_openrag_ingest_token=None,
+        token_service=token_service,
+        writer=writer,
+    )
 
-    assert exc.value.status_code == 403
-    assert writer.calls == []
+    _, chunks, _ = writer.calls[0]
+    assert chunks[0].chunk_id == "doc-1_1_0"
+    assert chunks[0].metadata["langflow_chunk_id"] == "other-doc_0"
 
 
 @pytest.mark.asyncio
