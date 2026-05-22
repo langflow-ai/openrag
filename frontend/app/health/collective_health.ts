@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 interface PodStatus {
   alive: boolean;
 }
@@ -10,10 +11,7 @@ interface CollectiveHealthResponse {
   };
   timestamp: string;
 }
-async function checkPodLiveness(
-  url: string,
-  timeout = 3000
-): Promise<boolean> {
+async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   try {
@@ -29,8 +27,7 @@ async function checkPodLiveness(
   }
 }
 export async function GET() {
-  const backendHost =
-    process.env.OPENRAG_BACKEND_HOST || "openrag-be";
+  const backendHost = process.env.OPENRAG_BACKEND_HOST || "openrag-be";
   const langflowHost = process.env.OPENRAG_LANGFLOW_HOST || "openrag-lf";
   const [backendAlive, langflowAlive] = await Promise.all([
     checkPodLiveness(`http://${backendHost}:8000/health`),
