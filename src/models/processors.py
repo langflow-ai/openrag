@@ -550,23 +550,17 @@ class ConnectorFileProcessor(TaskProcessor):
             if not self.user_id:
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
 
-            opensearch_client = (
-                self.document_service.session_manager.get_user_opensearch_client(
-                    self.user_id, self.jwt_token
-                )
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                self.user_id, self.jwt_token
             )
             if await self.check_filename_exists(document.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.FAILED
-                    file_task.error = (
-                        f"File with name '{document.filename}' already exists"
-                    )
+                    file_task.error = f"File with name '{document.filename}' already exists"
                     file_task.updated_at = time.time()
                     upload_task.failed_files += 1
                     return
-                await self.delete_document_by_filename(
-                    document.filename, opensearch_client
-                )
+                await self.delete_document_by_filename(document.filename, opensearch_client)
 
             # Create temporary file from document content
             suffix = get_file_extension(document.mimetype)
@@ -698,15 +692,11 @@ class LangflowConnectorFileProcessor(TaskProcessor):
             if await self.check_filename_exists(document.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.FAILED
-                    file_task.error = (
-                        f"File with name '{document.filename}' already exists"
-                    )
+                    file_task.error = f"File with name '{document.filename}' already exists"
                     file_task.updated_at = time.time()
                     upload_task.failed_files += 1
                     return
-                await self.delete_document_by_filename(
-                    document.filename, opensearch_client
-                )
+                await self.delete_document_by_filename(document.filename, opensearch_client)
 
             # Create temporary file and compute hash to check for duplicates
             suffix = get_file_extension(document.mimetype)

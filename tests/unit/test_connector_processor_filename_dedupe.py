@@ -65,9 +65,7 @@ def _wire_connector_processor(
     filename_exists: bool,
 ):
     opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(
-        return_value=_make_search_response(filename_exists)
-    )
+    opensearch_client.search = AsyncMock(return_value=_make_search_response(filename_exists))
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 3})
     opensearch_client.exists = AsyncMock(return_value=False)
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
@@ -90,16 +88,12 @@ def _wire_connector_processor(
 async def test_connector_processor_fails_when_filename_exists_and_replace_false():
     processor = _build_connector_processor(replace_duplicates=False)
     document = _make_document()
-    opensearch_client = _wire_connector_processor(
-        processor, document, filename_exists=True
-    )
+    opensearch_client = _wire_connector_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
 
-    with patch.object(
-        processor, "process_document_standard", new=AsyncMock()
-    ) as mock_process:
+    with patch.object(processor, "process_document_standard", new=AsyncMock()) as mock_process:
         await processor.process_item(upload_task, "file-id-1", file_task)
 
     assert file_task.status == TaskStatus.FAILED
@@ -114,9 +108,7 @@ async def test_connector_processor_fails_when_filename_exists_and_replace_false(
 async def test_connector_processor_deletes_then_ingests_when_replace_true():
     processor = _build_connector_processor(replace_duplicates=True)
     document = _make_document()
-    opensearch_client = _wire_connector_processor(
-        processor, document, filename_exists=True
-    )
+    opensearch_client = _wire_connector_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -140,9 +132,7 @@ async def test_connector_processor_deletes_then_ingests_when_replace_true():
 async def test_connector_processor_proceeds_when_filename_absent():
     processor = _build_connector_processor(replace_duplicates=False)
     document = _make_document()
-    opensearch_client = _wire_connector_processor(
-        processor, document, filename_exists=False
-    )
+    opensearch_client = _wire_connector_processor(processor, document, filename_exists=False)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -189,9 +179,7 @@ def _wire_langflow_processor(
     hash_exists: bool = False,
 ):
     opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(
-        return_value=_make_search_response(filename_exists)
-    )
+    opensearch_client.search = AsyncMock(return_value=_make_search_response(filename_exists))
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 2})
     opensearch_client.exists = AsyncMock(return_value=hash_exists)
     processor.langflow_connector_service.session_manager.get_user_opensearch_client.return_value = (
@@ -200,9 +188,7 @@ def _wire_langflow_processor(
 
     connector = MagicMock()
     connector.get_file_content = AsyncMock(return_value=document)
-    processor.langflow_connector_service.get_connector = AsyncMock(
-        return_value=connector
-    )
+    processor.langflow_connector_service.get_connector = AsyncMock(return_value=connector)
     connection = MagicMock()
     connection.connector_type = "sharepoint"
     processor.langflow_connector_service.connection_manager = MagicMock()
@@ -216,9 +202,7 @@ def _wire_langflow_processor(
 async def test_langflow_connector_processor_fails_on_filename_collision():
     processor = _build_langflow_processor(replace_duplicates=False)
     document = _make_document()
-    opensearch_client = _wire_langflow_processor(
-        processor, document, filename_exists=True
-    )
+    opensearch_client = _wire_langflow_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -236,9 +220,7 @@ async def test_langflow_connector_processor_fails_on_filename_collision():
 async def test_langflow_connector_processor_overwrites_when_replace_true():
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
-    opensearch_client = _wire_langflow_processor(
-        processor, document, filename_exists=True
-    )
+    opensearch_client = _wire_langflow_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -256,9 +238,7 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved():
     is reported as 'unchanged' — same as before this change."""
     processor = _build_langflow_processor(replace_duplicates=False)
     document = _make_document()
-    _wire_langflow_processor(
-        processor, document, filename_exists=False, hash_exists=True
-    )
+    _wire_langflow_processor(processor, document, filename_exists=False, hash_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
