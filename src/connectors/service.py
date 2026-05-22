@@ -318,6 +318,7 @@ class ConnectorService:
         jwt_token: str = None,
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -442,6 +443,7 @@ class ConnectorService:
             ),
             models_service=self.models_service,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
         # Create custom task using TaskService
