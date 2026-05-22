@@ -65,7 +65,10 @@ class ConnectorService:
             return self.session_manager.get_effective_jwt_token(user_id, jwt_token)
 
         effective_token = jwt_token or user.jwt_token
-        if effective_token is None and getattr(self.session_manager, "private_key", None) is not None:
+        if (
+            effective_token is None
+            and getattr(self.session_manager, "private_key", None) is not None
+        ):
             return self.session_manager.create_jwt_token(user)
         return self.session_manager.get_effective_jwt_token(user.user_id, effective_token)
 

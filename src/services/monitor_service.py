@@ -42,7 +42,9 @@ class MonitorService:
             opensearch_client = self._trusted_opensearch_client()
 
             subscription_id = str(uuid.uuid4())
-            webhook_url = f"{self.webhook_base_url}/knowledge-filter/{filter_id}/webhook/{subscription_id}"
+            webhook_url = (
+                f"{self.webhook_base_url}/knowledge-filter/{filter_id}/webhook/{subscription_id}"
+            )
 
             # Convert knowledge filter query to monitor query format
             monitor_query = self._convert_kf_query_to_monitor_query(query_data)
@@ -83,9 +85,7 @@ class MonitorService:
                         "document_level_trigger": {
                             "name": f"KF Trigger: {filter_name}",
                             "severity": "1",
-                            "condition": {
-                                "script": {"source": "return true", "lang": "painless"}
-                            },
+                            "condition": {"script": {"source": "return true", "lang": "painless"}},
                             "actions": [
                                 {
                                     "name": f"KF Webhook Action: {filter_name}",
@@ -135,9 +135,7 @@ class MonitorService:
         except Exception as e:
             return {"success": False, "error": f"Monitor creation failed: {str(e)}"}
 
-    async def delete_monitor(
-        self, monitor_id: str, user_id: str, jwt_token: str
-    ) -> dict[str, Any]:
+    async def delete_monitor(self, monitor_id: str, user_id: str, jwt_token: str) -> dict[str, Any]:
         """Delete a document-level monitor"""
         try:
             opensearch_client = self._trusted_opensearch_client()
@@ -159,9 +157,7 @@ class MonitorService:
         except Exception as e:
             return {"success": False, "error": f"Monitor deletion failed: {str(e)}"}
 
-    async def get_monitor(
-        self, monitor_id: str, user_id: str, jwt_token: str
-    ) -> dict[str, Any]:
+    async def get_monitor(self, monitor_id: str, user_id: str, jwt_token: str) -> dict[str, Any]:
         """Get monitor details"""
         try:
             opensearch_client = self._trusted_opensearch_client()
@@ -219,9 +215,7 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error(
-                "Error listing monitors for user", user_id=user_id, error=str(e)
-            )
+            logger.error("Error listing monitors for user", user_id=user_id, error=str(e))
             return []
 
     async def list_monitors_for_filter(
@@ -265,14 +259,10 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error(
-                "Error listing monitors for filter", filter_id=filter_id, error=str(e)
-            )
+            logger.error("Error listing monitors for filter", filter_id=filter_id, error=str(e))
             return []
 
-    async def _get_or_create_webhook_destination(
-        self, webhook_url: str, opensearch_client
-    ) -> str:
+    async def _get_or_create_webhook_destination(self, webhook_url: str, opensearch_client) -> str:
         """Get or create a webhook destination for notifications"""
         try:
             # Try to find existing webhook destination
@@ -284,10 +274,7 @@ class MonitorService:
 
             # Check if we already have a destination for this webhook URL
             for config in search_response.get("config_list", []):
-                if (
-                    config.get("config", {}).get("webhook", {}).get("url")
-                    == webhook_url
-                ):
+                if config.get("config", {}).get("webhook", {}).get("url") == webhook_url:
                     return config["config_id"]
 
             # Create new webhook destination
@@ -314,9 +301,7 @@ class MonitorService:
         except Exception as e:
             raise RuntimeError(f"Failed to create webhook destination: {str(e)}") from e
 
-    def _convert_kf_query_to_monitor_query(
-        self, query_data: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _convert_kf_query_to_monitor_query(self, query_data: dict[str, Any]) -> dict[str, Any]:
         """Convert knowledge filter query format to OpenSearch monitor query format"""
         # This assumes the query_data contains an OpenSearch query structure
         # You may need to adjust this based on your actual knowledge filter query format

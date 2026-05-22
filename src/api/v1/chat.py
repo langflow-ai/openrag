@@ -4,6 +4,7 @@ Public API v1 Chat endpoint.
 Provides chat functionality with streaming support and conversation history.
 Uses API key authentication. Routes through Langflow (chat_service.langflow_chat).
 """
+
 import json
 from typing import Any
 
@@ -113,6 +114,7 @@ async def chat_create_endpoint(
     jwt_token = user.jwt_token
     if body.chat_id:
         from api.chat import _assert_owns
+
         await _assert_owns(body.chat_id, storage_user_id)
 
     if body.filters:
@@ -138,7 +140,11 @@ async def chat_create_endpoint(
         return StreamingResponse(
             _transform_stream_to_sse(raw_stream, chat_id_container),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
     else:
         result = await chat_service.langflow_chat(
@@ -153,11 +159,13 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        return JSONResponse({
-            "response": result.get("response", ""),
-            "chat_id": result.get("response_id"),
-            "sources": result.get("sources", []),
-        })
+        return JSONResponse(
+            {
+                "response": result.get("response", ""),
+                "chat_id": result.get("response_id"),
+                "sources": result.get("sources", []),
+            }
+        )
 
 
 async def chat_list_endpoint(
@@ -210,20 +218,28 @@ async def chat_get_endpoint(
                 "timestamp": msg.get("timestamp"),
             }
             # Include token usage if available (from Responses API)
-            usage = msg.get("response_data", {}).get("usage") if isinstance(msg.get("response_data"), dict) else None
+            usage = (
+                msg.get("response_data", {}).get("usage")
+                if isinstance(msg.get("response_data"), dict)
+                else None
+            )
             if usage:
                 message_data["usage"] = usage
             messages.append(message_data)
 
-        return JSONResponse({
-            "chat_id": conversation.get("response_id"),
-            "title": conversation.get("title", ""),
-            "created_at": conversation.get("created_at"),
-            "last_activity": conversation.get("last_activity"),
-            "messages": messages,
-        })
+        return JSONResponse(
+            {
+                "chat_id": conversation.get("response_id"),
+                "title": conversation.get("title", ""),
+                "created_at": conversation.get("created_at"),
+                "last_activity": conversation.get("last_activity"),
+                "messages": messages,
+            }
+        )
     except Exception as e:
-        logger.error("Failed to get conversation", error=str(e), user_id=user.user_id, chat_id=chat_id)
+        logger.error(
+            "Failed to get conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
+        )
         return JSONResponse({"error": f"Failed to get conversation: {str(e)}"}, status_code=500)
 
 
@@ -235,6 +251,7 @@ async def chat_delete_endpoint(
     """Delete a conversation. DELETE /v1/chat/{chat_id}"""
     try:
         from api.chat import _assert_owns
+
         storage_user_id = _openrag_user_id(user)
         await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.delete_session(storage_user_id, chat_id)
@@ -250,5 +267,7 @@ async def chat_delete_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id)
+        logger.error(
+            "Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
+        )
         return JSONResponse({"error": f"Failed to delete conversation: {str(e)}"}, status_code=500)
