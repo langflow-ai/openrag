@@ -898,16 +898,12 @@ class LangflowFileProcessor(TaskProcessor):
 
             file_tuple = (langflow_filename, content, content_type)
 
-            # Get JWT token using same logic as DocumentFileProcessor
-            # This will handle anonymous JWT creation if needed
             effective_jwt = self.jwt_token
             if self.session_manager and not effective_jwt:
-                # Let session manager handle anonymous JWT creation if needed
-                self.session_manager.get_user_opensearch_client(self.owner_user_id, self.jwt_token)
-                # The session manager would have created anonymous JWT if needed
-                # Get it from the session manager's internal state
-                if hasattr(self.session_manager, "_anonymous_jwt"):
-                    effective_jwt = self.session_manager._anonymous_jwt
+                effective_jwt = self.session_manager.get_effective_jwt_token(
+                    self.owner_user_id,
+                    None,
+                )
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}

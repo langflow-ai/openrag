@@ -203,9 +203,7 @@ async def _ingest_default_documents_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -267,9 +265,7 @@ async def _ingest_default_documents_url_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -385,9 +381,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
     anonymous_user = AnonymousUser()
     effective_jwt = None
     if session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     opensearch_client = session_manager.get_user_opensearch_client(
         anonymous_user.user_id, effective_jwt

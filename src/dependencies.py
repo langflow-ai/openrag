@@ -263,10 +263,18 @@ async def _attach_opensearch_jwt(
     request: Request,
     user: User | None,
     session_manager,
+    token_hint: str | None = None,
 ) -> User | None:
     """Attach OpenSearch auth state and refresh DLS principal lookup state."""
     if user is None:
         return None
+
+    effective_token = session_manager.get_effective_jwt_token(
+        user.user_id,
+        token_hint if token_hint is not None else user.jwt_token,
+    )
+    if effective_token != user.jwt_token:
+        user = dataclasses.replace(user, jwt_token=effective_token)
 
     services = getattr(getattr(request, "app", None), "state", None)
     services = getattr(services, "services", {}) or {}
@@ -285,9 +293,6 @@ async def _attach_opensearch_jwt(
 
     request.state.opensearch_group_roles = []
 
-    # Keep the user's existing OpenSearch credential/session token. Connector
-    # groups and aliases are refreshed above into the DLS lookup index, so we
-    # do not mint a per-request OpenSearch JWT.
     return user
 
 
@@ -295,8 +300,14 @@ async def _attach_request_user(
     request: Request,
     user: User | None,
     session_manager,
+    token_hint: str | None = None,
 ) -> User | None:
-    user_with_opensearch_jwt = await _attach_opensearch_jwt(request, user, session_manager)
+    user_with_opensearch_jwt = await _attach_opensearch_jwt(
+        request,
+        user,
+        session_manager,
+        token_hint=token_hint,
+    )
     return await _attach_db_user_id(request, user_with_opensearch_jwt)
 
 
@@ -606,7 +617,12 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    return await _attach_request_user(request, user, session_manager)
+    return await _attach_request_user(
+        request,
+        user,
+        session_manager,
+        token_hint=auth_token,
+    )
 
 
 async def get_optional_user(
@@ -644,7 +660,12 @@ async def get_optional_user(
 
     user = session_manager.get_user_from_token(auth_token)
     if user:
-        return await _attach_request_user(request, user, session_manager)
+        return await _attach_request_user(
+            request,
+            user,
+            session_manager,
+            token_hint=auth_token,
+        )
     request.state.user = None
     request.state.db_user_id = None
     return None
