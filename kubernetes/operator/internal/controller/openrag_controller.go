@@ -119,7 +119,9 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
-	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
+	// Reconcile .env secrets and get their hashes to trigger pod restarts when secrets change
+	backendEnvHash, langflowEnvHash, err := r.reconcileEnvSecrets(ctx, instance, targetNS)
+	if err != nil {
 		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
@@ -128,7 +130,7 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "services", err)
 	}
-	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
+	if err := r.reconcileDeployments(ctx, instance, targetNS, backendEnvHash, langflowEnvHash); err != nil {
 		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
@@ -207,18 +209,23 @@ func parseEnvValue(envContent, key string) string {
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
 // All sensitive values (whether user-provided or generated) are consolidated into .env files.
-func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+// Returns SHA256 hashes of the backend and langflow .env content to use as pod annotations.
+func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (backendHash, langflowHash string, err error) {
 	// Build backend .env content with all secrets consolidated
 	backendEnvContent, err := r.buildBackendEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to build backend env: %w", err)
+		return "", "", fmt.Errorf("failed to build backend env: %w", err)
 	}
 
 	// Build langflow .env content with all secrets consolidated
 	langflowEnvContent, err := r.buildLangflowEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to build langflow env: %w", err)
+		return "", "", fmt.Errorf("failed to build langflow env: %w", err)
 	}
+
+	// Calculate SHA256 hashes of .env content for pod restart triggering
+	backendHash = calculateHash(backendEnvContent)
+	langflowHash = calculateHash(langflowEnvContent)
 
 	type envDef struct {
 		name    string
@@ -242,13 +249,13 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 			StringData: map[string]string{".env": d.content},
 		}
 		if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-			return err
+			return "", "", err
 		}
 		if err := r.createOrUpdate(ctx, secret); err != nil {
-			return err
+			return "", "", err
 		}
 	}
-	return nil
+	return backendHash, langflowHash, nil
 }
 
 func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
@@ -501,7 +508,16 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 	}
 
 	// Docling configuration from CR spec
-	if d := o.Spec.Docling; d != nil {
+	// Priority: DoclingComponents (operator-managed) > Docling (external)
+	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
+		// Use operator-managed docling-serve
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port)
+	} else if d := o.Spec.Docling; d != nil {
+		// Use external docling service
 		scheme := d.Scheme
 		if scheme == "" {
 			scheme = "http"
@@ -512,6 +528,10 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
 	}
+
+	// Ensure all variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exist with at least "None" value
+	// This is critical because the list can be customized via CR spec, operator env vars, or defaults
+	r.EnvVarManager.EnsureRequiredEnvVars(envVars)
 
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
@@ -610,11 +630,11 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string) error {
 	deploys := []client.Object{
 		r.frontendDeployment(o, targetNS),
-		r.backendDeployment(o, targetNS),
-		r.langflowDeployment(o, targetNS),
+		r.backendDeployment(o, targetNS, backendEnvHash),
+		r.langflowDeployment(o, targetNS, langflowEnvHash),
 	}
 	for _, d := range deploys {
 		if err := r.setOwnerOrLabel(o, d, targetNS); err != nil {
@@ -679,7 +699,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 }
 
-func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string) *appsv1.Deployment {
 	spec := o.Spec.Backend
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -723,6 +743,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+	// Add .env secret hash to trigger pod restart when secret changes
+	podAnnotations["openr.ag/backend-env-hash"] = envHash
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("be"),
@@ -767,7 +789,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 }
 
-func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string) *appsv1.Deployment {
 	spec := o.Spec.Langflow
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -843,6 +865,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+	// Add .env secret hash to trigger pod restart when secret changes
+	podAnnotations["openr.ag/langflow-env-hash"] = envHash
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("lf"),
@@ -2631,4 +2655,11 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 		"targetNamespace", targetNS)
 
 	return newSecret, nil
+}
+
+// calculateHash calculates the SHA256 hash of a string and returns the hex-encoded result.
+// This is used to create annotations on pod templates that trigger rolling restarts when secrets change.
+func calculateHash(content string) string {
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
 }
