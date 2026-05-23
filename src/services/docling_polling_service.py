@@ -10,7 +10,6 @@ import asyncio
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from services.docling_service import (
     DoclingServeError,
