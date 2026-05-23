@@ -14,7 +14,12 @@ from services.docling_polling_service import (
     DoclingPollingService,
     PollOutcome,
 )
-from services.docling_service import DoclingServeError, DoclingStatusSnapshot, DoclingTaskState, DoclingTransientError
+from services.docling_service import (
+    DoclingServeError,
+    DoclingStatusSnapshot,
+    DoclingTaskState,
+    DoclingTransientError,
+)
 
 
 def _snap(state: DoclingTaskState, detail: str | None = None) -> DoclingStatusSnapshot:
