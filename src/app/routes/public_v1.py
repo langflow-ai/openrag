@@ -9,6 +9,9 @@ from api.v1 import (
     documents as v1_documents,
 )
 from api.v1 import (
+    ingestion_jobs as v1_ingestion_jobs,
+)
+from api.v1 import (
     knowledge_filters as v1_knowledge_filters,
 )
 from api.v1 import (
@@ -83,6 +86,20 @@ def register_public_v1_routes(app: FastAPI):
         v1_models.list_models_endpoint,
         methods=["GET"],
         tags=["public"],
+    )
+
+    # Ingestion jobs endpoints
+    app.add_api_route(
+        "/v1/ingestion/jobs",
+        v1_ingestion_jobs.list_ingestion_jobs,
+        methods=["GET"],
+        tags=["ingestion"],
+    )
+    app.add_api_route(
+        "/v1/ingestion/jobs/{job_id}",
+        v1_ingestion_jobs.get_ingestion_job,
+        methods=["GET"],
+        tags=["ingestion"],
     )
 
     # Knowledge filters endpoints
