@@ -17,6 +17,7 @@ from services.docling_service import (
     DoclingService,
     DoclingStatusSnapshot,
     DoclingTaskState,
+    DoclingTransientError,
 )
 from utils.logging_config import get_logger
 
@@ -52,6 +53,7 @@ class DoclingPollingService:
         max_interval: float = 30.0,
         backoff_factor: float = 1.5,
         transient_retry_budget: int = 5,
+        result_fetch_retry_budget: int = 3,
     ) -> DoclingPollResult:
         """Loop on Docling status until terminal or until max_seconds elapses.
 
@@ -87,22 +89,51 @@ class DoclingPollingService:
             elapsed = time.monotonic() - start
 
             if snapshot.state == DoclingTaskState.SUCCESS:
-                try:
-                    await self.docling_service.fetch_task_result(task_id)
-                except DoclingServeError as e:
-                    detail = f"Docling result unavailable after SUCCESS status: {str(e)}"
-                    logger.warning(
-                        "Docling task reached SUCCESS but result fetch failed",
-                        task_id=task_id,
-                        detail=detail,
-                        elapsed_seconds=round(elapsed, 2),
-                    )
-                    return DoclingPollResult(
-                        outcome=PollOutcome.FAILED,
-                        detail=detail,
-                        last_snapshot=snapshot,
-                        elapsed_seconds=elapsed,
-                    )
+                result_fetch_errors = 0
+                while True:
+                    try:
+                        await self.docling_service.fetch_task_result(task_id)
+                        break
+                    except DoclingTransientError as e:
+                        result_fetch_errors += 1
+                        if result_fetch_errors > result_fetch_retry_budget:
+                            detail = (
+                                f"Docling result fetch failed after {result_fetch_errors} "
+                                f"transient errors: {str(e)}"
+                            )
+                            logger.warning(
+                                "Docling result fetch exceeded transient retry budget",
+                                task_id=task_id,
+                                detail=detail,
+                                elapsed_seconds=round(elapsed, 2),
+                            )
+                            return DoclingPollResult(
+                                outcome=PollOutcome.FAILED,
+                                detail=detail,
+                                last_snapshot=snapshot,
+                                elapsed_seconds=elapsed,
+                            )
+                        logger.debug(
+                            "Transient error fetching Docling result, retrying",
+                            task_id=task_id,
+                            attempt=result_fetch_errors,
+                            error=str(e),
+                        )
+                        await asyncio.sleep(interval)
+                    except DoclingServeError as e:
+                        detail = f"Docling result unavailable after SUCCESS status: {str(e)}"
+                        logger.warning(
+                            "Docling task reached SUCCESS but result fetch failed",
+                            task_id=task_id,
+                            detail=detail,
+                            elapsed_seconds=round(elapsed, 2),
+                        )
+                        return DoclingPollResult(
+                            outcome=PollOutcome.FAILED,
+                            detail=detail,
+                            last_snapshot=snapshot,
+                            elapsed_seconds=elapsed,
+                        )
 
                 logger.debug(
                     "Docling task reached SUCCESS and result is available",
