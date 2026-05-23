@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Optional
 
 from services.docling_service import (
+    DoclingServeError,
     DoclingService,
     DoclingStatusSnapshot,
     DoclingTaskState,
@@ -88,7 +89,7 @@ class DoclingPollingService:
             if snapshot.state == DoclingTaskState.SUCCESS:
                 try:
                     await self.docling_service.fetch_task_result(task_id)
-                except Exception as e:
+                except DoclingServeError as e:
                     detail = f"Docling result unavailable after SUCCESS status: {str(e)}"
                     logger.warning(
                         "Docling task reached SUCCESS but result fetch failed",
