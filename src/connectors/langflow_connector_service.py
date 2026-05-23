@@ -57,8 +57,11 @@ class LangflowConnectorService:
         )
 
         from utils.file_utils import auto_cleanup_tempfile
+        import os
 
-        suffix = get_file_extension(document.mimetype)
+        suffix = os.path.splitext(document.filename)[1]
+        if not suffix:
+            suffix = get_file_extension(document.mimetype)
 
         # Create temporary file from document content
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:

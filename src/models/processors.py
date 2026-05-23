@@ -562,8 +562,11 @@ class ConnectorFileProcessor(TaskProcessor):
                     return
                 await self.delete_document_by_filename(document.filename, opensearch_client)
 
-            # Create temporary file from document content
-            suffix = get_file_extension(document.mimetype)
+            # Create temporary file from document content            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -698,8 +701,11 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                     return
                 await self.delete_document_by_filename(document.filename, opensearch_client)
 
-            # Create temporary file and compute hash to check for duplicates
-            suffix = get_file_extension(document.mimetype)
+            # Create temporary file and compute hash to check for duplicates            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -774,7 +780,8 @@ class S3FileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
-            with auto_cleanup_tempfile() as tmp_path:
+            suffix = os.path.splitext(item)[1]
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Download object to temporary file
                 with open(tmp_path, "wb") as tmp_file:
                     self.s3_client.download_fileobj(self.bucket, item, tmp_file)
