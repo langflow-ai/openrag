@@ -9,7 +9,7 @@ conversion (which can be many minutes for large or OCR-heavy documents).
 import asyncio
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from services.docling_service import (
     DoclingServeError,
@@ -23,7 +23,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-class PollOutcome(str, Enum):
+class PollOutcome(StrEnum):
     SUCCESS = "success"
     FAILED = "failed"
     EXPIRED = "expired"
