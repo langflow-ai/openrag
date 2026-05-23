@@ -14,7 +14,7 @@ from services.docling_polling_service import (
     DoclingPollingService,
     PollOutcome,
 )
-from services.docling_service import DoclingStatusSnapshot, DoclingTaskState
+from services.docling_service import DoclingServeError, DoclingStatusSnapshot, DoclingTaskState, DoclingTransientError
 
 
 def _snap(state: DoclingTaskState, detail: str | None = None) -> DoclingStatusSnapshot:
@@ -80,7 +80,7 @@ async def test_loops_through_processing_then_success(
 @pytest.mark.asyncio
 async def test_success_status_requires_fetchable_result(polling_service, mock_docling_service):
     mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
-    mock_docling_service.fetch_task_result.side_effect = RuntimeError(
+    mock_docling_service.fetch_task_result.side_effect = DoclingServeError(
         "missing document.json_content"
     )
 
@@ -118,6 +118,7 @@ async def test_tolerates_brief_not_found_then_succeeds(
         _snap(DoclingTaskState.PROCESSING),
         _snap(DoclingTaskState.SUCCESS),
     ]
+    mock_docling_service.fetch_task_result.return_value = {"body": "ok"}
 
     result = await polling_service.poll_until_ready(
         task_id="t1",
@@ -127,6 +128,7 @@ async def test_tolerates_brief_not_found_then_succeeds(
     )
 
     assert result.outcome == PollOutcome.SUCCESS
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
 
 
 @pytest.mark.asyncio
@@ -192,6 +194,7 @@ async def test_backoff_grows_interval_up_to_cap(polling_service, mock_docling_se
         _snap(DoclingTaskState.PROCESSING),
         _snap(DoclingTaskState.SUCCESS),
     ]
+    mock_docling_service.fetch_task_result.return_value = {"body": "ok"}
 
     await polling_service.poll_until_ready(
         task_id="t1",
@@ -206,3 +209,67 @@ async def test_backoff_grows_interval_up_to_cap(polling_service, mock_docling_se
     # see the raw progression.
     sleeps = [call.args[0] for call in no_sleep.call_args_list]
     assert sleeps == [1.0, 2.0, 4.0, 4.0]
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+
+
+@pytest.mark.asyncio
+async def test_transient_result_fetch_error_retries_then_succeeds(
+    polling_service, mock_docling_service, no_sleep
+):
+    """A transient network error on fetch_task_result is retried, not failed immediately."""
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
+    mock_docling_service.fetch_task_result.side_effect = [
+        DoclingTransientError("connection reset"),
+        DoclingTransientError("connection reset"),
+        {"body": "ok"},
+    ]
+
+    result = await polling_service.poll_until_ready(
+        task_id="t1",
+        poll_interval=1.0,
+        max_seconds=60.0,
+        result_fetch_retry_budget=3,
+    )
+
+    assert result.outcome == PollOutcome.SUCCESS
+    assert mock_docling_service.fetch_task_result.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_transient_result_fetch_error_exceeds_budget_returns_failed(
+    polling_service, mock_docling_service, no_sleep
+):
+    """Exhausting result_fetch_retry_budget on transient errors yields FAILED."""
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
+    mock_docling_service.fetch_task_result.side_effect = DoclingTransientError("timeout")
+
+    result = await polling_service.poll_until_ready(
+        task_id="t1",
+        poll_interval=1.0,
+        max_seconds=60.0,
+        result_fetch_retry_budget=2,
+    )
+
+    assert result.outcome == PollOutcome.FAILED
+    assert "transient" in (result.detail or "").lower()
+    assert mock_docling_service.fetch_task_result.await_count == 3  # budget + 1
+
+
+@pytest.mark.asyncio
+async def test_permanent_result_fetch_error_fails_immediately(
+    polling_service, mock_docling_service
+):
+    """A non-transient DoclingServeError (e.g. 404) is not retried."""
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
+    mock_docling_service.fetch_task_result.side_effect = DoclingServeError("task expired")
+
+    result = await polling_service.poll_until_ready(
+        task_id="t1",
+        poll_interval=1.0,
+        max_seconds=60.0,
+        result_fetch_retry_budget=3,
+    )
+
+    assert result.outcome == PollOutcome.FAILED
+    assert "task expired" in (result.detail or "")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
