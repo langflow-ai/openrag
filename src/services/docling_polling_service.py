@@ -32,8 +32,8 @@ class PollOutcome(str, Enum):
 @dataclass
 class DoclingPollResult:
     outcome: PollOutcome
-    detail: Optional[str] = None
-    last_snapshot: Optional[DoclingStatusSnapshot] = None
+    detail: str | None = None
+    last_snapshot: DoclingStatusSnapshot | None = None
     elapsed_seconds: float = 0.0
 
 
@@ -69,7 +69,7 @@ class DoclingPollingService:
         deadline = start + max_seconds
         interval = poll_interval
         consecutive_not_found = 0
-        last_snapshot: Optional[DoclingStatusSnapshot] = None
+        last_snapshot: DoclingStatusSnapshot | None = None
 
         logger.debug("Starting Docling polling", task_id=task_id)
 

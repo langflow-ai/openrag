@@ -6,8 +6,9 @@ ingestion flow until Docling reports SUCCESS, and must NEVER invoke it when
 Docling fails / expires / times out.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from models.tasks import (
     DoclingPhaseStatus,

@@ -6,8 +6,9 @@ Docling state without ever invoking Langflow, so that Langflow execution
 slots are reserved for chunking / embedding / indexing only.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from services.docling_polling_service import (
     DoclingPollingService,

@@ -24,9 +24,9 @@ class RawLogRef(BaseModel):
 
 
 class Correlation(BaseModel):
-    docling_task_id: Optional[str] = None
-    langflow_run_id: Optional[str] = None
-    opensearch_request_id: Optional[str] = None
+    docling_task_id: str | None = None
+    langflow_run_id: str | None = None
+    opensearch_request_id: str | None = None
 
 
 class IngestionJobDetail(BaseModel):
@@ -35,14 +35,14 @@ class IngestionJobDetail(BaseModel):
     file_name: str
     source_type: str
     status: str
-    component: Optional[str] = None
-    phase: Optional[str] = None
-    error_code: Optional[str] = None
-    actionability: Optional[str] = None
-    retryable: Optional[bool] = None
-    user_title: Optional[str] = None
-    user_message: Optional[str] = None
-    technical_message: Optional[str] = None
+    component: str | None = None
+    phase: str | None = None
+    error_code: str | None = None
+    actionability: str | None = None
+    retryable: bool | None = None
+    user_title: str | None = None
+    user_message: str | None = None
+    technical_message: str | None = None
     raw_log_refs: list[RawLogRef] = []
     correlation: Correlation = Correlation()
     created_at: str
@@ -54,12 +54,12 @@ class IngestionJobSummary(BaseModel):
     file_name: str
     source_type: str
     status: str
-    component: Optional[str] = None
-    phase: Optional[str] = None
-    error_code: Optional[str] = None
-    actionability: Optional[str] = None
-    retryable: Optional[bool] = None
-    user_title: Optional[str] = None
+    component: str | None = None
+    phase: str | None = None
+    error_code: str | None = None
+    actionability: str | None = None
+    retryable: bool | None = None
+    user_title: str | None = None
     created_at: str
 
 
@@ -544,13 +544,13 @@ MOCK_JOBS: dict[str, IngestionJobDetail] = {
 
 
 async def list_ingestion_jobs(
-    status: Optional[str] = Query(
+    status: str | None = Query(
         None, description="Filter by status: completed, failed, running, pending"
     ),
-    component: Optional[str] = Query(
+    component: str | None = Query(
         None, description="Filter by component: openrag, docling, langflow, opensearch"
     ),
-    actionability: Optional[str] = Query(
+    actionability: str | None = Query(
         None,
         description="Filter by actionability: USER_ACTIONABLE, RETRYABLE, ADMIN_ACTIONABLE, DEVELOPER_ACTIONABLE",
     ),
