@@ -64,6 +64,22 @@ async def ingest_endpoint(
     )
 
 
+async def all_tasks_enhanced_endpoint(
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_api_key_user_async),
+):
+    """Get all ingestion tasks with structured failure metadata on failed files.
+
+    GET /v1/tasks/enhanced
+
+    Returns the same list as GET /v1/tasks/{task_id} would across all tasks,
+    with component, failure_phase, user_facing_message, and actionable_by
+    added to any failed file entry whose cause can be classified.
+    """
+    tasks = task_service.get_all_tasks2(user.user_id)
+    return JSONResponse({"tasks": tasks})
+
+
 async def task_status_endpoint(
     task_id: str,
     task_service=Depends(get_task_service),
@@ -71,6 +87,27 @@ async def task_status_endpoint(
 ):
     """Get the status of an ingestion task. GET /v1/tasks/{task_id}"""
     task_status = task_service.get_task_status(user.user_id, task_id)
+    if not task_status:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
+    return JSONResponse(task_status)
+
+
+async def task_status_enhanced_endpoint(
+    task_id: str,
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_api_key_user_async),
+):
+    """Get the status of an ingestion task with structured failure metadata.
+
+    GET /v1/tasks/{task_id}/enhanced
+
+    Returns the same baseline task and file status information as
+    GET /v1/tasks/{task_id}, and additionally includes component,
+    failure_phase, user_facing_message, and actionable_by on any file
+    entry whose status is 'failed' and whose failure cause can be
+    classified.
+    """
+    task_status = task_service.get_task_status2(user.user_id, task_id)
     if not task_status:
         return JSONResponse({"error": "Task not found"}, status_code=404)
     return JSONResponse(task_status)
