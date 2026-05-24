@@ -4,23 +4,24 @@ Public API v1 Documents endpoint.
 Provides document ingestion and management.
 Uses API key authentication.
 """
+
 from typing import List, Optional
 
 from fastapi import Depends, File, Form, UploadFile
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from api.documents import delete_documents_by_filename_core
+from pydantic import BaseModel
 
+from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
-from utils.logging_config import get_logger
 from dependencies import (
-    get_document_service,
-    get_task_service,
-    get_session_manager,
-    get_langflow_file_service,
     get_api_key_user_async,
+    get_document_service,
+    get_langflow_file_service,
+    get_session_manager,
+    get_task_service,
 )
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -30,10 +31,10 @@ class DeleteDocV1Body(BaseModel):
 
 
 async def ingest_endpoint(
-    file: List[UploadFile] = File(...),
-    session_id: Optional[str] = Form(None),
-    settings: Optional[str] = Form(None),
-    tweaks: Optional[str] = Form(None),
+    file: list[UploadFile] = File(...),
+    session_id: str | None = Form(None),
+    settings: str | None = Form(None),
+    tweaks: str | None = Form(None),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     document_service=Depends(get_document_service),
