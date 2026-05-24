@@ -1,16 +1,17 @@
-import traceback
 import asyncio
 import os
 import random
 import time
+import traceback
 import uuid
-from typing import Any, Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
-from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.telemetry import Category, MessageId, TelemetryClient
 
 T = TypeVar("T")
 
@@ -112,7 +113,7 @@ class TaskService:
         timeout: int = timeout_seconds or self.ingestion_timeout
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise IngestionTimeoutError(
                 f"File processing timed out after {timeout} seconds."
             ) from None
