@@ -1,9 +1,9 @@
 from fastapi import Depends
 from fastapi.responses import JSONResponse
+from utils.telemetry import TelemetryClient, Category, MessageId
 
-from dependencies import get_current_user, get_task_service
+from dependencies import get_task_service, get_current_user
 from session_manager import User
-from utils.telemetry import Category, MessageId, TelemetryClient
 
 
 async def task_status(
@@ -59,7 +59,9 @@ async def cancel_task(
     success = await task_service.cancel_task(user.user_id, task_id)
     if not success:
         await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CANCEL_FAILED)
-        return JSONResponse({"error": "Task not found or cannot be cancelled"}, status_code=400)
+        return JSONResponse(
+            {"error": "Task not found or cannot be cancelled"}, status_code=400
+        )
 
     await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CANCELLED)
     return JSONResponse({"status": "cancelled", "task_id": task_id})
