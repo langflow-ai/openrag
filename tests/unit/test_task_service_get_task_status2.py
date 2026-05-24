@@ -8,7 +8,6 @@ Tests verify that:
 - Unknown failures produce no extra fields.
 - get_task_status (the existing method) is unaffected by the refactor.
 """
-
 import time
 from unittest.mock import Mock
 
@@ -16,6 +15,7 @@ import pytest
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from services.task_service import TaskService
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -328,9 +328,7 @@ class TestGetTaskStatus2Mixed:
             docling_status=DoclingPhaseStatus.PROCESSING,
             error=None,
         )
-        task = _make_upload_task(
-            "t9", {"bad.pdf": failed_ft, "good.pdf": ok_ft, "wip.pdf": running_ft}
-        )
+        task = _make_upload_task("t9", {"bad.pdf": failed_ft, "good.pdf": ok_ft, "wip.pdf": running_ft})
         task.status = TaskStatus.RUNNING
         task.successful_files = 1
         task.failed_files = 1
@@ -357,20 +355,10 @@ class TestGetTaskStatus2Mixed:
 
         result = task_service.get_task_status2("user1", "t10")
 
-        for key in (
-            "task_id",
-            "status",
-            "total_files",
-            "processed_files",
-            "successful_files",
-            "failed_files",
-            "running_files",
-            "pending_files",
-            "created_at",
-            "updated_at",
-            "duration_seconds",
-            "files",
-        ):
+        for key in ("task_id", "status", "total_files", "processed_files",
+                    "successful_files", "failed_files", "running_files",
+                    "pending_files", "created_at", "updated_at",
+                    "duration_seconds", "files"):
             assert key in result, f"missing key: {key}"
 
 
@@ -436,17 +424,9 @@ class TestGetTaskStatusRegression:
         file_entry = result["files"]["doc.pdf"]
 
         expected_keys = {
-            "status",
-            "result",
-            "error",
-            "retry_count",
-            "created_at",
-            "updated_at",
-            "duration_seconds",
-            "filename",
-            "phase",
-            "docling_status",
-            "docling_task_id",
+            "status", "result", "error", "retry_count",
+            "created_at", "updated_at", "duration_seconds",
+            "filename", "phase", "docling_status", "docling_task_id",
         }
         assert set(file_entry.keys()) == expected_keys
 
