@@ -80,7 +80,9 @@ def register_internal_routes(app: FastAPI):
     # Task endpoints
     # Literal sub-paths must be registered before the parameterised /{task_id}
     # so Starlette does not absorb "enhanced" as a task_id value.
-    app.add_api_route("/tasks/enhanced", tasks.all_tasks_enhanced, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/enhanced", tasks.all_tasks_enhanced, methods=["GET"], tags=["internal"]
+    )
     app.add_api_route("/tasks/{task_id}", tasks.task_status, methods=["GET"], tags=["internal"])
     app.add_api_route(
         "/tasks/{task_id}/enhanced",
