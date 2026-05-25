@@ -53,8 +53,9 @@ class ConnectorService:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
-        from utils.file_utils import auto_cleanup_tempfile
         import os
+
+        from utils.file_utils import auto_cleanup_tempfile
 
         suffix = os.path.splitext(document.filename)[1]
         if not suffix:
@@ -388,7 +389,7 @@ class ConnectorService:
             result = await connector.list_files()
             expanded_files = result.get("files", [])
             expanded_file_ids = [f["id"] for f in expanded_files]
-            
+
             # Save the expanded files info so we can set correct names in the task UI
             for f in expanded_files:
                 expanded_files_info.append(f)
@@ -459,7 +460,7 @@ class ConnectorService:
 
         # Create custom task using TaskService
         original_filenames = {}
-        
+
         # Combine file_infos and expanded_files_info
         all_infos = (file_infos or []) + expanded_files_info
         if all_infos:

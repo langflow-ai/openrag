@@ -3,9 +3,10 @@ import io
 import os
 import time
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
@@ -17,6 +18,7 @@ from .oauth import GoogleDriveOAuth
 
 logger = get_logger(__name__)
 
+
 # -------------------------
 # Config model
 # -------------------------
@@ -27,26 +29,26 @@ class GoogleDriveConfig:
     token_file: str
 
     # Selective sync
-    file_ids: Optional[List[str]] = None
-    folder_ids: Optional[List[str]] = None
+    file_ids: list[str] | None = None
+    folder_ids: list[str] | None = None
     recursive: bool = True
 
     # Shared Drives control
-    drive_id: Optional[str] = None  # when set, we use corpora='drive'
-    corpora: Optional[str] = None  # 'user' | 'drive' | 'domain'; auto-picked if None
+    drive_id: str | None = None  # when set, we use corpora='drive'
+    corpora: str | None = None  # 'user' | 'drive' | 'domain'; auto-picked if None
 
     # Optional filtering
-    include_mime_types: Optional[List[str]] = None
-    exclude_mime_types: Optional[List[str]] = None
+    include_mime_types: list[str] | None = None
+    exclude_mime_types: list[str] | None = None
 
     # Export overrides for Google-native types
-    export_format_overrides: Optional[Dict[str, str]] = None  # mime -> export-mime
+    export_format_overrides: dict[str, str] | None = None  # mime -> export-mime
 
     # Changes API state persistence (store these in your DB/kv if needed)
-    changes_page_token: Optional[str] = None
+    changes_page_token: str | None = None
 
     # Optional: resource_id for webhook cleanup
-    resource_id: Optional[str] = None
+    resource_id: str | None = None
 
 
 # -------------------------
@@ -89,7 +91,7 @@ class GoogleDriveConnector(BaseConnector):
         # Otherwise, implement your custom logic here.
         logger.debug(f"Emitting document: {doc.id} ({doc.filename})")
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         # Read from config OR env (backend env, not NEXT_PUBLIC_*):
         env_client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
         env_client_secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
@@ -99,6 +101,7 @@ class GoogleDriveConnector(BaseConnector):
 
         # Token file default - use data directory for persistence
         from config.paths import get_data_file
+
         token_file = config.get("token_file") or get_data_file("google_drive_token.json")
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
 
@@ -114,9 +117,7 @@ class GoogleDriveConnector(BaseConnector):
             )
 
         # Normalize incoming IDs from any of the supported alias keys
-        def _first_present_list(
-            cfg: Dict[str, Any], keys: Iterable[str]
-        ) -> Optional[List[str]]:
+        def _first_present_list(cfg: dict[str, Any], keys: Iterable[str]) -> list[str] | None:
             for k in keys:
                 v = cfg.get(k)
                 if v:  # accept non-empty list
@@ -153,13 +154,14 @@ class GoogleDriveConnector(BaseConnector):
         # Drive client is built in authenticate()
         from google.oauth2.credentials import Credentials
 
-        self.creds: Optional[Credentials] = None
+        self.creds: Credentials | None = None
         self.service: Any = None
 
         # cache of resolved shortcutId -> target file metadata
-        self._shortcut_cache: Dict[str, Dict[str, Any]] = {}
-        
+        self._shortcut_cache: dict[str, dict[str, Any]] = {}
+
         import threading
+
         self._lock = threading.Lock()
 
         # Authentication state
@@ -173,20 +175,20 @@ class GoogleDriveConnector(BaseConnector):
         self._shortcut_cache.clear()
 
     @property
-    def _drives_get_flags(self) -> Dict[str, Any]:
+    def _drives_get_flags(self) -> dict[str, Any]:
         """
         Flags valid for GET-like calls (files.get, changes.getStartPageToken).
         """
         return {"supportsAllDrives": True}
 
     @property
-    def _drives_list_flags(self) -> Dict[str, Any]:
+    def _drives_list_flags(self) -> dict[str, Any]:
         """
         Flags valid for LIST-like calls (files.list, changes.list).
         """
         return {"supportsAllDrives": True, "includeItemsFromAllDrives": True}
 
-    def _pick_corpora_args(self) -> Dict[str, Any]:
+    def _pick_corpora_args(self) -> dict[str, Any]:
         """
         Decide corpora/driveId based on config.
 
@@ -200,7 +202,7 @@ class GoogleDriveConnector(BaseConnector):
         # Default to allDrives so Picker selections from Shared Drives work without explicit drive_id
         return {"corpora": "allDrives"}
 
-    def _resolve_shortcut(self, file_obj: Dict[str, Any]) -> Dict[str, Any]:
+    def _resolve_shortcut(self, file_obj: dict[str, Any]) -> dict[str, Any]:
         """
         If a file is a shortcut, fetch and return the real target metadata.
         """
@@ -237,7 +239,7 @@ class GoogleDriveConnector(BaseConnector):
             # shortcut target not accessible
             return file_obj
 
-    def _list_children(self, folder_id: str) -> List[Dict[str, Any]]:
+    def _list_children(self, folder_id: str) -> list[dict[str, Any]]:
         """
         List immediate children of a folder.
         """
@@ -248,7 +250,7 @@ class GoogleDriveConnector(BaseConnector):
 
         query = f"'{folder_id}' in parents and trashed = false"
         page_token = None
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         while True:
             resp = (
@@ -275,13 +277,13 @@ class GoogleDriveConnector(BaseConnector):
 
         return results
 
-    def _bfs_expand_folders(self, folder_ids: Iterable[str]) -> List[Dict[str, Any]]:
+    def _bfs_expand_folders(self, folder_ids: Iterable[str]) -> list[dict[str, Any]]:
         """
         Breadth-first traversal to expand folders to all descendant files (if recursive),
         or just immediate children (if not recursive). Folders themselves are returned
         as items too, but filtered later.
         """
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         queue = deque(folder_ids)
 
         while queue:
@@ -298,7 +300,7 @@ class GoogleDriveConnector(BaseConnector):
 
         return out
 
-    def _get_file_meta_by_id(self, file_id: str) -> Optional[Dict[str, Any]]:
+    def _get_file_meta_by_id(self, file_id: str) -> dict[str, Any] | None:
         """
         Fetch metadata for a file by ID (resolving shortcuts).
         """
@@ -324,14 +326,14 @@ class GoogleDriveConnector(BaseConnector):
         except HttpError:
             return None
 
-    def _filter_by_mime(self, items: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _filter_by_mime(self, items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Apply include/exclude mime filters if configured.
         """
         include = set(self.cfg.include_mime_types or [])
         exclude = set(self.cfg.exclude_mime_types or [])
 
-        def keep(m: Dict[str, Any]) -> bool:
+        def keep(m: dict[str, Any]) -> bool:
             mt = m.get("mimeType")
             if exclude and mt in exclude:
                 return False
@@ -341,7 +343,7 @@ class GoogleDriveConnector(BaseConnector):
 
         return [m for m in items if keep(m)]
 
-    def _iter_selected_items(self) -> List[Dict[str, Any]]:
+    def _iter_selected_items(self) -> list[dict[str, Any]]:
         """
         Return a de-duplicated list of file metadata for the selected scope:
           - explicit file_ids (automatically expands folders to their contents)
@@ -355,16 +357,21 @@ class GoogleDriveConnector(BaseConnector):
         )
         self._clear_shortcut_cache()
 
-        seen: Set[str] = set()
-        items: List[Dict[str, Any]] = []
-        folders_to_expand: List[str] = []
+        seen: set[str] = set()
+        items: list[dict[str, Any]] = []
+        folders_to_expand: list[str] = []
 
         if self.cfg.file_ids:
-            logger.debug("[GoogleDrive] _iter_selected_items: processing %d file_id(s)", len(self.cfg.file_ids))
+            logger.debug(
+                "[GoogleDrive] _iter_selected_items: processing %d file_id(s)",
+                len(self.cfg.file_ids),
+            )
             for fid in self.cfg.file_ids:
                 meta = self._get_file_meta_by_id(fid)
                 if not meta:
-                    logger.debug("[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid)
+                    logger.debug(
+                        "[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid
+                    )
                     continue
 
                 if meta.get("mimeType") == "application/vnd.google-apps.folder":
@@ -382,7 +389,9 @@ class GoogleDriveConnector(BaseConnector):
             folders_to_expand.extend(self.cfg.folder_ids)
 
         if folders_to_expand:
-            logger.debug("[GoogleDrive] _iter_selected_items: expanding %d folder(s)", len(folders_to_expand))
+            logger.debug(
+                "[GoogleDrive] _iter_selected_items: expanding %d folder(s)", len(folders_to_expand)
+            )
             folder_children = self._bfs_expand_folders(folders_to_expand)
             for meta in folder_children:
                 meta = self._resolve_shortcut(meta)
@@ -398,11 +407,7 @@ class GoogleDriveConnector(BaseConnector):
             return []
 
         items = self._filter_by_mime(items)
-        items = [
-            m
-            for m in items
-            if m.get("mimeType") != "application/vnd.google-apps.folder"
-        ]
+        items = [m for m in items if m.get("mimeType") != "application/vnd.google-apps.folder"]
 
         if not items and (self.cfg.file_ids or self.cfg.folder_ids):
             logger.warning(
@@ -418,7 +423,7 @@ class GoogleDriveConnector(BaseConnector):
     # -------------------------
     # Download logic
     # -------------------------
-    def _pick_export_mime(self, source_mime: str) -> Optional[str]:
+    def _pick_export_mime(self, source_mime: str) -> str | None:
         """
         Choose export mime for Google-native docs if needed.
         """
@@ -441,7 +446,7 @@ class GoogleDriveConnector(BaseConnector):
         # Return None for non-Google-native or unsupported types
         return overrides.get(source_mime)
 
-    def _download_file_bytes(self, file_meta: Dict[str, Any]) -> bytes:
+    def _download_file_bytes(self, file_meta: dict[str, Any]) -> bytes:
         """
         Download bytes for a given file (exporting if Google-native).
         Raises ValueError if the item is a folder (folders cannot be downloaded).
@@ -496,9 +501,7 @@ class GoogleDriveConnector(BaseConnector):
                     export_mime,
                 )
                 # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
-                request = self.service.files().export_media(
-                    fileId=file_id, mimeType=export_mime
-                )
+                request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
             else:
                 # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
                 # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
@@ -577,10 +580,10 @@ class GoogleDriveConnector(BaseConnector):
 
     async def list_files(
         self,
-        page_token: Optional[str] = None,
-        max_files: Optional[int] = None,
+        page_token: str | None = None,
+        max_files: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List files in the currently selected scope (file_ids/folder_ids/recursive).
         Returns a dict with 'files' and 'next_page_token'.
@@ -594,7 +597,9 @@ class GoogleDriveConnector(BaseConnector):
                 "Google Drive service is not initialized. Please authenticate first."
             )
 
-        logger.debug("[GoogleDrive] list_files: entry (page_token=%s, max_files=%s)", page_token, max_files)
+        logger.debug(
+            "[GoogleDrive] list_files: entry (page_token=%s, max_files=%s)", page_token, max_files
+        )
 
         try:
             items = await asyncio.to_thread(self._iter_selected_items)
@@ -614,7 +619,7 @@ class GoogleDriveConnector(BaseConnector):
             logger.error("[GoogleDrive] list_files failed: %s", e, exc_info=True)
             raise
 
-    def _extract_google_drive_acl(self, file_meta: Dict) -> DocumentACL:
+    def _extract_google_drive_acl(self, file_meta: dict) -> DocumentACL:
         """
         Extract ACL from Google Drive file metadata.
 
@@ -630,10 +635,14 @@ class GoogleDriveConnector(BaseConnector):
         try:
             # Fetch permissions (requires additional API call)
             with self._lock:
-                permissions_list = self.service.permissions().list(
-                    fileId=file_meta["id"],
-                    fields="permissions(emailAddress,role,type,deleted,displayName)"
-                ).execute()
+                permissions_list = (
+                    self.service.permissions()
+                    .list(
+                        fileId=file_meta["id"],
+                        fields="permissions(emailAddress,role,type,deleted,displayName)",
+                    )
+                    .execute()
+                )
 
             allowed_users = []
             allowed_groups = []
@@ -736,12 +745,12 @@ class GoogleDriveConnector(BaseConnector):
             metadata={
                 "parents": meta.get("parents"),
                 "driveId": meta.get("driveId"),
-                "size": int(meta.get("size", 0))
-                if str(meta.get("size", "")).isdigit()
-                else None,
+                "size": int(meta.get("size", 0)) if str(meta.get("size", "")).isdigit() else None,
             },
         )
-        logger.debug("[GoogleDrive] get_file_content: done for file_id=%s (%d bytes)", file_id, len(blob))
+        logger.debug(
+            "[GoogleDrive] get_file_content: done for file_id=%s (%d bytes)", file_id, len(blob)
+        )
         return doc
 
     async def setup_subscription(self) -> str:
@@ -758,9 +767,7 @@ class GoogleDriveConnector(BaseConnector):
         # 1) Ensure we are authenticated and have a live Drive service
         ok = await self.authenticate()
         if not ok:
-            raise RuntimeError(
-                "GoogleDriveConnector.setup_subscription: not authenticated"
-            )
+            raise RuntimeError("GoogleDriveConnector.setup_subscription: not authenticated")
 
         # 2) Resolve webhook address (no param in ABC, so pull from config/env)
         webhook_address = getattr(self.cfg, "webhook_address", None) or os.getenv(
@@ -816,9 +823,7 @@ class GoogleDriveConnector(BaseConnector):
             }
 
             if not isinstance(channel_id, str) or not channel_id:
-                raise RuntimeError(
-                    f"Drive watch returned invalid channel id: {channel_id!r}"
-                )
+                raise RuntimeError(f"Drive watch returned invalid channel id: {channel_id!r}")
 
             return channel_id
 
@@ -856,13 +861,13 @@ class GoogleDriveConnector(BaseConnector):
 
         # Single-channel memory
         if getattr(self, "_active_channel", None):
-            ch = getattr(self, "_active_channel")
+            ch = self._active_channel
             if isinstance(ch, dict) and ch.get("channel_id") == subscription_id:
                 resource_id = ch.get("resource_id")
 
         # Multi-channel memory
         if resource_id is None and hasattr(self, "_subscriptions"):
-            subs = getattr(self, "_subscriptions")
+            subs = self._subscriptions
             if isinstance(subs, dict):
                 entry = subs.get(subscription_id)
                 if isinstance(entry, dict):
@@ -894,9 +899,7 @@ class GoogleDriveConnector(BaseConnector):
             ):
                 self._active_channel = {}
 
-            if hasattr(self, "_subscriptions") and isinstance(
-                self._subscriptions, dict
-            ):
+            if hasattr(self, "_subscriptions") and isinstance(self._subscriptions, dict):
                 self._subscriptions.pop(subscription_id, None)
 
             return True
@@ -908,7 +911,7 @@ class GoogleDriveConnector(BaseConnector):
                 pass
             return False
 
-    async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
+    async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
         """
         Process a Google Drive Changes webhook.
         Drive push notifications do NOT include the changed files themselves; they merely tell us
@@ -921,7 +924,7 @@ class GoogleDriveConnector(BaseConnector):
         Returns:
             List[str]: unique list of affected file IDs (filtered to our selected scope).
         """
-        affected: List[str] = []
+        affected: list[str] = []
         try:
             # 1) Ensure we're authenticated / service ready
             ok = await self.authenticate()
@@ -947,9 +950,7 @@ class GoogleDriveConnector(BaseConnector):
             except Exception as e:
                 selected_ids = set()
                 try:
-                    logger.error(
-                        f"handle_webhook: scope build failed, proceeding unfiltered: {e}"
-                    )
+                    logger.error(f"handle_webhook: scope build failed, proceeding unfiltered: {e}")
                 except Exception:
                     pass
 
@@ -986,11 +987,7 @@ class GoogleDriveConnector(BaseConnector):
                     # Filter to our selected scope if we have one; otherwise accept all
                     if selected_ids and (rid not in selected_ids):
                         # Shortcut target might be in scope even if the shortcut isn't
-                        tgt = (
-                            fobj.get("shortcutDetails", {}).get("targetId")
-                            if fobj
-                            else None
-                        )
+                        tgt = fobj.get("shortcutDetails", {}).get("targetId") if fobj else None
                         if not (tgt and tgt in selected_ids):
                             continue
 
@@ -1013,7 +1010,7 @@ class GoogleDriveConnector(BaseConnector):
 
             # Deduplicate while preserving order
             seen = set()
-            deduped: List[str] = []
+            deduped: list[str] = []
             for x in affected:
                 if x not in seen:
                     seen.add(x)
@@ -1039,9 +1036,7 @@ class GoogleDriveConnector(BaseConnector):
                 blob = self._download_file_bytes(meta)
             except HttpError as e:
                 # Skip/record failures
-                logger.error(
-                    f"Failed to download {meta.get('name')} ({meta.get('id')}): {e}"
-                )
+                logger.error(f"Failed to download {meta.get('name')} ({meta.get('id')}): {e}")
                 continue
 
             from datetime import datetime
@@ -1087,12 +1082,10 @@ class GoogleDriveConnector(BaseConnector):
     # -------------------------
     def get_start_page_token(self) -> str:
         # getStartPageToken accepts supportsAllDrives (not includeItemsFromAllDrives)
-        resp = (
-            self.service.changes().getStartPageToken(**self._drives_get_flags).execute()
-        )
+        resp = self.service.changes().getStartPageToken(**self._drives_get_flags).execute()
         return resp["startPageToken"]
 
-    def poll_changes_and_sync(self) -> Optional[str]:
+    def poll_changes_and_sync(self) -> str | None:
         """
         Incrementally process changes since the last page token in cfg.changes_page_token.
 
@@ -1128,10 +1121,7 @@ class GoogleDriveConnector(BaseConnector):
                 # Match scope
                 if fid not in selected_ids:
                     # also consider shortcut target
-                    if (
-                        file_obj.get("mimeType")
-                        == "application/vnd.google-apps.shortcut"
-                    ):
+                    if file_obj.get("mimeType") == "application/vnd.google-apps.shortcut":
                         tgt = file_obj.get("shortcutDetails", {}).get("targetId")
                         if tgt and tgt in selected_ids:
                             pass
@@ -1195,8 +1185,8 @@ class GoogleDriveConnector(BaseConnector):
     # Optional: webhook stubs
     # -------------------------
     def build_watch_body(
-        self, webhook_address: str, channel_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, webhook_address: str, channel_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Prepare the request body for changes.watch if you use webhooks.
         """
@@ -1206,7 +1196,7 @@ class GoogleDriveConnector(BaseConnector):
             "address": webhook_address,
         }
 
-    def start_watch(self, webhook_address: str) -> Dict[str, Any]:
+    def start_watch(self, webhook_address: str) -> dict[str, Any]:
         """
         Start a webhook watch on changes using the current page token.
         Persist the returned resourceId/expiration on your side.

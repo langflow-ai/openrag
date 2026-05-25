@@ -56,8 +56,9 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
-        from utils.file_utils import auto_cleanup_tempfile
         import os
+
+        from utils.file_utils import auto_cleanup_tempfile
 
         suffix = os.path.splitext(document.filename)[1]
         if not suffix:
