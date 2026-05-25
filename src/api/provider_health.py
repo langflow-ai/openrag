@@ -35,6 +35,7 @@ async def check_provider_health(
         503: Provider validation failed
     """
     check_provider = provider
+    _health_leader_key: str | None = None  # set when this coroutine wins leader election
     try:
         # Get current config
         current_config = get_openrag_config()
@@ -126,6 +127,20 @@ async def check_provider_health(
             if cached_payload is not None:
                 logger.debug("Returning cached provider-health response")
                 return JSONResponse(cached_payload, status_code=200)
+
+            # Singleflight: if another coroutine is already validating this
+            # exact config, wait for it to finish rather than issuing a
+            # redundant upstream call.
+            is_leader = await provider_health_cache.acquire(health_cache_key)
+            if not is_leader:
+                # Woke up after an in-flight validation completed.
+                cached_payload = provider_health_cache.get(health_cache_key)
+                if cached_payload is not None:
+                    logger.debug("Returning cached provider-health response (waited for in-flight)")
+                    return JSONResponse(cached_payload, status_code=200)
+                # The leader's validation failed; fall through to validate ourselves.
+            else:
+                _health_leader_key = health_cache_key
 
         logger.info(f"Checking health for provider: {provider}")
 
@@ -230,6 +245,9 @@ async def check_provider_health(
                 if embedding_error:
                     errors.append(f"Embedding ({embedding_provider}): {embedding_error}")
 
+                if _health_leader_key:
+                    provider_health_cache.release_error(_health_leader_key)
+                    _health_leader_key = None
                 return JSONResponse(
                     {
                         "status": "unhealthy",
@@ -252,10 +270,13 @@ async def check_provider_health(
                     "embedding_model": embedding_model,
                 },
             }
-            provider_health_cache.set_(health_cache_key, healthy_payload)
+            provider_health_cache.set_and_release(health_cache_key, healthy_payload)
+            _health_leader_key = None
             return JSONResponse(healthy_payload, status_code=200)
 
     except Exception as e:
+        if _health_leader_key:
+            provider_health_cache.release_error(_health_leader_key)
         error_message = str(e)
         logger.error(f"Provider health check failed for {provider}: {error_message}")
 

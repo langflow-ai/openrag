@@ -1147,8 +1147,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         )
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
-        vectors: list[list[float]] = [None] * len(texts)
-
         if is_ibm:
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
@@ -1158,7 +1156,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 len(texts),
             )
             try:
-                vectors = selected_embedding.embed_documents(texts)
+                vectors: list[list[float]] = selected_embedding.embed_documents(texts)
                 logger.info("Successfully embedded %d chunks via watsonx SDK", len(vectors))
             except Exception as embed_error:
                 _log_watsonx_rate_limit_headers(embed_error)
@@ -1172,6 +1170,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             # Non-watsonx providers (OpenAI, Ollama) lack the watsonx SDK's
             # built-in rate-limit handling, so embed per chunk in parallel with
             # a generic rate-limit-aware tenacity retry.
+            vectors: list[list[float]] = [None] * len(texts)
             from tenacity import (
                 retry,
                 retry_if_exception,
@@ -1185,8 +1184,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 return "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str
 
             def is_other_retryable_error(exception: Exception) -> bool:
-                """Check if exception is retryable but not a rate limit error."""
-                return not is_rate_limit_error(exception)
+                """Check if exception is a transient network error worth retrying."""
+                if is_rate_limit_error(exception):
+                    return False
+                return isinstance(exception, (ConnectionError, TimeoutError, OSError))
 
             # Retry decorator for rate limit errors (longer backoff)
             retry_on_rate_limit = retry(

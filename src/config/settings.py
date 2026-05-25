@@ -187,6 +187,13 @@ JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
 # Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
 JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
 
+# TTL (seconds) for the in-process provider health-check response cache.
+# The banner polls GET /api/provider/health every 5-30 s per browser tab;
+# caching coalesces concurrent identical calls so watsonx round-trips are
+# not fanned out. Must be >= 1; non-positive values fall back to the default.
+_raw_phc_ttl = get_env_int("OPENRAG_PROVIDER_HEALTH_TTL", 10)
+PROVIDER_HEALTH_CACHE_TTL_SECONDS = _raw_phc_ttl if _raw_phc_ttl > 0 else 10
+
 # Docling service URL configuration
 # Priority:
 # 1. DOCLING_SERVE_URL environment variable

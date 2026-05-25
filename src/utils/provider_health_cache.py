@@ -11,30 +11,24 @@ explicit ``?provider=`` query bypass and the 503 error path are not cached, so
 real outages and on-demand checks are never masked.
 """
 
+import asyncio
 import hashlib
-import os
 
 from cachetools import TTLCache
 
-_DEFAULT_TTL_S = 10
+from config.settings import PROVIDER_HEALTH_CACHE_TTL_SECONDS
 
-
-def _ttl_seconds() -> int:
-    raw = os.environ.get("OPENRAG_PROVIDER_HEALTH_TTL")
-    if not raw:
-        return _DEFAULT_TTL_S
-    try:
-        value = int(raw)
-    except ValueError:
-        return _DEFAULT_TTL_S
-    return value if value > 0 else _DEFAULT_TTL_S
-
-
-_HEALTH_CACHE: TTLCache[str, dict] = TTLCache(maxsize=64, ttl=_ttl_seconds())
+# TTL is fixed at the value present in the environment when this module is first
+# imported. Changing OPENRAG_PROVIDER_HEALTH_TTL requires a server restart.
+_HEALTH_CACHE: TTLCache[str, dict] = TTLCache(maxsize=64, ttl=PROVIDER_HEALTH_CACHE_TTL_SECONDS)
+# Per-key in-flight events for singleflight deduplication. Only the first
+# coroutine to miss the cache for a given key calls the upstream provider;
+# the rest await this event and read the result from the cache.
+_in_flight: dict[str, asyncio.Event] = {}
 
 
 def _fingerprint(value: str | None) -> str:
-    return hashlib.sha256((value or "").encode()).hexdigest()[:16]
+    return hashlib.blake2b((value or "").encode(), digest_size=8).hexdigest()
 
 
 def cache_key(
@@ -68,11 +62,43 @@ def cache_key(
         embedding_project_id or "",
         _fingerprint(embedding_api_key),
     ]
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+    return hashlib.blake2b("|".join(parts).encode()).hexdigest()
 
 
 def get(key: str) -> dict | None:
     return _HEALTH_CACHE.get(key)
+
+
+async def acquire(key: str) -> bool:
+    """Attempt to become the computing leader for *key*.
+
+    Returns True  → caller is the leader; it must call set_and_release() or
+                    release_error() when validation completes or fails.
+    Returns False → another coroutine was already computing this key; the
+                    caller should call get() to read the result from cache.
+    """
+    if key in _in_flight:
+        await _in_flight[key].wait()
+        return False
+    _in_flight[key] = asyncio.Event()
+    return True
+
+
+def _signal(key: str) -> None:
+    event = _in_flight.pop(key, None)
+    if event is not None:
+        event.set()
+
+
+def set_and_release(key: str, value: dict) -> None:
+    """Write *value* to the cache and wake any coroutines waiting on *key*."""
+    _HEALTH_CACHE[key] = value
+    _signal(key)
+
+
+def release_error(key: str) -> None:
+    """Wake waiters for *key* without caching (validation failed)."""
+    _signal(key)
 
 
 def set_(key: str, value: dict) -> None:
@@ -80,5 +106,6 @@ def set_(key: str, value: dict) -> None:
 
 
 def invalidate() -> None:
-    """Clear the entire cache. Intended for settings-save flows and tests."""
+    """Clear the entire cache and any in-flight state. Intended for settings-save flows and tests."""
     _HEALTH_CACHE.clear()
+    _in_flight.clear()
