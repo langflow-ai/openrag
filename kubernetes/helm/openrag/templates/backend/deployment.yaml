@@ -23,7 +23,7 @@ spec:
         checksum/config-flows: {{ include (print $.Template.BasePath "/configmaps/flow-ids-configmap.yaml") . | sha256sum }}
         checksum/config-app: {{ include (print $.Template.BasePath "/configmaps/app-config-configmap.yaml") . | sha256sum }}
         checksum/secret-backend: {{ include (print $.Template.BasePath "/secrets/backend-secret.yaml") . | sha256sum }}
-        checksum/secret-dotenv: {{ include (print $.Template.BasePath "/templates/backend/backend-dotenv.yaml") . | sha256sum }}
+        checksum/secret-dotenv: {{ include (print $.Template.BasePath "/backend/backend-dotenv.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "openrag.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
@@ -38,6 +38,8 @@ spec:
         {{- if and .Values.backend.persistence.shared.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
         - name: load-default-documents
           image: curlimages/curl:8.5.0
+          resources:
+            {{- toYaml .Values.backend.initContainers.loadDefaultDocuments.resources | nindent 12 }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -109,6 +111,8 @@ spec:
         {{- if and .Values.backend.persistence.shared.enabled .Values.langflow.flows.loadDefaults .Values.langflow.flows.git.enabled }}
         - name: load-default-flows
           image: curlimages/curl:8.5.0
+          resources:
+            {{- toYaml .Values.backend.initContainers.loadDefaultFlows.resources | nindent 12 }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -180,6 +184,8 @@ spec:
         {{- if .Values.langflow.enabled }}
         - name: wait-for-langflow
           image: busybox:1.36
+          resources:
+            {{- toYaml .Values.backend.initContainers.waitForLangflow.resources | nindent 12 }}
           command:
             - sh
             - -c
