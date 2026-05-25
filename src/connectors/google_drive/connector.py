@@ -158,6 +158,9 @@ class GoogleDriveConnector(BaseConnector):
 
         # cache of resolved shortcutId -> target file metadata
         self._shortcut_cache: Dict[str, Dict[str, Any]] = {}
+        
+        import threading
+        self._lock = threading.Lock()
 
         # Authentication state
         self._authenticated: bool = False
@@ -304,18 +307,19 @@ class GoogleDriveConnector(BaseConnector):
                 "Google Drive service is not initialized. Please authenticate first."
             )
         try:
-            meta = (
-                self.service.files()
-                .get(
-                    fileId=file_id,
-                    fields=(
-                        "id, name, mimeType, modifiedTime, createdTime, size, "
-                        "webViewLink, parents, shortcutDetails, driveId"
-                    ),
-                    **self._drives_get_flags,
+            with self._lock:
+                meta = (
+                    self.service.files()
+                    .get(
+                        fileId=file_id,
+                        fields=(
+                            "id, name, mimeType, modifiedTime, createdTime, size, "
+                            "webViewLink, parents, shortcutDetails, driveId"
+                        ),
+                        **self._drives_get_flags,
+                    )
+                    .execute()
                 )
-                .execute()
-            )
             return self._resolve_shortcut(meta)
         except HttpError:
             return None
@@ -478,57 +482,58 @@ class GoogleDriveConnector(BaseConnector):
             "application/vnd.google-apps.drawing",  # Google Drawings
         }
 
-        if mime_type in exportable_types:
-            # This is an exportable Google Workspace file - must use export_media
-            export_mime = self._pick_export_mime(mime_type)
-            if not export_mime:
-                # Default fallback for unsupported Google native types
-                export_mime = "application/pdf"
+        with self._lock:
+            if mime_type in exportable_types:
+                # This is an exportable Google Workspace file - must use export_media
+                export_mime = self._pick_export_mime(mime_type)
+                if not export_mime:
+                    # Default fallback for unsupported Google native types
+                    export_mime = "application/pdf"
 
-            logger.debug(
-                "[GoogleDrive] _download_file_bytes: using export_media (%s -> %s)",
-                mime_type,
-                export_mime,
-            )
-            # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
-            request = self.service.files().export_media(
-                fileId=file_id, mimeType=export_mime
-            )
-        else:
-            # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
-            # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
-            logger.debug("[GoogleDrive] _download_file_bytes: using get_media (%s)", mime_type)
-            # Binary download (get_media also doesn't accept the Drive flags)
-            request = self.service.files().get_media(fileId=file_id)
-
-        # Download the file with error handling for misclassified Google Docs
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
-        done = False
-
-        try:
-            while not done:
-                status, done = downloader.next_chunk()
-                # Optional: you can log progress via status.progress()
-        except HttpError as e:
-            # If download fails with "fileNotDownloadable", it's a Docs Editor file
-            # that wasn't properly detected. Retry with export_media.
-            if "fileNotDownloadable" in str(e) and mime_type not in exportable_types:
-                logger.warning(
-                    f"Download failed for {file_id} ({mime_type}) with fileNotDownloadable error. "
-                    f"Retrying with export_media (file might be a Google Doc)"
+                logger.debug(
+                    "[GoogleDrive] _download_file_bytes: using export_media (%s -> %s)",
+                    mime_type,
+                    export_mime,
                 )
-                export_mime = "application/pdf"
+                # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
                 request = self.service.files().export_media(
                     fileId=file_id, mimeType=export_mime
                 )
-                fh = io.BytesIO()
-                downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
-                done = False
+            else:
+                # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
+                # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
+                logger.debug("[GoogleDrive] _download_file_bytes: using get_media (%s)", mime_type)
+                # Binary download (get_media also doesn't accept the Drive flags)
+                request = self.service.files().get_media(fileId=file_id)
+
+            # Download the file with error handling for misclassified Google Docs
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
+            done = False
+
+            try:
                 while not done:
                     status, done = downloader.next_chunk()
-            else:
-                raise
+                    # Optional: you can log progress via status.progress()
+            except HttpError as e:
+                # If download fails with "fileNotDownloadable", it's a Docs Editor file
+                # that wasn't properly detected. Retry with export_media.
+                if "fileNotDownloadable" in str(e) and mime_type not in exportable_types:
+                    logger.warning(
+                        f"Download failed for {file_id} ({mime_type}) with fileNotDownloadable error. "
+                        f"Retrying with export_media (file might be a Google Doc)"
+                    )
+                    export_mime = "application/pdf"
+                    request = self.service.files().export_media(
+                        fileId=file_id, mimeType=export_mime
+                    )
+                    fh = io.BytesIO()
+                    downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                else:
+                    raise
 
         data = fh.getvalue()
         logger.debug("[GoogleDrive] _download_file_bytes: done, %d bytes", len(data))
@@ -624,10 +629,11 @@ class GoogleDriveConnector(BaseConnector):
         """
         try:
             # Fetch permissions (requires additional API call)
-            permissions_list = self.service.permissions().list(
-                fileId=file_meta["id"],
-                fields="permissions(emailAddress,role,type,deleted,displayName)"
-            ).execute()
+            with self._lock:
+                permissions_list = self.service.permissions().list(
+                    fileId=file_meta["id"],
+                    fields="permissions(emailAddress,role,type,deleted,displayName)"
+                ).execute()
 
             allowed_users = []
             allowed_groups = []
