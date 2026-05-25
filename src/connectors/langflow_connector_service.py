@@ -56,9 +56,13 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        import os
+
         from utils.file_utils import auto_cleanup_tempfile
 
-        suffix = get_file_extension(document.mimetype)
+        suffix = os.path.splitext(document.filename)[1]
+        if not suffix:
+            suffix = get_file_extension(document.mimetype)
 
         # Create temporary file from document content
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -317,6 +321,7 @@ class LangflowConnectorService:
         jwt_token: str = None,
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
@@ -413,6 +418,7 @@ class LangflowConnectorService:
             owner_name=owner_name,
             owner_email=owner_email,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
         # Create custom task using TaskService
