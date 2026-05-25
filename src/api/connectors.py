@@ -294,6 +294,10 @@ class ConnectorSyncBody(BaseModel):
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
+    # When True, files whose filename already exists in the index are replaced
+    # rather than failing. Set by the provider upload UI after the user confirms
+    # overwrite in the duplicate dialog.
+    replace_duplicates: bool = False
 
 
 async def list_connectors(
@@ -409,6 +413,7 @@ async def connector_sync(
                 jwt_token=jwt_token,
                 file_infos=file_infos,
                 ingest_settings=body.settings,
+                replace_duplicates=body.replace_duplicates,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
