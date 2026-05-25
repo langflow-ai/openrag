@@ -184,6 +184,8 @@ spec:
         {{- if .Values.langflow.enabled }}
         - name: wait-for-langflow
           image: busybox:1.36
+          resources:
+            {{- toYaml .Values.backend.initContainers.waitForLangflow.resources | nindent 12 }}
           command:
             - sh
             - -c
