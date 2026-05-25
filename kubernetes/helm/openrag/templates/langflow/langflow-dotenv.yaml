@@ -124,6 +124,9 @@ stringData:
     LANGFLOW_NEW_USER_IS_ACTIVE={{ ternary "true" "false" .Values.langflow.auth.newUserIsActive }}
     LANGFLOW_ENABLE_SUPERUSER_CLI={{ ternary "true" "false" .Values.langflow.auth.enableSuperuserCli }}
 
+    LANGFLOW_CONFIG_DIR={{ .Values.langflow.configDir | quote }}
+    LANGFLOW_ALEMBIC_LOG_TO_STDOUT={{ .Values.langflow.alembicLogToStdOut | quote }}
+
     # Langfuse tracing (optional)
     {{- if .Values.langflow.langfuse.secretKey }}
     LANGFUSE_SECRET_KEY={{ .Values.langflow.langfuse.secretKey | quote }}

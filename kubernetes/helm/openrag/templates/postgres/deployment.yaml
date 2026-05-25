@@ -22,7 +22,7 @@ spec:
     spec:
       serviceAccountName: {{ include "openrag.serviceAccountName" . }}
 
-      {{- with .Values.podSecurityContext }}
+      {{- with .Values.postgres.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -37,7 +37,7 @@ spec:
           image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
 
-          {{- with .Values.securityContext }}
+          {{- with .Values.postgres.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}

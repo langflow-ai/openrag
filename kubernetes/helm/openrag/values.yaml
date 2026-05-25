@@ -78,12 +78,17 @@ langflow:
   # Persistence for SQLite DB and flows
   persistence:
     enabled: true
-    storageClass: ""                      # Empty uses cluster default
+    storageClass:
+      create: true
     accessMode: ReadWriteOnce
     size: 10Gi
     mountPath: /app/data
     flowsSubPath: flows
     dbSubPath: langflow.db
+
+  # Langflow configuration directory (read-write)
+  configDir: /tmp
+  alembicLogToStdOut: true
 
   # Flow configuration (UUIDs for Langflow workflows)
   flows:
@@ -209,7 +214,6 @@ backend:
   encryption:
     key: ""                               # Optional encryption key for at-rest encryption of confg data
   auth:
-    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
     ibmCloud:
       enabled: false
 
@@ -236,42 +240,45 @@ backend:
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   serviceName: "openrag"
 
-  # Persistence consolidated into two main volumes:
-  # 1. /data: internal application state (data, backups, config, keys)
-  # 2. /shared: shared content (documents, flows)
+  # Authentication
+  auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
+
+  # Persistence for documents, keys, and config
   persistence:
-    data:
+    
+    documents:
       enabled: true
       storageClass: ""
       accessMode: ReadWriteOnce
-      size: 10Gi
-      mountPath: /data
-      dataPath: "/data/data"
-      backupPath: "/data/backup"
-      configPath: "/data/config"
-      keysPath: "/data/keys"
-    shared:
-      enabled: true
-      storageClass: ""
-      accessMode: ReadWriteMany  # Often beneficial for shared content between backend/langflow
       size: 50Gi
-      mountPath: /shared
-      flowsPath: "/shared/flows"
-    documents:
-      mountPath: "/shared/openrag-documents"
-      loadDefaults: true
+      mountPath: /app/openrag-documents
+      loadDefaults: true                        # Load default documents on first deployment
       git:
         enabled: true
         owner: langflow-ai
         repo: openrag
         branch: main
+        # Optional: specific git commit hash (overrides branch if set)
+        #hash: ""
         path: openrag-documents
         files:
           - docling.pdf
           - ibm_anthropic.pdf
           - openrag-documentation.pdf
           - warmup_ocr.pdf
-
+    keys:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 1Gi
+      mountPath: /app/keys
+    config:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 1Gi
+      mountPath: /app/config
 
   # Logging
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
