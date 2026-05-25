@@ -84,6 +84,11 @@ filterwarnings = [
 package = true
 override-dependencies = ["python-dotenv>=1.1.0"]
 
+# Source resolution for openrag-connectors. Uncomment alongside the
+# `connectors` dependency-group entry above to resolve the package from a
+# local sibling checkout. Once published, replace with a version specifier.
+# [tool.uv.sources]
+# openrag-connectors = { path = "../openrag-connectors", editable = true }
 # Ruff and mypy run only against files changed in a PR (see
 # .github/workflows/lint-backend.yml). The configs below stay
 # intentionally minimal — broad enforcement is out of scope for the

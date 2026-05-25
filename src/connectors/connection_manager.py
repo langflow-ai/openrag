@@ -1,21 +1,38 @@
 import json
 import os
 import uuid
-import aiofiles
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import aiofiles
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-from .base import BaseConnector
-from .google_drive import GoogleDriveConnector
-from .sharepoint import SharePointConnector
-from .onedrive import OneDriveConnector
-from .ibm_cos import IBMCOSConnector
 from .aws_s3 import S3Connector
+from .base import BaseConnector
+from .external import ExternalConnector  # generic adapter for openrag_connectors types
+from .google_drive import GoogleDriveConnector
+from .ibm_cos import IBMCOSConnector
+from .onedrive import OneDriveConnector
+from .sharepoint import SharePointConnector
+
+
+def _external_connector_types() -> dict[str, type]:
+    """Connector types discovered via the openrag_connectors registry.
+
+    Returns a mapping of connector_type -> upstream class. Empty if the
+    package is not installed (allows OpenRAG to run with only built-ins).
+    """
+    try:
+        from openrag_connectors import get as get_connector_cls
+        from openrag_connectors import known_types
+    except ImportError:
+        return {}
+    return {t: get_connector_cls(t) for t in known_types()}
 
 
 @dataclass
@@ -25,10 +42,10 @@ class ConnectionConfig:
     connection_id: str
     connector_type: str  # "google_drive", "box", etc.
     name: str  # User-friendly name
-    config: Dict[str, Any]  # Connector-specific config
-    user_id: Optional[str] = None  # For multi-tenant support
+    config: dict[str, Any]  # Connector-specific config
+    user_id: str | None = None  # For multi-tenant support
     created_at: datetime = None
-    last_sync: Optional[datetime] = None
+    last_sync: datetime | None = None
     is_active: bool = True
 
     def __post_init__(self):
@@ -39,7 +56,7 @@ class ConnectionConfig:
 class ConnectionManager:
     """Manages multiple connector connections with persistence"""
 
-    def __init__(self, connections_file: Optional[str] = None):
+    def __init__(self, connections_file: str | None = None):
         if connections_file is None:
             data_dir = Path(os.getenv("OPENRAG_DATA_PATH", "data"))
             self.connections_file = data_dir / "connections.json"
@@ -47,8 +64,8 @@ class ConnectionManager:
             self.connections_file = Path(connections_file)
         # Ensure data directory exists
         self.connections_file.parent.mkdir(parents=True, exist_ok=True)
-        self.connections: Dict[str, ConnectionConfig] = {}
-        self.active_connectors: Dict[str, BaseConnector] = {}
+        self.connections: dict[str, ConnectionConfig] = {}
+        self.active_connectors: dict[str, BaseConnector] = {}
 
     async def load_connections(self):
         """Load connections from persistent storage"""
@@ -72,7 +89,7 @@ class ConnectionManager:
         }
 
         if self.connections_file.exists():
-            async with aiofiles.open(self.connections_file, "r") as f:
+            async with aiofiles.open(self.connections_file) as f:
                 data = json.loads(await f.read())
 
             for conn_data in data.get("connections", []):
@@ -160,8 +177,8 @@ class ConnectionManager:
             await f.write(json.dumps(data, indent=2))
 
     async def _get_existing_connection(
-        self, connector_type: str, user_id: Optional[str] = None
-    ) -> Optional[ConnectionConfig]:
+        self, connector_type: str, user_id: str | None = None
+    ) -> ConnectionConfig | None:
         """Find existing active connection for the same connector type and user"""
         for connection in self.connections.values():
             if (
@@ -267,7 +284,7 @@ class ConnectionManager:
         connection_id: str,
         connector_type: str = None,
         name: str = None,
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] = None,
         user_id: str = None,
     ) -> bool:
         """Update an existing connection configuration"""
@@ -307,8 +324,8 @@ class ConnectionManager:
         self,
         connector_type: str,
         name: str,
-        config: Dict[str, Any],
-        user_id: Optional[str] = None,
+        config: dict[str, Any],
+        user_id: str | None = None,
     ) -> str:
         """Create a new connection configuration, ensuring only one per provider per user"""
 
@@ -358,8 +375,8 @@ class ConnectionManager:
         return connection_id
 
     async def list_connections(
-        self, user_id: Optional[str] = None, connector_type: Optional[str] = None
-    ) -> List[ConnectionConfig]:
+        self, user_id: str | None = None, connector_type: str | None = None
+    ) -> list[ConnectionConfig]:
         """List connections, optionally filtered by user or connector type"""
         connections = list(self.connections.values())
 
@@ -404,7 +421,7 @@ class ConnectionManager:
         await self.save_connections()
         return True
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get an active connector instance"""
         logger.debug(f"Getting connector for connection_id: {connection_id}")
 
@@ -441,8 +458,8 @@ class ConnectionManager:
             return None
 
     def get_available_connector_types(
-        self, user_id: Optional[str] = None
-    ) -> Dict[str, Dict[str, Any]]:
+        self, user_id: str | None = None
+    ) -> dict[str, dict[str, Any]]:
         """Get available connector types with their metadata.
 
         Availability is user-scoped when ``user_id`` is provided:
@@ -450,7 +467,7 @@ class ConnectionManager:
         1) its required env credentials are present, or
         2) the user has an active saved connection with usable credentials.
         """
-        return {
+        types: dict[str, dict[str, Any]] = {
             "google_drive": {
                 "name": GoogleDriveConnector.CONNECTOR_NAME,
                 "description": GoogleDriveConnector.CONNECTOR_DESCRIPTION,
@@ -482,8 +499,18 @@ class ConnectionManager:
                 "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
             },
         }
+        # Every connector registered in openrag_connectors plugs in via
+        # entry points.
+        for ct, cls in _external_connector_types().items():
+            types[ct] = {
+                "name": cls.CONNECTOR_NAME,
+                "description": cls.CONNECTOR_DESCRIPTION,
+                "icon": cls.CONNECTOR_ICON,
+                "available": self._is_connector_available(ct, user_id),
+            }
+        return types
 
-    def _has_saved_credentials_for_user(self, connector_type: str, user_id: Optional[str]) -> bool:
+    def _has_saved_credentials_for_user(self, connector_type: str, user_id: str | None) -> bool:
         """Check if user has an active saved connection with usable credentials."""
         for connection in self.connections.values():
             if connection.connector_type != connector_type or not connection.is_active:
@@ -499,7 +526,7 @@ class ConnectionManager:
                 continue
         return False
 
-    def _is_connector_available(self, connector_type: str, user_id: Optional[str] = None) -> bool:
+    def _is_connector_available(self, connector_type: str, user_id: str | None = None) -> bool:
         """Check whether connector is available for use by the given user."""
         try:
             temp_config = ConnectionConfig(
@@ -518,7 +545,12 @@ class ConnectionManager:
             return self._has_saved_credentials_for_user(connector_type, user_id)
 
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
-        """Factory method to create connector instances"""
+        """Factory method to create connector instances.
+
+        Built-in OpenRAG connectors are dispatched here; any type registered
+        in the external ``openrag_connectors`` package is constructed via
+        the generic :class:`ExternalConnector` adapter.
+        """
         try:
             if config.connector_type == "google_drive":
                 return GoogleDriveConnector(config.config)
@@ -530,8 +562,8 @@ class ConnectionManager:
                 return IBMCOSConnector(config.config)
             elif config.connector_type == "aws_s3":
                 return S3Connector(config.config)
-            elif config.connector_type == "box":
-                raise NotImplementedError("Box connector not implemented yet")
+            elif config.connector_type in _external_connector_types():
+                return ExternalConnector(config.connector_type, config.config)
             elif config.connector_type == "dropbox":
                 raise NotImplementedError("Dropbox connector not implemented yet")
             else:
@@ -568,11 +600,11 @@ class ConnectionManager:
             return True
         return False
 
-    async def get_connection(self, connection_id: str) -> Optional[ConnectionConfig]:
+    async def get_connection(self, connection_id: str) -> ConnectionConfig | None:
         """Get connection configuration"""
         return self.connections.get(connection_id)
 
-    async def get_connection_by_webhook_id(self, webhook_id: str) -> Optional[ConnectionConfig]:
+    async def get_connection_by_webhook_id(self, webhook_id: str) -> ConnectionConfig | None:
         """Find a connection by its webhook/subscription ID"""
         for connection in self.connections.values():
             # Check if the webhook ID is stored in the connection config
