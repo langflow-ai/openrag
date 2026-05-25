@@ -145,7 +145,7 @@ func main() {
                 },
                 Storage: &openragv1alpha1.PersistenceSpec{
                     Enabled: true,
-                    Size:    "10Gi",
+                    Size:    resource.MustParse("10Gi"),
                 },
             },
             Langflow: openragv1alpha1.LangflowSpec{
@@ -331,7 +331,7 @@ It's recommended to commit generated code to version control so users can use it
 
 If your pull request fails with:
 
-```
+```text
 Error: git diff --exit-code pkg/generated/
 ```
 
