@@ -9,7 +9,7 @@ Tests verify that:
 - get_task_status (the existing method) is unaffected by the refactor.
 """
 
-import time
+from unittest.mock import Mock
 from unittest.mock import Mock
 
 import pytest
