@@ -710,6 +710,7 @@ type OpenRAGStatus struct {
 // +kubebuilder:printcolumn:name="Frontend",type="string",JSONPath=".spec.frontend.image"
 // +kubebuilder:printcolumn:name="Backend",type="string",JSONPath=".spec.backend.image"
 // +kubebuilder:printcolumn:name="Langflow",type="string",JSONPath=".spec.langflow.image"
+// +genclient
 
 // OpenRAG is the Schema for the openrags API.
 type OpenRAG struct {
