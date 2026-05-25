@@ -90,6 +90,27 @@ class DoclingPollingService:
             if snapshot.state == DoclingTaskState.SUCCESS:
                 result_fetch_errors = 0
                 while True:
+                    now = time.monotonic()
+                    elapsed = now - start
+                    remaining = deadline - now
+                    if remaining <= 0:
+                        detail = (
+                            "Docling result fetch timed out after SUCCESS status "
+                            f"({max_seconds}s budget reached)"
+                        )
+                        logger.warning(
+                            "Docling result fetch exceeded max_seconds after SUCCESS status",
+                            task_id=task_id,
+                            detail=detail,
+                            elapsed_seconds=round(elapsed, 2),
+                            max_seconds=max_seconds,
+                        )
+                        return DoclingPollResult(
+                            outcome=PollOutcome.FAILED,
+                            detail=detail,
+                            last_snapshot=snapshot,
+                            elapsed_seconds=elapsed,
+                        )
                     try:
                         await self.docling_service.fetch_task_result(task_id)
                         break
@@ -118,7 +139,7 @@ class DoclingPollingService:
                             attempt=result_fetch_errors,
                             error=str(e),
                         )
-                        await asyncio.sleep(interval)
+                        await asyncio.sleep(min(interval, remaining))
                     except DoclingServeError as e:
                         detail = f"Docling result unavailable after SUCCESS status: {str(e)}"
                         logger.warning(
