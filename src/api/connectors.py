@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
     """Return True for connector types where sync should replace existing indexed files."""
-    return connector_type == "google_drive"
+    return connector_type in ["google_drive", "sharepoint", "onedrive"]
 
 
 async def get_synced_file_ids_for_connector(
