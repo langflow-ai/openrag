@@ -508,6 +508,7 @@ async def connector_sync(
                     user.user_id,
                     existing_file_ids,
                     jwt_token=jwt_token,
+                    replace_duplicates=(connector_type == "google_drive"),
                 )
             else:
                 # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -522,6 +523,7 @@ async def connector_sync(
                     max_files=None,
                     jwt_token=jwt_token,
                     filename_filter=set(existing_filenames),
+                    replace_duplicates=(connector_type == "google_drive"),
                 )
         task_ids = [task_id]
         await TelemetryClient.send_event(
@@ -979,6 +981,7 @@ async def sync_all_connectors(
                         user.user_id,
                         existing_file_ids,
                         jwt_token=jwt_token,
+                        replace_duplicates=(connector_type == "google_drive"),
                     )
                 else:
                     # Fallback: use filename filtering
@@ -993,6 +996,7 @@ async def sync_all_connectors(
                         max_files=None,
                         jwt_token=jwt_token,
                         filename_filter=set(existing_filenames),
+                        replace_duplicates=(connector_type == "google_drive"),
                     )
 
                 all_task_ids.append(task_id)

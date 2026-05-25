@@ -229,6 +229,8 @@ class LangflowConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """Sync files from a connector connection using Langflow processing"""
         if not self.task_service:
@@ -294,6 +296,7 @@ class LangflowConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            replace_duplicates=replace_duplicates,
         )
 
         # Use file IDs as items

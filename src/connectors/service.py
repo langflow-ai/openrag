@@ -202,6 +202,7 @@ class ConnectorService:
         max_files: int = None,
         jwt_token: str = None,
         filename_filter: set = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -297,6 +298,7 @@ class ConnectorService:
                 else DocumentService(session_manager=self.session_manager)
             ),
             models_service=self.models_service,
+            replace_duplicates=replace_duplicates,
         )
 
         # Use file IDs as items (no more fake file paths!)
