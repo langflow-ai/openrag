@@ -302,10 +302,20 @@ cp -r pkg/generated /path/to/their/project/
 
 ### `code-generator` not found
 
+If you see this error:
+```
+Error: k8s.io/code-generator not found in module cache
+```
+
+Run:
 ```bash
+go mod download k8s.io/code-generator
+# OR
 go get k8s.io/code-generator@v0.33.0
 go mod tidy
 ```
+
+The dependency is already in `go.mod`, so `go mod download` should be sufficient.
 
 ### Permission denied on script
 
