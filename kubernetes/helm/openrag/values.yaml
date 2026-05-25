@@ -248,13 +248,13 @@ backend:
         requests:
           ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default flows
         limits:
+          ephemeral-storage: "500Mi"
     waitForLangflow:
       resources:
         requests:
           ephemeral-storage: "10Mi"  # Minimal storage for busybox network check loop
         limits:
           ephemeral-storage: "10Mi"
-          ephemeral-storage: "500Mi"
 
 
   # Logging and Service
