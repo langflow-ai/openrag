@@ -53,9 +53,15 @@ class ConnectorService:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
+        import os
+
         from utils.file_utils import auto_cleanup_tempfile
 
-        with auto_cleanup_tempfile(suffix=get_file_extension(document.mimetype)) as tmp_path:
+        suffix = os.path.splitext(document.filename)[1]
+        if not suffix:
+            suffix = get_file_extension(document.mimetype)
+
+        with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
             # Write document content to temp file
             with open(tmp_path, "wb") as f:
                 f.write(document.content)
@@ -370,6 +376,7 @@ class ConnectorService:
             original_folder_ids = getattr(connector.cfg, "folder_ids", None)
 
         expanded_file_ids = file_ids  # Default to original IDs
+        expanded_files_info = []
 
         try:
             # Set the file_ids we want to sync in the connector's config
@@ -380,7 +387,12 @@ class ConnectorService:
             # Get the expanded list of file IDs (folders will be expanded to their contents)
             # This uses the connector's list_files() which calls _iter_selected_items()
             result = await connector.list_files()
-            expanded_file_ids = [f["id"] for f in result.get("files", [])]
+            expanded_files = result.get("files", [])
+            expanded_file_ids = [f["id"] for f in expanded_files]
+
+            # Save the expanded files info so we can set correct names in the task UI
+            for f in expanded_files:
+                expanded_files_info.append(f)
 
             if not expanded_file_ids:
                 logger.warning(
@@ -448,10 +460,15 @@ class ConnectorService:
 
         # Create custom task using TaskService
         original_filenames = {}
-        if file_infos:
+
+        # Combine file_infos and expanded_files_info
+        all_infos = (file_infos or []) + expanded_files_info
+        if all_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
-                for f in file_infos
+                f["id"]: clean_connector_filename(
+                    f["name"], f.get("mimeType") or f.get("mimetype", "")
+                )
+                for f in all_infos
                 if "id" in f and "name" in f
             }
 
