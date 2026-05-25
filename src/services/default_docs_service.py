@@ -422,6 +422,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     task_service,
     langflow_file_service,
     session_manager,
+    jwt_token=None,
 ):
     """Reingest default OpenRAG docs once when app version changes."""
     config = get_openrag_config()
@@ -451,6 +452,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         task_service,
         langflow_file_service,
         session_manager,
+        jwt_token=jwt_token,
     )
     config.onboarding.openrag_docs_ingested_version = current_version
     if _should_use_url_default_docs_ingest():
@@ -523,6 +525,7 @@ async def refresh_default_openrag_docs(
     session_manager,
     force: bool = False,
     reason: str = "startup",
+    jwt_token=None,
 ):
     """Refresh OpenRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
@@ -609,6 +612,7 @@ async def refresh_default_openrag_docs(
             task_service,
             langflow_file_service,
             session_manager,
+            jwt_token=jwt_token,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
         # Keep docs version/signature metadata consistent after a refresh.
