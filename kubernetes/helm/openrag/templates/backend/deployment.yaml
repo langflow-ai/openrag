@@ -39,10 +39,7 @@ spec:
         - name: load-default-documents
           image: curlimages/curl:8.5.0
           resources:
-            limits:
-              ephemeral-storage: "500Mi"
-            requests:
-              ephemeral-storage: "500Mi"
+            {{- toYaml .Values.backend.initContainers.loadDefaultDocuments.resources | nindent 12 }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -115,10 +112,7 @@ spec:
         - name: load-default-flows
           image: curlimages/curl:8.5.0
           resources:
-            limits:
-              ephemeral-storage: "500Mi"
-            requests:
-              ephemeral-storage: "500Mi"
+            {{- toYaml .Values.backend.initContainers.loadDefaultFlows.resources | nindent 12 }}
           command: ["/bin/sh", "-c"]
           args:
             - |

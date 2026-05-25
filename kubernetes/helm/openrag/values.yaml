@@ -233,6 +233,23 @@ backend:
     limits:
       cpu: "4"
       memory: "16Gi"
+  # Init container resource limits
+  # Configure resource requests/limits for init containers that load default documents and flows
+  # Adjust ephemeral-storage based on the size of documents/flows being downloaded
+  initContainers:
+    loadDefaultDocuments:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default documents
+        limits:
+          ephemeral-storage: "500Mi"
+    loadDefaultFlows:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default flows
+        limits:
+          ephemeral-storage: "500Mi"
+
 
   # Logging and Service
   logFormat: "json"                       # json or text
@@ -559,6 +576,7 @@ serviceAccount:
   create: true
   name: ""
   annotations: {}
+  automount: false
 
 # ============================================================================
 # Pod Security
