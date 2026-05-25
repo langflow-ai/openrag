@@ -56,6 +56,16 @@ jobs:
           ./bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
           git diff --exit-code api/
 
+      - name: Check generated typed client is up to date
+        run: |
+          # Ensure code-generator is available in module cache
+          go mod download k8s.io/code-generator
+          make generate-client
+          git diff --exit-code pkg/generated/
+        env:
+          # Suppress verbose output during CI
+          KUBE_VERBOSE: "0"
+
       - name: go test
         run: go test ./... -race -coverprofile=cover.out
 
