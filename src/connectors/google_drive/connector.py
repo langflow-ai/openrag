@@ -544,11 +544,15 @@ class GoogleDriveConnector(BaseConnector):
                     break  # download succeeded
                 except (ssl.SSLError, ConnectionResetError, TimeoutError) as e:
                     if _attempt < _max_retries - 1:
-                        _delay = 2.0 ** _attempt
+                        _delay = 2.0**_attempt
                         logger.warning(
                             "[GoogleDrive] Transient network error for %s (attempt %d/%d), "
                             "retrying in %.1fs: %s",
-                            file_id, _attempt + 1, _max_retries, _delay, e,
+                            file_id,
+                            _attempt + 1,
+                            _max_retries,
+                            _delay,
+                            e,
                         )
                         time.sleep(_delay)
                     else:
