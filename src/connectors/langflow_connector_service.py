@@ -273,6 +273,11 @@ class LangflowConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug("Skipping file not in filter", filename=file_name)
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages
