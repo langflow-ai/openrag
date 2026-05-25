@@ -4,10 +4,11 @@
 # under ~/.gvm/gos/go1.26.0, otherwise falls back to whatever 'go' is in PATH.
 #
 # Quick start:
-#   make deps          # install controller-gen, kustomize, envtest into ./bin
-#   make manifests     # generate CRD + RBAC YAML under config/
-#   make generate      # regenerate zz_generated.deepcopy.go
-#   make build         # compile the operator binary
+#   make deps            # install controller-gen, kustomize, envtest into ./bin
+#   make manifests       # generate CRD + RBAC YAML under config/
+#   make generate        # regenerate zz_generated.deepcopy.go
+#   make generate-client # generate typed clientsets, listers, and informers
+#   make build           # compile the operator binary
 
 # Image to push/pull for the operator container.
 IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
@@ -54,6 +55,14 @@ manifests: controller-gen ## Generate CRD and RBAC manifests from Go type marker
 .PHONY: generate
 generate: controller-gen ## Regenerate zz_generated.deepcopy.go from type definitions.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+.PHONY: generate-client
+generate-client: ## Generate typed clientsets, listers, and informers.
+	@echo "Generating typed clientsets..."
+	bash hack/update-codegen.sh
+	@echo ""
+	@echo "⚠️  Remember to commit the generated files in pkg/generated/"
+	@echo "    CI will verify these are up to date on pull requests"
 
 .PHONY: fmt
 fmt: ## Run go fmt.
