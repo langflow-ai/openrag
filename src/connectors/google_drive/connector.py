@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
