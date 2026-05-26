@@ -366,7 +366,7 @@ async def _ingest_default_documents_url(
             )
 
 
-async def _delete_existing_default_docs(session_manager, connector_type: str):
+async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
     """Delete previously ingested default OpenRAG docs before reingestion."""
     from session_manager import AnonymousUser
 
@@ -377,8 +377,8 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         return
 
     anonymous_user = AnonymousUser()
-    effective_jwt = None
-    if session_manager:
+    effective_jwt = jwt_token
+    if not effective_jwt and session_manager:
         session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
         if hasattr(session_manager, "_anonymous_jwt"):
             effective_jwt = session_manager._anonymous_jwt
@@ -445,7 +445,9 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         previous_version=previous_version,
         current_version=current_version,
     )
-    await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+    await _delete_existing_default_docs(
+        session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+    )
     await ingest_openrag_docs_when_ready(
         document_service,
         models_service,
@@ -605,7 +607,9 @@ async def refresh_default_openrag_docs(
             previous_signature=previous_signature,
             new_signature=signature,
         )
-        await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+        await _delete_existing_default_docs(
+            session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+        )
         await ingest_openrag_docs_when_ready(
             document_service,
             models_service,
