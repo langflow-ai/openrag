@@ -54,9 +54,9 @@ def _log_watsonx_rate_limit_headers(error: Exception) -> None:
         status = getattr(response, "status_code", "unknown")
         observed = {h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None}
         if str(status) == "429" or observed:
-            logger.warning("watsonx rate-limit response (status=%s): %s", status, observed)
+            logger.warning(f"watsonx rate-limit response (status={status}): {observed}")
     except Exception as log_error:  # never let diagnostics mask the real error
-        logger.debug("Could not extract watsonx rate-limit headers: %s", log_error)
+        logger.debug(f"Could not extract watsonx rate-limit headers: {log_error}")
 
 
 def normalize_model_name(model_name: str) -> str:
@@ -1152,18 +1152,15 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             # Retry attempts and base backoff are tunable via the SDK's own
             # WATSONX_MAX_RETRIES / WATSONX_DELAY_TIME environment variables.
             logger.info(
-                "Embedding %d chunks via watsonx SDK batch (SDK-managed throttle + 429 retry)",
-                len(texts),
+                f"Embedding {len(texts)} chunks via watsonx SDK batch (SDK-managed throttle + 429 retry)"
             )
             try:
                 vectors: list[list[float]] = selected_embedding.embed_documents(texts)
-                logger.info("Successfully embedded %d chunks via watsonx SDK", len(vectors))
+                logger.info(f"Successfully embedded {len(vectors)} chunks via watsonx SDK")
             except Exception as embed_error:
                 _log_watsonx_rate_limit_headers(embed_error)
                 logger.error(
-                    "Failed to embed %d chunks via watsonx SDK. Error: %s",
-                    len(texts),
-                    str(embed_error),
+                    f"Failed to embed {len(texts)} chunks via watsonx SDK. Error: {embed_error}",
                 )
                 raise
         else:
