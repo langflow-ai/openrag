@@ -107,9 +107,7 @@ class DoclingManager:
         pid = self._load_pid()
         if pid is not None:
             if self._is_process_running(pid):
-                self._add_log_entry(
-                    f"Recovered existing docling-serve process (PID: {pid})"
-                )
+                self._add_log_entry(f"Recovered existing docling-serve process (PID: {pid})")
                 # Mark as external process since we didn't start it in this session
                 self._external_process = True
                 self._running = True
@@ -235,7 +233,7 @@ class DoclingManager:
     ) -> Tuple[bool, str]:
         """Start docling serve as external process.
 
-        
+
         Args:
             port: Port to listen on (default: 5001)
             host: Host to bind to (default: from env or 0.0.0.0)
@@ -284,23 +282,31 @@ class DoclingManager:
         # the resolver would install both packages otherwise.
         override_path: Optional[str] = None
         if sys.platform != "darwin":
-            fd, override_path = tempfile.mkstemp(
-                suffix=".txt", prefix="docling_cv_override_"
-            )
+            fd, override_path = tempfile.mkstemp(suffix=".txt", prefix="docling_cv_override_")
             with os.fdopen(fd, "w") as f:
                 f.write('opencv-python ; python_version < "0"\n')
 
         try:
-            docling_extras = "ocrmac,easyocr,rapidocr,vlm" if sys.platform == "darwin" else "easyocr,rapidocr,vlm"
+            docling_extras = (
+                "ocrmac,easyocr,rapidocr,vlm"
+                if sys.platform == "darwin"
+                else "easyocr,rapidocr,vlm"
+            )
 
             cmd = [
                 "uvx",
-                "--from", "docling-serve[ui]==1.20.0",
-                "--with", "onnxruntime",
-                "--with", "easyocr",
-                "--with", f"docling[{docling_extras}]",
-                "--with", "docling-core==2.77.1",
-                "--with", "transformers>=5.8.1,<5.9.0",
+                "--from",
+                "docling-serve[ui]==1.20.0",
+                "--with",
+                "onnxruntime",
+                "--with",
+                "easyocr",
+                "--with",
+                f"docling[{docling_extras}]",
+                "--with",
+                "docling-core==2.77.1",
+                "--with",
+                "transformers>=5.8.1,<5.9.0",
             ]
             if override_path:
                 cmd += ["--override", override_path, "--with", "opencv-python-headless"]
@@ -346,9 +352,7 @@ class DoclingManager:
             self._start_output_capture()
 
             # Wait for the process to start and begin listening
-            self._add_log_entry(
-                f"Waiting up to {timeout}s for docling-serve to start listening..."
-            )
+            self._add_log_entry(f"Waiting up to {timeout}s for docling-serve to start listening...")
 
             for i in range(timeout):
                 await asyncio.sleep(1.0)
@@ -385,9 +389,7 @@ class DoclingManager:
                 except OSError:
                     pass
 
-            self._add_log_entry(
-                f"Process PID: {self._process.pid}, Poll: {self._process.poll()}"
-            )
+            self._add_log_entry(f"Process PID: {self._process.pid}, Poll: {self._process.poll()}")
 
             if self._process.poll() is not None:
                 # Process already exited - get return code and any output
@@ -450,7 +452,7 @@ class DoclingManager:
 
             self._add_log_entry("Starting log file capture thread")
             try:
-                with open(self._log_file_path, "r") as f:
+                with open(self._log_file_path) as f:
                     while self._running and self._process and self._process.poll() is None:
                         line = f.readline()
                         if line:
@@ -500,18 +502,14 @@ class DoclingManager:
                 # This is a process we recovered from PID file
                 pid_to_stop = self._load_pid()
                 if pid_to_stop and self._is_process_running(pid_to_stop):
-                    self._add_log_entry(
-                        f"Stopping process from PID file (PID: {pid_to_stop})"
-                    )
+                    self._add_log_entry(f"Stopping process from PID file (PID: {pid_to_stop})")
                     try:
                         os.kill(pid_to_stop, 15)  # SIGTERM
                         # Wait a bit for graceful shutdown
                         await asyncio.sleep(2)
                         if self._is_process_running(pid_to_stop):
                             # Still running, force kill
-                            self._add_log_entry(
-                                f"Force killing process (PID: {pid_to_stop})"
-                            )
+                            self._add_log_entry(f"Force killing process (PID: {pid_to_stop})")
                             os.kill(pid_to_stop, 9)  # SIGKILL
                     except Exception as e:
                         self._add_log_entry(f"Error stopping external process: {e}")
