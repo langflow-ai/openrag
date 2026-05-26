@@ -28,7 +28,7 @@ _in_flight: dict[str, asyncio.Event] = {}
 
 
 def _fingerprint(value: str | None) -> str:
-    return hashlib.blake2b((value or "").encode(), digest_size=8).hexdigest()  # nosec B324 — non-cryptographic cache key, not a security hash
+    return hashlib.blake2b((value or "").encode(), digest_size=8).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 
 
 def cache_key(
@@ -62,7 +62,7 @@ def cache_key(
         embedding_project_id or "",
         _fingerprint(embedding_api_key),
     ]
-    return hashlib.blake2b("|".join(parts).encode()).hexdigest()  # nosec B324 — non-cryptographic cache key, not a security hash
+    return hashlib.blake2b("|".join(parts).encode()).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 
 
 def get(key: str) -> dict | None:
