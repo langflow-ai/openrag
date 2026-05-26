@@ -5,8 +5,6 @@ Provides document ingestion and management.
 Uses API key authentication.
 """
 
-
-
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
