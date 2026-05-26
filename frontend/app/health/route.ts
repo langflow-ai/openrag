@@ -13,10 +13,7 @@ interface HealthCheckResponse {
   timestamp: string;
 }
 
-async function checkPodLiveness(
-  url: string,
-  timeout = 3000
-): Promise<boolean> {
+async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -37,8 +34,7 @@ async function checkPodLiveness(
 
 export async function GET() {
   // Backend configuration
-  const backendHost =
-    process.env.OPENRAG_BACKEND_HOST || "openrag-backend";
+  const backendHost = process.env.OPENRAG_BACKEND_HOST || "openrag-backend";
   const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
   const backendScheme = process.env.OPENRAG_BACKEND_SCHEME || "http";
   const backendHealthPath =
