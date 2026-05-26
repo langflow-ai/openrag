@@ -129,6 +129,47 @@ async def test_connector_processor_deletes_then_ingests_when_replace_true():
 
 
 @pytest.mark.asyncio
+async def test_connector_processor_deletes_chunks_when_source_returns_404():
+    """When the source connector reports the file is gone (404), the processor
+    must remove the already-indexed chunks for that document_id. Regression
+    test for SharePoint sync leaving orphan chunks after a source-side delete.
+    """
+    processor = _build_connector_processor(replace_duplicates=False)
+
+    opensearch_client = AsyncMock()
+    # collect_visible_document_ids issues a scroll search; return one chunk _id
+    opensearch_client.search = AsyncMock(
+        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+    )
+    # delete_document_ids issues individual deletes per _id
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    processor.document_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(side_effect=FileNotFoundError("404 Not Found"))
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    assert (file_task.result or {}).get("reason") == "deleted_at_source"
+    assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert upload_task.successful_files == 1
+    opensearch_client.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_connector_processor_proceeds_when_filename_absent():
     processor = _build_connector_processor(replace_duplicates=False)
     document = _make_document()
@@ -230,6 +271,51 @@ async def test_langflow_connector_processor_overwrites_when_replace_true():
     assert file_task.status == TaskStatus.COMPLETED
     opensearch_client.delete_by_query.assert_awaited()
     processor.langflow_connector_service.process_connector_document.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_langflow_connector_processor_deletes_chunks_when_source_returns_404():
+    """When the source connector reports the file is gone (404), the Langflow
+    processor must remove the already-indexed chunks instead of surfacing
+    'File not found: <id>' as a task error. Regression test for SharePoint
+    webhook-triggered sync of a deleted source file.
+    """
+    processor = _build_langflow_processor(replace_duplicates=False)
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+    )
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    processor.langflow_connector_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(
+        side_effect=ValueError("File not found: 01BYMO7NCRKVAJFSPPABBKQXS4PPDHBVUY")
+    )
+    processor.langflow_connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.langflow_connector_service.connection_manager = MagicMock()
+    processor.langflow_connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    assert (file_task.result or {}).get("reason") == "deleted_at_source"
+    assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert file_task.error is None
+    assert upload_task.successful_files == 1
+    assert upload_task.failed_files == 0
+    processor.langflow_connector_service.process_connector_document.assert_not_called()
+    opensearch_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio

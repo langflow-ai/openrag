@@ -532,14 +532,42 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
+                    # File gone at source — remove indexed chunks by document_id
+                    # (= connector file_id) so it stops appearing in search/chat.
+                    # Filename rename (e.g. .txt → .md) is irrelevant here.
+                    deleted_chunks = 0
+                    try:
+                        from api.documents import delete_chunks_by_document_ids
+
+                        opensearch_client = (
+                            self.document_service.session_manager.get_user_opensearch_client(
+                                self.user_id, self.jwt_token
+                            )
+                        )
+                        deleted_chunks = await delete_chunks_by_document_ids(
+                            [file_id], opensearch_client, get_index_name()
+                        )
+                    except Exception as cleanup_err:
+                        logger.error(
+                            "Failed to clean up chunks for deleted source file",
+                            file_id=file_id,
+                            connection_id=self.connection_id,
+                            error=str(cleanup_err),
+                        )
+
                     logger.warning(
-                        "File no longer exists at source — skipping",
+                        "File no longer exists at source — removed from index",
                         file_id=file_id,
                         connection_id=self.connection_id,
+                        deleted_chunks=deleted_chunks,
                         error=str(e),
                     )
                     file_task.status = TaskStatus.SKIPPED
-                    file_task.result = {"status": "skipped", "reason": "deleted_at_source"}
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "deleted_at_source",
+                        "deleted_chunks": deleted_chunks,
+                    }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
                     return
@@ -680,7 +708,51 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
             # Get file content from connector
-            document = await connector.get_file_content(file_id)
+            try:
+                document = await connector.get_file_content(file_id)
+            except (FileNotFoundError, ValueError) as e:
+                msg = str(e).lower()
+                if "not found" in msg or "404" in msg:
+                    # File gone at source — remove indexed chunks by document_id
+                    # (= connector file_id) so it stops appearing in search/chat.
+                    # Filename rename (e.g. .txt → .md) is irrelevant here.
+                    deleted_chunks = 0
+                    try:
+                        from api.documents import delete_chunks_by_document_ids
+
+                        opensearch_client = (
+                            self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                                self.user_id, self.jwt_token
+                            )
+                        )
+                        deleted_chunks = await delete_chunks_by_document_ids(
+                            [file_id], opensearch_client, get_index_name()
+                        )
+                    except Exception as cleanup_err:
+                        logger.error(
+                            "Failed to clean up chunks for deleted source file",
+                            file_id=file_id,
+                            connection_id=self.connection_id,
+                            error=str(cleanup_err),
+                        )
+
+                    logger.warning(
+                        "File no longer exists at source — removed from index",
+                        file_id=file_id,
+                        connection_id=self.connection_id,
+                        deleted_chunks=deleted_chunks,
+                        error=str(e),
+                    )
+                    file_task.status = TaskStatus.SKIPPED
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "deleted_at_source",
+                        "deleted_chunks": deleted_chunks,
+                    }
+                    file_task.updated_at = time.time()
+                    upload_task.successful_files += 1
+                    return
+                raise
 
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)

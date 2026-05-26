@@ -3,11 +3,13 @@ Basic tests for TaskService improvements
 Tests timeout handling, cancellation, and cleanup functionality
 """
 import asyncio
-import pytest
 import time
-from unittest.mock import Mock, AsyncMock, patch
-from services.task_service import TaskService, IngestionTimeoutError
-from models.tasks import TaskStatus, UploadTask, FileTask
+from unittest.mock import Mock
+
+import pytest
+
+from models.tasks import FileTask, TaskStatus, UploadTask
+from services.task_service import IngestionTimeoutError, TaskService
 
 
 @pytest.fixture
@@ -120,27 +122,37 @@ async def test_shutdown_cancels_background_tasks(task_service):
 
 
 def test_counter_consistency_logic(task_service):
-    """Test that processed_files counter logic only counts terminal states"""
+    """Test that processed_files counter logic only counts terminal states.
+
+    SKIPPED must count as terminal — connector sync marks source-deleted
+    files SKIPPED, and excluding them caused the upload task to hang
+    forever (processed_files never reaching total_files).
+    """
     # This tests the logic pattern used in the finally block
 
     task = UploadTask(
         task_id="test_task",
-        total_files=3,
+        total_files=4,
         file_tasks={
             "file1": FileTask(file_path="file1", status=TaskStatus.COMPLETED),
             "file2": FileTask(file_path="file2", status=TaskStatus.FAILED),
             "file3": FileTask(file_path="file3", status=TaskStatus.RUNNING),
+            "file4": FileTask(file_path="file4", status=TaskStatus.SKIPPED),
         }
     )
 
     # Simulate the counter logic from the finally block
     processed_count = 0
     for file_task in task.file_tasks.values():
-        if file_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+        if file_task.status in [
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.SKIPPED,
+        ]:
             processed_count += 1
 
-    # Should only count completed and failed, not running
-    assert processed_count == 2
+    # Should count completed, failed, and skipped — but not running
+    assert processed_count == 3
 
 
 

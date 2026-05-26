@@ -1,16 +1,17 @@
-import traceback
 import asyncio
 import os
 import random
 import time
+import traceback
 import uuid
-from typing import Any, Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 from models.tasks import FileTask, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
-from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.telemetry import Category, MessageId, TelemetryClient
 
 T = TypeVar("T")
 
@@ -112,7 +113,7 @@ class TaskService:
         timeout: int = timeout_seconds or self.ingestion_timeout
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise IngestionTimeoutError(
                 f"File processing timed out after {timeout} seconds."
             ) from None
@@ -431,8 +432,16 @@ class TaskService:
                     finally:
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
-                        # This prevents counter inconsistency on cancellation
-                        if file_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+                        # This prevents counter inconsistency on cancellation.
+                        # SKIPPED is terminal too — e.g. source-deleted files in
+                        # connector sync — and must count, or the upload task
+                        # never reaches processed_files >= total_files and stays
+                        # open forever.
+                        if file_task.status in [
+                            TaskStatus.COMPLETED,
+                            TaskStatus.FAILED,
+                            TaskStatus.SKIPPED,
+                        ]:
                             async with self._get_task_lock(task_id):
                                 upload_task.processed_files += 1
                         upload_task.updated_at = time.time()
@@ -824,7 +833,7 @@ class TaskService:
         if self.background_tasks:
             results = await asyncio.gather(*self.background_tasks, return_exceptions=True)
             # Log any unexpected errors (not CancelledError)
-            for i, result in enumerate(results):
+            for result in results:
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                     logger.warning(
                         "Background task raised exception during shutdown", error=str(result)
