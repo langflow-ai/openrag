@@ -720,10 +720,8 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                     try:
                         from api.documents import delete_chunks_by_document_ids
 
-                        opensearch_client = (
-                            self.langflow_connector_service.session_manager.get_user_opensearch_client(
-                                self.user_id, self.jwt_token
-                            )
+                        opensearch_client = self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                            self.user_id, self.jwt_token
                         )
                         deleted_chunks = await delete_chunks_by_document_ids(
                             [file_id], opensearch_client, get_index_name()
