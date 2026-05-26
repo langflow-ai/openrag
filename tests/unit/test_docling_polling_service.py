@@ -42,6 +42,7 @@ def no_sleep():
 @pytest.mark.asyncio
 async def test_returns_success_immediately_when_already_done(polling_service, mock_docling_service):
     mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
+    mock_docling_service.fetch_task_result.return_value = {"body": "ok"}
 
     result = await polling_service.poll_until_ready(
         task_id="t1", poll_interval=1.0, max_seconds=10.0
@@ -49,6 +50,7 @@ async def test_returns_success_immediately_when_already_done(polling_service, mo
 
     assert result.outcome == PollOutcome.SUCCESS
     assert mock_docling_service.check_task_status.call_count == 1
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
 
 
 @pytest.mark.asyncio
@@ -61,6 +63,7 @@ async def test_loops_through_processing_then_success(
         _snap(DoclingTaskState.PROCESSING),
         _snap(DoclingTaskState.SUCCESS),
     ]
+    mock_docling_service.fetch_task_result.return_value = {"body": "ok"}
 
     result = await polling_service.poll_until_ready(
         task_id="t1", poll_interval=1.0, max_seconds=60.0
@@ -69,6 +72,23 @@ async def test_loops_through_processing_then_success(
     assert result.outcome == PollOutcome.SUCCESS
     assert mock_docling_service.check_task_status.call_count == 4
     assert no_sleep.call_count == 3
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+
+
+@pytest.mark.asyncio
+async def test_success_status_requires_fetchable_result(polling_service, mock_docling_service):
+    mock_docling_service.check_task_status.return_value = _snap(DoclingTaskState.SUCCESS)
+    mock_docling_service.fetch_task_result.side_effect = RuntimeError(
+        "missing document.json_content"
+    )
+
+    result = await polling_service.poll_until_ready(
+        task_id="t1", poll_interval=1.0, max_seconds=10.0
+    )
+
+    assert result.outcome == PollOutcome.FAILED
+    assert "missing document.json_content" in (result.detail or "")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
 
 
 @pytest.mark.asyncio

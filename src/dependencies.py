@@ -137,6 +137,10 @@ def get_docling_polling_service(services: dict = Depends(get_services)):
     return services["docling_polling_service"]
 
 
+def get_docling_metering_service(services: dict = Depends(get_services)):
+    return services.get("docling_metering_service")
+
+
 def get_rbac_service(services: dict = Depends(get_services)):
     return services["rbac_service"]
 

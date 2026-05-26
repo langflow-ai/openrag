@@ -4,7 +4,7 @@ import platform
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 import httpx
 from pydantic import BaseModel

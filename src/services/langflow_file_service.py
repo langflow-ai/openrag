@@ -1,8 +1,9 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -17,10 +18,11 @@ logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    def __init__(self, flows_service=None, docling_service=None):
+    def __init__(self, flows_service=None, docling_service=None, metering_service=None):
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
         self.docling_service = docling_service
+        self.metering_service = metering_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
@@ -590,7 +592,8 @@ class LangflowFileService:
 
         logger.debug("[LF] Starting two-phase Docling+Langflow ingest")
 
-        filename, content, _ = file_tuple
+        filename, content, mimetype = file_tuple
+        size_bytes = len(content)
 
         # ── Phase 1: submit to Docling ──────────────────────────────────
         if file_task is not None:
@@ -598,12 +601,15 @@ class LangflowFileService:
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
         task_id = await self.submit_to_docling(filename, content, owner=owner, jwt_token=jwt_token)
+        submitted_at = datetime.now(timezone.utc).isoformat()
+        _submit_wall = time.monotonic()
 
         if file_task is not None:
             file_task.docling_task_id = task_id
             file_task.docling_status = DoclingPhaseStatus.PROCESSING
 
         # ── Phase 1b: backend-side polling (optional) ───────────────────
+        poll_count = 0
         if docling_polling_service is not None:
             from config.settings import (
                 DOCLING_POLL_BACKOFF_FACTOR,
@@ -622,6 +628,7 @@ class LangflowFileService:
                 backoff_factor=DOCLING_POLL_BACKOFF_FACTOR,
                 transient_retry_budget=DOCLING_POLL_TRANSIENT_RETRIES,
             )
+            poll_count = poll_result.poll_count
 
             if poll_result.outcome != PollOutcome.SUCCESS:
                 if file_task is not None:
@@ -638,6 +645,18 @@ class LangflowFileService:
                         "detail": poll_result.detail,
                         "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                     },
+                )
+                await self._record_meter(
+                    task_id=task_id,
+                    filename=filename,
+                    size_bytes=size_bytes,
+                    mimetype=mimetype,
+                    owner=owner,
+                    submitted_at=submitted_at,
+                    elapsed_seconds=time.monotonic() - _submit_wall,
+                    outcome=poll_result.outcome.value,
+                    failure_detail=poll_result.detail,
+                    poll_count=poll_count,
                 )
                 raise Exception(
                     f"Docling conversion did not complete ({poll_result.outcome.value}): "
@@ -687,6 +706,18 @@ class LangflowFileService:
                 "[LF] Ingestion failed during combined operation",
                 extra={"error": str(e), "filename": filename},
             )
+            await self._record_meter(
+                task_id=task_id,
+                filename=filename,
+                size_bytes=size_bytes,
+                mimetype=mimetype,
+                owner=owner,
+                submitted_at=submitted_at,
+                elapsed_seconds=time.monotonic() - _submit_wall,
+                outcome="langflow_failed",
+                failure_detail=str(e),
+                poll_count=poll_count,
+            )
             # Docling Serve has no cancel endpoint; let any orphan task expire.
             raise
 
@@ -699,9 +730,54 @@ class LangflowFileService:
             # fields coherent. Idempotent for the polling path.
             file_task.docling_status = DoclingPhaseStatus.SUCCESS
 
+        await self._record_meter(
+            task_id=task_id,
+            filename=filename,
+            size_bytes=size_bytes,
+            mimetype=mimetype,
+            owner=owner,
+            submitted_at=submitted_at,
+            elapsed_seconds=time.monotonic() - _submit_wall,
+            outcome="success",
+            poll_count=poll_count,
+        )
+
         return {
             "status": "success",
             "docling_task_id": task_id,
             "ingestion": ingest_result,
             "message": f"File '{filename}' processed via Docling and ingested successfully",
         }
+
+    async def _record_meter(
+        self,
+        *,
+        task_id: str,
+        filename: str,
+        size_bytes: int,
+        mimetype: str,
+        owner: Optional[str],
+        submitted_at: str,
+        elapsed_seconds: float,
+        outcome: str,
+        failure_detail: Optional[str] = None,
+        poll_count: int = 0,
+    ) -> None:
+        """Fire-and-forget metering record. No-ops when metering is disabled."""
+        if self.metering_service is None:
+            return
+        terminal_at = datetime.now(timezone.utc).isoformat()
+        record = self.metering_service.build_record(
+            task_id=task_id,
+            filename=filename,
+            size_bytes=size_bytes,
+            mimetype=mimetype,
+            owner_user_id=owner,
+            submitted_at=submitted_at,
+            terminal_at=terminal_at,
+            elapsed_seconds=elapsed_seconds,
+            outcome=outcome,
+            failure_detail=failure_detail,
+            poll_count=poll_count,
+        )
+        await self.metering_service.record(record)

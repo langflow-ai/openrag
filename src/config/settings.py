@@ -230,6 +230,26 @@ DOCLING_POLL_MAX_INTERVAL_SECONDS = get_env_float("DOCLING_POLL_MAX_INTERVAL_SEC
 DOCLING_POLL_BACKOFF_FACTOR = get_env_float("DOCLING_POLL_BACKOFF_FACTOR", 1.5)
 DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5)
 
+# Docling usage metering configuration.
+# When enabled, a JSONL record is appended for every file submitted to Docling,
+# capturing timing, outcome, size, and owner for billing/auditing purposes.
+ENABLE_DOCLING_METERING = os.getenv("ENABLE_DOCLING_METERING", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+from config.paths import get_data_file as _get_data_file
+
+DOCLING_METERING_LOG_PATH = os.getenv(
+    "DOCLING_METERING_LOG_PATH", _get_data_file("docling_tasks_logs.jsonl")
+)
+# Deployment mode of the Docling Serve instance — "direct" (synchronous) or
+# "rq" (Redis Queue, asynchronous). Stored in each meter record so that
+# elapsed_seconds can be interpreted correctly: in RQ mode it includes
+# queue wait time in addition to conversion time.
+DOCLING_DEPLOYMENT_MODE = os.getenv("DOCLING_DEPLOYMENT_MODE", "direct").lower()
+
 
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""

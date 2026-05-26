@@ -35,6 +35,7 @@ class DoclingPollResult:
     detail: Optional[str] = None
     last_snapshot: Optional[DoclingStatusSnapshot] = None
     elapsed_seconds: float = 0.0
+    poll_count: int = 0
 
 
 class DoclingPollingService:
@@ -54,6 +55,11 @@ class DoclingPollingService:
     ) -> DoclingPollResult:
         """Loop on Docling status until terminal or until max_seconds elapses.
 
+        A SUCCESS status is treated as ready only after the result endpoint
+        returns a payload with usable ``document.json_content``. This prevents
+        handing Langflow a task that Docling accepted but failed to convert
+        into a consumable document.
+
         Transient errors (network, 5xx, NOT_FOUND seen briefly before the task
         is registered server-side) are absorbed up to ``transient_retry_budget``
         before being surfaced as failures. The interval grows by
@@ -70,6 +76,7 @@ class DoclingPollingService:
         interval = poll_interval
         consecutive_not_found = 0
         last_snapshot: Optional[DoclingStatusSnapshot] = None
+        poll_count = 0
 
         logger.debug("Starting Docling polling", task_id=task_id)
 
@@ -77,12 +84,31 @@ class DoclingPollingService:
             logger.debug("Docling polling", task_id=task_id)
             snapshot = await self.docling_service.check_task_status(task_id)
             last_snapshot = snapshot
+            poll_count += 1
             logger.debug("Snapshot received", task_id=task_id, snapshot=last_snapshot)
             elapsed = time.monotonic() - start
 
             if snapshot.state == DoclingTaskState.SUCCESS:
+                try:
+                    await self.docling_service.fetch_task_result(task_id)
+                except Exception as e:
+                    detail = f"Docling result unavailable after SUCCESS status: {str(e)}"
+                    logger.warning(
+                        "Docling task reached SUCCESS but result fetch failed",
+                        task_id=task_id,
+                        detail=detail,
+                        elapsed_seconds=round(elapsed, 2),
+                    )
+                    return DoclingPollResult(
+                        outcome=PollOutcome.FAILED,
+                        detail=detail,
+                        last_snapshot=snapshot,
+                        elapsed_seconds=elapsed,
+                        poll_count=poll_count,
+                    )
+
                 logger.debug(
-                    "Docling task reached SUCCESS",
+                    "Docling task reached SUCCESS and result is available",
                     task_id=task_id,
                     elapsed_seconds=round(elapsed, 2),
                 )
@@ -90,6 +116,7 @@ class DoclingPollingService:
                     outcome=PollOutcome.SUCCESS,
                     last_snapshot=snapshot,
                     elapsed_seconds=elapsed,
+                    poll_count=poll_count,
                 )
 
             if snapshot.state == DoclingTaskState.FAILED:
@@ -104,6 +131,7 @@ class DoclingPollingService:
                     detail=snapshot.detail or "Docling reported failure",
                     last_snapshot=snapshot,
                     elapsed_seconds=elapsed,
+                    poll_count=poll_count,
                 )
 
             if snapshot.state == DoclingTaskState.NOT_FOUND:
@@ -122,6 +150,7 @@ class DoclingPollingService:
                         detail="Docling task not found (expired or unknown task_id)",
                         last_snapshot=snapshot,
                         elapsed_seconds=elapsed,
+                        poll_count=poll_count,
                     )
             else:
                 consecutive_not_found = 0
@@ -139,6 +168,7 @@ class DoclingPollingService:
                     detail=f"Docling polling timed out after {max_seconds}s",
                     last_snapshot=snapshot,
                     elapsed_seconds=time.monotonic() - start,
+                    poll_count=poll_count,
                 )
             await asyncio.sleep(min(interval, remaining))
             interval = min(interval * backoff_factor, max_interval)
