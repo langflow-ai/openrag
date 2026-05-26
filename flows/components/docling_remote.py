@@ -255,6 +255,22 @@ class DoclingRemoteComponent(BaseFileComponent):
         result_resp.raise_for_status()
         result = result_resp.json()
 
+        if result.get("status") == "failure" or result.get("errors"):
+            errors = result.get("errors", [])
+            err_msg_list = []
+            for err in errors:
+                if isinstance(err, dict) and "error_message" in err:
+                    err_msg_list.append(err["error_message"])
+                elif isinstance(err, str):
+                    err_msg_list.append(err)
+            
+            if err_msg_list:
+                err_details = "; ".join(err_msg_list)
+            else:
+                err_details = "Unknown Docling processing error"
+            
+            raise ValueError(f"Docling processing failed: {err_details}")
+
         if "json_content" not in result["document"] or result["document"]["json_content"] is None:
             self.log("No JSON DoclingDocument found in the result.")
             return None
