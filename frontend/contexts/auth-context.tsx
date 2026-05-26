@@ -190,7 +190,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             `scope=${result.oauth_config.scopes.join(" ")}&` +
             `redirect_uri=${encodeURIComponent(result.oauth_config.redirect_uri)}&` +
             `access_type=offline&` +
-            `prompt=select_account&` +
+            `prompt=consent&` +
             `state=${encodeURIComponent(state)}`;
 
           console.log("Redirecting to OAuth URL:", authUrl);

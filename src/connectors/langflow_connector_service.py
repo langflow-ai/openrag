@@ -92,9 +92,13 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        import os
+
         from utils.file_utils import auto_cleanup_tempfile
 
-        suffix = get_file_extension(document.mimetype)
+        suffix = os.path.splitext(document.filename)[1]
+        if not suffix:
+            suffix = get_file_extension(document.mimetype)
 
         # Create temporary file from document content
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -270,6 +274,8 @@ class LangflowConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """Sync files from a connector connection using Langflow processing"""
         jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
@@ -314,6 +320,11 @@ class LangflowConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug("Skipping file not in filter", filename=file_name)
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages
@@ -337,6 +348,7 @@ class LangflowConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            replace_duplicates=replace_duplicates,
         )
 
         # Use file IDs as items
@@ -364,6 +376,7 @@ class LangflowConnectorService:
         jwt_token: str = None,
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
@@ -461,6 +474,7 @@ class LangflowConnectorService:
             owner_name=owner_name,
             owner_email=owner_email,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
         # Create custom task using TaskService

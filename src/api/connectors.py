@@ -19,6 +19,11 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
+def _connector_sync_should_replace(connector_type: str) -> bool:
+    """Return True for connector types where sync should replace existing indexed files."""
+    return connector_type in ["google_drive", "sharepoint", "onedrive"]
+
+
 async def get_synced_file_ids_for_connector(
     connector_type: str,
     user_id: str,
@@ -296,6 +301,10 @@ class ConnectorSyncBody(BaseModel):
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
+    # When True, files whose filename already exists in the index are replaced
+    # rather than failing. Set by the provider upload UI after the user confirms
+    # overwrite in the duplicate dialog.
+    replace_duplicates: bool = False
 
 
 async def list_connectors(
@@ -411,6 +420,7 @@ async def connector_sync(
                 jwt_token=jwt_token,
                 file_infos=file_infos,
                 ingest_settings=body.settings,
+                replace_duplicates=body.replace_duplicates,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
@@ -505,6 +515,7 @@ async def connector_sync(
                     user.user_id,
                     existing_file_ids,
                     jwt_token=jwt_token,
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
             else:
                 # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -519,6 +530,7 @@ async def connector_sync(
                     max_files=None,
                     jwt_token=jwt_token,
                     filename_filter=set(existing_filenames),
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
         task_ids = [task_id]
         await TelemetryClient.send_event(
@@ -972,6 +984,7 @@ async def sync_all_connectors(
                         user.user_id,
                         existing_file_ids,
                         jwt_token=jwt_token,
+                        replace_duplicates=_connector_sync_should_replace(connector_type),
                     )
                 else:
                     # Fallback: use filename filtering
@@ -986,6 +999,7 @@ async def sync_all_connectors(
                         max_files=None,
                         jwt_token=jwt_token,
                         filename_filter=set(existing_filenames),
+                        replace_duplicates=_connector_sync_should_replace(connector_type),
                     )
 
                 all_task_ids.append(task_id)
