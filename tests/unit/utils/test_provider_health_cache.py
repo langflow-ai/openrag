@@ -86,7 +86,7 @@ def test_cache_key_stable_for_identical_inputs():
 
 def test_cache_key_does_not_leak_api_key_in_plaintext():
     key = _key(api_key="super-secret-token-12345")
-    # The key is sha256 hex, so the raw api_key must not appear anywhere in it.
+    # The key is BLAKE2b hex, so the raw api_key must not appear anywhere in it.
     assert "super-secret" not in key
     assert "token-12345" not in key
 
