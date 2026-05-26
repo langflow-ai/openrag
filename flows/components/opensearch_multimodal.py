@@ -818,9 +818,29 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         return value
 
     def _openrag_ingest_callback_config(self) -> tuple[str, str, str] | None:
-        url = self._openrag_callback_value("openrag_ingest_url")
-        token = self._openrag_callback_value("openrag_ingest_token")
-        ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")
+        url = (self.openrag_ingest_url or "").strip()
+        token = (self.openrag_ingest_token or "").strip()
+        ingest_run_id = (self.openrag_ingest_run_id or "").strip()
+
+        masked_token = (
+            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
+        )
+        debug_payload = {
+            "openrag_ingest_url": url,
+            "openrag_ingest_url_len": len(url),
+            "openrag_ingest_token_masked": masked_token,
+            "openrag_ingest_token_len": len(token),
+            "openrag_ingest_run_id": ingest_run_id,
+            "raw_url_type": type(self.openrag_ingest_url).__name__,
+            "raw_token_type": type(self.openrag_ingest_token).__name__,
+            "raw_run_id_type": type(self.openrag_ingest_run_id).__name__,
+        }
+        logger.warning(f"[OpenRAG callback config] {debug_payload}")
+        try:
+            self.log(f"[OpenRAG callback config] {debug_payload}")
+        except Exception:
+            pass
+
         if not url and not token and not ingest_run_id:
             return None
         if not url or not token or not ingest_run_id:
@@ -844,6 +864,23 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         timeout = self._parse_int_param("request_timeout", REQUEST_TIMEOUT)
         headers = {"Authorization": f"Bearer {token}"}
 
+        masked_token = (
+            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
+        )
+        request_summary = {
+            "url": url,
+            "ingest_run_id": ingest_run_id,
+            "token_masked": masked_token,
+            "total_chunks": len(requests),
+            "batch_size": batch_size,
+            "timeout_s": timeout,
+        }
+        logger.warning(f"[OpenRAG ingest POST] {request_summary}")
+        try:
+            self.log(f"[OpenRAG ingest POST] {request_summary}")
+        except Exception:
+            pass
+
         with httpx.Client(timeout=timeout) as client:
             total_batches = (len(requests) + batch_size - 1) // batch_size
             for batch_number, start in enumerate(range(0, len(requests), batch_size), start=1):
@@ -862,12 +899,29 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         for request in batch
                     ],
                 }
+                logger.warning(
+                    f"[OpenRAG ingest POST] -> batch={batch_number}/{total_batches} "
+                    f"url={url} chunks={len(payload['chunks'])} final={final}"
+                )
                 response = client.post(url, json=payload, headers=headers)
+                response_summary = {
+                    "batch": batch_number,
+                    "url": url,
+                    "status": response.status_code,
+                    "final_url": str(response.request.url),
+                    "response_headers": dict(response.headers),
+                    "body_preview": response.text[:500],
+                }
+                logger.warning(f"[OpenRAG ingest POST resp] {response_summary}")
+                try:
+                    self.log(f"[OpenRAG ingest POST resp] {response_summary}")
+                except Exception:
+                    pass
                 if response.status_code >= 400:
                     msg = (
                         "OpenRAG ingest callback failed "
-                        f"(batch={batch_number}, status={response.status_code}): "
-                        f"{response.text[:1000]}"
+                        f"(batch={batch_number}, status={response.status_code}, "
+                        f"url={url}): {response.text[:1000]}"
                     )
                     raise RuntimeError(msg)
 
