@@ -89,6 +89,9 @@
     --failure-message: hsl(var(--foreground));
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: rgba(59, 130, 246, 0.18);
+    --function-call-header-hover: rgba(59, 130, 246, 0.24);
     --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
@@ -158,6 +161,9 @@
     --failure-message: #ffc9c9cc;
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: hsla(219, 30%, 9%, 1);
+    --function-call-header-hover: hsla(219, 30%, 12%, 1);
     --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 

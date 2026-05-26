@@ -102,6 +102,25 @@ def clean_connector_filename(filename: str, mimetype: str) -> str:
     return filename
 
 
+def langflow_safe_filename_and_mimetype(filename: str, mimetype: str | None) -> tuple[str, str]:
+    """Apply the .txt -> .md workaround for Langflow ingestion.
+
+    Langflow's docling component fails on text/plain (see commit f6b9fe0).
+    The workaround is to rename .txt files to .md with text/markdown before
+    handing the file to Langflow. Centralised here so every Langflow-upload
+    site applies it identically — local user uploads, connector-driven
+    ingestion, and the direct upload route.
+
+    Returns the (possibly rewritten) (filename, mimetype) pair. Pass-through
+    for all other extensions; falls back to application/octet-stream when
+    mimetype is missing.
+    """
+    safe_mimetype = mimetype or "application/octet-stream"
+    if filename and filename.lower().endswith(".txt"):
+        return filename[:-4] + ".md", "text/markdown"
+    return filename, safe_mimetype
+
+
 def get_filename_aliases(filename: str) -> list[str]:
     """Return equivalent filename variants used by ingestion/indexing.
 

@@ -3,7 +3,11 @@ from typing import Any
 # Create custom processor for connector files using Langflow
 from models.processors import LangflowConnectorFileProcessor
 from services.langflow_file_service import LangflowFileService
-from utils.file_utils import clean_connector_filename, get_file_extension
+from utils.file_utils import (
+    clean_connector_filename,
+    get_file_extension,
+    langflow_safe_filename_and_mimetype,
+)
 from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
@@ -56,9 +60,13 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        import os
+
         from utils.file_utils import auto_cleanup_tempfile
 
-        suffix = get_file_extension(document.mimetype)
+        suffix = os.path.splitext(document.filename)[1]
+        if not suffix:
+            suffix = get_file_extension(document.mimetype)
 
         # Create temporary file from document content
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -72,11 +80,15 @@ class LangflowConnectorService:
 
             # Clean filename and ensure we don't add a double extension
             processed_filename = clean_connector_filename(document.filename, document.mimetype)
+            # Langflow's docling chokes on text/plain — rename .txt -> .md.
+            processed_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
+                processed_filename, document.mimetype
+            )
 
             file_tuple = (
                 processed_filename,
                 content,
-                document.mimetype or "application/octet-stream",
+                processed_mimetype,
             )
 
             # Step 0: Delete existing chunks for this file before re-ingesting.
@@ -225,6 +237,8 @@ class LangflowConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """Sync files from a connector connection using Langflow processing"""
         if not self.task_service:
@@ -267,6 +281,11 @@ class LangflowConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug("Skipping file not in filter", filename=file_name)
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages
@@ -290,6 +309,7 @@ class LangflowConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            replace_duplicates=replace_duplicates,
         )
 
         # Use file IDs as items
