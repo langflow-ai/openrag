@@ -8,7 +8,7 @@ import tempfile
 import threading
 import time
 from collections.abc import AsyncIterator
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from utils.logging_config import get_logger
 
@@ -376,8 +376,8 @@ class DoclingManager:
                         )
                         self._starting = False
                         break
-                except:
-                    pass
+                except Exception as e:
+                    self._add_log_entry(f"Error waiting for docling-serve: {e}")
 
                 if (i + 1) % 10 == 0:
                     self._add_log_entry(f"Waiting for startup... ({i + 1}/{timeout}s)")
@@ -578,10 +578,6 @@ class DoclingManager:
 
     async def follow_logs(self) -> AsyncIterator[str]:
         """Follow logs from the docling-serve process in real-time."""
-        # First yield status message and any existing logs
-        display_host = "localhost" if self._host == "0.0.0.0" else self._host
-        status_msg = f"Docling serve is running on http://{display_host}:{self._port}"
-
         with self._log_lock:
             if self._log_buffer:
                 yield "\n".join(self._log_buffer)
