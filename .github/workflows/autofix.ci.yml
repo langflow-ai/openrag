@@ -1,7 +1,7 @@
 # autofix.ci enforces that any workflow invoking `autofix-ci/action` is
-# named exactly `autofix.ci`. Keep this workflow narrowly scoped to
-# formatter autofix; strict lint and mypy checks live in
-# `.github/workflows/lint-backend.yml`.
+# named exactly `autofix.ci`. Applies ruff safe lint fixes (excluding F401
+# to preserve side-effect imports) and formatting on changed files; strict
+# lint (--no-fix) and mypy live in `.github/workflows/lint-backend.yml`.
 #
 # Setup: install https://github.com/apps/autofix-ci on the repo (free for
 # public repos) and enable auto-apply in the autofix.ci dashboard so the
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   autofix:
-    name: ruff format autofix
+    name: ruff autofix
     runs-on: ubuntu-latest
 
     steps:
@@ -63,16 +63,21 @@ jobs:
           printf '%s\n' "${files[@]}"
           echo "files=${files[*]}" >> "$GITHUB_OUTPUT"
 
+      - name: Ruff lint fix (in-place)
+        if: steps.changed.outputs.files != ''
+        continue-on-error: true
+        run: uv run ruff check --fix --extend-ignore F401 ${{ steps.changed.outputs.files }}
+
       - name: Ruff format (in-place)
         if: steps.changed.outputs.files != ''
         run: uv run ruff format ${{ steps.changed.outputs.files }}
 
-      # Hands any working-tree changes from the previous step to autofix.ci.
+      # Hands any working-tree changes from the previous steps to autofix.ci.
       # In auto-apply mode the App pushes a commit back to the PR branch;
       # the action exits non-zero on the run that produced the diff, then
       # the App's commit triggers a fresh CI cycle that passes.
-      - name: Apply ruff format autofix via autofix.ci
+      - name: Apply ruff autofix via autofix.ci
         if: steps.changed.outputs.files != ''
         uses: autofix-ci/action@v1.3.1
         with:
-          commit-message: "style: ruff format (auto)"
+          commit-message: "style: ruff autofix (auto)"

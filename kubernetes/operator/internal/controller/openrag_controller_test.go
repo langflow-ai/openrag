@@ -61,6 +61,14 @@ func reconciler(s *runtime.Scheme, objs ...client.Object) (*OpenRAGReconciler, c
 
 func reconcileOnce(t *testing.T, r *OpenRAGReconciler, cr *openragv1alpha1.OpenRAG) ctrl.Result {
 	t.Helper()
+	// First reconcile: adds finalizer and returns early
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
+	})
+	require.NoError(t, err)
+
+	// Second reconcile: actually creates resources
+	// This is needed because adding finalizer triggers an Update() which returns early
 	res, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
 	})
@@ -287,7 +295,7 @@ func TestReconcile_AddsFinalizer_WhenTargetNamespaceDiffers(t *testing.T) {
 	assert.True(t, controllerutil.ContainsFinalizer(updated, finalizer))
 }
 
-func TestReconcile_NoFinalizer_WhenSameNamespace(t *testing.T) {
+func TestReconcile_AlwaysAddsFinalizer_SameNamespace(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")
 	r, c := reconciler(s, cr)
@@ -297,7 +305,8 @@ func TestReconcile_NoFinalizer_WhenSameNamespace(t *testing.T) {
 	updated := &openragv1alpha1.OpenRAG{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}, updated))
-	assert.False(t, controllerutil.ContainsFinalizer(updated, finalizer))
+	// Finalizer is always added (even for same namespace) to ensure .env secret finalizers are cleaned up on deletion
+	assert.True(t, controllerutil.ContainsFinalizer(updated, finalizer))
 }
 
 func TestReconcile_ResourcesInTargetNamespace(t *testing.T) {
@@ -1263,4 +1272,190 @@ func TestReconcile_AllComponentsWithCustomNames_OperatorCreates(t *testing.T) {
 			types.NamespacedName{Name: resourceName(role), Namespace: "test-ns"}, defaultSvc)
 		assert.True(t, errors.IsNotFound(err), "Default Service for %s should not be created", role)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// .env Secret Hash and Pod Restart Tests
+// ---------------------------------------------------------------------------
+
+func TestCalculateHash_Deterministic(t *testing.T) {
+	// Same content should always produce the same hash
+	content := "VAR1=value1\nVAR2=value2\nVAR3=value3\n"
+
+	hash1 := calculateHash(content)
+	hash2 := calculateHash(content)
+
+	assert.Equal(t, hash1, hash2, "Same content should produce same hash")
+	assert.NotEmpty(t, hash1, "Hash should not be empty")
+	assert.Len(t, hash1, 64, "SHA256 hash should be 64 hex characters")
+}
+
+func TestCalculateHash_DifferentContent(t *testing.T) {
+	// Different content should produce different hashes
+	content1 := "VAR1=value1\nVAR2=value2\n"
+	content2 := "VAR1=value1\nVAR2=different\n"
+
+	hash1 := calculateHash(content1)
+	hash2 := calculateHash(content2)
+
+	assert.NotEqual(t, hash1, hash2, "Different content should produce different hash")
+}
+
+func TestEnvHash_StableAcrossReconciles(t *testing.T) {
+	// Test that identical env produces identical hash even across multiple reconcile loops
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "custom_value"},
+	}
+
+	r, _ := reconciler(s, cr)
+
+	// Reconcile multiple times
+	var hashes []string
+	for i := 0; i < 5; i++ {
+		backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+		require.NoError(t, err)
+		hash := calculateHash(backendEnvContent)
+		hashes = append(hashes, hash)
+	}
+
+	// All hashes should be identical
+	for i := 1; i < len(hashes); i++ {
+		assert.Equal(t, hashes[0], hashes[i], "Hash should be stable across reconciles (iteration %d)", i)
+	}
+}
+
+func TestEnvHash_ChangesWhenEnvChanges(t *testing.T) {
+	// Test that changing env vars produces different hash
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "original_value"},
+	}
+
+	r, _ := reconciler(s, cr)
+
+	// Get hash with original env
+	backendEnvContent1, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+	hash1 := calculateHash(backendEnvContent1)
+
+	// Change env var value
+	cr.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "changed_value"},
+	}
+
+	// Get hash with changed env
+	backendEnvContent2, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+	hash2 := calculateHash(backendEnvContent2)
+
+	assert.NotEqual(t, hash1, hash2, "Hash should change when env vars change")
+}
+
+func TestDeployment_ContainsEnvHashAnnotation(t *testing.T) {
+	// Test that backend deployment has env hash annotation
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	// Get backend deployment
+	backendDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy))
+
+	// Check for hash annotation
+	annotations := backendDeploy.Spec.Template.Annotations
+	require.NotNil(t, annotations, "Pod template should have annotations")
+	assert.Contains(t, annotations, "openr.ag/backend-env-hash", "Backend pod should have env hash annotation")
+	assert.NotEmpty(t, annotations["openr.ag/backend-env-hash"], "Hash annotation should not be empty")
+	assert.Len(t, annotations["openr.ag/backend-env-hash"], 64, "Hash should be 64 hex characters")
+
+	// Get langflow deployment
+	langflowDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "test-ns"}, langflowDeploy))
+
+	// Check for hash annotation
+	lfAnnotations := langflowDeploy.Spec.Template.Annotations
+	require.NotNil(t, lfAnnotations, "Langflow pod template should have annotations")
+	assert.Contains(t, lfAnnotations, "openr.ag/langflow-env-hash", "Langflow pod should have env hash annotation")
+	assert.NotEmpty(t, lfAnnotations["openr.ag/langflow-env-hash"], "Hash annotation should not be empty")
+	assert.Len(t, lfAnnotations["openr.ag/langflow-env-hash"], 64, "Hash should be 64 hex characters")
+}
+
+func TestDeployment_HashChangeTriggersUpdate(t *testing.T) {
+	// Test that changing env causes hash annotation to change, triggering pod restart
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "original"},
+	}
+	r, c := reconciler(s, cr)
+
+	// Initial reconcile
+	reconcileOnce(t, r, cr)
+
+	// Get initial hash
+	backendDeploy1 := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy1))
+	hash1 := backendDeploy1.Spec.Template.Annotations["openr.ag/backend-env-hash"]
+	require.NotEmpty(t, hash1, "Initial hash should exist")
+
+	// Update CR with different env value
+	updatedCR := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "test-openrag", Namespace: "test-ns"}, updatedCR))
+	updatedCR.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "changed"},
+	}
+	require.NoError(t, c.Update(context.Background(), updatedCR))
+
+	// Reconcile again with updated CR
+	reconcileOnce(t, r, updatedCR)
+
+	// Get updated hash
+	backendDeploy2 := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy2))
+	hash2 := backendDeploy2.Spec.Template.Annotations["openr.ag/backend-env-hash"]
+	require.NotEmpty(t, hash2, "Updated hash should exist")
+
+	// Hash should have changed
+	assert.NotEqual(t, hash1, hash2, "Hash should change when env changes, triggering pod restart")
+}
+
+func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
+	// Test that reconciling without env changes keeps the same hash
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.Backend.Env = []corev1.EnvVar{
+		{Name: "CUSTOM_VAR", Value: "constant"},
+	}
+	r, c := reconciler(s, cr)
+
+	// Initial reconcile
+	reconcileOnce(t, r, cr)
+
+	// Get initial hash
+	backendDeploy1 := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy1))
+	hash1 := backendDeploy1.Spec.Template.Annotations["openr.ag/backend-env-hash"]
+
+	// Reconcile again without changing env
+	reconcileOnce(t, r, cr)
+
+	// Get hash after second reconcile
+	backendDeploy2 := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("be"), Namespace: "test-ns"}, backendDeploy2))
+	hash2 := backendDeploy2.Spec.Template.Annotations["openr.ag/backend-env-hash"]
+
+	// Hash should be identical (no unnecessary pod restart)
+	assert.Equal(t, hash1, hash2, "Hash should remain same when env unchanged (avoids unnecessary restarts)")
 }

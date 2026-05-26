@@ -12,6 +12,8 @@ import asyncio
 from fastapi import FastAPI
 
 from config.settings import (
+    JWT_CLAIMS_CACHE_MAX_SIZE,
+    JWT_CLAIMS_CACHE_TTL_SECONDS,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
@@ -131,6 +133,12 @@ async def run_startup(app: FastAPI):
         backend=RBAC_CACHE_BACKEND,
         workers=UVICORN_WORKER_COUNT,
         perm_cache_ttl_s=RBAC_PERMISSION_CACHE_TTL_SECONDS,
+    )
+    logger.info(
+        "JWT claims cache configured",
+        backend="memory",
+        ttl_s=JWT_CLAIMS_CACHE_TTL_SECONDS,
+        maxsize=JWT_CLAIMS_CACHE_MAX_SIZE,
     )
 
     # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes

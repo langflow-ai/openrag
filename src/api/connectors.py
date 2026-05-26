@@ -19,6 +19,11 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
+def _connector_sync_should_replace(connector_type: str) -> bool:
+    """Return True for connector types where sync should replace existing indexed files."""
+    return connector_type in ["google_drive", "sharepoint", "onedrive"]
+
+
 async def get_synced_file_ids_for_connector(
     connector_type: str,
     user_id: str,
@@ -165,16 +170,43 @@ async def compute_orphans_for_connector_type(
                     connection_id=conn.connection_id,
                 )
                 return None
-            page_token = None
-            while True:
-                page = await connector.list_files(page_token=page_token)
-                for f in page.get("files", []):
-                    fid = f.get("id")
-                    if fid:
-                        remote_ids.add(fid)
-                page_token = page.get("nextPageToken") or page.get("next_page_token")
-                if not page_token:
-                    break
+
+            # Drive the per-id existence check via cfg.file_ids when the
+            # connector supports it (SharePoint / OneDrive / Google Drive).
+            # The flat default of list_files() only returns the *root* listing
+            # (e.g. /drive/root/children for SharePoint, files-only, no folder
+            # traversal), so any folder-internal file in OpenSearch would be
+            # absent from remote_ids and wrongly flagged as an orphan.
+            # _list_selected_files iterates each id via _get_file_metadata_by_id
+            # and silently drops missing ids, so the resulting `remote_ids` is
+            # exactly "the subset of existing_file_ids that still exists at
+            # source" — which is what orphan detection actually needs.
+            cfg = getattr(connector, "cfg", None)
+            scoped_listing = cfg is not None and bool(existing_file_ids)
+
+            original_file_ids = None
+            original_folder_ids = None
+            if scoped_listing:
+                original_file_ids = getattr(cfg, "file_ids", None)
+                original_folder_ids = getattr(cfg, "folder_ids", None)
+                cfg.file_ids = list(existing_file_ids)
+                cfg.folder_ids = None
+
+            try:
+                page_token = None
+                while True:
+                    page = await connector.list_files(page_token=page_token)
+                    for f in page.get("files", []):
+                        fid = f.get("id")
+                        if fid:
+                            remote_ids.add(fid)
+                    page_token = page.get("nextPageToken") or page.get("next_page_token")
+                    if not page_token:
+                        break
+            finally:
+                if scoped_listing:
+                    cfg.file_ids = original_file_ids
+                    cfg.folder_ids = original_folder_ids
         except Exception as e:
             logger.warning(
                 "Skipping orphan compute — listing failed",
@@ -267,6 +299,10 @@ class ConnectorSyncBody(BaseModel):
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
+    # When True, files whose filename already exists in the index are replaced
+    # rather than failing. Set by the provider upload UI after the user confirms
+    # overwrite in the duplicate dialog.
+    replace_duplicates: bool = False
 
 
 async def list_connectors(
@@ -382,6 +418,7 @@ async def connector_sync(
                 jwt_token=jwt_token,
                 file_infos=file_infos,
                 ingest_settings=body.settings,
+                replace_duplicates=body.replace_duplicates,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
@@ -476,6 +513,7 @@ async def connector_sync(
                     user.user_id,
                     existing_file_ids,
                     jwt_token=jwt_token,
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
             else:
                 # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -490,6 +528,7 @@ async def connector_sync(
                     max_files=None,
                     jwt_token=jwt_token,
                     filename_filter=set(existing_filenames),
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
         task_ids = [task_id]
         await TelemetryClient.send_event(
@@ -947,6 +986,7 @@ async def sync_all_connectors(
                         user.user_id,
                         existing_file_ids,
                         jwt_token=jwt_token,
+                        replace_duplicates=_connector_sync_should_replace(connector_type),
                     )
                 else:
                     # Fallback: use filename filtering
@@ -961,6 +1001,7 @@ async def sync_all_connectors(
                         max_files=None,
                         jwt_token=jwt_token,
                         filename_filter=set(existing_filenames),
+                        replace_duplicates=_connector_sync_should_replace(connector_type),
                     )
 
                 all_task_ids.append(task_id)

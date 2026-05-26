@@ -1,17 +1,25 @@
-import jwt
-import httpx
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Any, Union
-from dataclasses import dataclass
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448
-
 import os
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Union
+
+import httpx
+import jwt
+from cachetools import TTLCache
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
+
+from config.settings import (
+    IBM_AUTH_ENABLED,
+    JWT_CLAIMS_CACHE_MAX_SIZE,
+    JWT_CLAIMS_CACHE_TTL_SECONDS,
+)
 from utils.logging_config import get_logger
-from config.settings import IBM_AUTH_ENABLED
 
 logger = get_logger(__name__)
+
+
 @dataclass
 class User:
     """User information from OAuth provider"""
@@ -23,16 +31,17 @@ class User:
     provider: str = "google"
     created_at: datetime = None
     last_login: datetime = None
-    jwt_token: Optional[str] = None
-    opensearch_username: Optional[str] = None
-    opensearch_credentials: Optional[str] = None  # Raw base64 credentials (without "Basic " prefix)
-    db_user_id: Optional[str] = None  # Internal OpenRAG users.id
+    jwt_token: str | None = None
+    opensearch_username: str | None = None
+    opensearch_credentials: str | None = None  # Raw base64 credentials (without "Basic " prefix)
+    db_user_id: str | None = None  # Internal OpenRAG users.id
 
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
         if self.last_login is None:
             self.last_login = datetime.now()
+
 
 @dataclass
 class AnonymousUser(User):
@@ -45,6 +54,17 @@ class AnonymousUser(User):
     provider: str = "none"
 
 
+# Decoded JWT claims keyed by raw token string (Bearer prefix stripped).
+# TTLCache evicts by time and by LRU when full. Each hit also rechecks
+# token `exp` as defence-in-depth so an expired token is never served
+# from cache. Safe without a lock: UVICORN_WORKERS=1 is enforced at
+# startup and asyncio cooperative scheduling makes dict-level ops atomic
+# between awaits (same pattern as _ENSURED_USER_IDS in dependencies.py).
+_JWT_CLAIMS_CACHE: TTLCache[str, dict] = TTLCache(
+    maxsize=JWT_CLAIMS_CACHE_MAX_SIZE,
+    ttl=JWT_CLAIMS_CACHE_TTL_SECONDS,
+)
+
 
 class SessionManager:
     """Manages user sessions and JWT tokens"""
@@ -56,12 +76,11 @@ class SessionManager:
         public_key_path: str = None,
     ):
         from config.paths import get_keys_path
+
         keys_dir = get_keys_path()
         self.secret_key = secret_key  # Keep for backward compatibility
-        self.users: Dict[str, User] = {}  # user_id -> User
-        self.user_opensearch_clients: Dict[
-            str, Any
-        ] = {}  # user_id -> OpenSearch client
+        self.users: dict[str, User] = {}  # user_id -> User
+        self.user_opensearch_clients: dict[str, Any] = {}  # user_id -> OpenSearch client
 
         self.private_key_path = private_key_path or os.path.join(keys_dir, "private_key.pem")
         self.public_key_path = public_key_path or os.path.join(keys_dir, "public_key.pem")
@@ -120,28 +139,23 @@ class SessionManager:
                 self.algorithm = "RS256"
         logger.info(f"Initialized JWT signing with {self.algorithm}")
 
-
     def _load_rsa_keys(self):
         """Load RSA private and public keys from files"""
         try:
             with open(self.private_key_path, "rb") as f:
-                self.private_key = serialization.load_pem_private_key(
-                    f.read(), password=None
-                )
+                self.private_key = serialization.load_pem_private_key(f.read(), password=None)
 
             with open(self.public_key_path, "rb") as f:
                 self.public_key = serialization.load_pem_public_key(f.read())
 
-            self.public_key_pem = open(self.public_key_path, "r").read()
+            self.public_key_pem = open(self.public_key_path).read()
 
         except FileNotFoundError as e:
-            raise Exception(f"RSA key files not found: {e}")
+            raise Exception(f"RSA key files not found: {e}") from e
         except Exception as e:
-            raise Exception(f"Failed to load RSA keys: {e}")
+            raise Exception(f"Failed to load RSA keys: {e}") from e
 
-    async def get_user_info_from_token(
-        self, access_token: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_user_info_from_token(self, access_token: str) -> dict[str, Any] | None:
         """Get user info from Google using access token"""
         try:
             async with httpx.AsyncClient() as client:
@@ -164,9 +178,7 @@ class SessionManager:
             logger.error("Error getting user info", error=str(e))
             return None
 
-    async def create_user_session(
-        self, access_token: str, issuer: str
-    ) -> Optional[str]:
+    async def create_user_session(self, access_token: str, issuer: str) -> str | None:
         """Create user session from OAuth access token"""
         user_info = await self.get_user_info_from_token(access_token)
         if not user_info:
@@ -230,39 +242,47 @@ class SessionManager:
             token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return f"Bearer {token}"
 
-    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Verify JWT token and return user info"""
+    def verify_token(self, token: str) -> dict[str, Any] | None:
+        """Verify JWT token and return decoded claims, using an in-process cache."""
         if IBM_AUTH_ENABLED:
-            # IBM Auth Mode: Token verification handled externally by Traefik
             return None
+        scheme, _, value = token.partition(" ")
+        raw = value if scheme.lower() == "bearer" and value else token
+
+        cached = _JWT_CLAIMS_CACHE.get(raw)
+        if cached is not None:
+            if cached.get("exp", 0) > time.time():
+                return cached
+            _JWT_CLAIMS_CACHE.pop(raw, None)  # evict immediately on stale hit
+
         try:
-            raw = token.removeprefix("Bearer ")
             payload = jwt.decode(
                 raw,
                 self.public_key,
                 algorithms=[self.algorithm],
                 audience=["opensearch", "openrag"],
             )
+            _JWT_CLAIMS_CACHE[raw] = payload
             return payload
         except jwt.ExpiredSignatureError:
             return None
         except jwt.InvalidTokenError:
             return None
 
-    def get_user(self, user_id: str) -> Optional[User]:
+    def get_user(self, user_id: str) -> User | None:
         """Get user by ID"""
         if user_id == "anonymous":
             return AnonymousUser()
         return self.users.get(user_id)
 
-    def get_user_from_token(self, token: str) -> Optional[User]:
+    def get_user_from_token(self, token: str) -> User | None:
         """Get user from JWT token"""
         payload = self.verify_token(token)
         if payload:
             return self.get_user(payload["user_id"])
         return None
 
-    def get_user_opensearch_client(self, user_or_id: Union[User, str], jwt_token: str = None):
+    def get_user_opensearch_client(self, user_or_id: User | str, jwt_token: str = None):
         """Get or create OpenSearch client for user with their JWT"""
         if isinstance(user_or_id, User):
             user_id = user_or_id.user_id
@@ -281,9 +301,7 @@ class SessionManager:
 
         # Check if we have a cached client for this user
         if user_id not in self.user_opensearch_clients:
-            self.user_opensearch_clients[user_id] = (
-                clients.create_user_opensearch_client(jwt_token)
-            )
+            self.user_opensearch_clients[user_id] = clients.create_user_opensearch_client(jwt_token)
 
         return self.user_opensearch_clients[user_id]
 

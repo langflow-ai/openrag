@@ -626,6 +626,9 @@ async def get_api_key_user_async(
 
     Raises HTTP 401 if no valid credentials are provided.
     """
+    import base64
+
+    # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
     from config.settings import IBM_AUTH_ENABLED
 
     # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
@@ -633,16 +636,21 @@ async def get_api_key_user_async(
         ibm_username = request.headers.get("X-Username")
         ibm_api_key = request.headers.get("X-Api-Key")
         if ibm_username and ibm_api_key:
+            # check if ibm api key is base 64 encoded
+            userpass = f"{ibm_username}:{ibm_api_key}"
+            ibm_api_key_b64 = base64.b64encode(userpass.encode("utf-8")).decode("utf-8")
+
             user = User(
                 user_id=ibm_username,
                 email=ibm_username,
                 name=ibm_username,
                 picture=None,
                 provider="ibm_ams",
-                jwt_token=None,
+                jwt_token=f"Basic {ibm_api_key_b64}",
                 opensearch_username=ibm_username,
-                opensearch_credentials=ibm_api_key,
+                opensearch_credentials=ibm_api_key_b64,
             )
+            request.state.user = user
             return await _attach_db_user_id(request, user)
 
     # API key path

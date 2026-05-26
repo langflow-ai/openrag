@@ -3,11 +3,12 @@
 import os
 import tempfile
 from contextlib import contextmanager
-from typing import Optional
 
 
 @contextmanager
-def auto_cleanup_tempfile(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None):
+def auto_cleanup_tempfile(
+    suffix: str | None = None, prefix: str | None = None, dir: str | None = None
+):
     """
     Context manager for temporary files that automatically cleans up.
 
@@ -85,20 +86,39 @@ def get_file_extension(mimetype: str) -> str:
 
 
 def clean_connector_filename(filename: str, mimetype: str) -> str:
-    """Clean filename and ensure correct extension.
+    """Ensure the filename ends with the extension that matches its MIME type.
 
-    If the MIME type maps to a known extension, it is enforced.
-    If the MIME type is unknown, the original filename (and its extension) is kept as-is
-    rather than appending a meaningless .bin suffix.
+    The original name is preserved verbatim (spaces, slashes, casing) so that
+    connector-indexed filenames match what the user sees in the source system
+    and what a local upload of the same file would index as. Only the
+    extension is enforced, and only when the MIME type maps to one — for an
+    unknown MIME type, the original filename and extension are kept.
     """
-    clean_name = filename.replace(" ", "_").replace("/", "_")
     suffix = get_file_extension(mimetype)
     if suffix is None:
-        # Unknown type — keep whatever extension the file already has
-        return clean_name
-    if not clean_name.lower().endswith(suffix.lower()):
-        return clean_name + suffix
-    return clean_name
+        return filename
+    if not filename.lower().endswith(suffix.lower()):
+        return filename + suffix
+    return filename
+
+
+def langflow_safe_filename_and_mimetype(filename: str, mimetype: str | None) -> tuple[str, str]:
+    """Apply the .txt -> .md workaround for Langflow ingestion.
+
+    Langflow's docling component fails on text/plain (see commit f6b9fe0).
+    The workaround is to rename .txt files to .md with text/markdown before
+    handing the file to Langflow. Centralised here so every Langflow-upload
+    site applies it identically — local user uploads, connector-driven
+    ingestion, and the direct upload route.
+
+    Returns the (possibly rewritten) (filename, mimetype) pair. Pass-through
+    for all other extensions; falls back to application/octet-stream when
+    mimetype is missing.
+    """
+    safe_mimetype = mimetype or "application/octet-stream"
+    if filename and filename.lower().endswith(".txt"):
+        return filename[:-4] + ".md", "text/markdown"
+    return filename, safe_mimetype
 
 
 def get_filename_aliases(filename: str) -> list[str]:
@@ -124,6 +144,10 @@ def get_filename_aliases(filename: str) -> list[str]:
         aliases.append(normalized[:-4] + ".md")
     elif lower_name.endswith(".md"):
         aliases.append(normalized[:-3] + ".txt")
+
+    # Mirror clean_connector_filename's space/slash -> underscore so lookups also
+    # match files indexed through a connector ingestion path.
+    aliases.extend(name.replace(" ", "_").replace("/", "_") for name in list(aliases))
 
     # Keep order stable while removing duplicates.
     return list(dict.fromkeys(aliases))

@@ -17,6 +17,7 @@ from utils.file_utils import (
     clean_connector_filename,
     get_file_extension,
     get_filename_aliases,
+    langflow_safe_filename_and_mimetype,
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
@@ -241,14 +242,15 @@ class TaskProcessor:
                 file_hash=file_hash,
             )
             slim_doc = process_text_file(file_path)
-            # Override filename with original_filename if provided
-            if original_filename:
-                slim_doc["filename"] = original_filename
         else:
             full_doc = await self.docling_service.convert_file(
                 file_path, user_id=owner_user_id, auth_header=jwt_token
             )
             slim_doc = extract_relevant(full_doc)
+
+        # Override filename with original_filename if provided
+        if original_filename:
+            slim_doc["filename"] = original_filename
 
         if chunk_size is not None:
             try:
@@ -302,6 +304,36 @@ class TaskProcessor:
         embedding_field_name = await ensure_embedding_field_exists(
             opensearch_client, embedding_model, get_index_name(), dimensions
         )
+
+        # Clear stale chunks from a prior indexing of this document. Chunks are
+        # stored under ids {file_hash}_{i}; if the new chunk count is lower than
+        # the prior one, trailing chunks (e.g. with an old filename after a
+        # SharePoint rename) would otherwise survive the per-chunk upsert.
+        # DLS-safe: enumerate then delete by primary _id (delete_by_query is
+        # silently filtered under DLS).
+        try:
+            from utils.opensearch_delete import (
+                collect_visible_document_ids,
+                delete_document_ids,
+            )
+
+            stale_chunk_ids = await collect_visible_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                query={"term": {"document_id": file_hash}},
+            )
+            await delete_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                document_ids=stale_chunk_ids,
+                refresh=True,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to clear stale chunks before re-index; proceeding",
+                file_hash=file_hash,
+                error=str(e),
+            )
 
         # Index each chunk as a separate document
         for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True)):
@@ -462,6 +494,7 @@ class ConnectorFileProcessor(TaskProcessor):
         document_service=None,
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -476,6 +509,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using consolidated methods"""
@@ -518,8 +552,23 @@ class ConnectorFileProcessor(TaskProcessor):
             if not self.user_id:
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
 
-            # Create temporary file from document content
-            suffix = get_file_extension(document.mimetype)
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                self.user_id, self.jwt_token
+            )
+            if await self.check_filename_exists(document.filename, opensearch_client):
+                if not self.replace_duplicates:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"File with name '{document.filename}' already exists"
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                await self.delete_document_by_filename(document.filename, opensearch_client)
+
+            # Create temporary file from document content            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -594,6 +643,7 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ):
         super().__init__(
             document_service=langflow_connector_service.task_service.document_service
@@ -612,6 +662,7 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using LangflowConnectorService"""
@@ -638,8 +689,25 @@ class LangflowConnectorFileProcessor(TaskProcessor):
             if not self.user_id:
                 raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
 
-            # Create temporary file and compute hash to check for duplicates
-            suffix = get_file_extension(document.mimetype)
+            opensearch_client = (
+                self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                    self.user_id, self.jwt_token
+                )
+            )
+            if await self.check_filename_exists(document.filename, opensearch_client):
+                if not self.replace_duplicates:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"File with name '{document.filename}' already exists"
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                await self.delete_document_by_filename(document.filename, opensearch_client)
+
+            # Create temporary file and compute hash to check for duplicates            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -648,12 +716,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 # Compute hash and check if already exists
                 file_hash = hash_id(tmp_path)
 
-                # Check if document already exists
-                opensearch_client = (
-                    self.langflow_connector_service.session_manager.get_user_opensearch_client(
-                        self.user_id, self.jwt_token
-                    )
-                )
                 if await self.check_document_exists(file_hash, opensearch_client):
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
@@ -720,7 +782,8 @@ class S3FileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
-            with auto_cleanup_tempfile() as tmp_path:
+            suffix = os.path.splitext(item)[1]
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Download object to temporary file
                 with open(tmp_path, "wb") as tmp_file:
                     self.s3_client.download_fileobj(self.bucket, item, tmp_file)
@@ -837,14 +900,10 @@ class LangflowFileProcessor(TaskProcessor):
             if not content_type:
                 content_type = "application/octet-stream"
 
-            # Rename .txt to .md for Langflow compatibility
-            # Langflow has issues processing text/plain files
-            langflow_filename = original_filename
-            if original_filename.lower().endswith(".txt"):
-                langflow_filename = original_filename[:-4] + ".md"
-                content_type = "text/markdown"
-                logger.debug(f"Renamed {original_filename} to {langflow_filename} for Langflow")
-
+            # Langflow's docling chokes on text/plain — rename .txt -> .md.
+            langflow_filename, content_type = langflow_safe_filename_and_mimetype(
+                original_filename, content_type
+            )
             file_tuple = (langflow_filename, content, content_type)
 
             # Get JWT token using same logic as DocumentFileProcessor

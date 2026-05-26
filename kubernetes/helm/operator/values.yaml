@@ -47,7 +47,7 @@ securityContext:
     - ALL
   # readOnlyRootFilesystem: true
   # runAsNonRoot: true
-  # runAsUser: 1000
+  # runAsUser: 65532  # Match Dockerfile default, or use any non-root UID
 
 # Resource limits and requests
 resources:
