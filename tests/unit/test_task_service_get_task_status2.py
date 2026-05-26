@@ -123,6 +123,18 @@ class TestInferFailureMetadata:
         assert meta["failure_phase"] == "file_validation"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_langflow_duplicate_file_error_prefers_file_validation(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error="File with name 'report.pdf' already exists",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "openrag"
+        assert meta["failure_phase"] == "file_validation"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+
     def test_unknown_failure_returns_none(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,

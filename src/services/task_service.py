@@ -649,6 +649,14 @@ class TaskService:
                 "actionable_by": "RETRYABLE",
             }
 
+        if "already exists" in error:
+            return {
+                "component": "openrag",
+                "failure_phase": "file_validation",
+                "user_facing_message": "A file with this name already exists.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
         if phase == IngestionPhase.LANGFLOW:
             return {
                 "component": "langflow",
@@ -658,14 +666,6 @@ class TaskService:
                     "If it fails again, contact your administrator."
                 ),
                 "actionable_by": "RETRYABLE",
-            }
-
-        if "already exists" in error:
-            return {
-                "component": "openrag",
-                "failure_phase": "file_validation",
-                "user_facing_message": "A file with this name already exists.",
-                "actionable_by": "USER_ACTIONABLE",
             }
 
         return None
