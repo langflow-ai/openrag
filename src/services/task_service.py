@@ -733,9 +733,9 @@ class TaskService:
                     entry.update(metadata)
             file_statuses[file_path] = entry
 
-            if file_task.status.value == "running":
+            if file_task.status == TaskStatus.RUNNING:
                 running_files_count += 1
-            elif file_task.status.value == "pending":
+            elif file_task.status == TaskStatus.PENDING:
                 pending_files_count += 1
 
         return {
@@ -774,7 +774,7 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status.value != "completed":
+                    if file_task.status != TaskStatus.COMPLETED:
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)
@@ -782,9 +782,9 @@ class TaskService:
                                 entry.update(metadata)
                         file_statuses[file_path] = entry
 
-                    if file_task.status.value == "running":
+                    if file_task.status == TaskStatus.RUNNING:
                         running_files_count += 1
-                    elif file_task.status.value == "pending":
+                    elif file_task.status == TaskStatus.PENDING:
                         pending_files_count += 1
 
                 tasks_by_id[task_id] = {

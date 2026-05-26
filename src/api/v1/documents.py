@@ -5,7 +5,7 @@ Provides document ingestion and management.
 Uses API key authentication.
 """
 
-from typing import List, Optional
+
 
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
@@ -76,6 +76,10 @@ async def all_tasks_enhanced_endpoint(
     Returns the same list as GET /v1/tasks/{task_id} would across all tasks,
     with component, failure_phase, user_facing_message, and actionable_by
     added to any failed file entry whose cause can be classified.
+
+    Note: completed files are omitted from each task's ``files`` dict to
+    reduce payload size; use GET /v1/tasks/{task_id}/enhanced for the full
+    file list of a specific task.
     """
     tasks = task_service.get_all_tasks2(user.user_id)
     return JSONResponse({"tasks": tasks})
@@ -107,6 +111,9 @@ async def task_status_enhanced_endpoint(
     failure_phase, user_facing_message, and actionable_by on any file
     entry whose status is 'failed' and whose failure cause can be
     classified.
+
+    Note: unlike GET /v1/tasks/enhanced, this endpoint includes completed
+    files in the task's ``files`` dict.
     """
     task_status = task_service.get_task_status2(user.user_id, task_id)
     if not task_status:
