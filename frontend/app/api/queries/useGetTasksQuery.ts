@@ -21,6 +21,16 @@ export interface TaskFileEntry {
   filename?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
+  /** Ingestion pipeline phase from the task service (`docling` | `langflow` | `complete`). */
+  phase?: "docling" | "langflow" | "complete" | string;
+  /**
+   * Phase or step where ingestion failed (from API).
+   * Ingestion phase: `docling` | `langflow` | `complete`.
+   * Pipeline step: `parsing` | `chunking` | `embedding` | `indexing`.
+   */
+  failure_phase?: string;
+  docling_status?: string;
+  docling_task_id?: string;
   [key: string]: unknown;
 }
 

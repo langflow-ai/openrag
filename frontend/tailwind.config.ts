@@ -157,9 +157,12 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        canvas: "hsl(var(--canvas))",
         "layer-contextual": "hsl(var(--layer-contextual))",
         "layer-contextual-foreground":
           "hsl(var(--layer-contextual-foreground))",
+        "border-subtle-contextual":
+          "hsl(var(--border-subtle-background-contextual))",
         "text-text-01": "hsl(var(--text-text-01))",
         "link-primary": "hsl(var(--link-primary))",
         "button-tertiary": "hsl(var(--button-tertiary))",

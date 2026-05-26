@@ -1,5 +1,6 @@
 "use client";
 
+import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { AlertCircle, ChevronDown, Flag, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
@@ -8,7 +9,6 @@ import {
   Accordion,
   AccordionContent,
   AccordionItem,
-  AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type Task } from "@/contexts/task-context";
@@ -72,28 +72,43 @@ export function TaskErrorContent({
 
   const ossIconColumn = showHeader && !isCloudBrand;
 
-  const accordionTrigger = (
-    <div className="flex w-full min-w-0 items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-1">
-        <span className="text-xs">
-          {successCount} success · {failedCount} failed
-        </span>
-        <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
-      </div>
-      <button
-        type="button"
-        aria-label="Open task details"
-        className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setIsTaskDialogOpen(true);
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <IncidentReporterIcon className="size-4" />
-      </button>
+  const accordionSummary = (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <span className="text-xs">
+        {successCount} success · {failedCount} failed
+      </span>
+      <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
     </div>
+  );
+
+  const openTaskDialogButton = (
+    <button
+      type="button"
+      aria-label="Open task details"
+      className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+      onClick={() => setIsTaskDialogOpen(true)}
+    >
+      <IncidentReporterIcon className="size-4" />
+    </button>
+  );
+
+  const accordionHeader = (
+    <AccordionPrimitive.Header
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2",
+        ossIconColumn && "gap-2.5",
+      )}
+    >
+      {ossIconColumn ? <div className="size-5 shrink-0" aria-hidden /> : null}
+      <AccordionPrimitive.Trigger
+        className={cn(
+          "group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground",
+        )}
+      >
+        {accordionSummary}
+      </AccordionPrimitive.Trigger>
+      {openTaskDialogButton}
+    </AccordionPrimitive.Header>
   );
 
   return (
@@ -153,16 +168,7 @@ export function TaskErrorContent({
           }
         >
           <AccordionItem value="failed-files" className="border-0 rounded-none">
-            <AccordionTrigger className="group px-0 py-0 text-sm text-muted-foreground hover:text-foreground transition-colors [&>svg:first-child]:hidden">
-              {ossIconColumn ? (
-                <div className="flex w-full min-w-0 gap-2.5">
-                  <div className="size-5 shrink-0" aria-hidden />
-                  <div className="min-w-0 flex-1">{accordionTrigger}</div>
-                </div>
-              ) : (
-                accordionTrigger
-              )}
-            </AccordionTrigger>
+            {accordionHeader}
             <AccordionContent className="w-full p-0 pt-2">
               <div className="flex w-full flex-col gap-2">
                 {failedEntries.map(([filePath, fileInfo], index) => {
