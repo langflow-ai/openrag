@@ -131,16 +131,18 @@ async def check_provider_health(
             # Singleflight: if another coroutine is already validating this
             # exact config, wait for it to finish rather than issuing a
             # redundant upstream call.
-            is_leader = await provider_health_cache.acquire(health_cache_key)
-            if not is_leader:
+            while True:
+                is_leader = await provider_health_cache.acquire(health_cache_key)
+                if is_leader:
+                    _health_leader_key = health_cache_key
+                    break
                 # Woke up after an in-flight validation completed.
                 cached_payload = provider_health_cache.get(health_cache_key)
                 if cached_payload is not None:
                     logger.debug("Returning cached provider-health response (waited for in-flight)")
                     return JSONResponse(cached_payload, status_code=200)
-                # The leader's validation failed; fall through to validate ourselves.
-            else:
-                _health_leader_key = health_cache_key
+                # Leader's validation failed; retry leader election rather than
+                # all waiters fanning out to validate simultaneously.
 
         logger.info(f"Checking health for provider: {provider}")
 
@@ -274,6 +276,10 @@ async def check_provider_health(
             _health_leader_key = None
             return JSONResponse(healthy_payload, status_code=200)
 
+    except asyncio.CancelledError:
+        if _health_leader_key:
+            provider_health_cache.release_error(_health_leader_key)
+        raise
     except Exception as e:
         if _health_leader_key:
             provider_health_cache.release_error(_health_leader_key)

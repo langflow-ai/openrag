@@ -108,4 +108,8 @@ def set_(key: str, value: dict) -> None:
 def invalidate() -> None:
     """Clear the entire cache and any in-flight state. Intended for settings-save flows and tests."""
     _HEALTH_CACHE.clear()
+    # Wake waiters before clearing so they don't hang; snapshot to avoid
+    # mutation during iteration.
+    for event in list(_in_flight.values()):
+        event.set()
     _in_flight.clear()
