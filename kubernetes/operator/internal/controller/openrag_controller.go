@@ -508,7 +508,16 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 	}
 
 	// Docling configuration from CR spec
-	if d := o.Spec.Docling; d != nil {
+	// Priority: DoclingComponents (operator-managed) > Docling (external)
+	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
+		// Use operator-managed docling-serve
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port)
+	} else if d := o.Spec.Docling; d != nil {
+		// Use external docling service
 		scheme := d.Scheme
 		if scheme == "" {
 			scheme = "http"
@@ -519,6 +528,10 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
 	}
+
+	// Ensure all variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exist with at least "None" value
+	// This is critical because the list can be customized via CR spec, operator env vars, or defaults
+	r.EnvVarManager.EnsureRequiredEnvVars(envVars)
 
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
