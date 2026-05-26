@@ -167,6 +167,23 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             input_types=["Data"],
         ),
         StrInput(
+            name="openrag_ingest_token",
+            display_name="OpenRAG Ingest Token",
+            value="OPENRAG_INGEST_TOKEN",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+            info="Short-lived token used only for OpenRAG ingest callbacks.",
+        ),
+        StrInput(
+            name="openrag_ingest_run_id",
+            display_name="OpenRAG Ingest Run ID",
+            value="OPENRAG_INGEST_RUN_ID",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+        ),
+        StrInput(
             name="opensearch_url",
             display_name="OpenSearch URL",
             value="http://localhost:9200",
@@ -292,11 +309,13 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         DropdownInput(
             name="auth_mode",
             display_name="Authentication Mode",
-            value="jwt",
-            options=["basic", "jwt"],
+            value="openrag",
+            options=["basic", "jwt", "openrag"],
             info=(
                 "Authentication method: 'basic' for username/password authentication, "
-                "or 'jwt' for JSON Web Token (Bearer) authentication."
+                "'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to "
+                "delegate writes to the OpenRAG backend ingest callback (no direct "
+                "OpenSearch credentials required — only OPENRAG_* fields)."
             ),
             real_time_refresh=True,
             advanced=False,
@@ -323,6 +342,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Valid JSON Web Token for authentication. "
                 "Will be sent in the Authorization header (with optional 'Bearer ' prefix)."
             ),
+            required=False
         ),
         StrInput(
             name="jwt_header",
@@ -380,7 +400,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             value="OPENRAG_INGEST_URL",
             load_from_db=True,
             input_types=["Text", "Message"],
-            show=False,
             advanced=True,
             info="Internal OpenRAG callback URL for backend-owned document indexing.",
         ),
@@ -390,7 +409,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             value="OPENRAG_INGEST_TOKEN",
             load_from_db=True,
             input_types=["Text", "Message"],
-            show=False,
             advanced=True,
             info="Short-lived token used only for OpenRAG ingest callbacks.",
         ),
@@ -400,14 +418,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             value="OPENRAG_INGEST_RUN_ID",
             load_from_db=True,
             input_types=["Text", "Message"],
-            show=False,
             advanced=True,
         ),
         IntInput(
             name="openrag_ingest_batch_size",
             display_name="OpenRAG Ingest Batch Size",
             value=100,
-            show=False,
             advanced=True,
         ),
     ]
@@ -1049,6 +1065,26 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             header_name = (self.jwt_header or "Authorization").strip()
             header_value = f"Bearer {token}" if self.bearer_prefix else token
             return {"headers": {header_name: header_value}}
+        if mode == "openrag":
+            # Writes are delegated to the OpenRAG backend ingest callback,
+            # so no direct OpenSearch credentials are needed. Only the
+            # OPENRAG_* fields are required for ingestion to function.
+            missing = [
+                name
+                for name, value in (
+                    ("openrag_ingest_url", self.openrag_ingest_url),
+                    ("openrag_ingest_token", self.openrag_ingest_token),
+                    ("openrag_ingest_run_id", self.openrag_ingest_run_id),
+                )
+                if not (value or "").strip()
+            ]
+            if missing:
+                msg = (
+                    "Auth Mode is 'openrag' but required OPENRAG_* fields are "
+                    f"missing: {', '.join(missing)}."
+                )
+                raise ValueError(msg)
+            return {}
         user = (self.username or "").strip()
         pwd = (self.password or "").strip()
         if not user or not pwd:
@@ -2276,6 +2312,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 mode = (field_value or "basic").strip().lower()
                 is_basic = mode == "basic"
                 is_jwt = mode == "jwt"
+                is_openrag = mode == "openrag"
 
                 build_config["username"]["show"] = is_basic
                 build_config["password"]["show"] = is_basic
@@ -2287,11 +2324,25 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 build_config["username"]["required"] = is_basic
                 build_config["password"]["required"] = is_basic
 
-                build_config["jwt_token"]["required"] = is_jwt
+                # build_config["jwt_token"]["required"] = is_jwt
                 build_config["jwt_header"]["required"] = is_jwt
                 build_config["bearer_prefix"]["required"] = False
 
-                if is_basic:
+                # In 'openrag' mode, expose the OPENRAG_* fields up front
+                # since they are the only credentials required.
+                for openrag_field in (
+                    "openrag_ingest_url",
+                    "openrag_ingest_token",
+                    "openrag_ingest_run_id",
+                    "openrag_ingest_batch_size",
+                ):
+                    if openrag_field in build_config:
+                        build_config[openrag_field]["advanced"] = not is_openrag
+                        build_config[openrag_field]["required"] = (
+                            is_openrag and openrag_field != "openrag_ingest_batch_size"
+                        )
+
+                if is_basic or is_openrag:
                     build_config["jwt_token"]["value"] = ""
 
                 return build_config
