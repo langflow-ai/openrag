@@ -17,6 +17,7 @@ from utils.file_utils import (
     clean_connector_filename,
     get_file_extension,
     get_filename_aliases,
+    langflow_safe_filename_and_mimetype,
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
@@ -241,14 +242,15 @@ class TaskProcessor:
                 file_hash=file_hash,
             )
             slim_doc = process_text_file(file_path)
-            # Override filename with original_filename if provided
-            if original_filename:
-                slim_doc["filename"] = original_filename
         else:
             full_doc = await self.docling_service.convert_file(
                 file_path, user_id=owner_user_id, auth_header=jwt_token
             )
             slim_doc = extract_relevant(full_doc)
+
+        # Override filename with original_filename if provided
+        if original_filename:
+            slim_doc["filename"] = original_filename
 
         if chunk_size is not None:
             try:
@@ -535,14 +537,42 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
+                    # File gone at source — remove indexed chunks by document_id
+                    # (= connector file_id) so it stops appearing in search/chat.
+                    # Filename rename (e.g. .txt → .md) is irrelevant here.
+                    deleted_chunks = 0
+                    try:
+                        from api.documents import delete_chunks_by_document_ids
+
+                        opensearch_client = (
+                            self.document_service.session_manager.get_user_opensearch_client(
+                                self.user_id, self.jwt_token
+                            )
+                        )
+                        deleted_chunks = await delete_chunks_by_document_ids(
+                            [file_id], opensearch_client, get_index_name()
+                        )
+                    except Exception as cleanup_err:
+                        logger.error(
+                            "Failed to clean up chunks for deleted source file",
+                            file_id=file_id,
+                            connection_id=self.connection_id,
+                            error=str(cleanup_err),
+                        )
+
                     logger.warning(
-                        "File no longer exists at source — skipping",
+                        "File no longer exists at source — removed from index",
                         file_id=file_id,
                         connection_id=self.connection_id,
+                        deleted_chunks=deleted_chunks,
                         error=str(e),
                     )
                     file_task.status = TaskStatus.SKIPPED
-                    file_task.result = {"status": "skipped", "reason": "deleted_at_source"}
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "deleted_at_source",
+                        "deleted_chunks": deleted_chunks,
+                    }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
                     return
@@ -566,8 +596,11 @@ class ConnectorFileProcessor(TaskProcessor):
                     return
                 await self.delete_document_by_filename(document.filename, opensearch_client)
 
-            # Create temporary file from document content
-            suffix = get_file_extension(document.mimetype)
+            # Create temporary file from document content            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -680,7 +713,49 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
             # Get file content from connector
-            document = await connector.get_file_content(file_id)
+            try:
+                document = await connector.get_file_content(file_id)
+            except (FileNotFoundError, ValueError) as e:
+                msg = str(e).lower()
+                if "not found" in msg or "404" in msg:
+                    # File gone at source — remove indexed chunks by document_id
+                    # (= connector file_id) so it stops appearing in search/chat.
+                    # Filename rename (e.g. .txt → .md) is irrelevant here.
+                    deleted_chunks = 0
+                    try:
+                        from api.documents import delete_chunks_by_document_ids
+
+                        opensearch_client = self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                            self.user_id, self.jwt_token
+                        )
+                        deleted_chunks = await delete_chunks_by_document_ids(
+                            [file_id], opensearch_client, get_index_name()
+                        )
+                    except Exception as cleanup_err:
+                        logger.error(
+                            "Failed to clean up chunks for deleted source file",
+                            file_id=file_id,
+                            connection_id=self.connection_id,
+                            error=str(cleanup_err),
+                        )
+
+                    logger.warning(
+                        "File no longer exists at source — removed from index",
+                        file_id=file_id,
+                        connection_id=self.connection_id,
+                        deleted_chunks=deleted_chunks,
+                        error=str(e),
+                    )
+                    file_task.status = TaskStatus.SKIPPED
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "deleted_at_source",
+                        "deleted_chunks": deleted_chunks,
+                    }
+                    file_task.updated_at = time.time()
+                    upload_task.successful_files += 1
+                    return
+                raise
 
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)
@@ -702,8 +777,11 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                     return
                 await self.delete_document_by_filename(document.filename, opensearch_client)
 
-            # Create temporary file and compute hash to check for duplicates
-            suffix = get_file_extension(document.mimetype)
+            # Create temporary file and compute hash to check for duplicates            import os
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, "wb") as f:
@@ -778,7 +856,8 @@ class S3FileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
-            with auto_cleanup_tempfile() as tmp_path:
+            suffix = os.path.splitext(item)[1]
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Download object to temporary file
                 with open(tmp_path, "wb") as tmp_file:
                     self.s3_client.download_fileobj(self.bucket, item, tmp_file)
@@ -895,14 +974,10 @@ class LangflowFileProcessor(TaskProcessor):
             if not content_type:
                 content_type = "application/octet-stream"
 
-            # Rename .txt to .md for Langflow compatibility
-            # Langflow has issues processing text/plain files
-            langflow_filename = original_filename
-            if original_filename.lower().endswith(".txt"):
-                langflow_filename = original_filename[:-4] + ".md"
-                content_type = "text/markdown"
-                logger.debug(f"Renamed {original_filename} to {langflow_filename} for Langflow")
-
+            # Langflow's docling chokes on text/plain — rename .txt -> .md.
+            langflow_filename, content_type = langflow_safe_filename_and_mimetype(
+                original_filename, content_type
+            )
             file_tuple = (langflow_filename, content, content_type)
 
             # Get JWT token using same logic as DocumentFileProcessor
