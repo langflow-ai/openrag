@@ -562,6 +562,10 @@ class LangflowFileService:
         connector_type: str | None = None,
         docling_polling_service: Any | None = None,
         file_task: Any | None = None,
+        document_id: str | None = None,
+        source_url: str | None = None,
+        allowed_users: list[str] | None = None,
+        allowed_groups: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
@@ -679,6 +683,10 @@ class LangflowFileService:
                 owner_email=owner_email,
                 connector_type=connector_type,
                 docling_task_id=task_id,
+                document_id=document_id,
+                source_url=source_url,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
             )
             total_duration = round(time.time() - total_start_time, 2)
             logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")

@@ -84,7 +84,7 @@ async def test_empty_existing_file_ids_returns_zero_without_calls():
         existing_file_ids=[],
     )
 
-    assert deleted == 0
+    assert deleted == []
     service.connection_manager.list_connections.assert_not_awaited()
 
 
@@ -107,7 +107,7 @@ async def test_no_active_connections_skips_reconcile():
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     opensearch_client.delete_by_query.assert_not_awaited()
 
 
@@ -133,7 +133,7 @@ async def test_unauthenticated_connection_aborts_pass(monkeypatch):
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     connector.list_files.assert_not_awaited()
     opensearch_client.delete_by_query.assert_not_awaited()
 
@@ -159,7 +159,7 @@ async def test_listing_exception_aborts_pass():
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     opensearch_client.delete_by_query.assert_not_awaited()
 
 
@@ -171,8 +171,14 @@ async def test_happy_path_deletes_orphans():
     conn = _make_connection("c1")
     connector = _make_connector(remote_file_ids=["a", "c"])
     service = _make_service([conn], connector_lookup={"c1": connector})
+    
     opensearch_client = AsyncMock()
-    opensearch_client.delete_by_query.return_value = {"deleted": 7}
+    # Mock collect_visible_document_ids scroll search
+    opensearch_client.search = AsyncMock(
+        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+    )
+    # Mock delete
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
     sm = _make_session_manager(opensearch_client)
 
     deleted = await reconcile_orphans_for_connector_type(
@@ -184,10 +190,9 @@ async def test_happy_path_deletes_orphans():
         existing_file_ids=["a", "b", "c"],
     )
 
-    assert deleted == 7
-    opensearch_client.delete_by_query.assert_awaited_once()
-    body = opensearch_client.delete_by_query.await_args.kwargs["body"]
-    assert body == {"query": {"terms": {"document_id": ["b"]}}}
+    assert deleted == ["b"]
+    opensearch_client.search.assert_awaited()
+    opensearch_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -211,7 +216,7 @@ async def test_no_orphans_skips_delete_call():
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     opensearch_client.delete_by_query.assert_not_awaited()
 
 
@@ -243,7 +248,7 @@ async def test_multi_connection_union_preserves_files_present_in_any_connection(
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     opensearch_client.delete_by_query.assert_not_awaited()
 
 
@@ -273,7 +278,7 @@ async def test_multi_connection_one_offline_aborts_even_if_other_succeeds():
         existing_file_ids=["a", "b"],  # b would look like an orphan if we trusted conn-A alone
     )
 
-    assert deleted == 0
+    assert deleted == []
     opensearch_client.delete_by_query.assert_not_awaited()
 
 
@@ -306,7 +311,7 @@ async def test_paginated_listing_aggregates_all_pages():
         existing_file_ids=["a", "b", "c"],
     )
 
-    assert deleted == 0
+    assert deleted == []
     assert connector.list_files.await_count == 2
     opensearch_client.delete_by_query.assert_not_awaited()
 
@@ -323,7 +328,7 @@ async def test_delete_failure_does_not_raise():
     service = _make_service([conn], connector_lookup={"c1": connector})
 
     opensearch_client = AsyncMock()
-    opensearch_client.delete_by_query.side_effect = RuntimeError("opensearch unavailable")
+    opensearch_client.search.side_effect = RuntimeError("opensearch unavailable")
     sm = _make_session_manager(opensearch_client)
 
     deleted = await reconcile_orphans_for_connector_type(
@@ -335,4 +340,4 @@ async def test_delete_failure_does_not_raise():
         existing_file_ids=["a", "b"],
     )
 
-    assert deleted == 0
+    assert deleted == ["b"]
