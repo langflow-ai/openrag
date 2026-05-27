@@ -195,6 +195,7 @@ class TaskProcessor:
         chunk_overlap: int = None,
         is_sample_data: bool = False,
         acl: "DocumentACL" = None,
+        connector_file_id: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -356,6 +357,8 @@ class TaskProcessor:
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat(),
             }
+            if connector_file_id:
+                chunk_doc["connector_file_id"] = connector_file_id
 
             # Set owner and ACL fields
             if acl:
@@ -537,9 +540,10 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
-                    # File gone at source — remove indexed chunks by document_id
-                    # (= connector file_id) so it stops appearing in search/chat.
-                    # Filename rename (e.g. .txt → .md) is irrelevant here.
+                    # File gone at source — remove indexed chunks by connector_file_id
+                    # so they stop appearing in search/chat. Chunks are indexed with
+                    # document_id=file_hash (SHA of content), not file_id, so we must
+                    # query the dedicated connector_file_id field set at index time.
                     deleted_chunks = 0
                     try:
                         from api.documents import delete_chunks_by_document_ids
@@ -550,7 +554,10 @@ class ConnectorFileProcessor(TaskProcessor):
                             )
                         )
                         deleted_chunks = await delete_chunks_by_document_ids(
-                            [file_id], opensearch_client, get_index_name()
+                            [file_id],
+                            opensearch_client,
+                            get_index_name(),
+                            field="connector_file_id",
                         )
                     except Exception as cleanup_err:
                         logger.error(
@@ -638,6 +645,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     file_size=len(document.content),
                     connector_type=connection.connector_type,
                     acl=document.acl,
+                    connector_file_id=document.id,
                     **standard_kwargs,
                 )
 

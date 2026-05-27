@@ -272,6 +272,7 @@ INDEX_BODY = {
             "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
+            "connector_file_id": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},

@@ -131,8 +131,9 @@ async def test_connector_processor_deletes_then_ingests_when_replace_true():
 @pytest.mark.asyncio
 async def test_connector_processor_deletes_chunks_when_source_returns_404():
     """When the source connector reports the file is gone (404), the processor
-    must remove the already-indexed chunks for that document_id. Regression
-    test for SharePoint sync leaving orphan chunks after a source-side delete.
+    must remove the already-indexed chunks queried by connector_file_id — NOT
+    document_id. Chunks are indexed with document_id=file_hash (SHA of content)
+    which differs from file_id, so querying document_id would find nothing.
     """
     processor = _build_connector_processor(replace_duplicates=False)
 
@@ -167,6 +168,16 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404():
     assert (file_task.result or {}).get("deleted_chunks") == 1
     assert upload_task.successful_files == 1
     opensearch_client.delete.assert_awaited_once()
+
+    # The search must target connector_file_id, not document_id.
+    # document_id holds a SHA content hash that won't match the connector file ID.
+    search_call = opensearch_client.search.await_args
+    query = search_call.kwargs["body"]["query"]
+    assert "terms" in query, f"expected a terms query, got: {query}"
+    assert "connector_file_id" in query["terms"], (
+        f"cleanup must query connector_file_id, not document_id. Query: {query}"
+    )
+    assert query["terms"]["connector_file_id"] == ["file-id-1"]
 
 
 @pytest.mark.asyncio
