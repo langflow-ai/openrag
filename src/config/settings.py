@@ -12,6 +12,7 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
+from config.utils import _read_k8s_sa_token, get_opensearch_service_token
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int
@@ -75,17 +76,17 @@ PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 # inside a cluster and no explicit JWT is injected.
 _DEFAULT_K8S_SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 K8S_SA_TOKEN_PATH = os.getenv("K8S_SA_TOKEN_PATH", _DEFAULT_K8S_SA_TOKEN_PATH)
+AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
 
 
-def _read_k8s_sa_token() -> str | None:
-    try:
-        with open(K8S_SA_TOKEN_PATH) as f:
-            return f.read().strip() or None
-    except (FileNotFoundError, PermissionError):
-        return None
+K8S_SA_TOKEN = _read_k8s_sa_token(K8S_SA_TOKEN_PATH)
+OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
+OPENRAG_SERVICE_TOKEN = get_opensearch_service_token(
+    AUTH_SERVER_URL, OPENRAG_TENANT_ID, K8S_SA_TOKEN_PATH
+)
 
 
-PLATFORM_SERVICE_JWT = os.getenv("PLATFORM_SERVICE_JWT") or _read_k8s_sa_token()
+PLATFORM_SERVICE_JWT = OPENRAG_SERVICE_TOKEN or os.getenv("PLATFORM_SERVICE_JWT")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
@@ -1095,8 +1096,8 @@ class AppClients:
                 error=str(e),
             )
 
-    def create_user_opensearch_client(self, jwt_token: str):
-        """Create OpenSearch client with user's auth token.
+    def create_opensearch_client_from_jwt(self, jwt_token: str):
+        """Create an OpenSearch client authenticated with a JWT bearer token.
 
         If jwt_token already contains an auth scheme (e.g. "Basic ..." or "Bearer ..."),
         it is used verbatim. Otherwise it is wrapped as a Bearer token.
@@ -1122,6 +1123,10 @@ class AppClients:
             max_retries=3,
             retry_on_timeout=True,
         )
+
+    def create_user_opensearch_client(self, jwt_token: str):
+        """Create OpenSearch client with user's auth token."""
+        return self.create_opensearch_client_from_jwt(jwt_token)
 
 
 # Component template paths — derived from the centralized flows directory

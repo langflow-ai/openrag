@@ -222,10 +222,14 @@ async def run_startup(app: FastAPI):
                 "PLATFORM_SERVICE_JWT has no 'username' or 'sub' claim; "
                 "cannot bootstrap OpenSearch security"
             )
-        await wait_for_opensearch()
-        logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
-        await setup_opensearch_security(clients.opensearch, admin_username=admin_username)
-        logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
+        opensearch_client = clients.create_opensearch_client_from_jwt(PLATFORM_SERVICE_JWT)
+        try:
+            await wait_for_opensearch(opensearch_client)
+            logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
+            await setup_opensearch_security(opensearch_client, admin_username=admin_username)
+            logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
+        finally:
+            await opensearch_client.close()
 
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))
