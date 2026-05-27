@@ -124,10 +124,7 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
         # both observe an empty table.
         by_email = await user_repo.get_by_email(user.email) if user.email else None
         if by_email is not None:
-            if (
-                by_email.oauth_provider == provider
-                and by_email.oauth_subject == subject
-            ):
+            if by_email.oauth_provider == provider and by_email.oauth_subject == subject:
                 # Concurrent insert of the *same* identity — safe to reuse.
                 await user_repo.update_last_login(by_email.id)
                 return by_email
@@ -139,8 +136,7 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
             # the request never fails on a UNIQUE constraint. The email stays
             # attached to the first identity that claimed it.
             logger.warning(
-                "email already owned by another identity; "
-                "creating user row without email",
+                "email already owned by another identity; creating user row without email",
                 provider=provider,
                 subject=subject,
                 existing_provider=by_email.oauth_provider,
