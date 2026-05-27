@@ -65,7 +65,15 @@ def admin_username_from_service_jwt(token: str) -> str | None:
     except jwt.InvalidTokenError as exc:
         logger.warning("Service JWT decode failed", error=str(exc))
         return None
-    return claims.get("username") or claims.get("sub")
+    value = claims.get("username") or claims.get("sub")
+    if not isinstance(value, str):
+        if value is not None:
+            logger.warning(
+                "Service JWT username/sub claim is not a string",
+                claim_type=type(value).__name__,
+            )
+        return None
+    return value
 
 
 async def fetch_ibm_public_key(url: str):
