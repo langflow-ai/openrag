@@ -221,6 +221,7 @@ class AuthService:
         authorization_code: str,
         state: str = None,
         request=None,
+        user_id: str | None = None,
     ) -> dict:
         """Handle OAuth callback - exchange authorization code for tokens"""
         logger.info(f"OAuth callback state: {state}")
@@ -323,6 +324,24 @@ class AuthService:
                     connection_id, connection_config, token_data, request
                 )
             else:
+                # Ensure the newly-authenticated connection is associated with the
+                # current authenticated user so it shows up in /connectors/*/status
+                # (which is user-scoped).
+                if user_id and connection_config.user_id != user_id:
+                    try:
+                        await self.connector_service.connection_manager.update_connection(
+                            connection_id=connection_id,
+                            user_id=user_id,
+                        )
+                        # Refresh local reference
+                        connection_config = await self.connector_service.connection_manager.get_connection(
+                            connection_id
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[AUTH] Failed to attach OAuth connection to user",
+                            extra={"connection_id": connection_id, "user_id": user_id},
+                        )
                 return await self._handle_data_source_auth(connection_id, connection_config)
 
         except Exception as e:

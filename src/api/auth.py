@@ -63,11 +63,16 @@ async def auth_callback(
     body: AuthCallbackBody,
     request: Request,
     auth_service=Depends(get_auth_service),
+    user: Optional[User] = Depends(get_optional_user),
 ):
     """Handle OAuth callback - exchange authorization code for tokens"""
     try:
         result = await auth_service.handle_oauth_callback(
-            body.connection_id, body.authorization_code, body.state, request
+            body.connection_id,
+            body.authorization_code,
+            body.state,
+            request,
+            user_id=user.user_id if user else None,
         )
 
         await TelemetryClient.send_event(Category.AUTHENTICATION, MessageId.ORB_AUTH_OAUTH_CALLBACK)
