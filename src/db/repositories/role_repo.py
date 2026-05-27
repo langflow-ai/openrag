@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Permission, Role, RolePermission, UserRole
@@ -14,50 +14,11 @@ class RoleRepo:
         result = await self.session.execute(select(Role).where(Role.name == name))
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, role_id: str) -> Optional[Role]:
-        return await self.session.get(Role, role_id)
-
-    async def list_all(self) -> list[Role]:
-        result = await self.session.execute(select(Role).order_by(Role.name))
-        return list(result.scalars().all())
-
-    async def count_admins(self) -> int:
-        result = await self.session.execute(
-            select(func.count())
-            .select_from(UserRole)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(Role.name == "admin")
-        )
-        return int(result.scalar_one() or 0)
-
-    async def list_admin_user_ids(self) -> list[str]:
-        """All user_ids that currently hold the admin role.
-
-        Returned in lexicographic order so callers can use it as a
-        deterministic tie-breaker (e.g. bootstrap-race rollback in
-        ``user_service._assign_bootstrap_or_default``).
-        """
-        result = await self.session.execute(
-            select(UserRole.user_id)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(Role.name == "admin")
-            .order_by(UserRole.user_id)
-        )
-        return list(result.scalars().all())
-
     async def list_user_roles(self, user_id: str) -> list[Role]:
         result = await self.session.execute(
             select(Role)
             .join(UserRole, UserRole.role_id == Role.id)
             .where(UserRole.user_id == user_id)
-        )
-        return list(result.scalars().all())
-
-    async def list_permissions_for_role(self, role_id: str) -> list[Permission]:
-        result = await self.session.execute(
-            select(Permission)
-            .join(RolePermission, RolePermission.permission_id == Permission.id)
-            .where(RolePermission.role_id == role_id)
         )
         return list(result.scalars().all())
 

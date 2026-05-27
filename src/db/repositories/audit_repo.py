@@ -1,7 +1,6 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import AuditLog
@@ -36,9 +35,3 @@ class AuditRepo:
         self.session.add(row)
         await self.session.flush()
         return row
-
-    async def list_recent(self, limit: int = 100, offset: int = 0) -> list[AuditLog]:
-        result = await self.session.execute(
-            select(AuditLog).order_by(AuditLog.ts.desc()).offset(offset).limit(limit)
-        )
-        return list(result.scalars().all())

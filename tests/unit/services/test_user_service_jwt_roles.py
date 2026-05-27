@@ -1,11 +1,11 @@
 """ensure_user_row with jwt_roles: JWT is authoritative.
 
 Verifies:
-* Brand-new user with jwt_roles=["admin"] becomes admin, even when
-  count_admins == 0 (the bootstrap-admin shortcut is skipped).
+* Brand-new user with jwt_roles=["admin"] becomes admin.
 * Existing user re-syncs roles on subsequent calls: revokes roles the JWT
   no longer carries, adds new ones.
-* jwt_roles=None preserves the legacy bootstrap / default-role behavior.
+* jwt_roles=None falls back to the env default role (no bootstrap-admin);
+  the anonymous user gets OPENRAG_NOAUTH_ROLE.
 * Unknown role names in the JWT are skipped (logged, not assigned).
 """
 
@@ -87,9 +87,23 @@ async def test_existing_user_role_set_reconciled_on_relogin(session):
 
 
 @pytest.mark.asyncio
-async def test_jwt_roles_none_keeps_legacy_bootstrap(session):
-    """When jwt_roles is None, the first user must still become admin."""
+async def test_jwt_roles_none_assigns_default_role(session, monkeypatch):
+    """When jwt_roles is None, the user gets OPENRAG_DEFAULT_ROLE — there is
+    no first-user-becomes-admin bootstrap."""
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user(uid="oauth-1"))
+    await session.commit()
+    roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
+    assert roles == {"user"}
+
+
+@pytest.mark.asyncio
+async def test_anonymous_user_gets_noauth_role(session, monkeypatch):
+    """The synthetic anonymous user gets OPENRAG_NOAUTH_ROLE (default admin)."""
+    monkeypatch.setenv("OPENRAG_NOAUTH_ROLE", "admin")
+    row = await ensure_user_row(
+        session, _user(uid="anonymous", email="anonymous@localhost", provider="none")
+    )
     await session.commit()
     roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
     assert roles == {"admin"}
@@ -105,32 +119,33 @@ async def test_unknown_role_names_skipped(session):
 
 
 @pytest.mark.asyncio
-async def test_sync_jwt_roles_standalone(session):
+async def test_sync_jwt_roles_standalone(session, monkeypatch):
     """The public sync_jwt_roles entry point reconciles without creating
     the user row — covers the dependency-cache fast path."""
-    # Pre-create a user with admin via the legacy path.
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    # Pre-create a user with the env default role.
     row = await ensure_user_row(session, _user(uid="oauth-1"))
-    await session.commit()
-    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"admin"}
-
-    # Now reconcile to just "user" through the standalone helper.
-    await sync_jwt_roles(session, row.id, ["user"])
     await session.commit()
     assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"user"}
 
+    # Now reconcile to "admin" through the standalone helper.
+    await sync_jwt_roles(session, row.id, ["admin"])
+    await session.commit()
+    assert {r.name for r in await RoleRepo(session).list_user_roles(row.id)} == {"admin"}
+
 
 @pytest.mark.asyncio
-async def test_rbac_off_with_no_claim_keeps_bootstrap_admin(session):
+async def test_rbac_off_with_no_claim_assigns_default_role(session, monkeypatch):
     """Regression: when RBAC is disabled and the IBM JWT carries no roles
-    claim, ``_get_ibm_user`` must leave jwt_roles=None so ensure_user_row
-    falls back to the legacy bootstrap-admin path. Documented at the
-    ensure_user_row callsite — verified here by passing jwt_roles=None
-    (which is what the auth handler now sets when jwt_roles_enabled()
-    returns False)."""
+    claim, ``_get_ibm_user`` leaves jwt_roles=None so ensure_user_row falls
+    back to the env default role (no bootstrap-admin). Verified here by
+    passing jwt_roles=None — what the auth handler sets when
+    jwt_roles_enabled() returns False."""
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user(uid="oauth-1"), jwt_roles=None)
     await session.commit()
     roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
-    assert roles == {"admin"}, "RBAC-off path must still bootstrap admin"
+    assert roles == {"user"}, "RBAC-off path assigns the env default role"
 
 
 @pytest.mark.asyncio

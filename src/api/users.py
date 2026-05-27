@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import OPENRAG_RBAC_UI_ENABLED
 from db.repositories import PermissionRepo, RoleRepo, UserRepo
 from dependencies import get_current_user, get_db_session, get_rbac_service
 from services.rbac_service import is_rbac_enforced
@@ -49,8 +48,6 @@ class MeResponse(BaseModel):
     # sections (Users & Roles, Audit log, role pills) when the
     # operator has the kill switch off.
     rbac_enforced: bool
-    # Local UI feature flag. Off by default in saas / on_prem.
-    rbac_ui_enabled: bool
 
 
 @router.get("/me", response_model=MeResponse)
@@ -80,7 +77,6 @@ async def get_me(
         roles=[r.name for r in roles],
         permissions=sorted(perms),
         rbac_enforced=is_rbac_enforced(),
-        rbac_ui_enabled=OPENRAG_RBAC_UI_ENABLED,
     )
 
 

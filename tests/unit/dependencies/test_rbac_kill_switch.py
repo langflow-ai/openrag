@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -113,9 +113,13 @@ async def app(monkeypatch):
     fastapi_app.dependency_overrides[get_rbac_service] = lambda: rbac
     fastapi_app.dependency_overrides[get_db_session] = _db_session
 
-    # Mount the admin router so we can hit a real require_permission gate.
-    from api.admin import rbac as admin_rbac
-    fastapi_app.include_router(admin_rbac.router)
+    # Mount a minimal endpoint behind a real require_permission gate so the
+    # kill switch can be exercised without depending on any specific router.
+    from dependencies import require_permission
+
+    @fastapi_app.get("/admin/users")
+    async def _gated(_=Depends(require_permission("users:list"))):
+        return []
 
     yield fastapi_app, SessionLocal, rbac, personas
     await engine.dispose()

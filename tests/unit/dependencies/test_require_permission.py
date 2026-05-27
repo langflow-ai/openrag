@@ -58,11 +58,11 @@ async def app(monkeypatch):
     PERSONAS.clear()
     async with SessionLocal() as s:
         await seed_roles_and_permissions(s)
-        # First user becomes admin (bootstrap rule)
+        # Every user gets OPENRAG_DEFAULT_ROLE = "user"; promote personas
+        # explicitly (no bootstrap-admin rule).
         admin_db = await ensure_user_row(
             s, User(user_id="admin-sub", email="a@x.com", name="A", provider="google")
         )
-        # Subsequent users get OPENRAG_DEFAULT_ROLE = "user"
         user_db = await ensure_user_row(
             s, User(user_id="user-sub", email="u@x.com", name="U", provider="google")
         )
@@ -73,8 +73,12 @@ async def app(monkeypatch):
         )
         role_repo = RoleRepo(s)
         user_role = await role_repo.get_by_name("user")
+        admin_role = await role_repo.get_by_name("admin")
         dev_role = await role_repo.get_by_name("developer")
         viewer_role = await role_repo.get_by_name("viewer")
+        # Promote the admin persona from its default "user" role to "admin".
+        await role_repo.revoke_role(admin_db.id, user_role.id)
+        await role_repo.assign_role(admin_db.id, admin_role.id)
         await role_repo.revoke_role(dev_db.id, user_role.id)
         await role_repo.assign_role(dev_db.id, dev_role.id)
 

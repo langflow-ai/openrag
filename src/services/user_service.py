@@ -43,12 +43,12 @@ async def ensure_user_row(
 
     Role assignment:
 
-    * ``jwt_roles is None`` — legacy behavior. First-ever user gets ``admin``;
-      subsequent users get ``OPENRAG_DEFAULT_ROLE`` (default ``user``); the
-      synthetic anonymous user gets ``OPENRAG_NOAUTH_ROLE`` (default ``admin``).
-    * ``jwt_roles is not None`` — JWT is authoritative. The user's DB role
-      assignments are reconciled against the list every call; the bootstrap-
-      admin shortcut is skipped (the first admin must come from the JWT).
+    * ``jwt_roles is None`` — env-default behavior (oss / RBAC-off). Every new
+      user gets ``OPENRAG_DEFAULT_ROLE`` (default ``user``); the synthetic
+      anonymous user gets ``OPENRAG_NOAUTH_ROLE`` (default ``admin``). There is
+      no first-user-becomes-admin bootstrap.
+    * ``jwt_roles is not None`` — JWT is authoritative (saas / on_prem). The
+      user's DB role assignments are reconciled against the list every call.
 
     Returns the persisted UserRow. Caller commits.
     """
@@ -98,7 +98,7 @@ async def ensure_user_row(
             await _sync_jwt_roles(role_repo, audit_repo, merged.id, jwt_roles)
         else:
             # Legacy rows had no role assignment — give them the default.
-            await _assign_bootstrap_or_default(session, role_repo, audit_repo, merged.id)
+            await _assign_default_role(session, role_repo, audit_repo, merged.id)
         return merged
 
     # Brand-new row.
@@ -186,7 +186,7 @@ async def ensure_user_row(
     if jwt_roles is not None:
         await _sync_jwt_roles(role_repo, audit_repo, row.id, jwt_roles)
     else:
-        await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
+        await _assign_default_role(session, role_repo, audit_repo, row.id)
     return row
 
 
@@ -255,46 +255,19 @@ async def _sync_jwt_roles(
         )
 
 
-async def _assign_bootstrap_or_default(
+async def _assign_default_role(
     session: AsyncSession,
     role_repo: RoleRepo,
     audit_repo: AuditRepo,
     user_id: str,
 ) -> None:
-    admin_count = await role_repo.count_admins()
-    if admin_count == 0:
-        admin_role = await role_repo.get_by_name("admin")
-        if admin_role is None:
-            logger.warning("admin role not seeded; skipping bootstrap assignment")
-            return
-        await role_repo.assign_role(user_id, admin_role.id)
-        await session.flush()
+    """Assign the configured default role to a freshly-created user.
 
-        # Race-detect: a concurrent caller may have *also* observed
-        # admin_count == 0 and granted admin to a different user. Both
-        # writes succeeded (no DB-level mutex). Resolve by lexicographic
-        # tie-break — only the smallest user_id keeps admin; others
-        # demote and fall through to the default-role path. This is
-        # portable across SQLite and Postgres without advisory locks.
-        admins = await role_repo.list_admin_user_ids()
-        if len(admins) > 1 and min(admins) != user_id:
-            await role_repo.revoke_role(user_id, admin_role.id)
-            await session.flush()
-            logger.warning(
-                "bootstrap race detected; demoted to default role",
-                user_id=user_id,
-                winner=min(admins),
-            )
-            # Fall through to the default-role assignment block below.
-        else:
-            await audit_repo.write(
-                event="user.bootstrap_admin",
-                actor_user_id=user_id,
-                target_type="user",
-                target_id=user_id,
-            )
-            return
-
+    Role assignment is owned outside the app: saas/on_prem deployments sync
+    roles from the JWT claim (see ``_sync_jwt_roles``), and everything else
+    falls back here. There is no first-user-becomes-admin bootstrap — an oss
+    operator who wants an admin sets ``OPENRAG_DEFAULT_ROLE=admin``.
+    """
     # No-auth synthetic user -> configurable role
     if user_id == "anonymous":
         target_name = _noauth_role()
