@@ -19,6 +19,11 @@ spec:
 
   backend:
     image: langflowai/openrag-backend:latest
+    env:
+      - name: AUTH_SERVER_URL
+        value: "" # Set to the platform auth server URL, e.g. https://auth-server.<namespace>.svc
+      - name: OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP
+        value: "true"
     resources:
       requests:
         cpu: "500m"
