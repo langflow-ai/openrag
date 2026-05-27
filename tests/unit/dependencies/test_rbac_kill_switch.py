@@ -39,7 +39,6 @@ from services.rbac_service import RBACService, is_rbac_enforced  # noqa: E402
 from services.user_service import ensure_user_row  # noqa: E402
 from session_manager import User  # noqa: E402
 
-
 # ----------------------------------------------------------------------
 # is_rbac_enforced() resolver
 # ----------------------------------------------------------------------
@@ -91,12 +90,8 @@ async def app(monkeypatch):
             s, User(user_id="user-sub", email="u@x", name="U", provider="google")
         )
         await s.commit()
-        personas["admin"] = User(
-            user_id=admin_db.id, email="a@x", name="A", provider="google"
-        )
-        personas["user"] = User(
-            user_id=user_db.id, email="u@x", name="U", provider="google"
-        )
+        personas["admin"] = User(user_id=admin_db.id, email="a@x", name="A", provider="google")
+        personas["user"] = User(user_id=user_db.id, email="u@x", name="U", provider="google")
 
     rbac = RBACService(SessionLocal)
     fastapi_app = FastAPI()
@@ -196,6 +191,7 @@ async def test_me_returns_full_permission_catalog_when_disabled(app, monkeypatch
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
 
     from api import users as users_api
+
     fastapi_app.include_router(users_api.router)
 
     transport = httpx.ASGITransport(app=fastapi_app)
@@ -217,6 +213,7 @@ async def test_me_returns_only_user_perms_when_enforced(app, monkeypatch):
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
 
     from api import users as users_api
+
     fastapi_app.include_router(users_api.router)
 
     transport = httpx.ASGITransport(app=fastapi_app)
