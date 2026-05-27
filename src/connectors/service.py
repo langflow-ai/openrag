@@ -96,7 +96,9 @@ class ConnectorService:
                 owner_name=owner_name,
                 owner_email=owner_email,
                 connector_type=connector_type,
-                docling_polling_service=self.task_service.docling_polling_service if self.task_service else None,
+                docling_polling_service=self.task_service.docling_polling_service
+                if self.task_service
+                else None,
                 document_id=document.id,
                 source_url=document.source_url,
                 allowed_users=allowed_users,

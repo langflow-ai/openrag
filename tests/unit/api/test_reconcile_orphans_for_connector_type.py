@@ -171,7 +171,7 @@ async def test_happy_path_deletes_orphans():
     conn = _make_connection("c1")
     connector = _make_connector(remote_file_ids=["a", "c"])
     service = _make_service([conn], connector_lookup={"c1": connector})
-    
+
     opensearch_client = AsyncMock()
     # Mock collect_visible_document_ids scroll search
     opensearch_client.search = AsyncMock(

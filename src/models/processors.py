@@ -58,8 +58,8 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {"document_id": file_hash}}
-                    }
+                        "query": {"term": {"document_id": file_hash}},
+                    },
                 )
                 hits = response.get("hits", {}).get("hits", [])
                 return bool(hits)
@@ -632,6 +632,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             collect_visible_document_ids,
                             delete_document_ids,
                         )
+
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),

@@ -35,9 +35,7 @@ def _make_service():
 
     # Mock Langflow service
     langflow_service = MagicMock()
-    langflow_service.upload_and_ingest_file = AsyncMock(
-        return_value={"status": "ok"}
-    )
+    langflow_service.upload_and_ingest_file = AsyncMock(return_value={"status": "ok"})
     langflow_service.merge_ui_ingest_settings_into_tweaks = MagicMock(return_value={})
     service.langflow_service = langflow_service
     service.task_service = None

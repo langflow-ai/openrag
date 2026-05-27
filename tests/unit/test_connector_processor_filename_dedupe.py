@@ -209,17 +209,17 @@ def _build_langflow_processor(
     replace_duplicates: bool,
 ) -> ConnectorFileProcessor:
     processor = _build_connector_processor(replace_duplicates)
-    
+
     langflow_service = MagicMock()
     langflow_service.upload_and_ingest_file = AsyncMock(
         return_value={"status": "indexed", "id": "hash-1"}
     )
     langflow_service.merge_ui_ingest_settings_into_tweaks = MagicMock(return_value={})
-    
+
     processor.connector_service.langflow_service = langflow_service
     processor.connector_service.task_service = MagicMock()
     processor.connector_service.task_service.docling_polling_service = MagicMock()
-    
+
     return processor
 
 
@@ -242,7 +242,7 @@ def _wire_langflow_processor(
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 2})
     opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
     opensearch_client.exists = AsyncMock(return_value=hash_exists)
-    
+
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
     )
@@ -316,7 +316,9 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
 
     connector = MagicMock()
     connector.get_file_content = MagicMock()
-    connector.get_file_content.side_effect = ValueError("File not found: 01BYMO7NCRKVAJFSPPABBKQXS4PPDHBVUY")
+    connector.get_file_content.side_effect = ValueError(
+        "File not found: 01BYMO7NCRKVAJFSPPABBKQXS4PPDHBVUY"
+    )
     processor.connector_service.get_connector = AsyncMock(return_value=connector)
     connection = MagicMock()
     connection.connector_type = "sharepoint"
