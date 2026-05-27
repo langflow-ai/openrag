@@ -10,7 +10,7 @@ class RoleRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_name(self, name: str) -> Optional[Role]:
+    async def get_by_name(self, name: str) -> Role | None:
         result = await self.session.execute(select(Role).where(Role.name == name))
         return result.scalar_one_or_none()
 
@@ -42,12 +42,10 @@ class RoleRepo:
         return set(result.scalars().all())
 
     async def assign_role(
-        self, user_id: str, role_id: str, granted_by: Optional[str] = None
+        self, user_id: str, role_id: str, granted_by: str | None = None
     ) -> UserRole:
         existing = await self.session.execute(
-            select(UserRole).where(
-                UserRole.user_id == user_id, UserRole.role_id == role_id
-            )
+            select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
         )
         row = existing.scalar_one_or_none()
         if row:
@@ -59,9 +57,7 @@ class RoleRepo:
 
     async def revoke_role(self, user_id: str, role_id: str) -> None:
         result = await self.session.execute(
-            select(UserRole).where(
-                UserRole.user_id == user_id, UserRole.role_id == role_id
-            )
+            select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
         )
         row = result.scalar_one_or_none()
         if row:
