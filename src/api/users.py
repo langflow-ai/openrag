@@ -8,13 +8,13 @@ from typing import List
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import OPENRAG_RBAC_UI_ENABLED
 from db.repositories import PermissionRepo, RoleRepo, UserRepo
 from dependencies import get_current_user, get_db_session, get_rbac_service
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set[str]:
@@ -43,8 +43,8 @@ class MeResponse(BaseModel):
     name: str
     picture: str | None = None
     provider: str
-    roles: List[str]
-    permissions: List[str]
+    roles: list[str]
+    permissions: list[str]
     # OPENRAG_RBAC_ENFORCE — surfaced so the UI can hide RBAC-only
     # sections (Users & Roles, Audit log, role pills) when the
     # operator has the kill switch off.
@@ -85,7 +85,7 @@ async def get_me(
 
 
 class PermissionsResponse(BaseModel):
-    permissions: List[str]
+    permissions: list[str]
 
 
 @router.get("/me/permissions", response_model=PermissionsResponse)

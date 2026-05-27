@@ -37,8 +37,10 @@ from db.models import (
     Permission,
     Role,
     RolePermission,
-    User as UserRow,
     UserRole,
+)
+from db.models import (
+    User as UserRow,
 )
 from db.repositories import (
     AuditRepo,
@@ -86,17 +88,17 @@ class UserOut(BaseModel):
     id: str
     oauth_provider: str
     oauth_subject: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    picture_url: Optional[str] = None
+    email: str | None = None
+    display_name: str | None = None
+    picture_url: str | None = None
     is_active: bool
-    roles: List[str]
-    created_at: Optional[str] = None
-    last_login: Optional[str] = None
+    roles: list[str]
+    created_at: str | None = None
+    last_login: str | None = None
 
 
 class UserPatch(BaseModel):
-    is_active: Optional[bool] = None
+    is_active: bool | None = None
 
 
 class AssignRoleBody(BaseModel):
@@ -106,20 +108,20 @@ class AssignRoleBody(BaseModel):
 class RoleOut(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_system: bool
-    permissions: List[str]
+    permissions: list[str]
 
 
 class RoleCreateBody(BaseModel):
     name: str
-    description: Optional[str] = None
-    permissions: List[str] = []
+    description: str | None = None
+    permissions: list[str] = []
 
 
 class RolePatchBody(BaseModel):
-    description: Optional[str] = None
-    permissions: Optional[List[str]] = None
+    description: str | None = None
+    permissions: list[str] | None = None
 
 
 class PermissionOut(BaseModel):
@@ -127,17 +129,17 @@ class PermissionOut(BaseModel):
     name: str
     resource: str
     action: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class AuditOut(BaseModel):
     id: str
     ts: str
-    actor_user_id: Optional[str] = None
+    actor_user_id: str | None = None
     event: str
-    target_type: Optional[str] = None
-    target_id: Optional[str] = None
-    audit_metadata: Optional[dict] = None
+    target_type: str | None = None
+    target_id: str | None = None
+    audit_metadata: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -179,13 +181,13 @@ def _audit_to_out(row: AuditLog) -> AuditOut:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/users", response_model=List[UserOut])
+@router.get("/users", response_model=list[UserOut])
 async def list_users(
     limit: int = 100,
     offset: int = 0,
     actor: User = Depends(require_permission("users:list")),
     session: AsyncSession = Depends(get_db_session),
-) -> List[UserOut]:
+) -> list[UserOut]:
     user_repo = UserRepo(session)
     rows = await user_repo.list_all(limit=limit, offset=offset)
     return [await _user_to_out(session, r) for r in rows]
@@ -399,12 +401,12 @@ async def _role_to_out(session: AsyncSession, role: Role) -> RoleOut:
     )
 
 
-@router.get("/roles", response_model=List[RoleOut])
+@router.get("/roles", response_model=list[RoleOut])
 async def list_roles(
     _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:list")),
     session: AsyncSession = Depends(get_db_session),
-) -> List[RoleOut]:
+) -> list[RoleOut]:
     roles = await RoleRepo(session).list_all()
     return [await _role_to_out(session, r) for r in roles]
 
@@ -553,12 +555,12 @@ async def delete_role(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/permissions", response_model=List[PermissionOut])
+@router.get("/permissions", response_model=list[PermissionOut])
 async def list_permissions(
     _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("roles:list")),
     session: AsyncSession = Depends(get_db_session),
-) -> List[PermissionOut]:
+) -> list[PermissionOut]:
     perms = await PermissionRepo(session).list_all()
     return [
         PermissionOut(
@@ -577,13 +579,13 @@ async def list_permissions(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/audit", response_model=List[AuditOut])
+@router.get("/audit", response_model=list[AuditOut])
 async def list_audit(
     limit: int = 100,
     offset: int = 0,
     _gate: None = Depends(_require_rbac_ui),
     actor: User = Depends(require_permission("audit:read")),
     session: AsyncSession = Depends(get_db_session),
-) -> List[AuditOut]:
+) -> list[AuditOut]:
     rows = await AuditRepo(session).list_recent(limit=limit, offset=offset)
     return [_audit_to_out(r) for r in rows]
