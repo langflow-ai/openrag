@@ -25,10 +25,14 @@ def clear_public_key_cache():
 
 def _make_es256_token(issuer: str) -> tuple[str, str]:
     private_key = ec.generate_private_key(ec.SECP256R1())
-    public_pem = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode()
+    public_pem = (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
     now = int(time.time())
     token = jwt.encode(
         {
