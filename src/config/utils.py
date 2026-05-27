@@ -1,6 +1,4 @@
-
 import httpx
-
 
 _DEFAULT_K8S_SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
