@@ -1,14 +1,12 @@
-from http.client import HTTPException
+from typing import Any
 
+from services.conversation_persistence_service import conversation_persistence
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Import persistent storage
-from services.conversation_persistence_service import conversation_persistence
-
 # In-memory storage for active conversation threads (preserves function calls)
-active_conversations = {}
+active_conversations: dict[str, dict[str, Any]] = {}
 
 
 async def get_user_conversations(user_id: str):
@@ -517,7 +515,7 @@ async def async_chat_stream(
             if chunk_data.get("type") == "response.completed":
                 response_obj = chunk_data.get("response", {})
                 usage_data = response_obj.get("usage")
-        except:
+        except Exception:
             pass
         yield chunk
 
@@ -800,7 +798,7 @@ async def async_langflow_chat_stream(
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
                     usage_data = response_obj.get("usage")
-            except:
+            except Exception:
                 pass
             yield chunk
 
