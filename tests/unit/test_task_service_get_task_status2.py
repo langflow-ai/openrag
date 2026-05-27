@@ -93,8 +93,7 @@ class TestInferFailureMetadata:
             phase=IngestionPhase.DOCLING,
             docling_status=DoclingPhaseStatus.FAILED,
             error=(
-                "Docling conversion did not complete (timeout): "
-                "Docling polling timed out after 10s"
+                "Docling conversion did not complete (timeout): Docling polling timed out after 10s"
             ),
         )
         meta = task_service._infer_failure_metadata(ft)
@@ -106,10 +105,7 @@ class TestInferFailureMetadata:
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,
             docling_status=DoclingPhaseStatus.FAILED,
-            error=(
-                "Docling conversion did not complete (failed): "
-                "Docling reported failure"
-            ),
+            error=("Docling conversion did not complete (failed): Docling reported failure"),
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
@@ -120,8 +116,7 @@ class TestInferFailureMetadata:
             phase=IngestionPhase.DOCLING,
             docling_status=DoclingPhaseStatus.FAILED,
             error=(
-                "Docling conversion did not complete (failed): "
-                "BadZipFile: File is not a zip file"
+                "Docling conversion did not complete (failed): BadZipFile: File is not a zip file"
             ),
         )
         meta = task_service._infer_failure_metadata(ft)

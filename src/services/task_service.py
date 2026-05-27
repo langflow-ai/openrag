@@ -767,9 +767,7 @@ class TaskService:
             upload_task.updated_at = time.time()
 
         background_task = asyncio.create_task(
-            self.background_custom_processor(
-                store_user_id, task_id, paths_to_retry, processor
-            )
+            self.background_custom_processor(store_user_id, task_id, paths_to_retry, processor)
         )
         self.background_tasks.add(background_task)
         background_task.add_done_callback(self.background_tasks.discard)

@@ -55,8 +55,7 @@ class RetryTaskBody(BaseModel):
     file_paths: list[str] | None = Field(
         default=None,
         description=(
-            "Optional subset of task file paths to retry. "
-            "Omit to retry all failed RETRYABLE files."
+            "Optional subset of task file paths to retry. Omit to retry all failed RETRYABLE files."
         ),
     )
 
