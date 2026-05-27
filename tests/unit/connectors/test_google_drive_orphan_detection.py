@@ -19,7 +19,6 @@ Pins two invariants introduced to fix Google Drive sync:
 import sys
 import threading
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
