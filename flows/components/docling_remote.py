@@ -4,7 +4,7 @@ import base64
 import json
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import Any
 
 import httpx
@@ -14,9 +14,7 @@ from pydantic import ValidationError
 from lfx.base.data import BaseFileComponent
 from lfx.inputs import IntInput, NestedDictInput, StrInput, TableInput
 from lfx.inputs.inputs import FloatInput
-from lfx.schema import Data
-from lfx.schema.dotdict import dotdict
-from lfx.schema.message import Message
+from lfx.schema import Data, dotdict
 from lfx.utils.util import transform_localhost_url
 
 
@@ -254,6 +252,20 @@ class DoclingRemoteComponent(BaseFileComponent):
         result_resp = client.get(f"{base_url}/result/{task_id}")
         result_resp.raise_for_status()
         result = result_resp.json()
+
+        if result.get("status") == "failure" or result.get("errors"):
+            errors = result.get("errors", [])
+            err_msg_list = []
+            for err in errors:
+                if isinstance(err, dict) and "error_message" in err:
+                    err_msg_list.append(err["error_message"])
+                elif isinstance(err, str):
+                    err_msg_list.append(err)
+
+            err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+
+            msg = f"Docling processing failed: {err_details}"
+            raise ValueError(msg)
 
         if "json_content" not in result["document"] or result["document"]["json_content"] is None:
             self.log("No JSON DoclingDocument found in the result.")

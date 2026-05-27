@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
-from models.tasks import FileTask, TaskStatus, UploadTask
+from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
@@ -578,26 +578,113 @@ class TaskService:
                     exception=str(e),
                 )
 
+    def _resolve_upload_task(self, user_id: str, task_id: str) -> UploadTask | None:
+        """Look up a task by ID, falling back to anonymous/shared tasks."""
+        if not task_id:
+            return None
+        for candidate_user_id in [user_id, AnonymousUser().user_id]:
+            if (
+                candidate_user_id in self.task_store
+                and task_id in self.task_store[candidate_user_id]
+            ):
+                return self.task_store[candidate_user_id][task_id]
+        return None
+
+    def _serialize_file_task(self, file_task: FileTask) -> dict:
+        """Serialize a FileTask to the standard dict shape."""
+        return {
+            "status": file_task.status.value,
+            "result": file_task.result,
+            "error": file_task.error,
+            "retry_count": file_task.retry_count,
+            "created_at": file_task.created_at,
+            "updated_at": file_task.updated_at,
+            "duration_seconds": file_task.duration_seconds,
+            "filename": file_task.filename,
+            "phase": file_task.phase.value,
+            "docling_status": file_task.docling_status.value,
+            "docling_task_id": file_task.docling_task_id,
+        }
+
+    def _infer_failure_metadata(self, file_task: FileTask) -> dict | None:
+        """Infer structured failure metadata for a failed FileTask.
+
+        Returns a dict with component, failure_phase, user_facing_message, and
+        actionable_by when the failure can be classified, or None when the cause
+        is unknown and no fields should be emitted.
+
+        Priority order: docling_status enum first (stable), error string patterns
+        second (fallback for edge cases like polling timeout).
+        """
+        docling_status = file_task.docling_status
+        phase = file_task.phase
+        error = file_task.error or ""
+
+        if docling_status == DoclingPhaseStatus.FAILED:
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": (
+                    "The file could not be processed into readable document content."
+                ),
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        if docling_status == DoclingPhaseStatus.EXPIRED:
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": (
+                    "The document processing result could not be found. "
+                    "The task may have expired. Please retry ingestion."
+                ),
+                "actionable_by": "RETRYABLE",
+            }
+
+        if phase == IngestionPhase.DOCLING and "Docling conversion did not complete" in error:
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "Document processing timed out. Please retry ingestion.",
+                "actionable_by": "RETRYABLE",
+            }
+
+        if phase == IngestionPhase.DOCLING and docling_status == DoclingPhaseStatus.PROCESSING:
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "Document processing timed out. Please retry ingestion.",
+                "actionable_by": "RETRYABLE",
+            }
+
+        if "already exists" in error:
+            return {
+                "component": "openrag",
+                "failure_phase": "file_validation",
+                "user_facing_message": "A file with this name already exists.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        if phase == IngestionPhase.LANGFLOW:
+            return {
+                "component": "langflow",
+                "failure_phase": "unknown",
+                "user_facing_message": (
+                    "Ingestion failed unexpectedly. Please retry. "
+                    "If it fails again, contact your administrator."
+                ),
+                "actionable_by": "RETRYABLE",
+            }
+
+        return None
+
     def get_task_status(self, user_id: str, task_id: str) -> dict | None:
         """Get the status of a specific upload task
 
         Includes fallback to shared tasks stored under the "anonymous" user key
         so default system tasks are visible to all users.
         """
-        if not task_id:
-            return None
-
-        # Prefer the caller's user_id; otherwise check shared/anonymous tasks
-        candidate_user_ids = [user_id, AnonymousUser().user_id]
-
-        upload_task = None
-        for candidate_user_id in candidate_user_ids:
-            if (
-                candidate_user_id in self.task_store
-                and task_id in self.task_store[candidate_user_id]
-            ):
-                upload_task = self.task_store[candidate_user_id][task_id]
-                break
+        upload_task = self._resolve_upload_task(user_id, task_id)
 
         if upload_task is None:
             return None
@@ -607,19 +694,7 @@ class TaskService:
         pending_files_count = 0
 
         for file_path, file_task in upload_task.file_tasks.items():
-            file_statuses[file_path] = {
-                "status": file_task.status.value,
-                "result": file_task.result,
-                "error": file_task.error,
-                "retry_count": file_task.retry_count,
-                "created_at": file_task.created_at,
-                "updated_at": file_task.updated_at,
-                "duration_seconds": file_task.duration_seconds,
-                "filename": file_task.filename,
-                "phase": file_task.phase.value,
-                "docling_status": file_task.docling_status.value,
-                "docling_task_id": file_task.docling_task_id,
-            }
+            file_statuses[file_path] = self._serialize_file_task(file_task)
 
             # Count running and pending files
             if file_task.status.value == "running":
@@ -641,6 +716,106 @@ class TaskService:
             "duration_seconds": upload_task.duration_seconds,
             "files": file_statuses,
         }
+
+    def get_task_status2(self, user_id: str, task_id: str) -> dict | None:
+        """Get the status of a specific upload task with structured failure metadata.
+
+        Identical to get_task_status but enriches failed file entries with
+        component, failure_phase, user_facing_message, and actionable_by fields
+        when the failure cause can be classified.
+        """
+        upload_task = self._resolve_upload_task(user_id, task_id)
+
+        if upload_task is None:
+            return None
+
+        file_statuses = {}
+        running_files_count = 0
+        pending_files_count = 0
+
+        for file_path, file_task in upload_task.file_tasks.items():
+            entry = self._serialize_file_task(file_task)
+            if file_task.status == TaskStatus.FAILED:
+                metadata = self._infer_failure_metadata(file_task)
+                if metadata:
+                    entry.update(metadata)
+            file_statuses[file_path] = entry
+
+            if file_task.status == TaskStatus.RUNNING:
+                running_files_count += 1
+            elif file_task.status == TaskStatus.PENDING:
+                pending_files_count += 1
+
+        return {
+            "task_id": upload_task.task_id,
+            "status": upload_task.status.value,
+            "total_files": upload_task.total_files,
+            "processed_files": upload_task.processed_files,
+            "successful_files": upload_task.successful_files,
+            "failed_files": upload_task.failed_files,
+            "running_files": running_files_count,
+            "pending_files": pending_files_count,
+            "created_at": upload_task.created_at,
+            "updated_at": upload_task.updated_at,
+            "duration_seconds": upload_task.duration_seconds,
+            "files": file_statuses,
+        }
+
+    def get_all_tasks2(self, user_id: str) -> list:
+        """Get all tasks for a user with structured failure metadata on failed files.
+
+        Identical to get_all_tasks but enriches failed file entries with
+        component, failure_phase, user_facing_message, and actionable_by fields
+        when the failure cause can be classified.
+        """
+        tasks_by_id = {}
+
+        def add_tasks_from_store(store_user_id):
+            if store_user_id not in self.task_store:
+                return
+            for task_id, upload_task in self.task_store[store_user_id].items():
+                if task_id in tasks_by_id:
+                    continue
+
+                running_files_count = 0
+                pending_files_count = 0
+                file_statuses = {}
+
+                for file_path, file_task in upload_task.file_tasks.items():
+                    if file_task.status != TaskStatus.COMPLETED:
+                        entry = self._serialize_file_task(file_task)
+                        if file_task.status == TaskStatus.FAILED:
+                            metadata = self._infer_failure_metadata(file_task)
+                            if metadata:
+                                entry.update(metadata)
+                        file_statuses[file_path] = entry
+
+                    if file_task.status == TaskStatus.RUNNING:
+                        running_files_count += 1
+                    elif file_task.status == TaskStatus.PENDING:
+                        pending_files_count += 1
+
+                tasks_by_id[task_id] = {
+                    "task_id": upload_task.task_id,
+                    "status": upload_task.status.value,
+                    "total_files": upload_task.total_files,
+                    "processed_files": upload_task.processed_files,
+                    "successful_files": upload_task.successful_files,
+                    "failed_files": upload_task.failed_files,
+                    "running_files": running_files_count,
+                    "pending_files": pending_files_count,
+                    "created_at": upload_task.created_at,
+                    "updated_at": upload_task.updated_at,
+                    "duration_seconds": upload_task.duration_seconds,
+                    "files": file_statuses,
+                }
+
+        add_tasks_from_store(user_id)
+        add_tasks_from_store(AnonymousUser().user_id)
+
+        tasks = list(tasks_by_id.values())
+        tasks.sort(key=lambda x: x["created_at"], reverse=True)
+        return tasks
 
     def get_all_tasks(self, user_id: str) -> list:
         """Get all tasks for a user
