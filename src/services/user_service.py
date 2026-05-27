@@ -165,7 +165,10 @@ async def ensure_user_row(
                 picture_url=user.picture,
             )
             await user_repo.add(row)
-            await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
+            if jwt_roles is not None:
+                await _sync_jwt_roles(role_repo, audit_repo, row.id, jwt_roles)
+            else:
+                await _assign_default_role(session, role_repo, audit_repo, row.id)
             return row
 
         # Case 3: pure PK collision (id==subject already occupied by a

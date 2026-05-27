@@ -1,5 +1,3 @@
-from typing import Optional
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +8,7 @@ class RoleRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_name(self, name: str) -> Optional[Role]:
+    async def get_by_name(self, name: str) -> Role | None:
         result = await self.session.execute(select(Role).where(Role.name == name))
         return result.scalar_one_or_none()
 
@@ -42,7 +40,7 @@ class RoleRepo:
         return set(result.scalars().all())
 
     async def assign_role(
-        self, user_id: str, role_id: str, granted_by: Optional[str] = None
+        self, user_id: str, role_id: str, granted_by: str | None = None
     ) -> UserRole:
         existing = await self.session.execute(
             select(UserRole).where(

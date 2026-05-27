@@ -115,6 +115,7 @@ extend-immutable-calls = [
     "fastapi.Form",
     "fastapi.Security",
     "dependencies.require_permission",
+    "dependencies.require_all_permissions",
 ]
 
 # `bootstrap` must be the first import in any module that uses it

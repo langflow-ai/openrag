@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,13 +12,13 @@ class AuditRepo:
     async def write(
         self,
         event: str,
-        actor_user_id: Optional[str] = None,
-        actor_api_key_id: Optional[str] = None,
-        target_type: Optional[str] = None,
-        target_id: Optional[str] = None,
-        audit_metadata: Optional[dict] = None,
-        ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        actor_user_id: str | None = None,
+        actor_api_key_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        audit_metadata: dict | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
     ) -> AuditLog:
         row = AuditLog(
             id=str(uuid.uuid4()),

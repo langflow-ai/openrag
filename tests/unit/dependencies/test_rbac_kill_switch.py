@@ -13,7 +13,7 @@ single-user OSS installs or emergency debugging.
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import RoleRepo  # noqa: E402
+
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
     get_current_user,
@@ -130,7 +130,7 @@ async def test_kill_switch_bypasses_require_permission(app, monkeypatch):
     """`user` persona has no admin role but DELETE /admin/users requires
     `users:delete`. Default = 403. With kill switch = 200/4xx-from-handler."""
     fastapi_app, _, _, personas = app
-    target_id = personas["admin"].user_id  # arbitrary other id
+
 
     transport = httpx.ASGITransport(app=fastapi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
