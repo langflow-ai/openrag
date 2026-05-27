@@ -65,9 +65,7 @@ async def get_synced_file_ids_for_connector(
         # Prefer connector_file_id — these are set by ConnectorFileProcessor (non-Langflow)
         # and hold the actual connector source IDs (e.g. SharePoint GUIDs), not SHA hashes.
         connector_file_id_buckets = (
-            result.get("aggregations", {})
-            .get("unique_connector_file_ids", {})
-            .get("buckets", [])
+            result.get("aggregations", {}).get("unique_connector_file_ids", {}).get("buckets", [])
         )
         connector_file_ids = [b["key"] for b in connector_file_id_buckets if b["key"]]
 
@@ -77,9 +75,7 @@ async def get_synced_file_ids_for_connector(
         else:
             # Langflow path: document_id already holds the connector source ID.
             doc_id_buckets = (
-                result.get("aggregations", {})
-                .get("unique_document_ids", {})
-                .get("buckets", [])
+                result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
             )
             file_ids = [b["key"] for b in doc_id_buckets if b["key"]]
             id_field = "document_id"
@@ -516,7 +512,11 @@ async def connector_sync(
         else:
             # No files specified - sync only files already in OpenSearch for this connector
             # This ensures deleted files stay deleted
-            existing_file_ids, existing_filenames, id_field = await get_synced_file_ids_for_connector(
+            (
+                existing_file_ids,
+                existing_filenames,
+                id_field,
+            ) = await get_synced_file_ids_for_connector(
                 connector_type=connector_type,
                 user_id=user.user_id,
                 session_manager=session_manager,
@@ -958,7 +958,11 @@ async def sync_all_connectors(
         for connector_type in cloud_connector_types:
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
-                existing_file_ids, existing_filenames, id_field = await get_synced_file_ids_for_connector(
+                (
+                    existing_file_ids,
+                    existing_filenames,
+                    id_field,
+                ) = await get_synced_file_ids_for_connector(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     session_manager=session_manager,

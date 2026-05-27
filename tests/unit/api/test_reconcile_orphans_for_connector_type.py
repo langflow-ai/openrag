@@ -64,9 +64,7 @@ def _make_opensearch_client(chunk_ids: list[str] | None = None):
     """
     client = AsyncMock()
     hits = [{"_id": cid} for cid in (chunk_ids or [])]
-    client.search = AsyncMock(
-        return_value={"_scroll_id": None, "hits": {"hits": hits}}
-    )
+    client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": hits}})
     client.delete = AsyncMock(return_value={"result": "deleted"})
     return client
 
@@ -80,6 +78,7 @@ def _make_session_manager(opensearch_client):
 # ---------------------------------------------------------------------------
 # Gating / no-op scenarios
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_empty_existing_file_ids_returns_empty_without_calls():
@@ -202,6 +201,7 @@ async def test_no_orphans_skips_delete_call():
 # Happy path (DLS-safe enumerate-then-delete)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_happy_path_deletes_orphans():
     """Indexed has [a, b, c]; remote has [a, c] → orphan = [b].
@@ -279,6 +279,7 @@ async def test_delete_failure_does_not_raise():
 # ---------------------------------------------------------------------------
 # Multi-connection isolation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_multi_connection_union_preserves_files_present_in_any_connection():
@@ -373,6 +374,7 @@ async def test_paginated_listing_aggregates_all_pages():
 # ---------------------------------------------------------------------------
 # id_field routing — connector_file_id vs document_id
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_connector_file_id_field_used_when_specified():
