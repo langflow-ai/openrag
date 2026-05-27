@@ -170,6 +170,50 @@ async def test_concurrent_signins_same_user_no_integrity_error(
 
 
 @pytest.mark.asyncio
+async def test_same_email_different_provider_no_integrity_error(session_factory):
+    """Two *different* identities that share an email must not crash on the
+    email_lookup_hash UNIQUE constraint.
+
+    Previous bug: after the email collision, the IntegrityError handler
+    retried the INSERT with a fresh UUID id but the *same* email, which hit
+    the same UNIQUE constraint again and propagated an uncaught
+    `sqlite3.IntegrityError: UNIQUE constraint failed: users.email_lookup_hash`.
+
+    The second identity is now persisted without the email so the request
+    succeeds; the email stays attached to the first claimant.
+    """
+    async def signin(provider: str, subject: str) -> str:
+        async with session_factory() as session:
+            row = await ensure_user_row(
+                session,
+                User(
+                    user_id=subject,
+                    email="shared@example.com",
+                    name=subject,
+                    provider=provider,
+                ),
+            )
+            await session.commit()
+            return row.id
+
+    first_id = await signin("google", "g-sub")
+    # Same email, different provider/subject — must not raise.
+    second_id = await signin("github", "gh-sub")
+
+    assert first_id != second_id
+
+    async with session_factory() as session:
+        from db.repositories import UserRepo
+
+        repo = UserRepo(session)
+        rows = await repo.list_all()
+        # Exactly the email's first claimant keeps the lookup hash.
+        with_email = [r for r in rows if r.email_lookup_hash]
+    assert len(rows) == 2, f"expected 2 distinct user rows, got {len(rows)}"
+    assert len(with_email) == 1, "only the first identity should hold the email"
+
+
+@pytest.mark.asyncio
 async def test_cache_keys_are_per_provider_subject_pair(
     session_factory, monkeypatch
 ):
