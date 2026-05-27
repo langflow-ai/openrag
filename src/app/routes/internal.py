@@ -92,6 +92,12 @@ def register_internal_routes(app: FastAPI):
     )
     app.add_api_route("/tasks", tasks.all_tasks, methods=["GET"], tags=["internal"])
     app.add_api_route(
+        "/tasks/{task_id}/retry",
+        tasks.retry_task,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/tasks/{task_id}/cancel",
         tasks.cancel_task,
         methods=["POST"],

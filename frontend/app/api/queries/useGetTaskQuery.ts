@@ -1,18 +1,24 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import type { Task } from "@/app/api/queries/useGetTasksQuery";
+export const TASK_DETAIL_QUERY_KEY = ["tasks", "detail"] as const;
+
+export function taskDetailQueryKey(taskId: string) {
+  return [...TASK_DETAIL_QUERY_KEY, taskId] as const;
+}
 
 export function useGetTaskQuery(
   taskId: string | null,
   options?: Omit<UseQueryOptions<Task | null>, "queryKey" | "queryFn">,
 ) {
   return useQuery({
-    queryKey: ["tasks", taskId],
+    queryKey: taskId
+      ? taskDetailQueryKey(taskId)
+      : [...TASK_DETAIL_QUERY_KEY, "idle"],
     queryFn: async (): Promise<Task | null> => {
       if (!taskId) {
         return null;
       }
-      //will be replace /api/tasks/{taskId}/enhanced, when backend merged
-      const response = await fetch(`/api/tasks/${taskId}`);
+      const response = await fetch(`/api/tasks/${taskId}/enhanced`);
       if (response.status === 404) {
         return null;
       }
@@ -21,7 +27,7 @@ export function useGetTaskQuery(
       }
       return response.json() as Promise<Task>;
     },
-    enabled: !!taskId,
     ...options,
+    enabled: options?.enabled ?? !!taskId,
   });
 }

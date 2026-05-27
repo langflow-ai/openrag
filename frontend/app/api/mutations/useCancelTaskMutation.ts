@@ -40,7 +40,7 @@ export const useCancelTaskMutation = (
     mutationFn: cancelTask,
     onSuccess: () => {
       // Invalidate tasks query to refresh the list
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
     },
     ...options,
   });

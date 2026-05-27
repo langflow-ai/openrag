@@ -12,11 +12,15 @@ import {
 } from "@/components/ui/accordion";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type Task } from "@/contexts/task-context";
-import { displayFileTaskError } from "@/lib/task-error-display";
+import {
+  formatApiComponent,
+  resolveTaskFileError,
+} from "@/lib/task-error-display";
 import {
   getFailedFileCount,
   getFailedFileEntries,
   getSuccessfulFileCount,
+  getTaskFileName,
   isCompletedTotalFailure,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
@@ -172,14 +176,9 @@ export function TaskErrorContent({
             <AccordionContent className="w-full p-0 pt-2">
               <div className="flex w-full flex-col gap-2">
                 {failedEntries.map(([filePath, fileInfo], index) => {
-                  const fileName =
-                    fileInfo.filename || filePath.split("/").pop() || filePath;
-                  const rawError =
-                    typeof fileInfo.error === "string" && fileInfo.error.trim()
-                      ? fileInfo.error.trim()
-                      : task.error;
-                  const { line, componentCause } =
-                    displayFileTaskError(rawError);
+                  const fileName = getTaskFileName(filePath, fileInfo);
+                  const line = resolveTaskFileError(fileInfo, task.error);
+                  const componentCause = formatApiComponent(fileInfo.component);
 
                   return (
                     <div
@@ -208,7 +207,7 @@ export function TaskErrorContent({
                             ? "text-muted-foreground"
                             : "text-failure-message",
                         )}
-                        title={rawError}
+                        title={line}
                       >
                         {line}
                       </p>

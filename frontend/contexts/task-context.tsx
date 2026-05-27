@@ -12,18 +12,27 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
+  TASKS_QUERY_KEY,
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
+import type { ListFilesResponse } from "@/app/api/queries/useListFiles";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
+import { getKnowledgeFileIdentity } from "@/lib/knowledge-table-state";
 import {
+  didTaskReachCompleted,
+  finalizeProcessingOverlaysForEnhancedTask,
+  findTaskFileOverlayIndex,
+  getEnhancedListDisappearedFilePaths,
   getFailedFileCount,
   getSuccessfulFileCount,
   hasFailedFileEntries,
+  isTaskInProgressStatus,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
 
@@ -49,6 +58,8 @@ interface TaskContextType {
   files: TaskFile[];
   addTask: (taskId: string) => void;
   addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
+  /** Mark knowledge-table overlays as processing when a retry starts. */
+  markTaskFilesProcessing: (taskId: string, sourceUrls: string[]) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   isPolling: boolean;
@@ -102,10 +113,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const cancelTaskMutation = useCancelTaskMutation({
     onSuccess: (_data, variables) => {
       // Immediately remove from React Query cache
-      queryClient.setQueryData(["tasks"], (oldTasks: Task[] | undefined) => {
-        if (!oldTasks) return [];
-        return oldTasks.filter((task) => task.task_id !== variables.taskId);
-      });
+      queryClient.setQueryData(
+        [...TASKS_QUERY_KEY],
+        (oldTasks: Task[] | undefined) => {
+          if (!oldTasks) return [];
+          return oldTasks.filter((task) => task.task_id !== variables.taskId);
+        },
+      );
 
       // Update file to display as cancelled
       setFiles((prevFiles) =>
@@ -140,6 +154,33 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       exact: false,
     });
   }, [queryClient]);
+
+  const markTaskFilesProcessing = useCallback(
+    (taskId: string, sourceUrls: string[]) => {
+      const paths = new Set(sourceUrls);
+      if (paths.size === 0) {
+        return;
+      }
+      const now = new Date().toISOString();
+      setFiles((prevFiles) => {
+        let changed = false;
+        const updated = prevFiles.map((file) => {
+          if (file.task_id !== taskId || !paths.has(file.source_url)) {
+            return file;
+          }
+          changed = true;
+          return {
+            ...file,
+            status: "processing" as const,
+            error: undefined,
+            updated_at: now,
+          };
+        });
+        return changed ? updated : prevFiles;
+      });
+    },
+    [],
+  );
 
   const addFiles = useCallback(
     (newFiles: Partial<TaskFile>[], taskId: string) => {
@@ -178,11 +219,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         (prev) => prev.task_id === currentTask.task_id,
       );
 
-      // Check if task is in progress
-      const isTaskInProgress =
-        currentTask.status === "pending" ||
-        currentTask.status === "running" ||
-        currentTask.status === "processing";
+      const isTaskInProgress = isTaskInProgressStatus(currentTask.status);
 
       // On initial load, previousTasksRef is empty, so we need to process all in-progress tasks
       const isInitialLoad = previousTasksRef.current.length === 0;
@@ -249,8 +286,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               })();
 
               setFiles((prevFiles) => {
-                const existingFileIndex = prevFiles.findIndex(
-                  (f) => f.source_url === filePath,
+                const existingFileIndex = findTaskFileOverlayIndex(
+                  prevFiles,
+                  currentTask.task_id,
+                  filePath,
+                  fileName,
                 );
 
                 // Detect connector type based on file path or other indicators
@@ -302,28 +342,28 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
-        if (isTaskInProgress && previousTask?.files) {
-          const currentFileKeys = new Set(Object.keys(currentTask.files ?? {}));
-          const disappearedFilePaths = Object.keys(previousTask.files).filter(
-            (fp) => !currentFileKeys.has(fp),
+        if (previousTask?.files) {
+          const disappearedFilePaths = getEnhancedListDisappearedFilePaths(
+            currentTask,
+            previousTask,
           );
+          const taskJustCompleted = didTaskReachCompleted(
+            previousTask,
+            currentTask,
+          );
+          const shouldFinalizeDisappeared =
+            disappearedFilePaths.length > 0 &&
+            (isTaskInProgress || taskJustCompleted);
+          const shouldFinalizeAllProcessing = taskJustCompleted;
 
-          if (disappearedFilePaths.length > 0) {
-            setFiles((prevFiles) => {
-              let changed = false;
-              const updated = prevFiles.map((f) => {
-                if (
-                  f.task_id === currentTask.task_id &&
-                  f.status === "processing" &&
-                  disappearedFilePaths.includes(f.source_url)
-                ) {
-                  changed = true;
-                  return { ...f, status: "active" as TaskFile["status"] };
-                }
-                return f;
-              });
-              return changed ? updated : prevFiles;
-            });
+          if (shouldFinalizeDisappeared || shouldFinalizeAllProcessing) {
+            setFiles((prevFiles) =>
+              finalizeProcessingOverlaysForEnhancedTask(
+                prevFiles,
+                currentTask,
+                shouldFinalizeAllProcessing ? undefined : disappearedFilePaths,
+              ),
+            );
             refetchSearch();
           }
         }
@@ -417,12 +457,57 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 e,
               );
             } finally {
+              const indexedIdentities = new Set<string>();
+              const indexedFilenames = new Set<string>();
+              for (const [
+                ,
+                data,
+              ] of queryClient.getQueriesData<ListFilesResponse>({
+                queryKey: ["listFiles"],
+              })) {
+                for (const indexed of data?.files ?? []) {
+                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
+                  if (indexed.filename?.trim()) {
+                    indexedFilenames.add(indexed.filename.trim());
+                  }
+                }
+              }
+              for (const [, data] of queryClient.getQueriesData<SearchResult>({
+                queryKey: ["search"],
+              })) {
+                for (const indexed of data?.files ?? []) {
+                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
+                  if (indexed.filename?.trim()) {
+                    indexedFilenames.add(indexed.filename.trim());
+                  }
+                }
+              }
+
               setFiles((prevFiles) =>
-                prevFiles.filter(
-                  (file) =>
-                    file.task_id !== currentTask.task_id ||
-                    (completedHasFailures && file.status === "failed"),
-                ),
+                prevFiles.filter((file) => {
+                  if (file.task_id !== currentTask.task_id) {
+                    return true;
+                  }
+                  if (file.status === "failed") {
+                    return completedHasFailures;
+                  }
+                  if (file.status === "processing") {
+                    return false;
+                  }
+                  if (file.status === "active") {
+                    const filename = file.filename?.trim();
+                    if (filename && indexedFilenames.has(filename)) {
+                      return false;
+                    }
+                    return !indexedIdentities.has(
+                      getKnowledgeFileIdentity({
+                        filename: file.filename,
+                        source_url: file.source_url,
+                      }),
+                    );
+                  }
+                  return false;
+                }),
               );
             }
           }
@@ -531,6 +616,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     files,
     addTask,
     addFiles,
+    markTaskFilesProcessing,
     refreshTasks,
     cancelTask,
     isPolling,

@@ -12,7 +12,7 @@ import {
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
@@ -56,13 +56,29 @@ import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
-import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import {
+  deleteDocumentByFilename,
+  useDeleteDocument,
+} from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
 import {
   type SyncAllPreviewResponse,
   useSyncAllConnectors,
   useSyncAllConnectorsPreview,
 } from "../api/mutations/useSyncConnector";
+
+/** Failed overlays can stay selected after they lose their checkbox (processing → failed). */
+function syncGridSelectionToDeletableRows(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): File[] {
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+    }
+  });
+  return api.getSelectedRows().filter(isDeletable);
+}
 
 /** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
 function listFilesFilterParam(values?: string[]): string | undefined {
@@ -327,6 +343,37 @@ function SearchPage() {
     return getKnowledgeFileIdentity(file);
   }, []);
 
+  const indexedFileIdentities = useMemo(
+    () =>
+      new Set(
+        effectiveData
+          .map((file) => getKnowledgeFileIdentity(file))
+          .filter(Boolean),
+      ),
+    [effectiveData],
+  );
+
+  const isDeletableKnowledgeRow = useCallback(
+    (file?: File) => {
+      if ((file?.status || "active") !== "active") {
+        return false;
+      }
+      return indexedFileIdentities.has(getKnowledgeFileIdentity(file));
+    },
+    [indexedFileIdentities],
+  );
+
+  const resolveDeleteFilename = useCallback(
+    (row: File) => {
+      const identity = getKnowledgeFileIdentity(row);
+      const indexed = effectiveData.find(
+        (file) => getKnowledgeFileIdentity(file) === identity,
+      );
+      return indexed?.filename ?? row.filename;
+    },
+    [effectiveData],
+  );
+
   const getOwnerLabel = useCallback((file?: File): string => {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
   }, []);
@@ -417,6 +464,29 @@ function SearchPage() {
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
 
+  useEffect(() => {
+    const api = gridRef.current?.api;
+    if (!api) {
+      return;
+    }
+    const activeSelected = syncGridSelectionToDeletableRows(
+      api,
+      isDeletableKnowledgeRow,
+    );
+    setSelectedRows((current) => {
+      if (
+        current.length === activeSelected.length &&
+        current.every(
+          (row, index) =>
+            getFileIdentity(row) === getFileIdentity(activeSelected[index]),
+        )
+      ) {
+        return current;
+      }
+      return activeSelected;
+    });
+  }, [gridRows, getFileIdentity, isDeletableKnowledgeRow]);
+
   const columnDefs: ColDef<File>[] = [
     {
       field: "filename",
@@ -436,7 +506,7 @@ function SearchPage() {
         return sourceA < sourceB ? -1 : 1;
       },
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
-        (params?.data?.status || "active") === "active",
+        isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
       ...(isCloudBrand
         ? { flex: 2.2, minWidth: 260 }
@@ -685,51 +755,78 @@ function SearchPage() {
   };
 
   const onSelectionChanged = useCallback(() => {
-    if (gridRef.current) {
-      const selectedNodes = gridRef.current.api.getSelectedRows();
-      setSelectedRows(selectedNodes);
+    if (!gridRef.current) {
+      return;
     }
-  }, []);
+    setSelectedRows(
+      syncGridSelectionToDeletableRows(
+        gridRef.current.api,
+        isDeletableKnowledgeRow,
+      ),
+    );
+  }, [isDeletableKnowledgeRow]);
 
   const handleBulkDelete = async () => {
-    if (selectedRows.length === 0) return;
+    const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
+    if (rowsToDelete.length === 0) return;
 
     try {
-      // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
+      const deleteResults = await Promise.allSettled(
+        rowsToDelete.map((row) =>
+          deleteDocumentByFilename(resolveDeleteFilename(row)),
+        ),
       );
 
-      const deleteResults = await Promise.all(deletePromises);
       await refreshTasks();
       await queryClient.invalidateQueries({ queryKey: ["search"] });
+      await queryClient.invalidateQueries({ queryKey: ["listFiles"] });
       await queryClient.refetchQueries({ queryKey: ["search"] });
+      await queryClient.refetchQueries({ queryKey: ["listFiles"] });
 
-      const totalDeletedChunks = deleteResults.reduce(
-        (sum, result) => sum + (result.deleted_chunks || 0),
-        0,
+      const deleted = deleteResults.filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<
+          Awaited<ReturnType<typeof deleteDocumentByFilename>>
+        > =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) > 0,
       );
-      const filesWithNoDeletion = deleteResults.filter(
-        (result) => (result.deleted_chunks || 0) === 0,
+      const noChunks = deleteResults.filter(
+        (result) =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) === 0,
+      );
+      const failed = deleteResults.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
       );
 
-      if (totalDeletedChunks > 0) {
+      if (deleted.length > 0) {
         toast.success(
-          `Successfully deleted ${selectedRows.length} document${
-            selectedRows.length > 1 ? "s" : ""
-          }`,
+          `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
         );
       } else {
         toast.warning(
-          "No document chunks were deleted. Files may be owned by another context or already removed.",
+          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
         );
       }
 
-      if (filesWithNoDeletion.length > 0 && totalDeletedChunks > 0) {
+      if (noChunks.length > 0 && deleted.length > 0) {
         toast.warning(
-          `${filesWithNoDeletion.length} selected file${
-            filesWithNoDeletion.length > 1 ? "s were" : " was"
-          } not deleted (0 chunks matched).`,
+          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
+        );
+      }
+
+      if (failed.length > 0) {
+        toast.error(
+          `${failed.length} document${failed.length > 1 ? "s" : ""} could not be deleted`,
+          {
+            description:
+              failed[0].reason instanceof Error
+                ? failed[0].reason.message
+                : undefined,
+          },
         );
       }
       setSelectedRows([]);
@@ -919,6 +1016,7 @@ function SearchPage() {
             getRowId={(params: GetRowIdParams<File>) =>
               getFileIdentity(params.data)
             }
+            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
@@ -952,6 +1050,7 @@ function SearchPage() {
             getRowId={(params: GetRowIdParams<File>) =>
               getFileIdentity(params.data)
             }
+            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}

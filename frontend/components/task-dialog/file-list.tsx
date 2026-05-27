@@ -9,12 +9,14 @@ import {
   getTaskFileDialogStatusLabel,
   getTaskFileName,
   isTaskFileFailed,
+  isTaskFileRetryable,
   type TaskFileNameSort,
 } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { TaskDialogFileErrorDetails } from "./file-error-details";
 
 const OSS_ERROR_INDENT = "pl-9";
+const CHECKBOX_CLASS = "h-4 w-4 shrink-0 rounded border-border accent-primary";
 
 type TaskDialogFileListTab = "task-ingestions" | "retry-ingestions";
 
@@ -22,20 +24,31 @@ interface TaskDialogFileListProps {
   isCloudBrand: boolean;
   task: Task;
   entries: Array<[string, TaskFileEntry]>;
+  retryIngestionEntries: Array<[string, TaskFileEntry]>;
   totalSourceCount: number;
   totalSourceCountAll?: number;
   nameSort: TaskFileNameSort;
   onToggleNameSort: () => void;
   expandedPath: string | null;
   onExpandedPathChange: (path: string | null) => void;
-  /** Retry-ingestion row count; tab is shown only when greater than zero. */
   retryIngestionCount?: number;
+  selectablePaths: string[];
+  selectedPaths: Set<string>;
+  allSelectableSelected: boolean;
+  onToggleSelectedPath: (filePath: string) => void;
+  onToggleSelectAllVisible: () => void;
+  allRetryIngestionsSelected: boolean;
+  onToggleSelectAllRetryIngestions: () => void;
+  selectedCount: number;
+  retryIngestionSelectedCount: number;
+  retryingTarget?: "all" | "selected" | string | null;
 }
 
 export function TaskDialogFileList({
   isCloudBrand,
   task,
   entries,
+  retryIngestionEntries,
   totalSourceCount,
   totalSourceCountAll,
   nameSort,
@@ -43,6 +56,16 @@ export function TaskDialogFileList({
   expandedPath,
   onExpandedPathChange,
   retryIngestionCount = 0,
+  selectablePaths,
+  selectedPaths,
+  allSelectableSelected,
+  onToggleSelectedPath,
+  onToggleSelectAllVisible,
+  allRetryIngestionsSelected,
+  onToggleSelectAllRetryIngestions,
+  selectedCount,
+  retryIngestionSelectedCount,
+  retryingTarget = null,
 }: TaskDialogFileListProps) {
   const [activeTab, setActiveTab] =
     useState<TaskDialogFileListTab>("task-ingestions");
@@ -60,7 +83,11 @@ export function TaskDialogFileList({
       string,
       ReturnType<typeof analyzeTaskFileIngestionFailure>
     >();
-    for (const [filePath, fileInfo] of entries) {
+    const allEntries = [...entries, ...retryIngestionEntries];
+    const seen = new Set<string>();
+    for (const [filePath, fileInfo] of allEntries) {
+      if (seen.has(filePath)) continue;
+      seen.add(filePath);
       if (isTaskFileFailed(fileInfo)) {
         map.set(
           filePath,
@@ -69,20 +96,7 @@ export function TaskDialogFileList({
       }
     }
     return map;
-  }, [entries, task.error]);
-
-  if (entries.length === 0) {
-    return (
-      <p
-        className={cn(
-          "text-center text-sm text-muted-foreground",
-          isCloudBrand ? "py-6" : "px-4 py-4",
-        )}
-      >
-        No files match your filters.
-      </p>
-    );
-  }
+  }, [entries, retryIngestionEntries, task.error]);
 
   const containerClass = cn(
     "flex min-h-0 flex-1 flex-col overflow-hidden",
@@ -118,93 +132,188 @@ export function TaskDialogFileList({
 
   const listScrollClass = "min-h-0 flex-1 overflow-y-auto overscroll-contain";
 
-  const fileRows = entries.map(([filePath, fileInfo]) => {
-    const fileName = getTaskFileName(filePath, fileInfo);
-    const failed = isTaskFileFailed(fileInfo);
-    const analysis = analysisByPath.get(filePath);
-    const rowStatusLabel = failed
-      ? (analysis?.rowStatusLabel ?? "Failed")
-      : getTaskFileDialogStatusLabel(fileInfo, task.error);
-    const isExpanded = expandedPath === filePath;
+  const rowGridClass =
+    "grid min-h-10 grid-cols-[auto_auto_1fr_auto] items-center gap-3";
 
-    return (
-      <div
-        key={filePath}
-        className={cn(
-          "border-b last:border-b-0",
-          isCloudBrand ? "border-border" : "border-muted",
-        )}
-      >
+  const renderFileRows = (listEntries: Array<[string, TaskFileEntry]>) =>
+    listEntries.map(([filePath, fileInfo]) => {
+      const fileName = getTaskFileName(filePath, fileInfo);
+      const failed = isTaskFileFailed(fileInfo);
+      const analysis = analysisByPath.get(filePath);
+      const rowStatusLabel = failed
+        ? (analysis?.rowStatusLabel ?? "Failed")
+        : getTaskFileDialogStatusLabel(fileInfo, task.error);
+      const isExpanded = expandedPath === filePath;
+      const retryable = isTaskFileRetryable(fileInfo);
+      const isSelected = selectedPaths.has(filePath);
+      const isRowRetrying =
+        retryingTarget === "all" ||
+        retryingTarget === filePath ||
+        (retryingTarget === "selected" && isSelected);
+      const retryAttempts = fileInfo.retry_count ?? 0;
+      const statusLabel =
+        retryable && retryAttempts > 0
+          ? `${rowStatusLabel} · Retry ${retryAttempts}`
+          : rowStatusLabel;
+
+      return (
         <div
+          key={filePath}
           className={cn(
-            "grid min-h-10 grid-cols-[auto_1fr_auto] items-center gap-3",
-            isCloudBrand ? "px-4 hover:bg-muted/40" : "px-3 hover:bg-muted/30",
+            "border-b last:border-b-0",
+            isCloudBrand ? "border-border" : "border-muted",
+            isSelected && "bg-muted/30",
           )}
         >
-          {failed ? (
+          <div
+            className={cn(
+              rowGridClass,
+              isCloudBrand
+                ? "px-4 hover:bg-muted/40"
+                : "px-3 hover:bg-muted/30",
+              isSelected && "hover:bg-muted/40",
+            )}
+          >
+            {retryable ? (
+              <input
+                type="checkbox"
+                className={CHECKBOX_CLASS}
+                checked={isSelected}
+                disabled={isRowRetrying}
+                aria-label={`Select ${fileName}`}
+                onChange={() => onToggleSelectedPath(filePath)}
+              />
+            ) : (
+              <span className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            {failed ? (
+              <button
+                type="button"
+                aria-label={isExpanded ? "Collapse error" : "Expand error"}
+                aria-expanded={isExpanded}
+                onClick={() =>
+                  onExpandedPathChange(isExpanded ? null : filePath)
+                }
+                className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    isExpanded && "rotate-180",
+                  )}
+                />
+              </button>
+            ) : (
+              <span className="h-5 w-5" aria-hidden />
+            )}
             <button
               type="button"
-              aria-label={isExpanded ? "Collapse error" : "Expand error"}
-              aria-expanded={isExpanded}
-              onClick={() => onExpandedPathChange(isExpanded ? null : filePath)}
-              className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground hover:text-foreground"
+              className={cn(
+                "flex min-w-0 items-center gap-2 text-left",
+                failed && "cursor-pointer",
+              )}
+              onClick={() => {
+                if (!failed) return;
+                onExpandedPathChange(isExpanded ? null : filePath);
+              }}
+              disabled={!failed}
             >
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  isExpanded && "rotate-180",
-                )}
-              />
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span
+                className={cn("truncate text-sm", failed && "text-foreground")}
+                title={fileName}
+              >
+                {fileName}
+              </span>
             </button>
-          ) : (
-            <span className="h-5 w-5" aria-hidden />
-          )}
-          <button
-            type="button"
-            className={cn(
-              "flex min-w-0 items-center gap-2 text-left",
-              failed && "cursor-pointer",
-            )}
-            onClick={() => {
-              if (!failed) return;
-              onExpandedPathChange(isExpanded ? null : filePath);
-            }}
-            disabled={!failed}
-          >
-            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span
-              className={cn("truncate text-sm", failed && "text-foreground")}
-              title={fileName}
+              className={cn(
+                "shrink-0 text-sm",
+                failed
+                  ? "text-destructive"
+                  : rowStatusLabel === "Complete"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground",
+              )}
             >
-              {fileName}
+              {statusLabel}
             </span>
-          </button>
-          <span
-            className={cn(
-              "shrink-0 text-sm",
-              failed
-                ? "text-destructive"
-                : rowStatusLabel === "Complete"
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-muted-foreground",
-            )}
-          >
-            {rowStatusLabel}
-          </span>
-        </div>
+          </div>
 
-        {failed && isExpanded && analysis && (
-          <TaskDialogFileErrorDetails
-            isCloudBrand={isCloudBrand}
-            indentClassName={!isCloudBrand ? OSS_ERROR_INDENT : ""}
-            fileInfo={fileInfo}
-            taskError={task.error}
-            analysis={analysis}
-          />
-        )}
-      </div>
-    );
-  });
+          {failed && isExpanded && analysis && (
+            <TaskDialogFileErrorDetails
+              isCloudBrand={isCloudBrand}
+              indentClassName={!isCloudBrand ? OSS_ERROR_INDENT : ""}
+              fileInfo={fileInfo}
+              taskError={task.error}
+              analysis={analysis}
+            />
+          )}
+        </div>
+      );
+    });
+
+  const renderListHeader = ({
+    showSelectAll,
+    allSelected,
+    onToggleSelectAll,
+    selectedLabel,
+  }: {
+    showSelectAll: boolean;
+    allSelected: boolean;
+    onToggleSelectAll: () => void;
+    selectedLabel?: string;
+  }) => (
+    <div
+      className={cn(
+        "flex min-h-10 shrink-0 items-center gap-3 bg-muted text-sm font-medium text-muted-foreground",
+        isCloudBrand ? "px-4" : "px-3",
+      )}
+    >
+      {showSelectAll ? (
+        <input
+          type="checkbox"
+          className={CHECKBOX_CLASS}
+          checked={allSelected}
+          disabled={retryingTarget != null}
+          aria-label="Select all retryable files"
+          onChange={onToggleSelectAll}
+        />
+      ) : null}
+      <button
+        type="button"
+        className="inline-flex min-w-0 flex-1 items-center gap-1 hover:text-foreground"
+        onClick={onToggleNameSort}
+      >
+        <span>Source</span>
+        <ArrowUpAZ
+          className={cn(
+            "h-3.5 w-3.5",
+            isCloudBrand ? "opacity-70" : "opacity-50",
+            nameSort === "desc" && "rotate-180",
+          )}
+          aria-hidden
+        />
+        <span className="sr-only">
+          Sort by name {nameSort === "asc" ? "A to Z" : "Z to A"}
+        </span>
+      </button>
+      {selectedLabel ? (
+        <span className="shrink-0 text-xs tabular-nums">{selectedLabel}</span>
+      ) : null}
+    </div>
+  );
+
+  const renderEmptyPanel = (message: string) => (
+    <p
+      className={cn(
+        "text-center text-sm text-muted-foreground",
+        isCloudBrand ? "py-6" : "px-4 py-4",
+      )}
+    >
+      {message}
+    </p>
+  );
 
   return (
     <div className={containerClass}>
@@ -241,48 +350,55 @@ export function TaskDialogFileList({
 
       {isTabActive("task-ingestions") ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div
-            className={cn(
-              "flex min-h-10 shrink-0 items-center gap-1 bg-muted text-sm font-medium text-muted-foreground",
-              isCloudBrand ? "px-4" : "px-3",
-            )}
-          >
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 hover:text-foreground"
-              onClick={onToggleNameSort}
-            >
-              <span>Source</span>
-              <ArrowUpAZ
-                className={cn(
-                  "h-3.5 w-3.5",
-                  isCloudBrand ? "opacity-70" : "opacity-50",
-                  nameSort === "desc" && "rotate-180",
-                )}
-                aria-hidden
-              />
-              <span className="sr-only">
-                Sort by name {nameSort === "asc" ? "A to Z" : "Z to A"}
-              </span>
-            </button>
-          </div>
-          <div
-            id="task-dialog-panel-task-ingestions"
-            role="tabpanel"
-            aria-labelledby="task-dialog-tab-task-ingestions"
-            className={listScrollClass}
-          >
-            {fileRows}
-          </div>
+          {entries.length === 0 ? (
+            renderEmptyPanel("No files match your filters.")
+          ) : (
+            <>
+              {renderListHeader({
+                showSelectAll: selectablePaths.length > 0,
+                allSelected: allSelectableSelected,
+                onToggleSelectAll: onToggleSelectAllVisible,
+                selectedLabel:
+                  selectedCount > 0 ? `${selectedCount} selected` : undefined,
+              })}
+              <div
+                id="task-dialog-panel-task-ingestions"
+                role="tabpanel"
+                aria-labelledby="task-dialog-tab-task-ingestions"
+                className={listScrollClass}
+              >
+                {renderFileRows(entries)}
+              </div>
+            </>
+          )}
         </div>
       ) : (
-        <div
-          id="task-dialog-panel-retry-ingestions"
-          role="tabpanel"
-          aria-labelledby="task-dialog-tab-retry-ingestions"
-          className={cn("flex min-h-0 flex-1 flex-col", listScrollClass)}
-          aria-hidden={!showRetryIngestionsTab}
-        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {retryIngestionEntries.length === 0 ? (
+            renderEmptyPanel("No retryable files in this task.")
+          ) : (
+            <>
+              {renderListHeader({
+                showSelectAll: true,
+                allSelected: allRetryIngestionsSelected,
+                onToggleSelectAll: onToggleSelectAllRetryIngestions,
+                selectedLabel:
+                  retryIngestionSelectedCount > 0
+                    ? `${retryIngestionSelectedCount} selected`
+                    : undefined,
+              })}
+              <div
+                id="task-dialog-panel-retry-ingestions"
+                role="tabpanel"
+                aria-labelledby="task-dialog-tab-retry-ingestions"
+                className={listScrollClass}
+                aria-hidden={!showRetryIngestionsTab}
+              >
+                {renderFileRows(retryIngestionEntries)}
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

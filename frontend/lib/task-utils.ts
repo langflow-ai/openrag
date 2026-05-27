@@ -1,8 +1,7 @@
 import type { Task, TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
 import {
   buildRowStatusLabel,
-  inferFailedPipelineStep,
-  resolveTaskFileError,
+  normalizeFailurePhase,
 } from "@/lib/task-error-display";
 
 export const ALL_TASK_FILE_TYPES = "__all__";
@@ -41,12 +40,14 @@ export function getTaskFileDialogStatusLabel(
   taskError?: string,
 ): string {
   if (isTaskFileFailed(fileInfo)) {
-    return buildRowStatusLabel(
-      inferFailedPipelineStep(
-        fileInfo,
-        resolveTaskFileError(fileInfo, taskError),
-      ),
-    );
+    const failurePhase = normalizeFailurePhase(fileInfo.failure_phase);
+    if (failurePhase) {
+      return buildRowStatusLabel(failurePhase);
+    }
+    if (fileInfo.user_facing_message?.trim()) {
+      return "Failed";
+    }
+    return buildRowStatusLabel("unknown");
   }
   if (isTaskFileCompleted(fileInfo)) {
     return "Complete";
@@ -99,6 +100,32 @@ export function formatTaskFileTypeLabel(fileType: string): string {
     return "Unknown";
   }
   return fileType.toUpperCase();
+}
+
+export function isTaskFileRetryable(fileInfo: TaskFileEntry): boolean {
+  return fileInfo.actionable_by === "RETRYABLE";
+}
+
+export function getRetryableFileEntries(
+  task: Task,
+): Array<[string, TaskFileEntry]> {
+  return getTaskFileEntries(task).filter(([, fileInfo]) =>
+    isTaskFileRetryable(fileInfo),
+  );
+}
+
+export function getRetryableFilePaths(
+  entries: Array<[string, TaskFileEntry]>,
+): string[] {
+  return entries
+    .filter(([, fileInfo]) => isTaskFileRetryable(fileInfo))
+    .map(([filePath]) => filePath);
+}
+
+export function countRetryIngestionFiles(task: Task): number {
+  return getTaskFileEntries(task).filter(([, fileInfo]) =>
+    isTaskFileRetryable(fileInfo),
+  ).length;
 }
 
 function getTaskFileCategoryContext(task: Task): TaskFileCategoryContext {
@@ -212,9 +239,8 @@ export function filterTaskFileEntries(
 export function getFailedFileEntries(
   task: Task,
 ): Array<[string, TaskFileEntry]> {
-  return Object.entries(task.files || {}).filter(
-    ([, fileInfo]) =>
-      fileInfo?.status === "failed" || fileInfo?.status === "error",
+  return Object.entries(task.files || {}).filter(([, fileInfo]) =>
+    isTaskFileFailed(fileInfo),
   );
 }
 
@@ -256,4 +282,122 @@ export function isCompletedTotalFailure(task: Task): boolean {
 
 export function isFailureLikeTask(task: Task): boolean {
   return isTerminalFailedTask(task) || isCompletedWithFailures(task);
+}
+
+export function isTaskInProgressStatus(status: Task["status"]): boolean {
+  return (
+    status === "pending" || status === "running" || status === "processing"
+  );
+}
+
+/** True when a task has just transitioned to completed. */
+export function didTaskReachCompleted(
+  previousTask: Task | undefined,
+  currentTask: Task,
+): boolean {
+  return (
+    !!previousTask &&
+    previousTask.status !== "completed" &&
+    currentTask.status === "completed"
+  );
+}
+
+/**
+ * File paths present on the previous enhanced-list payload but omitted now.
+ * The enhanced list drops completed files from `files` while a task is still running.
+ */
+/** Stable overlay key before the backend temp path is known. */
+export function pendingTaskFileSourceUrl(
+  taskId: string,
+  filename: string,
+): string {
+  return `pending:${taskId}:${filename}`;
+}
+
+export function isPendingTaskFileSourceUrl(sourceUrl: string): boolean {
+  return sourceUrl.startsWith("pending:");
+}
+
+export function findTaskFileOverlayIndex(
+  files: Array<{ task_id: string; source_url: string; filename: string }>,
+  taskId: string,
+  filePath: string,
+  fileName: string,
+): number {
+  const pendingUrl = pendingTaskFileSourceUrl(taskId, fileName);
+  return files.findIndex(
+    (f) =>
+      f.task_id === taskId &&
+      (f.source_url === filePath ||
+        f.source_url === pendingUrl ||
+        (f.filename === fileName && isPendingTaskFileSourceUrl(f.source_url))),
+  );
+}
+
+export function getEnhancedListDisappearedFilePaths(
+  currentTask: Task,
+  previousTask: Task,
+): string[] {
+  const currentKeys = new Set(Object.keys(currentTask.files ?? {}));
+  return Object.keys(previousTask.files ?? {}).filter(
+    (filePath) => !currentKeys.has(filePath),
+  );
+}
+
+interface ProcessingFileOverlay {
+  task_id: string;
+  source_url: string;
+  status: "active" | "failed" | "processing";
+  error?: string;
+}
+
+/**
+ * Promote local processing overlays when the enhanced list omits completed files.
+ * Pass `disappearedPaths` while the task is in progress; omit it when the task completes
+ * to finalize every remaining processing file for that task.
+ */
+export function finalizeProcessingOverlaysForEnhancedTask<
+  T extends ProcessingFileOverlay,
+>(prevFiles: T[], currentTask: Task, disappearedPaths?: string[]): T[] {
+  const pathsFilter =
+    disappearedPaths === undefined ? null : new Set(disappearedPaths);
+  let changed = false;
+
+  const updated = prevFiles.map((file) => {
+    if (file.task_id !== currentTask.task_id) {
+      return file;
+    }
+    if (pathsFilter !== null && !pathsFilter.has(file.source_url)) {
+      return file;
+    }
+    // Overlays can still be "failed" until the list poll sees a retry as running.
+    if (file.status !== "processing" && file.status !== "failed") {
+      return file;
+    }
+
+    const entry = currentTask.files?.[file.source_url];
+    if (entry && isTaskFileFailed(entry)) {
+      if (file.status === "failed") {
+        const error =
+          typeof entry.error === "string" && entry.error.trim().length > 0
+            ? entry.error.trim()
+            : file.error;
+        if (error === file.error) {
+          return file;
+        }
+      }
+      changed = true;
+      const error =
+        typeof entry.error === "string" && entry.error.trim().length > 0
+          ? entry.error.trim()
+          : file.error;
+      return { ...file, status: "failed" as const, error };
+    }
+
+    // Left the enhanced list (completed files are omitted) or task finished.
+    changed = true;
+    return { ...file, status: "active" as const, error: undefined };
+  });
+
+  return changed ? (updated as T[]) : prevFiles;
 }
