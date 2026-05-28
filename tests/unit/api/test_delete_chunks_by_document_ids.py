@@ -99,9 +99,7 @@ async def test_delete_chunks_by_remote_ids_targets_remote_id_field():
     }
     opensearch_client.delete.return_value = {"result": "deleted"}
 
-    deleted = await delete_chunks_by_remote_ids(
-        ["remote-a"], opensearch_client, "test-index"
-    )
+    deleted = await delete_chunks_by_remote_ids(["remote-a"], opensearch_client, "test-index")
 
     assert deleted == 1
     search_call = opensearch_client.search.await_args
