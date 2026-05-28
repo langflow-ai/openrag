@@ -362,7 +362,7 @@ async def _ingest_default_documents_url(
             )
 
 
-async def _delete_existing_default_docs(session_manager, connector_type: str):
+async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
     """Delete previously ingested default OpenRAG docs before reingestion."""
     from config.settings import clients
     from session_manager import AnonymousUser
@@ -379,8 +379,8 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         return
 
     anonymous_user = AnonymousUser()
-    effective_jwt = None
-    if session_manager:
+    effective_jwt = jwt_token
+    if not effective_jwt and session_manager:
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     opensearch_client = session_manager.get_user_opensearch_client(
@@ -428,6 +428,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     task_service,
     langflow_file_service,
     session_manager,
+    jwt_token=None,
 ):
     """Reingest default OpenRAG docs once when app version changes."""
     config = get_openrag_config()
@@ -450,13 +451,16 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         previous_version=previous_version,
         current_version=current_version,
     )
-    await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+    await _delete_existing_default_docs(
+        session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+    )
     await ingest_openrag_docs_when_ready(
         document_service,
         models_service,
         task_service,
         langflow_file_service,
         session_manager,
+        jwt_token=jwt_token,
     )
     config.onboarding.openrag_docs_ingested_version = current_version
     if _should_use_url_default_docs_ingest():
@@ -529,6 +533,7 @@ async def refresh_default_openrag_docs(
     session_manager,
     force: bool = False,
     reason: str = "startup",
+    jwt_token=None,
 ):
     """Refresh OpenRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
@@ -608,13 +613,16 @@ async def refresh_default_openrag_docs(
             previous_signature=previous_signature,
             new_signature=signature,
         )
-        await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+        await _delete_existing_default_docs(
+            session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+        )
         await ingest_openrag_docs_when_ready(
             document_service,
             models_service,
             task_service,
             langflow_file_service,
             session_manager,
+            jwt_token=jwt_token,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
         # Keep docs version/signature metadata consistent after a refresh.

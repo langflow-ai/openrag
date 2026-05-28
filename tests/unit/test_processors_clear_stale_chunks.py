@@ -120,7 +120,9 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
 
     async def _search(**kw):
         op_order.append(("search", kw))
-        return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        if "scroll" in kw:
+            return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        return {"hits": {"hits": []}}
 
     async def _delete(**kw):
         op_order.append(("delete", kw))
@@ -236,3 +238,111 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
     assert len(index_calls) == 1, "indexing must still happen if the pre-delete fails"
     assert len(index_calls[0]["chunks"]) == 2
     assert index_calls[0]["final"] is True
+
+
+@pytest.mark.asyncio
+async def test_connector_file_id_stored_in_chunk_when_provided(monkeypatch):
+    """Connector reindex uses the file hash as document_id and stores the
+    upstream connector ID separately so orphan cleanup can query connector_file_id."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=2, write_client=opensearch_client)
+
+    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    index_calls: list[dict] = []
+
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            index_calls.append({"context": context, "chunks": chunks, "final": final})
+            return {"indexed_chunks": len(chunks)}
+
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        result = await processor.process_document_standard(
+            file_path=tmp_path,
+            file_hash="sha-abc",
+            owner_user_id="alice",
+            original_filename="report.txt",
+            connector_type="sharepoint",
+            connector_file_id="sharepoint-item-xyz",
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    assert result["status"] == "indexed"
+    assert len(index_calls) == 1
+    assert index_calls[0]["context"].document_id == "sha-abc"
+    assert len(index_calls[0]["chunks"]) == 2
+    for chunk in index_calls[0]["chunks"]:
+        assert chunk.metadata["connector_file_id"] == "sharepoint-item-xyz"
+
+
+@pytest.mark.asyncio
+async def test_connector_file_id_absent_when_not_provided(monkeypatch):
+    """Local uploads and other non-connector paths should not write an empty
+    connector_file_id marker."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=opensearch_client)
+
+    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    index_calls: list[dict] = []
+
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            index_calls.append({"context": context, "chunks": chunks, "final": final})
+            return {"indexed_chunks": len(chunks)}
+
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        await processor.process_document_standard(
+            file_path=tmp_path,
+            file_hash="sha-xyz",
+            owner_user_id="alice",
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    assert len(index_calls) == 1
+    assert index_calls[0]["chunks"][0].metadata == {}
+
+
+def test_document_index_writer_outputs_connector_file_id_when_present():
+    from services.document_index_writer import (
+        DocumentIndexChunk,
+        DocumentIndexContext,
+        DocumentIndexWriter,
+    )
+
+    writer = DocumentIndexWriter()
+    doc = writer._build_chunk_document(
+        context=DocumentIndexContext(
+            document_id="sha-abc",
+            filename="report.txt",
+            mimetype="text/plain",
+            embedding_model="text-embedding-3-small",
+            owner="alice",
+        ),
+        chunk=DocumentIndexChunk(
+            chunk_id="sha-abc_0",
+            text="hello",
+            vector=[0.1, 0.2, 0.3],
+            page=1,
+            metadata={"connector_file_id": "sharepoint-item-xyz"},
+        ),
+        embedding_field="chunk_embedding_text_embedding_3_small",
+        indexed_time="2026-05-28T00:00:00+00:00",
+    )
+
+    assert doc["document_id"] == "sha-abc"
+    assert doc["connector_file_id"] == "sharepoint-item-xyz"

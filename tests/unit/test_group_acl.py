@@ -566,9 +566,7 @@ async def test_opensearch_init_adds_missing_acl_keyword_mappings():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("service_name", ["standard", "langflow"])
-async def test_connector_services_mint_plain_jwt_when_session_user_is_missing(
-    service_name,
+async def test_connector_service_mints_plain_jwt_when_session_user_is_missing(
     monkeypatch,
 ):
     from session_manager import SessionManager
@@ -596,19 +594,14 @@ async def test_connector_services_mint_plain_jwt_when_session_user_is_missing(
             return Connector()
 
     session_manager = SessionManager("test")
-    if service_name == "standard":
-        from connectors.service import ConnectorService
+    from connectors.service import ConnectorService
 
-        service = ConnectorService(
-            patched_async_client=None,
-            embed_model="test",
-            index_name="test-index",
-            session_manager=session_manager,
-        )
-    else:
-        from connectors.langflow_connector_service import LangflowConnectorService
-
-        service = LangflowConnectorService(session_manager=session_manager)
+    service = ConnectorService(
+        patched_async_client=None,
+        embed_model="test",
+        index_name="test-index",
+        session_manager=session_manager,
+    )
 
     service.connection_manager = ConnectionManager()
 

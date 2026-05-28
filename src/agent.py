@@ -6,171 +6,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 # In-memory storage for active conversation threads (preserves function calls)
-active_conversations: dict[str, dict[str, dict]] = {}
-
-
-def _as_mapping(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    if hasattr(value, "model_dump"):
-        dumped = value.model_dump()
-        return dumped if isinstance(dumped, dict) else None
-    if hasattr(value, "__dict__"):
-        return vars(value)
-    return None
-
-
-def _source_from_mapping(value: dict[str, Any]) -> dict[str, Any] | None:
-    if "text" not in value:
-        return None
-    if not any(key in value for key in ("filename", "mimetype", "source_url", "page", "score")):
-        return None
-    return {
-        "filename": value.get("filename", ""),
-        "text": value.get("text", ""),
-        "score": value.get("score", 0),
-        "page": value.get("page"),
-        "mimetype": value.get("mimetype"),
-    }
-
-
-def _extract_retrieval_sources(value: Any, *, max_depth: int = 16) -> list[dict[str, Any]]:
-    """Extract retrieval result rows from Langflow/OpenAI response shapes."""
-    sources: list[dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
-
-    def visit(item: Any, depth: int) -> None:
-        if depth > max_depth or item is None:
-            return
-
-        mapping = _as_mapping(item)
-        if mapping is not None:
-            source = _source_from_mapping(mapping)
-            if source is not None:
-                key = (
-                    source.get("filename"),
-                    source.get("page"),
-                    source.get("text"),
-                )
-                if key not in seen:
-                    seen.add(key)
-                    sources.append(source)
-            for child in mapping.values():
-                visit(child, depth + 1)
-            return
-
-        if isinstance(item, (list, tuple)):
-            for child in item:
-                visit(child, depth + 1)
-
-    visit(value, 0)
-    return sources
-
-
-def _extract_delta_text(delta) -> str:
-    if isinstance(delta, str):
-        return delta
-
-    if isinstance(delta, dict):
-        content = delta.get("content")
-        if isinstance(content, str):
-            return content
-        text = delta.get("text")
-        if isinstance(text, str):
-            return text
-        return ""
-
-    for attr_name in ("content", "text"):
-        value = getattr(delta, attr_name, None)
-        if isinstance(value, str):
-            return value
-
-    return ""
-
-
-def _extract_response_id(response):
-    if isinstance(response, dict):
-        return response.get("id") or response.get("response_id")
-
-    return getattr(response, "id", None) or getattr(response, "response_id", None)
-
-
-def _extract_response_error(response) -> str | None:
-    error = (
-        response.get("error") if isinstance(response, dict) else getattr(response, "error", None)
-    )
-    if not error:
-        return None
-    if isinstance(error, dict):
-        message = error.get("message")
-        return message if isinstance(message, str) else str(error)
-    message = getattr(error, "message", None)
-    return message if isinstance(message, str) else str(error)
-
-
-def _extract_response_text(response) -> str | None:
-    try:
-        output_text = getattr(response, "output_text", None)
-    except Exception as exc:
-        logger.warning("Unable to read response output_text", error=str(exc))
-        output_text = None
-
-    if isinstance(output_text, str):
-        return output_text
-
-    if output_text:
-        return str(output_text)
-
-    return None
-
-
-async def _collect_stream_response(
-    client,
-    prompt: str,
-    model: str,
-    extra_headers: dict = None,
-    previous_response_id: str = None,
-    log_prefix: str = "response",
-):
-    full_response = ""
-    response_id = None
-    response_obj = None
-
-    async for raw_chunk in async_response_stream(
-        client,
-        prompt,
-        model,
-        extra_headers=extra_headers,
-        previous_response_id=previous_response_id,
-        log_prefix=log_prefix,
-    ):
-        try:
-            import json
-
-            chunk_data = json.loads(raw_chunk.decode("utf-8"))
-        except Exception:
-            continue
-
-        if not isinstance(chunk_data, dict):
-            continue
-
-        if chunk_data.get("type") == "response.completed":
-            completed_response = chunk_data.get("response")
-            if completed_response:
-                response_obj = completed_response
-                response_id = response_id or _extract_response_id(completed_response)
-
-        output_text = chunk_data.get("output_text")
-        if isinstance(output_text, str):
-            full_response += output_text
-
-        full_response += _extract_delta_text(chunk_data.get("delta"))
-        response_id = response_id or _extract_response_id(chunk_data)
-
-    if response_obj is None:
-        response_obj = {"id": response_id, "output_text": full_response}
-
-    return full_response, response_id, response_obj
+active_conversations: dict[str, dict[str, Any]] = {}
 
 
 async def get_user_conversations(user_id: str):
@@ -309,7 +145,16 @@ async def async_response_stream(
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
             elif hasattr(chunk, "delta") and chunk.delta:
-                full_response += _extract_delta_text(chunk.delta)
+                # Handle delta properly - it might be a dict or string
+                if isinstance(chunk.delta, dict):
+                    delta_text = (
+                        chunk.delta.get("content", "")
+                        or chunk.delta.get("text", "")
+                        or str(chunk.delta)
+                    )
+                else:
+                    delta_text = str(chunk.delta)
+                full_response += delta_text
 
             # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
             chunk_attrs = dir(chunk) if hasattr(chunk, "__dict__") else []
@@ -460,31 +305,27 @@ async def async_response(
 
         response = await client.responses.create(**request_params)
 
-        response_text = _extract_response_text(response)
-        if response_text is not None:
+        try:
+            output_text = response.output_text
+        except (AttributeError, TypeError):
+            output_text = None
+
+        if output_text is not None:
+            response_text = output_text
             logger.info("Response generated", log_prefix=log_prefix, response=response_text)
 
             # Extract and store response_id if available
-            response_id = _extract_response_id(response)
+            response_id = getattr(response, "id", None) or getattr(response, "response_id", None)
 
             return response_text, response_id, response
-
-        error_msg = _extract_response_error(response)
-        if error_msg:
-            raise ValueError(error_msg)
-
-        logger.warning(
-            "Non-streaming response missing output text; retrying as stream",
-            log_prefix=log_prefix,
-        )
-        return await _collect_stream_response(
-            client,
-            prompt,
-            model,
-            extra_headers=extra_headers,
-            previous_response_id=previous_response_id,
-            log_prefix=log_prefix,
-        )
+        else:
+            msg = "Nudge response missing output_text"
+            error = getattr(response, "error", None)
+            if error:
+                error_msg = getattr(error, "message", None)
+                if error_msg:
+                    msg = error_msg
+            raise ValueError(msg)
     except Exception:
         logger.exception("[AGENT] Non-streaming response failed")
         raise
@@ -775,9 +616,61 @@ async def async_langflow_chat(
             message_count=len(conversation_state["messages"]),
         )
 
-    sources = _extract_retrieval_sources(response_obj)
+    # Extract sources from retrieval tool calls in the response
+    sources = []
 
-    # Citation-text fallback.
+    # Layer 1: Structured output items (OpenAI Responses API format).
+    # Relaxed: check for any output item with a non-empty `results` field,
+    # regardless of `type` string (Langflow may use different type names).
+    if hasattr(response_obj, "output") and response_obj.output:
+        for output_item in response_obj.output:
+            for result in getattr(output_item, "results", None) or []:
+                rd = (
+                    result.model_dump()
+                    if hasattr(result, "model_dump")
+                    else (result if isinstance(result, dict) else {})
+                )
+                if "text" in rd:
+                    sources.append(
+                        {
+                            "filename": rd.get("filename", ""),
+                            "text": rd.get("text", ""),
+                            "score": rd.get("score", 0),
+                            "page": rd.get("page"),
+                            "mimetype": rd.get("mimetype"),
+                        }
+                    )
+
+    # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
+    # Langflow may embed retrieval results directly in the response dict rather than
+    # inside typed output items.
+    if not sources:
+        resp_dict = (
+            response_obj.model_dump()
+            if hasattr(response_obj, "model_dump")
+            else getattr(response_obj, "__dict__", {})
+        )
+        implicit_results = (
+            resp_dict.get("results")
+            or resp_dict.get("outputs")
+            or resp_dict.get("retrieved_documents")
+            or resp_dict.get("retrieval_results")
+            or []
+        )
+        if isinstance(implicit_results, list):
+            for result in implicit_results:
+                if isinstance(result, dict) and "text" in result:
+                    sources.append(
+                        {
+                            "filename": result.get("filename", ""),
+                            "text": result.get("text", ""),
+                            "score": result.get("score", 0),
+                            "page": result.get("page"),
+                            "mimetype": result.get("mimetype"),
+                        }
+                    )
+
+    # Layer 3: Citation-text fallback.
     # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.
     # This is the last-resort fallback when Langflow's response object carries no
     # structured retrieval data.

@@ -225,6 +225,8 @@ class DocumentIndexWriter:
             doc["owner_email"] = context.owner_email
         if context.ingest_run_id:
             doc["ingest_run_id"] = context.ingest_run_id
+        if metadata.get("connector_file_id"):
+            doc["connector_file_id"] = metadata["connector_file_id"]
         if context.is_sample_data:
             doc["is_sample_data"] = "true"
         for time_field in ("created_time", "modified_time"):

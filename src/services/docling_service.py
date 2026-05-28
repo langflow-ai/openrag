@@ -33,6 +33,10 @@ class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 
 
+class DoclingTransientError(DoclingServeError):
+    """Raised for errors that may resolve on retry (network failures, 5xx)."""
+
+
 class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
@@ -281,8 +285,12 @@ class DoclingService:
         try:
             response = await client.get(url)
         except httpx.RequestError as e:
-            raise DoclingServeError(f"Network error fetching docling result: {str(e)}") from e
+            raise DoclingTransientError(f"Network error fetching docling result: {str(e)}") from e
 
+        if response.status_code >= 500:
+            raise DoclingTransientError(
+                f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
+            )
         if response.status_code == 404:
             raise DoclingServeError(
                 f"Docling result not found for task {task_id} (task expired or unknown)"

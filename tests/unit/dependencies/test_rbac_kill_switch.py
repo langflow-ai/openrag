@@ -13,12 +13,12 @@ single-user OSS installs or emergency debugging.
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -28,7 +28,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
     get_current_user,
@@ -38,7 +37,6 @@ from dependencies import (  # noqa: E402
 from services.rbac_service import RBACService, is_rbac_enforced  # noqa: E402
 from services.user_service import ensure_user_row  # noqa: E402
 from session_manager import User  # noqa: E402
-
 
 # ----------------------------------------------------------------------
 # is_rbac_enforced() resolver
@@ -91,12 +89,8 @@ async def app(monkeypatch):
             s, User(user_id="user-sub", email="u@x", name="U", provider="google")
         )
         await s.commit()
-        personas["admin"] = User(
-            user_id=admin_db.id, email="a@x", name="A", provider="google"
-        )
-        personas["user"] = User(
-            user_id=user_db.id, email="u@x", name="U", provider="google"
-        )
+        personas["admin"] = User(user_id=admin_db.id, email="a@x", name="A", provider="google")
+        personas["user"] = User(user_id=user_db.id, email="u@x", name="U", provider="google")
 
     rbac = RBACService(SessionLocal)
     fastapi_app = FastAPI()
@@ -113,9 +107,13 @@ async def app(monkeypatch):
     fastapi_app.dependency_overrides[get_rbac_service] = lambda: rbac
     fastapi_app.dependency_overrides[get_db_session] = _db_session
 
-    # Mount the admin router so we can hit a real require_permission gate.
-    from api.admin import rbac as admin_rbac
-    fastapi_app.include_router(admin_rbac.router)
+    # Mount a minimal endpoint behind a real require_permission gate so the
+    # kill switch can be exercised without depending on any specific router.
+    from dependencies import require_permission
+
+    @fastapi_app.get("/admin/users")
+    async def _gated(_=Depends(require_permission("users:list"))):
+        return []
 
     yield fastapi_app, SessionLocal, rbac, personas
     await engine.dispose()
@@ -126,7 +124,6 @@ async def test_kill_switch_bypasses_require_permission(app, monkeypatch):
     """`user` persona has no admin role but DELETE /admin/users requires
     `users:delete`. Default = 403. With kill switch = 200/4xx-from-handler."""
     fastapi_app, _, _, personas = app
-    target_id = personas["admin"].user_id  # arbitrary other id
 
     transport = httpx.ASGITransport(app=fastapi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
@@ -192,6 +189,7 @@ async def test_me_returns_full_permission_catalog_when_disabled(app, monkeypatch
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
 
     from api import users as users_api
+
     fastapi_app.include_router(users_api.router)
 
     transport = httpx.ASGITransport(app=fastapi_app)
@@ -213,6 +211,7 @@ async def test_me_returns_only_user_perms_when_enforced(app, monkeypatch):
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
 
     from api import users as users_api
+
     fastapi_app.include_router(users_api.router)
 
     transport = httpx.ASGITransport(app=fastapi_app)

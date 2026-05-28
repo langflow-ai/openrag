@@ -12,20 +12,20 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     monkeypatch,
 ):
     user_client = SimpleNamespace(
-        exists_calls=[],
+        search_calls=[],
         index_calls=[],
     )
     admin_client = SimpleNamespace(bulk_calls=[], refresh_calls=[])
     mapping_clients = []
 
-    async def exists(*, index, id):
-        user_client.exists_calls.append({"index": index, "id": id})
-        return False
+    async def search(**kwargs):
+        user_client.search_calls.append(kwargs)
+        return {"_scroll_id": None, "hits": {"hits": []}}
 
     async def index(**kwargs):
         user_client.index_calls.append(kwargs)
 
-    user_client.exists = exists
+    user_client.search = search
     user_client.index = index
 
     class Indices:
@@ -120,7 +120,15 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
 
     assert result == {"status": "indexed", "id": "file-1"}
     assert mapping_clients == [admin_client]
-    assert user_client.exists_calls == [{"index": "documents", "id": "file-1"}]
+    assert user_client.search_calls[0] == {
+        "index": "documents",
+        "body": {
+            "size": 1,
+            "_source": False,
+            "query": {"term": {"document_id": "file-1"}},
+        },
+    }
+    assert user_client.search_calls[1]["body"]["query"] == {"term": {"document_id": "file-1"}}
     assert user_client.index_calls == []
     assert admin_client.bulk_calls
     bulk_body = admin_client.bulk_calls[0]["body"]

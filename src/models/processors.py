@@ -51,8 +51,16 @@ class TaskProcessor:
 
         for attempt in range(max_retries):
             try:
-                exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
-                return exists
+                response = await opensearch_client.search(
+                    index=get_index_name(),
+                    body={
+                        "size": 1,
+                        "_source": False,
+                        "query": {"term": {"document_id": file_hash}},
+                    },
+                )
+                hits = response.get("hits", {}).get("hits", [])
+                return bool(hits)
             except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
@@ -214,6 +222,7 @@ class TaskProcessor:
         chunk_overlap: int = None,
         is_sample_data: bool = False,
         acl: "DocumentACL" = None,
+        connector_file_id: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -286,6 +295,10 @@ class TaskProcessor:
                         slim_doc["chunks"], cs, max(0, co)
                     )
 
+        # Filter out chunks with empty or whitespace-only text before generating embeddings.
+        # This ensures the length of chunks matches the length of the embeddings array,
+        # since chunk_texts_for_embeddings also drops empty texts.
+        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
         texts = [c["text"] for c in slim_doc["chunks"]]
 
         litellm_embedding_model = (
@@ -397,6 +410,7 @@ class TaskProcessor:
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
+                metadata={"connector_file_id": connector_file_id} if connector_file_id else {},
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
@@ -528,7 +542,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
-        """Process a connector file using consolidated methods"""
+        """Process a connector file using unified methods"""
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -549,14 +563,46 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
+                    # File gone at source — remove indexed chunks by connector_file_id
+                    # so they stop appearing in search/chat. Chunks are indexed with
+                    # document_id=file_hash (SHA of content), not file_id, so we must
+                    # query the dedicated connector_file_id field set at index time.
+                    deleted_chunks = 0
+                    try:
+                        from api.documents import delete_chunks_by_document_ids
+
+                        opensearch_client = (
+                            self.document_service.session_manager.get_user_opensearch_client(
+                                self.user_id, self.jwt_token
+                            )
+                        )
+                        deleted_chunks = await delete_chunks_by_document_ids(
+                            [file_id],
+                            opensearch_client,
+                            get_index_name(),
+                            field="connector_file_id",
+                        )
+                    except Exception as cleanup_err:
+                        logger.error(
+                            "Failed to clean up chunks for deleted source file",
+                            file_id=file_id,
+                            connection_id=self.connection_id,
+                            error=str(cleanup_err),
+                        )
+
                     logger.warning(
-                        "File no longer exists at source — skipping",
+                        "File no longer exists at source — removed from index",
                         file_id=file_id,
                         connection_id=self.connection_id,
+                        deleted_chunks=deleted_chunks,
                         error=str(e),
                     )
                     file_task.status = TaskStatus.SKIPPED
-                    file_task.result = {"status": "skipped", "reason": "deleted_at_source"}
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "deleted_at_source",
+                        "deleted_chunks": deleted_chunks,
+                    }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
                     return
@@ -580,8 +626,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     return
                 await self.delete_document_by_filename(document.filename, opensearch_client)
 
-            # Create temporary file from document content            import os
-
+            # Create temporary file from document content
             suffix = os.path.splitext(document.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
@@ -593,145 +638,6 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                standard_kwargs: dict[str, Any] = {}
-                if isinstance(self.ingest_settings, dict):
-                    s = self.ingest_settings
-                    em = s.get("embeddingModel")
-                    if isinstance(em, str) and em.strip():
-                        standard_kwargs["embedding_model"] = em.strip()
-                    for ui_key, param in (
-                        ("chunkSize", "chunk_size"),
-                        ("chunkOverlap", "chunk_overlap"),
-                    ):
-                        raw = s.get(ui_key)
-                        if raw is not None:
-                            try:
-                                standard_kwargs[param] = int(raw)
-                            except (TypeError, ValueError):
-                                pass
-
-                # Use consolidated standard processing
-                result = await self.process_document_standard(
-                    file_path=tmp_path,
-                    file_hash=file_hash,
-                    owner_user_id=self.user_id,
-                    original_filename=document.filename,
-                    jwt_token=self.jwt_token,
-                    owner_name=self.owner_name,
-                    owner_email=self.owner_email,
-                    file_size=len(document.content),
-                    connector_type=connection.connector_type,
-                    acl=document.acl,
-                    **standard_kwargs,
-                )
-
-                # Add connector-specific metadata
-                result.update(
-                    {
-                        "source_url": document.source_url,
-                        "document_id": document.id,
-                    }
-                )
-
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
-
-        except Exception as e:
-            file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
-            file_task.updated_at = time.time()
-            upload_task.failed_files += 1
-            raise
-
-
-class LangflowConnectorFileProcessor(TaskProcessor):
-    """Processor for connector file uploads using Langflow"""
-
-    def __init__(
-        self,
-        langflow_connector_service,
-        connection_id: str,
-        files_to_process: list,
-        user_id: str = None,
-        jwt_token: str = None,
-        owner_name: str = None,
-        owner_email: str = None,
-        ingest_settings: dict[str, Any] | None = None,
-        replace_duplicates: bool = False,
-    ):
-        super().__init__(
-            document_service=langflow_connector_service.task_service.document_service
-            if langflow_connector_service.task_service
-            else None,
-            models_service=langflow_connector_service.task_service.models_service
-            if langflow_connector_service.task_service
-            else None,
-            docling_service=langflow_connector_service.docling_service,
-        )
-        self.langflow_connector_service = langflow_connector_service
-        self.connection_id = connection_id
-        self.files_to_process = files_to_process
-        self.user_id = user_id
-        self.jwt_token = jwt_token
-        self.owner_name = owner_name
-        self.owner_email = owner_email
-        self.ingest_settings = ingest_settings
-        self.replace_duplicates = replace_duplicates
-
-    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
-        """Process a connector file using LangflowConnectorService"""
-        file_task.status = TaskStatus.RUNNING
-        file_task.updated_at = time.time()
-
-        try:
-            file_id = item  # item is the connector file ID
-
-            # Get the connector and connection info
-            connector = await self.langflow_connector_service.get_connector(self.connection_id)
-            connection = await self.langflow_connector_service.connection_manager.get_connection(
-                self.connection_id
-            )
-            if not connector or not connection:
-                raise ValueError(f"Connection '{self.connection_id}' not found")
-
-            # Get file content from connector
-            document = await connector.get_file_content(file_id)
-
-            # Update filename in task once we have it from the connector
-            file_task.filename = clean_connector_filename(document.filename, document.mimetype)
-
-            if not self.user_id:
-                raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
-
-            opensearch_client = (
-                self.langflow_connector_service.session_manager.get_user_opensearch_client(
-                    self.user_id, self.jwt_token
-                )
-            )
-            if await self.check_filename_exists(document.filename, opensearch_client):
-                if not self.replace_duplicates:
-                    file_task.status = TaskStatus.FAILED
-                    file_task.error = f"File with name '{document.filename}' already exists"
-                    file_task.updated_at = time.time()
-                    upload_task.failed_files += 1
-                    return
-                await self.delete_document_by_filename(document.filename, opensearch_client)
-
-            # Create temporary file and compute hash to check for duplicates            import os
-
-            suffix = os.path.splitext(document.filename)[1]
-            if not suffix:
-                suffix = get_file_extension(document.mimetype)
-            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
-                # Write content to temp file
-                with open(tmp_path, "wb") as f:
-                    f.write(document.content)
-
-                # Compute hash and check if already exists
-                file_hash = hash_id(tmp_path)
-
                 if await self.check_document_exists(file_hash, opensearch_client):
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
@@ -739,16 +645,133 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
 
-                # Process using Langflow pipeline
-                result = await self.langflow_connector_service.process_connector_document(
-                    document,
-                    self.user_id,
-                    connection.connector_type,
-                    jwt_token=self.jwt_token,
-                    owner_name=self.owner_name,
-                    owner_email=self.owner_email,
-                    ingest_settings=self.ingest_settings,
-                )
+                from config.settings import DISABLE_INGEST_WITH_LANGFLOW
+
+                if not DISABLE_INGEST_WITH_LANGFLOW:
+                    # Delete existing chunks for this document before Langflow re-ingestion
+                    try:
+                        from utils.opensearch_delete import (
+                            collect_visible_document_ids,
+                            delete_document_ids,
+                        )
+
+                        chunk_ids = await collect_visible_document_ids(
+                            opensearch_client,
+                            index=get_index_name(),
+                            query={"term": {"document_id": document.id}},
+                        )
+                        deleted_count = await delete_document_ids(
+                            opensearch_client,
+                            index=get_index_name(),
+                            document_ids=chunk_ids,
+                            refresh=True,
+                        )
+                        logger.info(
+                            "Deleted existing chunks before Langflow re-ingestion",
+                            document_id=document.id,
+                            deleted_count=deleted_count,
+                        )
+                    except Exception as delete_err:
+                        logger.warning(
+                            "Failed to delete existing chunks before Langflow re-ingestion",
+                            document_id=document.id,
+                            error=str(delete_err),
+                        )
+
+                    # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
+                    langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
+                        document.filename, document.mimetype
+                    )
+                    file_tuple = (langflow_filename, document.content, processed_mimetype)
+
+                    # Extract ACL information
+                    allowed_users: list[str] = []
+                    allowed_groups: list[str] = []
+                    if document.acl:
+                        try:
+                            allowed_users = document.acl.allowed_users or []
+                            allowed_groups = document.acl.allowed_groups or []
+                        except AttributeError:
+                            pass
+
+                    # Prepare tweaks
+                    connector_tweak_settings = None
+                    if isinstance(self.ingest_settings, dict):
+                        connector_tweak_settings = dict(self.ingest_settings)
+                        connector_tweak_settings.pop("embeddingModel", None)
+
+                    tweaks = self.connector_service.langflow_service.merge_ui_ingest_settings_into_tweaks(
+                        {}, connector_tweak_settings
+                    )
+
+                    result = await self.connector_service.langflow_service.upload_and_ingest_file(
+                        file_tuple=file_tuple,
+                        session_id=None,
+                        tweaks=tweaks,
+                        settings=self.ingest_settings,
+                        jwt_token=self.jwt_token,
+                        owner=self.user_id,
+                        owner_name=self.owner_name,
+                        owner_email=self.owner_email,
+                        connector_type=connection.connector_type,
+                        docling_polling_service=self.connector_service.task_service.docling_polling_service,
+                        file_task=file_task,
+                        document_id=document.id,
+                        source_url=document.source_url,
+                        allowed_users=allowed_users,
+                        allowed_groups=allowed_groups,
+                    )
+                else:
+                    # Standard OpenRAG processing pipeline (process_document_standard)
+                    standard_kwargs: dict[str, Any] = {}
+                    if isinstance(self.ingest_settings, dict):
+                        s = self.ingest_settings
+                        em = s.get("embeddingModel")
+                        if isinstance(em, str) and em.strip():
+                            standard_kwargs["embedding_model"] = em.strip()
+                        for ui_key, param in (
+                            ("chunkSize", "chunk_size"),
+                            ("chunkOverlap", "chunk_overlap"),
+                        ):
+                            raw = s.get(ui_key)
+                            if raw is not None:
+                                try:
+                                    standard_kwargs[param] = int(raw)
+                                except (TypeError, ValueError):
+                                    pass
+
+                    result = await self.process_document_standard(
+                        file_path=tmp_path,
+                        file_hash=file_hash,
+                        owner_user_id=self.user_id,
+                        original_filename=document.filename,
+                        jwt_token=self.jwt_token,
+                        owner_name=self.owner_name,
+                        owner_email=self.owner_email,
+                        file_size=len(document.content),
+                        connector_type=connection.connector_type,
+                        acl=document.acl,
+                        connector_file_id=document.id,
+                        **standard_kwargs,
+                    )
+
+                    # Update indexed chunks with connector-specific metadata
+                    if result["status"] in ["indexed", "unchanged"]:
+                        await self.connector_service._update_connector_metadata(
+                            document,
+                            self.user_id,
+                            connection.connector_type,
+                            self.jwt_token,
+                            id_field="connector_file_id",
+                        )
+
+                    # Add connector-specific metadata
+                    result.update(
+                        {
+                            "source_url": document.source_url,
+                            "document_id": document.id,
+                        }
+                    )
 
             file_task.status = TaskStatus.COMPLETED
             file_task.result = result

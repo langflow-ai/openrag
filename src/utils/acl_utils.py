@@ -43,7 +43,12 @@ def compute_acl_hash(acl: DocumentACL) -> str:
     return hashlib.sha256(json.dumps(acl_data, sort_keys=True).encode()).hexdigest()
 
 
-async def should_update_acl(document_id: str, new_acl: DocumentACL, opensearch_client) -> bool:
+async def should_update_acl(
+    document_id: str,
+    new_acl: DocumentACL,
+    opensearch_client,
+    field: str = "document_id",
+) -> bool:
     """
     Check if ACL has changed by querying one chunk and comparing hashes.
 
@@ -63,7 +68,7 @@ async def should_update_acl(document_id: str, new_acl: DocumentACL, opensearch_c
         response = await opensearch_client.search(
             index="documents",
             body={
-                "query": {"term": {"document_id": document_id}},
+                "query": {"term": {field: document_id}},
                 "size": 1,
                 "_source": [
                     "owner",
@@ -106,6 +111,7 @@ async def update_document_acl(
     acl: DocumentACL,
     opensearch_client,
     write_opensearch_client=None,
+    field: str = "document_id",
 ) -> dict[str, Any]:
     """
     Update ACL for all chunks of a document.
@@ -123,7 +129,7 @@ async def update_document_acl(
         Dict with status ("unchanged" or "updated") and chunks_updated count
     """
     # Check if ACL changed (queries one chunk)
-    should_update = await should_update_acl(document_id, acl, opensearch_client)
+    should_update = await should_update_acl(document_id, acl, opensearch_client, field=field)
 
     if not should_update:
         return {"status": "unchanged", "chunks_updated": 0}
@@ -137,7 +143,7 @@ async def update_document_acl(
         response = await write_client.update_by_query(
             index="documents",
             body={
-                "query": {"term": {"document_id": document_id}},
+                "query": {"term": {field: document_id}},
                 "script": {
                     "source": """
                         ctx._source.owner = params.owner;

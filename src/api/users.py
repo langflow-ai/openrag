@@ -4,16 +4,14 @@ GET /api/users/me              -> profile of the current user
 GET /api/users/me/permissions  -> list of permission strings
 """
 
-from typing import List
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import PermissionRepo, RoleRepo, UserRepo
 from dependencies import get_current_user, get_db_session, get_rbac_service
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set[str]:
@@ -29,6 +27,7 @@ async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set
     perms = await PermissionRepo(session).list_all()
     return {p.name for p in perms}
 
+
 # Backend routes are mounted WITHOUT the /api prefix because the Next.js
 # proxy at frontend/app/api/[...path]/route.ts strips it before forwarding.
 # Frontend reaches these via /api/users/me, /api/users/me/permissions.
@@ -41,8 +40,8 @@ class MeResponse(BaseModel):
     name: str
     picture: str | None = None
     provider: str
-    roles: List[str]
-    permissions: List[str]
+    roles: list[str]
+    permissions: list[str]
     # OPENRAG_RBAC_ENFORCE — surfaced so the UI can hide RBAC-only
     # sections (Users & Roles, Audit log, role pills) when the
     # operator has the kill switch off.
@@ -80,7 +79,7 @@ async def get_me(
 
 
 class PermissionsResponse(BaseModel):
-    permissions: List[str]
+    permissions: list[str]
 
 
 @router.get("/me/permissions", response_model=PermissionsResponse)

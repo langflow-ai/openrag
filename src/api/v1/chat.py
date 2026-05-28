@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
-from dependencies import get_api_key_user_async, get_chat_service, get_session_manager
+from dependencies import get_chat_service, get_session_manager, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -36,9 +36,19 @@ class ChatV1Body(BaseModel):
 
 def _extract_sources(item: dict) -> list[dict]:
     """Extract sources from a retrieval tool call item."""
-    from agent import _extract_retrieval_sources
-
-    return _extract_retrieval_sources(item)
+    sources = []
+    for result in item.get("results", []):
+        if isinstance(result, dict) and "text" in result:
+            sources.append(
+                {
+                    "filename": result.get("filename", ""),
+                    "text": result.get("text", ""),
+                    "score": result.get("score", 0),
+                    "page": result.get("page"),
+                    "mimetype": result.get("mimetype"),
+                }
+            )
+    return sources
 
 
 async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
@@ -102,7 +112,7 @@ async def chat_create_endpoint(
     body: ChatV1Body,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("chat:use")),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
     message = body.message.strip()
@@ -136,7 +146,7 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        chat_id_container: dict[str, str | None] = {}
+        chat_id_container: dict[str, str] = {}
         return StreamingResponse(
             _transform_stream_to_sse(raw_stream, chat_id_container),
             media_type="text/event-stream",
@@ -170,7 +180,7 @@ async def chat_create_endpoint(
 
 async def chat_list_endpoint(
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
@@ -194,7 +204,7 @@ async def chat_list_endpoint(
 async def chat_get_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
@@ -246,7 +256,7 @@ async def chat_get_endpoint(
 async def chat_delete_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:delete:own")),
 ):
     """Delete a conversation. DELETE /v1/chat/{chat_id}"""
     try:
