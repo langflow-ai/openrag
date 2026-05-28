@@ -203,6 +203,7 @@ class TaskProcessor:
         chunk_overlap: int = None,
         is_sample_data: bool = False,
         acl: "DocumentACL" = None,
+        connector_file_id: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -364,6 +365,8 @@ class TaskProcessor:
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat(),
             }
+            if connector_file_id:
+                chunk_doc["connector_file_id"] = connector_file_id
 
             # Set owner and ACL fields
             if acl:
