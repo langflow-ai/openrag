@@ -1,4 +1,4 @@
-"""ensure_user_row: first user becomes admin; subsequent users get default role."""
+"""ensure_user_row: every user gets the env default role (no bootstrap-admin)."""
 
 import sys
 from pathlib import Path
@@ -41,17 +41,19 @@ def _user(uid="u1", email="a@example.com", name="A", provider="google"):
 
 
 @pytest.mark.asyncio
-async def test_first_user_becomes_admin(session):
+async def test_first_user_gets_default_role(session, monkeypatch):
+    """No bootstrap-admin: even the first user gets the env default role."""
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
 
     role_repo = RoleRepo(session)
     roles = await role_repo.list_user_roles(row.id)
-    assert {r.name for r in roles} == {"admin"}
+    assert {r.name for r in roles} == {"user"}
 
 
 @pytest.mark.asyncio
-async def test_second_user_gets_default_role(session, monkeypatch):
+async def test_all_users_get_default_role(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     first = await ensure_user_row(session, _user(uid="oauth-1", email="a@x.com"))
     second = await ensure_user_row(session, _user(uid="oauth-2", email="b@x.com"))
@@ -60,12 +62,23 @@ async def test_second_user_gets_default_role(session, monkeypatch):
     role_repo = RoleRepo(session)
     first_roles = {r.name for r in await role_repo.list_user_roles(first.id)}
     second_roles = {r.name for r in await role_repo.list_user_roles(second.id)}
-    assert first_roles == {"admin"}
+    assert first_roles == {"user"}
     assert second_roles == {"user"}
 
 
 @pytest.mark.asyncio
-async def test_repeated_calls_are_idempotent(session):
+async def test_default_role_is_configurable(session, monkeypatch):
+    """An oss operator who wants an admin sets OPENRAG_DEFAULT_ROLE=admin."""
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    row = await ensure_user_row(session, _user(uid="oauth-1"))
+    await session.commit()
+    roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
+    assert roles == {"admin"}
+
+
+@pytest.mark.asyncio
+async def test_repeated_calls_are_idempotent(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     a = await ensure_user_row(session, _user(uid="oauth-1"))
     b = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
@@ -73,16 +86,14 @@ async def test_repeated_calls_are_idempotent(session):
     assert a.id == b.id
     role_repo = RoleRepo(session)
     roles = await role_repo.list_user_roles(a.id)
-    assert {r.name for r in roles} == {"admin"}
+    assert {r.name for r in roles} == {"user"}
 
 
 @pytest.mark.asyncio
 async def test_new_user_id_matches_oauth_subject(session):
     """Regression: the SQL users.id must equal the OAuth subject so
     require_permission can use the JWT sub directly (no extra lookup)."""
-    row = await ensure_user_row(
-        session, _user(uid="oauth-subject-xyz", email="z@x.com")
-    )
+    row = await ensure_user_row(session, _user(uid="oauth-subject-xyz", email="z@x.com"))
     await session.commit()
     assert row.id == "oauth-subject-xyz"
     assert row.oauth_subject == "oauth-subject-xyz"
@@ -91,13 +102,15 @@ async def test_new_user_id_matches_oauth_subject(session):
 @pytest.mark.asyncio
 async def test_legacy_user_merges_on_real_signin(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
-    # Pre-seed first admin so the legacy merge does NOT take admin.
+    # Pre-seed an existing user; the legacy merge below should still get the
+    # env default role, not anything special.
     await ensure_user_row(session, _user(uid="oauth-admin", email="root@x.com"))
     await session.commit()
 
     # Pretend a JSON migration inserted a legacy row keyed by a GA user_id.
     from db.models import User as UserRow
     from db.repositories._helpers import email_lookup_hash
+
     legacy = UserRow(
         id="legacy-123",
         oauth_provider="legacy",

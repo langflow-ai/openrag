@@ -5,12 +5,15 @@ Provides knowledge filter management.
 Uses API key authentication — delegates to the main api/knowledge_filter.py handlers
 but overrides the user dependency to use API keys.
 """
+
 from fastapi import Depends
+
 from api import knowledge_filter
 from dependencies import (
+    get_api_key_user_async,
     get_knowledge_filter_service,
     get_session_manager,
-    get_api_key_user_async,
+    require_api_key_permission,
 )
 from session_manager import User
 
@@ -19,7 +22,7 @@ async def create_endpoint(
     body: knowledge_filter.CreateFilterBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("kf:create")),
 ):
     """
     Create a new knowledge filter.
@@ -77,7 +80,7 @@ async def update_endpoint(
     body: knowledge_filter.UpdateFilterBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("kf:edit:own")),
 ):
     """
     Update a knowledge filter.
@@ -97,7 +100,7 @@ async def delete_endpoint(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("kf:edit:own")),
 ):
     """
     Delete a knowledge filter.

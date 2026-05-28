@@ -127,7 +127,9 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
 
     async def _search(**kw):
         op_order.append(("search", kw))
-        return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        if "scroll" in kw:
+            return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        return {"hits": {"hits": []}}
 
     async def _delete(**kw):
         op_order.append(("delete", kw))
@@ -217,3 +219,74 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
 
     assert result["status"] == "indexed"
     assert len(index_calls) == 2, "indexing must still happen if the pre-delete fails"
+
+
+@pytest.mark.asyncio
+async def test_connector_file_id_stored_in_chunk_when_provided(monkeypatch):
+    """When connector_file_id is passed to process_document_standard, every
+    indexed chunk must carry that value so the 404 cleanup path can find and
+    delete chunks by their connector source ID."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=2)
+
+    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    indexed_bodies: list[dict] = []
+    opensearch_client.index = AsyncMock(
+        side_effect=lambda **kw: indexed_bodies.append(kw.get("body", {}))
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        result = await processor.process_document_standard(
+            file_path=tmp_path,
+            file_hash="sha-abc",
+            owner_user_id="alice",
+            original_filename="report.txt",
+            connector_type="sharepoint",
+            connector_file_id="sharepoint-item-xyz",
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    assert result["status"] == "indexed"
+    assert len(indexed_bodies) == 2, "expected one index call per chunk"
+    for body in indexed_bodies:
+        assert body.get("connector_file_id") == "sharepoint-item-xyz", (
+            f"connector_file_id missing or wrong in chunk: {body}"
+        )
+        assert body.get("document_id") == "sha-abc", "document_id must still be the content hash"
+
+
+@pytest.mark.asyncio
+async def test_connector_file_id_absent_when_not_provided(monkeypatch):
+    """When connector_file_id is not passed (local uploads, non-connector paths),
+    the field must be absent from indexed chunks — no None/empty pollution."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1)
+
+    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
+    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
+    indexed_bodies: list[dict] = []
+    opensearch_client.index = AsyncMock(
+        side_effect=lambda **kw: indexed_bodies.append(kw.get("body", {}))
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        await processor.process_document_standard(
+            file_path=tmp_path,
+            file_hash="sha-xyz",
+            owner_user_id="alice",
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    assert len(indexed_bodies) == 1
+    assert "connector_file_id" not in indexed_bodies[0]

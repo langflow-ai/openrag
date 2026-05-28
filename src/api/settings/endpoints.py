@@ -82,6 +82,7 @@ from dependencies import (
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
 from session_manager import User
+from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -709,6 +710,8 @@ async def update_settings(
         if not config_manager.save_config_file(current_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
+        provider_health_cache.invalidate()
+
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
 
@@ -1064,6 +1067,8 @@ async def onboarding(
                             {"error": "Failed to save configuration"}, status_code=500
                         )
 
+                    provider_health_cache.invalidate()
+
                     ingestion_jwt = (
                         user.jwt_token if IBM_AUTH_ENABLED and user and user.jwt_token else None
                     )
@@ -1098,6 +1103,7 @@ async def onboarding(
                     )
 
         if config_manager.save_config_file(current_config):
+            provider_health_cache.invalidate()
             set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",
