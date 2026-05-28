@@ -896,7 +896,17 @@ class LangflowFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
+            # For .txt files, also check for the .md version since we rename them for Langflow compatibility
+            filename_to_check = original_filename
+            if original_filename.lower().endswith('.txt'):
+                md_filename = original_filename[:-4] + '.md'
+                txt_exists = await self.check_filename_exists(original_filename, opensearch_client)
+                md_exists = await self.check_filename_exists(md_filename, opensearch_client)
+                filename_exists = txt_exists or md_exists
+                if md_exists:
+                    filename_to_check = md_filename  # Use .md version for deletion
+            else:
+                filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
 
             if filename_exists and not self.replace_duplicates:
                 # Duplicate exists and user hasn't confirmed replacement
@@ -907,8 +917,9 @@ class LangflowFileProcessor(TaskProcessor):
                 return
             elif filename_exists and self.replace_duplicates:
                 # Delete existing document before uploading new one
-                logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
+                # Use filename_to_check (which may be .md version for .txt files)
+                logger.info(f"Replacing existing document: {original_filename} (stored as {filename_to_check})")
+                await self.delete_document_by_filename(filename_to_check, opensearch_client)
 
             # Read file content for processing
             with open(item, "rb") as f:
