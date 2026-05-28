@@ -172,6 +172,46 @@ async def test_retry_connector_connectivity_error_is_retryable(task_service):
 
 
 @pytest.mark.asyncio
+async def test_langflow_disconnect_error_is_retryable(task_service):
+    processor = Mock()
+    ft = FileTask(file_path="google-drive-file-id", filename="statement.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.phase = IngestionPhase.DOCLING
+    ft.docling_status = DoclingPhaseStatus.PENDING
+    ft.error = "Server disconnected without sending a response."
+    task = UploadTask(
+        task_id="task-langflow-disconnect",
+        total_files=1,
+        file_tasks={"google-drive-file-id": ft},
+        status=TaskStatus.FAILED,
+        failed_files=1,
+        processor=processor,
+    )
+    _store_task(task_service, "user1", task)
+
+    metadata = task_service._infer_failure_metadata(ft)
+    assert metadata is not None
+    assert metadata["actionable_by"] == "RETRYABLE"
+    assert metadata["component"] == "langflow"
+
+    with (
+        patch("os.path.isfile", return_value=False),
+        patch.object(
+            task_service,
+            "background_custom_processor",
+            new_callable=AsyncMock,
+        ) as mock_bg,
+        patch("asyncio.create_task", return_value=Mock()),
+    ):
+        result = await task_service.retry_failed_files("user1", "task-langflow-disconnect")
+
+    assert result is not None
+    assert result["retried"] == 1
+    assert ft.phase == IngestionPhase.LANGFLOW
+    mock_bg.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_retry_connector_id_path_does_not_require_local_file(task_service):
     processor = Mock()
     ft = FileTask(file_path="remote-file-id-123", filename="connector.pdf")

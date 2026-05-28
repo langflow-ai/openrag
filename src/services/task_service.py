@@ -57,12 +57,21 @@ _TRANSIENT_CONNECTIVITY_ERROR_MARKERS = (
     "name or service not known",
     "service unavailable",
     "network is unreachable",
+    "server disconnected",
+    "disconnected without sending a response",
+    "remote protocol error",
+    "broken pipe",
 )
 
 
 def _is_non_retryable_file_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _NON_RETRYABLE_FILE_ERROR_MARKERS)
+
+
+def _is_transient_connectivity_error(error: str) -> bool:
+    lowered = error.lower()
+    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
 
 
 def _is_docling_transient_error(error: str) -> bool:
@@ -73,7 +82,41 @@ def _is_docling_transient_error(error: str) -> bool:
 
     # Connector-originated transient network failures can still surface while
     # file phase is DOCLING (before conversion can complete).
-    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
+    return _is_transient_connectivity_error(error)
+
+
+def _transient_connectivity_user_message(error: str) -> str:
+    lowered = error.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "disconnect",
+            "without sending a response",
+            "connection refused",
+            "connection reset",
+            "broken pipe",
+            "remote protocol",
+        )
+    ):
+        return "Ingestion service connection was lost. Please retry ingestion."
+    if any(marker in lowered for marker in ("timeout", "timed out")):
+        return "Document processing timed out. Please retry ingestion."
+    return "Ingestion service was temporarily unavailable. Please retry ingestion."
+
+
+def _is_langflow_transport_failure(error: str) -> bool:
+    """HTTP client / Langflow transport failures on the connector ingest path."""
+    lowered = error.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "server disconnected",
+            "disconnected without sending a response",
+            "remote protocol error",
+            "read error",
+            "write error",
+        )
+    )
 
 
 class IngestionTimeoutError(Exception):
@@ -769,9 +812,14 @@ class TaskService:
                 file_task.error = None
                 file_task.result = None
                 file_task.retry_count += 1
-                file_task.docling_status = DoclingPhaseStatus.PENDING
-                file_task.phase = IngestionPhase.DOCLING
                 file_task.docling_task_id = None
+                # Connector tasks use remote IDs as file_path and ingest via Langflow.
+                if os.path.isabs(file_path):
+                    file_task.docling_status = DoclingPhaseStatus.PENDING
+                    file_task.phase = IngestionPhase.DOCLING
+                else:
+                    file_task.docling_status = DoclingPhaseStatus.PENDING
+                    file_task.phase = IngestionPhase.LANGFLOW
                 file_task.updated_at = now
                 paths_to_retry.append(file_path)
 
@@ -860,10 +908,11 @@ class TaskService:
             }
 
         if phase == IngestionPhase.DOCLING and _is_docling_transient_error(error):
+            langflow_transport = _is_langflow_transport_failure(error)
             return {
-                "component": "docling",
-                "failure_phase": "parsing",
-                "user_facing_message": "Document processing timed out. Please retry ingestion.",
+                "component": "langflow" if langflow_transport else "docling",
+                "failure_phase": "unknown" if langflow_transport else "parsing",
+                "user_facing_message": _transient_connectivity_user_message(error),
                 "actionable_by": "RETRYABLE",
             }
 
@@ -891,6 +940,14 @@ class TaskService:
                 "failure_phase": "file_validation",
                 "user_facing_message": "A file with this name already exists.",
                 "actionable_by": "USER_ACTIONABLE",
+            }
+
+        if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
+            return {
+                "component": "langflow",
+                "failure_phase": "unknown",
+                "user_facing_message": _transient_connectivity_user_message(error),
+                "actionable_by": "RETRYABLE",
             }
 
         if phase == IngestionPhase.LANGFLOW:
