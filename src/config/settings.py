@@ -67,6 +67,7 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
 PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
+OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
@@ -105,6 +106,13 @@ def get_role_claim_user() -> str:
 
 def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+
+
+def get_openrag_service_token() -> str | None:
+    """Platform-issued service JWT used at startup to bootstrap the OpenSearch
+    security context (admin role mapping). Read per-call — like the JWT-claim
+    accessors above — so runtime/test overrides take effect without a restart."""
+    return os.getenv("OPENRAG_SERVICE_TOKEN")
 
 
 def get_jwt_auth_header() -> str:
@@ -147,6 +155,18 @@ def _resolve_skip_os_security_default() -> str:
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
     "OPENRAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
+).lower() in ("true", "1", "yes")
+
+# Run setup_opensearch_security once during FastAPI lifespan startup,
+# using the admin username derived from OPENRAG_SERVICE_TOKEN. Intended
+# for platform-managed deployments (saas / on_prem) where the platform
+# issues a service token that identifies the admin user that must be
+# pinned into the all_access role mapping. Default off.
+#
+# When this flag is true the corresponding call inside startup_tasks()
+# is suppressed — bootstrap is the single source of truth on startup.
+OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
+    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
@@ -192,6 +212,13 @@ JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
 # Maximum number of distinct tokens kept in the JWT claims cache.
 # Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
 JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
+
+# TTL (seconds) for the in-process provider health-check response cache.
+# The banner polls GET /api/provider/health every 5-30 s per browser tab;
+# caching coalesces concurrent identical calls so watsonx round-trips are
+# not fanned out. Must be >= 1; non-positive values fall back to the default.
+_raw_phc_ttl = get_env_int("OPENRAG_PROVIDER_HEALTH_TTL", 10)
+PROVIDER_HEALTH_CACHE_TTL_SECONDS = _raw_phc_ttl if _raw_phc_ttl > 0 else 10
 
 # Docling service URL configuration
 # Priority:
@@ -997,8 +1024,8 @@ class AppClients:
                 error=str(e),
             )
 
-    def create_user_opensearch_client(self, jwt_token: str):
-        """Create OpenSearch client with user's auth token.
+    def create_opensearch_client_from_jwt(self, jwt_token: str):
+        """Create an OpenSearch client authenticated with a JWT bearer token.
 
         If jwt_token already contains an auth scheme (e.g. "Basic ..." or "Bearer ..."),
         it is used verbatim. Otherwise it is wrapped as a Bearer token.
@@ -1024,6 +1051,10 @@ class AppClients:
             max_retries=3,
             retry_on_timeout=True,
         )
+
+    def create_user_opensearch_client(self, jwt_token: str):
+        """Create OpenSearch client with user's auth token."""
+        return self.create_opensearch_client_from_jwt(jwt_token)
 
 
 # Component template paths — derived from the centralized flows directory

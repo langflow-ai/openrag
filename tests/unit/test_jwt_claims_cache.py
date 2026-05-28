@@ -5,6 +5,7 @@ failures are never cached. Each test clears the module-level caches in a
 fixture so tests are fully isolated.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -16,9 +17,6 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
-
-# Patch heavy config imports before importing session_manager
-import os
 
 os.environ.setdefault("OPENRAG_JWT_CACHE_TTL", "60")
 os.environ.setdefault("OPENRAG_JWT_CACHE_MAXSIZE", "1024")
