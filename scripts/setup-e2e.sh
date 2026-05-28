@@ -1,6 +1,37 @@
 #!/bin/bash
 set -e
 
+# Parse command line arguments
+SKIP_CERT_VALIDATION=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-cert-validation|--insecure)
+            SKIP_CERT_VALIDATION=true
+            echo "WARNING: Certificate validation disabled via command line flag"
+            echo "WARNING: This should only be used in trusted development environments"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --skip-cert-validation  Skip SSL certificate validation (INSECURE)"
+            echo "                          Only use in trusted development environments"
+            echo "  -h, --help             Show this help message"
+            echo ""
+            echo "Environment Variables:"
+            echo "  OPENSEARCH_CA_CERT     Path to OpenSearch CA certificate"
+            echo "                         (default: securityconfig/root-ca.pem)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Run '$0 --help' for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Go to project root
 cd "$(dirname "$0")/.."
 
@@ -47,7 +78,35 @@ fi
 echo "Waiting for OpenSearch..."
 TIMEOUT=300
 ELAPSED=0
-until curl -s -k https://localhost:9200 >/dev/null; do
+
+# Determine curl options based on validation mode
+if [ "$SKIP_CERT_VALIDATION" = "true" ]; then
+    echo "WARNING: Skipping certificate validation (insecure mode)"
+    CURL_OPTS="-k"
+else
+    # Strict mode: Require proper certificate setup
+    OPENSEARCH_CA_CERT="${OPENSEARCH_CA_CERT:-securityconfig/root-ca.pem}"
+    
+    if [ ! -f "$OPENSEARCH_CA_CERT" ]; then
+        echo "ERROR: OpenSearch CA certificate not found at: $OPENSEARCH_CA_CERT"
+        echo "ERROR: Certificate validation is required for secure operation"
+        echo ""
+        echo "To fix this issue, you must:"
+        echo "  1. Extract the CA certificate from OpenSearch container, OR"
+        echo "  2. Provide a valid CA certificate at: $OPENSEARCH_CA_CERT, OR"
+        echo "  3. Set OPENSEARCH_CA_CERT environment variable to the cert path"
+        echo ""
+        echo "For development/testing ONLY, you can bypass validation with:"
+        echo "  $0 --skip-cert-validation"
+        echo ""
+        exit 1
+    fi
+    
+    echo "Using certificate validation with CA cert: $OPENSEARCH_CA_CERT"
+    CURL_OPTS="--cacert $OPENSEARCH_CA_CERT"
+fi
+
+until curl -s $CURL_OPTS https://localhost:9200 >/dev/null; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then
