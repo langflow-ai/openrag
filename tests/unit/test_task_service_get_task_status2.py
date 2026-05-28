@@ -87,52 +87,6 @@ class TestInferFailureMetadata:
         assert meta["failure_phase"] == "parsing"
         assert meta["actionable_by"] == "RETRYABLE"
 
-    def test_docling_polling_timeout_sets_failed_status(self, task_service):
-        """Backend polling marks TIMEOUT as docling_status=FAILED; still retryable."""
-        ft = _make_file_task(
-            phase=IngestionPhase.DOCLING,
-            docling_status=DoclingPhaseStatus.FAILED,
-            error=(
-                "Docling conversion did not complete (timeout): Docling polling timed out after 10s"
-            ),
-        )
-        meta = task_service._infer_failure_metadata(ft)
-        assert meta is not None
-        assert meta["actionable_by"] == "RETRYABLE"
-
-    def test_docling_conversion_failed_not_retryable(self, task_service):
-        """Permanent conversion failure (e.g. corrupt file) is not retryable."""
-        ft = _make_file_task(
-            phase=IngestionPhase.DOCLING,
-            docling_status=DoclingPhaseStatus.FAILED,
-            error=("Docling conversion did not complete (failed): Docling reported failure"),
-        )
-        meta = task_service._infer_failure_metadata(ft)
-        assert meta is not None
-        assert meta["actionable_by"] == "USER_ACTIONABLE"
-
-    def test_corrupt_docx_bad_zip_not_retryable(self, task_service):
-        ft = _make_file_task(
-            phase=IngestionPhase.DOCLING,
-            docling_status=DoclingPhaseStatus.FAILED,
-            error=(
-                "Docling conversion did not complete (failed): BadZipFile: File is not a zip file"
-            ),
-        )
-        meta = task_service._infer_failure_metadata(ft)
-        assert meta is not None
-        assert meta["actionable_by"] == "USER_ACTIONABLE"
-
-    def test_langflow_empty_content_not_retryable(self, task_service):
-        ft = _make_file_task(
-            phase=IngestionPhase.LANGFLOW,
-            docling_status=DoclingPhaseStatus.SUCCESS,
-            error="No text content could be extracted from document",
-        )
-        meta = task_service._infer_failure_metadata(ft)
-        assert meta is not None
-        assert meta["actionable_by"] == "USER_ACTIONABLE"
-
     def test_docling_phase_still_processing(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,

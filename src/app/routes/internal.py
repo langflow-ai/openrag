@@ -6,7 +6,7 @@ Auth and service injection are handled inside each handler via FastAPI
 Depends, not here. This module only wires URL → handler.
 """
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 
 from api import (
     auth,
@@ -30,7 +30,6 @@ from api import (
 )
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
-from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from connectors.aws_s3.api import (
     s3_bucket_status,
     s3_configure,
@@ -92,20 +91,6 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route("/tasks", tasks.all_tasks, methods=["GET"], tags=["internal"])
-    app.add_api_route(
-        "/tasks/{task_id}/retry",
-        tasks.retry_task,
-        methods=["POST"],
-        tags=["internal"],
-        status_code=status.HTTP_202_ACCEPTED,
-        response_model=TaskRetryResponse,
-        responses={
-            400: {"model": ErrorResponse},
-            404: {"model": ErrorResponse},
-            409: {"model": ErrorResponse},
-            500: {"model": ErrorResponse},
-        },
-    )
     app.add_api_route(
         "/tasks/{task_id}/cancel",
         tasks.cancel_task,

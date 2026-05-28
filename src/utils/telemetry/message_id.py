@@ -149,8 +149,6 @@ class MessageId:
     ORB_TASK_COMPLETE = "ORB_TASK_COMPLETE"
     # Message: Task failed
     ORB_TASK_FAILED = "ORB_TASK_FAILED"
-    # Message: Task retry requested
-    ORB_TASK_RETRIED = "ORB_TASK_RETRIED"
     # Message: Task cancelled
     ORB_TASK_CANCELLED = "ORB_TASK_CANCELLED"
     # Message: Task cancellation failed

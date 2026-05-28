@@ -116,6 +116,7 @@ extend-immutable-calls = [
     "fastapi.Security",
     "dependencies.require_permission",
     "dependencies.require_all_permissions",
+    "dependencies.require_api_key_permission",
 ]
 
 # `bootstrap` must be the first import in any module that uses it
@@ -143,14 +144,14 @@ no_strict_optional = true
 warn_unused_ignores = true
 exclude = ["flows/components"]
 
-# FastAPI handlers in this module declare a Pydantic response model as
+# FastAPI handlers in these modules declare a Pydantic response model as
 # their return type but legitimately return `JSONResponse(...)` on error
 # paths. The runtime accepts both, but the annotation can't be widened to
 # `SomeResponse | JSONResponse` because FastAPI then tries to derive an
 # OpenAPI schema from the union and fails. Suppress only the resulting
-# return-value mismatches in this one file.
+# return-value mismatches in these files.
 [[tool.mypy.overrides]]
-module = "api.settings.endpoints"
+module = ["api.settings.endpoints", "api.v1.settings"]
 disable_error_code = ["return-value"]
 
 

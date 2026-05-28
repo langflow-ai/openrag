@@ -553,6 +553,8 @@ llmProviders:
     apiKey: ""                            # WatsonX API key (stored in secret)
     endpoint: "https://us-south.ml.cloud.ibm.com"
     projectId: ""                         # WatsonX project ID
+    maxRetries: ""                        # IBM SDK retry count on 429 (optional; blank = SDK default of 10)
+    delayTime: ""                         # IBM SDK backoff delay in seconds (optional; blank = SDK default of 0.5)
   ollama:
     enabled: false
     endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")

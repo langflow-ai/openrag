@@ -17,107 +17,6 @@ T = TypeVar("T")
 
 logger = get_logger(__name__)
 
-# Substrings that indicate a permanent file/content problem (not worth retrying).
-_NON_RETRYABLE_FILE_ERROR_MARKERS = (
-    "corrupt",
-    "corrupted",
-    "corruption",
-    "invalid file",
-    "invalid document",
-    "unsupported format",
-    "unsupported file",
-    "malformed",
-    "damaged",
-    "not a zip file",
-    "bad zipfile",
-    "failed to parse",
-    "could not be parsed",
-    "cannot parse",
-    "no text content could be extracted",
-    "empty or unreadable",
-    "unreadable",
-    "validationerror",
-)
-
-# Docling polling errors that are transient (service/timeout), not bad file content.
-_DOCLING_TRANSIENT_ERROR_MARKERS = (
-    "(timeout)",
-    "timed out",
-    "polling exceeded",
-    "polling timed out",
-)
-
-# Connector/download/network failures seen while file is still in Docling phase.
-# These are infrastructure/transient and should be retryable.
-_TRANSIENT_CONNECTIVITY_ERROR_MARKERS = (
-    "all connection attempts failed",
-    "connection refused",
-    "connection reset",
-    "temporary failure in name resolution",
-    "name or service not known",
-    "service unavailable",
-    "network is unreachable",
-    "server disconnected",
-    "disconnected without sending a response",
-    "remote protocol error",
-    "broken pipe",
-)
-
-
-def _is_non_retryable_file_error(error: str) -> bool:
-    lowered = error.lower()
-    return any(marker in lowered for marker in _NON_RETRYABLE_FILE_ERROR_MARKERS)
-
-
-def _is_transient_connectivity_error(error: str) -> bool:
-    lowered = error.lower()
-    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
-
-
-def _is_docling_transient_error(error: str) -> bool:
-    lowered = error.lower()
-    # Legacy timeout messages emitted by Docling polling path.
-    if "docling conversion did not complete" in lowered:
-        return any(marker in lowered for marker in _DOCLING_TRANSIENT_ERROR_MARKERS)
-
-    # Connector-originated transient network failures can still surface while
-    # file phase is DOCLING (before conversion can complete).
-    return _is_transient_connectivity_error(error)
-
-
-def _transient_connectivity_user_message(error: str) -> str:
-    lowered = error.lower()
-    if any(
-        marker in lowered
-        for marker in (
-            "disconnect",
-            "without sending a response",
-            "connection refused",
-            "connection reset",
-            "broken pipe",
-            "remote protocol",
-        )
-    ):
-        return "Ingestion service connection was lost. Please retry ingestion."
-    if any(marker in lowered for marker in ("timeout", "timed out")):
-        return "Document processing timed out. Please retry ingestion."
-    return "Ingestion service was temporarily unavailable. Please retry ingestion."
-
-
-def _is_langflow_transport_failure(error: str) -> bool:
-    """HTTP client / Langflow transport failures on the connector ingest path."""
-    lowered = error.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "server disconnected",
-            "disconnected without sending a response",
-            "remote protocol error",
-            "read error",
-            "write error",
-        )
-    )
-
 
 class IngestionTimeoutError(Exception):
     """Raised when file processing exceeds the configured timeout"""
@@ -691,171 +590,6 @@ class TaskService:
                 return self.task_store[candidate_user_id][task_id]
         return None
 
-    def _resolve_upload_task_store(
-        self, user_id: str, task_id: str
-    ) -> tuple[str, UploadTask] | None:
-        """Return (store_user_id, upload_task) for a task visible to this user."""
-        if not task_id:
-            return None
-        for candidate_user_id in [user_id, AnonymousUser().user_id]:
-            if (
-                candidate_user_id in self.task_store
-                and task_id in self.task_store[candidate_user_id]
-            ):
-                return candidate_user_id, self.task_store[candidate_user_id][task_id]
-        return None
-
-    async def retry_failed_files(
-        self,
-        user_id: str,
-        task_id: str,
-        *,
-        file_paths: list[str] | None = None,
-        retryable_only: bool = True,
-    ) -> dict | None:
-        """Re-queue failed files for ingestion when their source paths still exist.
-
-        Only files classified as RETRYABLE are retried when *retryable_only* is
-        True (the default). When *file_paths* is set, only those task paths are
-        considered; paths missing from the task or not in a failed state are
-        reported in *skipped*. This reuses the task's original processor — it
-        does not accept new uploads from the client.
-
-        Connector tasks often use provider IDs (not local absolute paths) as
-        ``file_path`` keys. For those non-absolute identifiers, skip local
-        filesystem existence checks and let the connector processor re-fetch.
-        """
-        resolved = self._resolve_upload_task_store(user_id, task_id)
-        if resolved is None:
-            return None
-
-        store_user_id, upload_task = resolved
-
-        paths_to_retry: list[str] = []
-        skipped: list[dict] = []
-        requested_paths = set(file_paths) if file_paths is not None else None
-
-        # Keep status checks, candidate selection, and state transitions inside
-        # one lock to avoid concurrent retry requests enqueueing duplicates.
-        async with self._get_task_lock(task_id):
-            processor = upload_task.processor
-            if upload_task.status == TaskStatus.RUNNING:
-                return {
-                    "error": "task_in_progress",
-                    "message": "Task is still running",
-                    "task_id": task_id,
-                }
-
-            if processor is None:
-                return {
-                    "error": "no_processor",
-                    "message": "Cannot retry: task processor is no longer available",
-                    "task_id": task_id,
-                }
-
-            if requested_paths is not None:
-                for path in requested_paths:
-                    file_task = upload_task.file_tasks.get(path)
-                    if file_task is None:
-                        skipped.append({"file_path": path, "reason": "file_not_in_task"})
-                    elif file_task.status != TaskStatus.FAILED:
-                        skipped.append(
-                            {
-                                "file_path": path,
-                                "filename": file_task.filename,
-                                "reason": "not_failed",
-                            }
-                        )
-
-            # Build retry candidates before mutating shared task/file state.
-            retry_candidates: list[tuple[str, FileTask]] = []
-            for file_path, file_task in list(upload_task.file_tasks.items()):
-                if requested_paths is not None and file_path not in requested_paths:
-                    continue
-                if file_task.status != TaskStatus.FAILED:
-                    continue
-
-                if retryable_only:
-                    metadata = self._infer_failure_metadata(file_task)
-                    if not metadata or metadata.get("actionable_by") != "RETRYABLE":
-                        skipped.append(
-                            {
-                                "file_path": file_path,
-                                "filename": file_task.filename,
-                                "reason": "not_retryable",
-                            }
-                        )
-                        continue
-
-                # Only enforce local source-file existence for absolute paths.
-                # Connector-backed tasks typically store remote IDs as file_path.
-                if os.path.isabs(file_path) and not os.path.isfile(file_path):
-                    skipped.append(
-                        {
-                            "file_path": file_path,
-                            "filename": file_task.filename,
-                            "reason": "source_file_missing",
-                        }
-                    )
-                    continue
-
-                retry_candidates.append((file_path, file_task))
-
-            now = time.time()
-            for file_path, file_task in retry_candidates:
-                if upload_task.failed_files > 0:
-                    upload_task.failed_files -= 1
-                if upload_task.processed_files > 0:
-                    upload_task.processed_files -= 1
-
-                file_task.status = TaskStatus.PENDING
-                file_task.error = None
-                file_task.result = None
-                file_task.retry_count += 1
-                file_task.docling_task_id = None
-                # Connector tasks use remote IDs as file_path and ingest via Langflow.
-                if os.path.isabs(file_path):
-                    file_task.docling_status = DoclingPhaseStatus.PENDING
-                    file_task.phase = IngestionPhase.DOCLING
-                else:
-                    file_task.docling_status = DoclingPhaseStatus.PENDING
-                    file_task.phase = IngestionPhase.LANGFLOW
-                file_task.updated_at = now
-                paths_to_retry.append(file_path)
-
-            if paths_to_retry:
-                upload_task.status = TaskStatus.RUNNING
-                upload_task.updated_at = now
-
-        if not paths_to_retry:
-            return {
-                "task_id": task_id,
-                "retried": 0,
-                "skipped": skipped,
-                "status": "no_op",
-                "message": "No retryable files with available source data",
-            }
-
-        background_task = asyncio.create_task(
-            self.background_custom_processor(store_user_id, task_id, paths_to_retry, processor)
-        )
-        upload_task.background_task = background_task
-        self.background_tasks.add(background_task)
-
-        def _clear_retry_background_task(done_task: asyncio.Task) -> None:
-            self.background_tasks.discard(done_task)
-            if upload_task.background_task is done_task:
-                upload_task.background_task = None
-
-        background_task.add_done_callback(_clear_retry_background_task)
-
-        return {
-            "task_id": task_id,
-            "retried": len(paths_to_retry),
-            "skipped": skipped,
-            "status": "accepted",
-        }
-
     def _serialize_file_task(self, file_task: FileTask) -> dict:
         """Serialize a FileTask to the standard dict shape."""
         return {
@@ -879,12 +613,22 @@ class TaskService:
         actionable_by when the failure can be classified, or None when the cause
         is unknown and no fields should be emitted.
 
-        Priority order: transient / retryable docling outcomes (expired, polling
-        timeout) before generic docling FAILED, which indicates conversion failure.
+        Priority order: docling_status enum first (stable), error string patterns
+        second (fallback for edge cases like polling timeout).
         """
         docling_status = file_task.docling_status
         phase = file_task.phase
         error = file_task.error or ""
+
+        if docling_status == DoclingPhaseStatus.FAILED:
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": (
+                    "The file could not be processed into readable document content."
+                ),
+                "actionable_by": "USER_ACTIONABLE",
+            }
 
         if docling_status == DoclingPhaseStatus.EXPIRED:
             return {
@@ -897,29 +641,11 @@ class TaskService:
                 "actionable_by": "RETRYABLE",
             }
 
-        if _is_non_retryable_file_error(error):
-            if phase == IngestionPhase.LANGFLOW:
-                component = "langflow"
-                failure_phase = "unknown"
-            else:
-                component = "docling"
-                failure_phase = "parsing"
+        if phase == IngestionPhase.DOCLING and "Docling conversion did not complete" in error:
             return {
-                "component": component,
-                "failure_phase": failure_phase,
-                "user_facing_message": (
-                    "The file appears corrupted or invalid and cannot be processed. "
-                    "Upload a valid file."
-                ),
-                "actionable_by": "USER_ACTIONABLE",
-            }
-
-        if phase == IngestionPhase.DOCLING and _is_docling_transient_error(error):
-            langflow_transport = _is_langflow_transport_failure(error)
-            return {
-                "component": "langflow" if langflow_transport else "docling",
-                "failure_phase": "unknown" if langflow_transport else "parsing",
-                "user_facing_message": _transient_connectivity_user_message(error),
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "Document processing timed out. Please retry ingestion.",
                 "actionable_by": "RETRYABLE",
             }
 
@@ -931,16 +657,6 @@ class TaskService:
                 "actionable_by": "RETRYABLE",
             }
 
-        if docling_status == DoclingPhaseStatus.FAILED:
-            return {
-                "component": "docling",
-                "failure_phase": "parsing",
-                "user_facing_message": (
-                    "The file could not be processed into readable document content."
-                ),
-                "actionable_by": "USER_ACTIONABLE",
-            }
-
         if "already exists" in error:
             return {
                 "component": "openrag",
@@ -949,28 +665,7 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
-        if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
-            return {
-                "component": "langflow",
-                "failure_phase": "unknown",
-                "user_facing_message": _transient_connectivity_user_message(error),
-                "actionable_by": "RETRYABLE",
-            }
-
         if phase == IngestionPhase.LANGFLOW:
-            error_lower = error.lower()
-            if any(
-                marker in error_lower
-                for marker in ("timeout", "timed out", "unavailable", "connection refused")
-            ):
-                return {
-                    "component": "langflow",
-                    "failure_phase": "unknown",
-                    "user_facing_message": (
-                        "Ingestion timed out or the service was unavailable. Please retry."
-                    ),
-                    "actionable_by": "RETRYABLE",
-                }
             return {
                 "component": "langflow",
                 "failure_phase": "unknown",

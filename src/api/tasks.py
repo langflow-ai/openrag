@@ -1,6 +1,5 @@
-from fastapi import Body, Depends
+from fastapi import Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 
 from dependencies import get_current_user, get_task_service
 from session_manager import User
@@ -49,41 +48,6 @@ async def all_tasks_enhanced(
     """Get all tasks with structured failure metadata on failed files."""
     tasks = task_service.get_all_tasks2(user.user_id)
     return JSONResponse({"tasks": tasks})
-
-
-class RetryTaskBody(BaseModel):
-    file_paths: list[str] | None = Field(
-        default=None,
-        description=(
-            "Optional subset of task file paths to retry. Omit to retry all failed RETRYABLE files."
-        ),
-    )
-
-
-async def retry_task(
-    task_id: str,
-    body: RetryTaskBody = Body(default_factory=RetryTaskBody),
-    task_service=Depends(get_task_service),
-    user: User = Depends(get_current_user),
-):
-    """Re-run ingestion for failed RETRYABLE files in an existing task."""
-    result = await task_service.retry_failed_files(
-        user.user_id, task_id, file_paths=body.file_paths
-    )
-    if result is None:
-        return JSONResponse({"error": "Task not found"}, status_code=404)
-
-    if result.get("error") == "task_in_progress":
-        return JSONResponse(result, status_code=409)
-
-    if result.get("error") == "no_processor":
-        return JSONResponse(result, status_code=400)
-
-    if result.get("status") == "no_op":
-        return JSONResponse(result, status_code=400)
-
-    await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_RETRIED)
-    return JSONResponse(result, status_code=202)
 
 
 async def cancel_task(

@@ -113,6 +113,10 @@ def get_openrag_service_token() -> str | None:
     security context (admin role mapping). Read per-call — like the JWT-claim
     accessors above — so runtime/test overrides take effect without a restart."""
     return os.getenv("OPENRAG_SERVICE_TOKEN")
+def get_jwt_auth_header() -> str:
+    """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
+    callers. Read per-call so tests can override via monkeypatch.setenv."""
+    return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
@@ -207,6 +211,13 @@ JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
 # Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
 JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
 
+# TTL (seconds) for the in-process provider health-check response cache.
+# The banner polls GET /api/provider/health every 5-30 s per browser tab;
+# caching coalesces concurrent identical calls so watsonx round-trips are
+# not fanned out. Must be >= 1; non-positive values fall back to the default.
+_raw_phc_ttl = get_env_int("OPENRAG_PROVIDER_HEALTH_TTL", 10)
+PROVIDER_HEALTH_CACHE_TTL_SECONDS = _raw_phc_ttl if _raw_phc_ttl > 0 else 10
+
 # Docling service URL configuration
 # Priority:
 # 1. DOCLING_SERVE_URL environment variable
@@ -263,8 +274,6 @@ UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 # Default: 40 minutes total, 40 minutes read timeout
 LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
-# Retries for transient Langflow HTTP failures (disconnects, 502/503/504).
-LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
 
 # Per-file processing timeout for document ingestion tasks (in seconds)
 # Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
@@ -867,113 +876,42 @@ class AppClients:
     async def langflow_request(self, method: str, endpoint: str, **kwargs):
         """Central method for all Langflow API requests.
 
-        Retries transient transport/server errors and once with a fresh API key on
-        auth failures (401/403).
+        Retries once with a fresh API key on auth failures (401/403).
         """
-        _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
-        max_attempts = max(1, LANGFLOW_REQUEST_RETRIES + 1)
-        last_error: Exception | None = None
-        auth_retry_attempted = False
-        request_kwargs = dict(kwargs)
-        passed_headers = request_kwargs.pop("headers", {}) or {}
+        api_key = await get_langflow_api_key()
+        if not api_key:
+            raise ValueError("No Langflow API key available")
 
-        for attempt in range(max_attempts):
-            api_key = await get_langflow_api_key()
-            if not api_key:
-                raise ValueError("No Langflow API key available")
+        # Merge headers properly - passed headers take precedence over defaults
+        default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+        existing_headers = kwargs.pop("headers", {})
+        headers = {**default_headers, **existing_headers}
 
-            # Merge headers properly - passed headers take precedence over defaults
-            default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
-            headers = {**default_headers, **passed_headers}
+        # Remove Content-Type if explicitly set to None (for file uploads)
+        if headers.get("Content-Type") is None:
+            headers.pop("Content-Type", None)
 
-            # Remove Content-Type if explicitly set to None (for file uploads)
-            if headers.get("Content-Type") is None:
-                headers.pop("Content-Type", None)
+        url = f"{LANGFLOW_URL}{endpoint}"
 
-            url = f"{LANGFLOW_URL}{endpoint}"
+        response = await self.langflow_http_client.request(
+            method=method, url=url, headers=headers, **kwargs
+        )
 
-            try:
+        # Retry once with a fresh API key on auth failure
+        if response.status_code in (401, 403):
+            logger.warning(
+                "Langflow request auth failed, regenerating API key and retrying",
+                status_code=response.status_code,
+                endpoint=endpoint,
+            )
+            api_key = await get_langflow_api_key(force_regenerate=True)
+            if api_key:
+                headers["x-api-key"] = api_key
                 response = await self.langflow_http_client.request(
-                    method=method, url=url, headers=headers, **request_kwargs
+                    method=method, url=url, headers=headers, **kwargs
                 )
-            except httpx.RequestError as exc:
-                last_error = exc
-                if attempt + 1 < max_attempts:
-                    delay = min(2**attempt, 4)
-                    logger.warning(
-                        "Langflow request transport error, retrying",
-                        endpoint=endpoint,
-                        attempt=attempt + 1,
-                        max_attempts=max_attempts,
-                        error=str(exc),
-                        retry_in_seconds=delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                raise
 
-            # Retry once with a fresh API key on auth failure
-            if response.status_code in (401, 403) and not auth_retry_attempted:
-                logger.warning(
-                    "Langflow request auth failed, regenerating API key and retrying",
-                    status_code=response.status_code,
-                    endpoint=endpoint,
-                )
-                auth_retry_attempted = True
-                api_key = await get_langflow_api_key(force_regenerate=True)
-                if api_key:
-                    headers["x-api-key"] = api_key
-                    try:
-                        response = await self.langflow_http_client.request(
-                            method=method, url=url, headers=headers, **request_kwargs
-                        )
-                    except httpx.RequestError as exc:
-                        last_error = exc
-                        if attempt + 1 < max_attempts:
-                            delay = min(2**attempt, 4)
-                            logger.warning(
-                                "Langflow auth retry transport error, retrying",
-                                endpoint=endpoint,
-                                attempt=attempt + 1,
-                                max_attempts=max_attempts,
-                                error=str(exc),
-                                retry_in_seconds=delay,
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                        raise
-
-            if response.status_code in (401, 403) and attempt + 1 < max_attempts:
-                delay = min(2**attempt, 4)
-                logger.warning(
-                    "Langflow auth failure persists, retrying request",
-                    endpoint=endpoint,
-                    status_code=response.status_code,
-                    attempt=attempt + 1,
-                    max_attempts=max_attempts,
-                    retry_in_seconds=delay,
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:
-                delay = min(2**attempt, 4)
-                logger.warning(
-                    "Langflow request returned transient status, retrying",
-                    endpoint=endpoint,
-                    status_code=response.status_code,
-                    attempt=attempt + 1,
-                    max_attempts=max_attempts,
-                    retry_in_seconds=delay,
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            return response
-
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Langflow request failed without a response")
+        return response
 
     async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
         """Create a global variable in Langflow via API"""

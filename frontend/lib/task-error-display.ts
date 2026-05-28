@@ -1,65 +1,33 @@
-import type {
-  TaskFailureComponent,
-  TaskFailurePhase,
-  TaskFileEntry,
-} from "@/app/api/queries/useGetTasksQuery";
+// Will update when backend is ready (error_summary, failing_step, component_cause).
 
 export const FILE_ERROR_MAX_LINE_LENGTH = 80;
 
-export type TaskErrorComponentCause =
-  | "OpenSearch"
-  | "Docling"
-  | "Langflow"
-  | "OpenRAG";
+export type TaskErrorComponentCause = "OpenSearch" | "Docling" | "Langflow";
 
-export type TaskPipelineStepId =
-  | "parsing"
-  | "chunking"
-  | "embedding"
-  | "indexing"
-  | "file_validation"
-  | "unknown";
-
-export interface IngestionPipelineStep {
-  id: TaskPipelineStepId;
-  label: string;
-  status: "completed" | "failed";
-}
-
-export interface TaskFileIngestionFailureAnalysis {
-  resolvedError: string;
-  failedStep: TaskPipelineStepId;
-  pipelineSteps: IngestionPipelineStep[];
-  rowStatusLabel: string;
-  failureSummary: string;
-  componentCause?: TaskErrorComponentCause;
-  componentTags: string[];
-  summaryLine: string;
-}
-
-const PIPELINE_STEP_ORDER: TaskPipelineStepId[] = [
-  "parsing",
-  "chunking",
-  "embedding",
-  "indexing",
+const COMPONENT_CAUSES: ReadonlyArray<{
+  keyword: string;
+  label: TaskErrorComponentCause;
+}> = [
+  { keyword: "opensearch", label: "OpenSearch" },
+  { keyword: "docling", label: "Docling" },
+  { keyword: "langflow", label: "Langflow" },
 ];
 
-const PIPELINE_STEP_LABELS: Record<TaskPipelineStepId, string> = {
-  parsing: "Parsing",
-  chunking: "Chunking",
-  embedding: "Embedding",
-  indexing: "Indexing",
-  file_validation: "File validation",
-  unknown: "Ingestion",
-};
+export interface FileTaskErrorDisplay {
+  line: string;
+  componentCause?: TaskErrorComponentCause;
+}
 
-const COMPONENT_LABELS: Record<TaskFailureComponent, TaskErrorComponentCause> =
-  {
-    docling: "Docling",
-    openrag: "OpenRAG",
-    langflow: "Langflow",
-    opensearch: "OpenSearch",
-  };
+function normalizeErrorText(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+function stripNoisePrefixes(text: string): string {
+  return text
+    .replace(/^Error running graph:\s*/i, "")
+    .replace(/^Error building Component [^:]+:\s*/i, "")
+    .trim();
+}
 
 function truncateLine(
   text: string,
@@ -71,105 +39,55 @@ function truncateLine(
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-export function formatApiComponent(
-  component?: TaskFailureComponent,
-): TaskErrorComponentCause | undefined {
-  if (!component) {
-    return undefined;
+/** Prefer a short clause from long, nested error strings. */
+function extractReadableLine(text: string): string {
+  const beforeCausedBy = text.split(/\s+caused by:/i)[0]?.trim() ?? text;
+
+  if (beforeCausedBy.length <= FILE_ERROR_MAX_LINE_LENGTH) {
+    return beforeCausedBy;
   }
-  return COMPONENT_LABELS[component];
+
+  const colonParts = beforeCausedBy.split(":");
+  const lastClause = colonParts[colonParts.length - 1]?.trim();
+  if (
+    lastClause &&
+    lastClause.length >= 10 &&
+    lastClause.length <= FILE_ERROR_MAX_LINE_LENGTH
+  ) {
+    return lastClause;
+  }
+
+  return beforeCausedBy;
 }
 
-export function normalizeFailurePhase(
-  phase?: string,
-): TaskPipelineStepId | undefined {
-  if (!phase) {
-    return undefined;
-  }
-  if (phase in PIPELINE_STEP_LABELS) {
-    return phase as TaskPipelineStepId;
+export function detectComponentCause(
+  raw: string,
+): TaskErrorComponentCause | undefined {
+  const lower = raw.toLowerCase();
+  for (const { keyword, label } of COMPONENT_CAUSES) {
+    if (lower.includes(keyword)) {
+      return label;
+    }
   }
   return undefined;
 }
 
-export function buildRowStatusLabel(failedStep: TaskPipelineStepId): string {
-  if (failedStep === "file_validation") {
-    return "File validation issue";
-  }
-  if (failedStep === "unknown") {
-    return "Failed";
-  }
-  return `${PIPELINE_STEP_LABELS[failedStep]} issue`;
-}
-
-export function buildFailureSummary(failedStep: TaskPipelineStepId): string {
-  return `Failed at ${PIPELINE_STEP_LABELS[failedStep].toLowerCase()}`;
-}
-
-export function buildPipelineStepsFromFailurePhase(
-  failurePhase: TaskPipelineStepId,
-): IngestionPipelineStep[] {
-  if (failurePhase === "file_validation" || failurePhase === "unknown") {
-    return [
-      {
-        id: failurePhase,
-        label: PIPELINE_STEP_LABELS[failurePhase],
-        status: "failed",
-      },
-    ];
+export function displayFileTaskError(
+  raw: string | undefined | null,
+): FileTaskErrorDisplay {
+  if (!raw?.trim()) {
+    return { line: "Unknown error" };
   }
 
-  const failedIndex = PIPELINE_STEP_ORDER.indexOf(failurePhase);
-  if (failedIndex < 0) {
-    return [
-      { id: "unknown", label: PIPELINE_STEP_LABELS.unknown, status: "failed" },
-    ];
+  const normalized = normalizeErrorText(raw);
+  const componentCause = detectComponentCause(normalized);
+
+  let line = stripNoisePrefixes(normalized);
+  line = truncateLine(extractReadableLine(line));
+
+  if (!line) {
+    line = "Unknown error";
   }
 
-  return PIPELINE_STEP_ORDER.slice(0, failedIndex + 1).map((id, index) => ({
-    id,
-    label: PIPELINE_STEP_LABELS[id],
-    status: index < failedIndex ? "completed" : "failed",
-  }));
-}
-
-export function resolveTaskFileError(
-  fileInfo: TaskFileEntry,
-  taskError?: string,
-): string {
-  if (typeof fileInfo.user_facing_message === "string") {
-    const message = fileInfo.user_facing_message.trim();
-    if (message) {
-      return message;
-    }
-  }
-  if (typeof fileInfo.error === "string" && fileInfo.error.trim()) {
-    return fileInfo.error.trim();
-  }
-  if (typeof taskError === "string" && taskError.trim()) {
-    return taskError.trim();
-  }
-  return "Unknown error";
-}
-
-export function analyzeTaskFileIngestionFailure(
-  fileInfo: TaskFileEntry,
-  taskError?: string,
-): TaskFileIngestionFailureAnalysis {
-  const resolvedError = resolveTaskFileError(fileInfo, taskError);
-  const failedStep = normalizeFailurePhase(fileInfo.failure_phase) ?? "unknown";
-  const pipelineSteps = buildPipelineStepsFromFailurePhase(failedStep);
-  const componentCause = formatApiComponent(fileInfo.component);
-  const componentTags = componentCause ? [componentCause] : [];
-
-  return {
-    resolvedError,
-    failedStep,
-    pipelineSteps,
-    rowStatusLabel: buildRowStatusLabel(failedStep),
-    failureSummary: buildFailureSummary(failedStep),
-    componentCause,
-    componentTags,
-    summaryLine: truncateLine(resolvedError),
-  };
+  return componentCause ? { line, componentCause } : { line };
 }

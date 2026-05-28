@@ -13,15 +13,15 @@ interface DeleteDocumentResponse {
   message: string;
 }
 
-export async function deleteDocumentByFilename(
-  filename: string,
-): Promise<DeleteDocumentResponse> {
+const deleteDocument = async (
+  data: DeleteDocumentRequest,
+): Promise<DeleteDocumentResponse> => {
   const response = await fetch("/api/documents/delete-by-filename", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ filename } satisfies DeleteDocumentRequest),
+    body: JSON.stringify(data),
   });
 
   if (!response.ok) {
@@ -30,14 +30,13 @@ export async function deleteDocumentByFilename(
   }
 
   return response.json();
-}
+};
 
 export const useDeleteDocument = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ filename }: DeleteDocumentRequest) =>
-      deleteDocumentByFilename(filename),
+    mutationFn: deleteDocument,
     onSettled: () => {
       // Invalidate and refetch search queries to update the UI
       setTimeout(() => {
