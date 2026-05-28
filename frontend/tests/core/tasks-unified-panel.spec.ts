@@ -62,14 +62,49 @@ const buildTask = (
   };
 };
 
+const TASK_LIST_PATH = /\/api\/tasks\/enhanced\/?$/;
+const TASK_DETAIL_PATH = /\/api\/tasks\/([^/]+)\/enhanced\/?$/;
+
 const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
   let currentTasks = initialTasks;
-  await page.route("**/api/tasks", async (route: Route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: currentTasks }),
-    });
+  await page.route("**/api/tasks**", async (route: Route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+
+    const pathname = new URL(route.request().url()).pathname;
+
+    if (TASK_LIST_PATH.test(pathname)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: currentTasks }),
+      });
+      return;
+    }
+
+    const detailMatch = pathname.match(TASK_DETAIL_PATH);
+    if (detailMatch) {
+      const taskId = detailMatch[1];
+      const task = currentTasks.find((entry) => entry.task_id === taskId);
+      if (!task) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Task not found" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(task),
+      });
+      return;
+    }
+
+    await route.continue();
   });
 
   return (nextTasks: MockTask[]) => {
