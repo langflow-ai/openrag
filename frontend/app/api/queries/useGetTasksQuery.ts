@@ -4,25 +4,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-/** Component that failed, from GET /tasks/enhanced file metadata. */
-export type TaskFailureComponent =
-  | "docling"
-  | "openrag"
-  | "langflow"
-  | "opensearch";
-
-/** Pipeline or validation step where failure occurred. */
-export type TaskFailurePhase =
-  | "parsing"
-  | "chunking"
-  | "embedding"
-  | "indexing"
-  | "file_validation"
-  | "unknown";
-
-/** Who can resolve the failure (enhanced API). */
-export type TaskActionableBy = "USER_ACTIONABLE" | "RETRYABLE";
-
 export interface TaskFileEntry {
   status?:
     | "pending"
@@ -40,14 +21,7 @@ export interface TaskFileEntry {
   filename?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
-  phase?: "docling" | "langflow" | "complete" | string;
-  docling_status?: string;
-  docling_task_id?: string;
-  /** Present on failed files when the enhanced API can classify the failure. */
-  component?: TaskFailureComponent;
-  failure_phase?: TaskFailurePhase;
-  user_facing_message?: string;
-  actionable_by?: TaskActionableBy;
+  [key: string]: unknown;
 }
 
 export interface Task {
@@ -77,15 +51,13 @@ export interface TasksResponse {
   tasks: Task[];
 }
 
-export const TASKS_QUERY_KEY = ["tasks", "enhanced"] as const;
-
 export const useGetTasksQuery = (
   options?: Omit<UseQueryOptions<Task[]>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
 
   async function getTasks(): Promise<Task[]> {
-    const response = await fetch("/api/tasks/enhanced");
+    const response = await fetch("/api/tasks");
 
     if (!response.ok) {
       throw new Error("Failed to fetch tasks");
@@ -97,12 +69,13 @@ export const useGetTasksQuery = (
 
   const queryResult = useQuery(
     {
-      queryKey: [...TASKS_QUERY_KEY],
+      queryKey: ["tasks"],
       queryFn: getTasks,
       refetchInterval: (query) => {
+        // Only poll if there are tasks with pending or running status
         const data = query.state.data;
         if (!data || data.length === 0) {
-          return false;
+          return false; // Stop polling if no tasks
         }
 
         const hasActiveTasks = data.some(
@@ -112,11 +85,11 @@ export const useGetTasksQuery = (
             task.status === "processing",
         );
 
-        return hasActiveTasks ? 3000 : false;
+        return hasActiveTasks ? 3000 : false; // Poll every 3 seconds if active tasks exist
       },
       refetchIntervalInBackground: true,
-      staleTime: 0,
-      gcTime: 5 * 60 * 1000,
+      staleTime: 0, // Always consider data stale to ensure fresh updates
+      gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
       ...options,
     },
     queryClient,

@@ -806,9 +806,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                     return
 
                 # Process using Langflow pipeline
-                from models.tasks import IngestionPhase
-
-                file_task.phase = IngestionPhase.LANGFLOW
                 result = await self.langflow_connector_service.process_connector_document(
                     document,
                     self.user_id,

@@ -31,17 +31,6 @@
     --placeholder-foreground: 240 5% 65%;
 
     /* App-level UI tokens (safe defaults, override per brand/theme) */
-    --canvas: 0 0% 100%;
-    --border-subtle-background-contextual: var(--border);
-    /* Task dialog layout (file row indent = px + checkbox + gaps + chevron) */
-    --task-dialog-width: 40rem;
-    --task-dialog-max-height: 90vh;
-    --task-dialog-file-type-width: 10rem;
-    --task-dialog-error-indent: 4.5rem;
-    --task-dialog-error-indent-cloud: 4.75rem;
-    --task-dialog-oss-bg: var(--background);
-    --task-dialog-oss-selected: var(--muted);
-    --z-task-dialog-menu: 100;
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));
@@ -129,10 +118,6 @@
     --placeholder-foreground: 240 4% 46%;
 
     /* App-level UI tokens (safe defaults, override per brand/theme) */
-    --canvas: 0 0% 3.9%; /* #0A0A0A */
-    --border-subtle-background-contextual: var(--border);
-    --task-dialog-oss-bg: 0 0% 9.02%; /* #171717 */
-    --task-dialog-oss-selected: 0 0% 13.73%; /* #232323 */
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));
@@ -251,7 +236,6 @@
     --layered-select-bg: rgba(131, 131, 131, 0.24);
     --chat-input-border: #f4f4f4;
     --icon-disabled: #525252;
-    --border-subtle-background-contextual: 0 0% 82%;
     /* Contextual layer (~Gray 100); use hsl(var(--layer-contextual)) */
     /* Layer / contextual surfaces (IBM Gray 10 light, Gray 100 dark) */
     --layer-contextual: 0 0% 96%;
@@ -352,7 +336,6 @@
     --icon-primary: 0 0% 96%; /* #f4f4f4*/
     --placeholder: 0 0% 44%; /* #6F6F6F */
 
-    --border-subtle-background-contextual: 0 0% 22.4%; /* #393939 */
     --layer-contextual: 0 0% 15%;
     --layer-contextual-foreground: 0 0% 96%;
     --text-text-01: 0 0% 96%;
