@@ -46,7 +46,7 @@ class SettingsResponse(BaseModel):
 
 async def get_settings_endpoint(
     user: User = Depends(get_api_key_user_async),
-) -> SettingsResponse | JSONResponse:
+) -> SettingsResponse:
     """Get current OpenRAG configuration (read-only). GET /v1/settings"""
     try:
         config = get_openrag_config()
