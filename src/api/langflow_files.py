@@ -1,43 +1,43 @@
 import json
 import os
 import tempfile
-from typing import List, Optional
 
 from fastapi import Depends, File, Form, UploadFile
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from dependencies import (
+    get_current_user,
     get_langflow_file_service,
+    get_optional_user,
     get_session_manager,
     get_task_service,
-    get_current_user,
-    get_optional_user,
 )
 from session_manager import User
+from utils.file_utils import langflow_safe_filename_and_mimetype
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class RunIngestionBody(BaseModel):
-    file_paths: List[str] = []
-    file_ids: Optional[List[str]] = None
-    file_metadata: Optional[List[dict]] = None
-    session_id: Optional[str] = None
-    tweaks: Optional[dict] = None
-    settings: Optional[dict] = None
+    file_paths: list[str] = []
+    file_ids: list[str] | None = None
+    file_metadata: list[dict] | None = None
+    session_id: str | None = None
+    tweaks: dict | None = None
+    settings: dict | None = None
 
 
 class DeleteFilesBody(BaseModel):
-    file_ids: List[str]
+    file_ids: list[str]
 
 
 async def upload_user_file(
     file: UploadFile = File(...),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Upload a file to Langflow's Files API"""
     try:
@@ -45,11 +45,11 @@ async def upload_user_file(
         logger.debug("Processing file", filename=file.filename, size=file.size)
 
         content = await file.read()
-        file_tuple = (
-            file.filename,
-            content,
-            file.content_type or "application/octet-stream",
+        # Langflow's docling chokes on text/plain — rename .txt -> .md.
+        upload_filename, upload_mimetype = langflow_safe_filename_and_mimetype(
+            file.filename, file.content_type
         )
+        file_tuple = (upload_filename, content, upload_mimetype)
 
         jwt_token = user.jwt_token if user else session_manager.get_effective_jwt_token(None, None)
 
@@ -60,6 +60,7 @@ async def upload_user_file(
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
+
         logger.error("Full traceback", traceback=traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -111,6 +112,7 @@ async def run_ingestion(
 
     if jwt_token:
         from auth_context import set_auth_context
+
         set_auth_context(user.user_id, jwt_token)
 
     try:
@@ -132,9 +134,9 @@ async def run_ingestion(
 
 async def upload_and_ingest_user_file(
     file: UploadFile = File(...),
-    session_id: Optional[str] = Form(None),
-    settings_json: Optional[str] = Form(None, alias="settings"),
-    tweaks_json: Optional[str] = Form(None, alias="tweaks"),
+    session_id: str | None = Form(None),
+    settings_json: str | None = Form(None, alias="settings"),
+    tweaks_json: str | None = Form(None, alias="tweaks"),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
@@ -191,6 +193,7 @@ async def upload_and_ingest_user_file(
             )
         except Exception:
             from utils.file_utils import safe_unlink
+
             safe_unlink(temp_path)
             raise
 

@@ -7,15 +7,8 @@ import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import ModelProviders from "../_components/model-providers";
-import { UsersAndRolesSection } from "../_components/users-and-roles-section";
 
-const VALID_TABS = [
-  "connectors",
-  "providers",
-  "langflow",
-  "api-keys",
-  "roles",
-] as const;
+const VALID_TABS = ["connectors", "providers", "langflow", "api-keys"] as const;
 
 type Tab = (typeof VALID_TABS)[number];
 
@@ -38,8 +31,6 @@ async function getTabAuthContext() {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
     isAuthenticated: Boolean(authData.authenticated),
-    rbacEnforced:
-      typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true,
     permissions: new Set<string>(
       Array.isArray(meData.permissions) ? meData.permissions : [],
     ),
@@ -57,21 +48,10 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
 
-  const {
-    isNoAuthMode,
-    isIbmAuthMode,
-    isAuthenticated,
-    rbacEnforced,
-    permissions,
-  } = await getTabAuthContext();
+  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
+    await getTabAuthContext();
 
   // Mirror the visibility logic from settings-nav.tsx
-  if (
-    tab === "roles" &&
-    (!rbacEnforced || (!isNoAuthMode && !permissions.has("users:list")))
-  ) {
-    redirect("/settings/connectors");
-  }
   if (
     tab === "api-keys" &&
     (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
@@ -126,7 +106,6 @@ export default async function SettingsTabPage({
         </div>
       )}
       {tab === "api-keys" && <ApiKeysSection />}
-      {tab === "roles" && <UsersAndRolesSection />}
     </HydrationBoundary>
   );
 }

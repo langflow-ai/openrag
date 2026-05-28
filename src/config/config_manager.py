@@ -305,10 +305,10 @@ class ConfigManager:
             config_data["knowledge"]["picture_descriptions"] = os.getenv(
                 "PICTURE_DESCRIPTIONS_ENABLED"
             ).lower() in ("true", "1", "yes")
-        # Import the constant from settings rather than reading environment directly
-        from config.settings import DISABLE_INGEST_WITH_LANGFLOW
-
-        config_data["knowledge"]["disable_ingest_with_langflow"] = DISABLE_INGEST_WITH_LANGFLOW
+        if os.getenv("DISABLE_INGEST_WITH_LANGFLOW") is not None:
+            config_data["knowledge"]["disable_ingest_with_langflow"] = os.getenv(
+                "DISABLE_INGEST_WITH_LANGFLOW", "false"
+            ).lower() in ("true", "1", "yes")
 
         # Agent settings
         if os.getenv("LLM_MODEL"):

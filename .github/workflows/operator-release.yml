@@ -60,6 +60,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}-${{ matrix.arch }}
+          build-args: |
+            TARGETOS=linux
+            TARGETARCH=${{ matrix.arch }}
           cache-from: type=gha,scope=operator-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=operator-${{ matrix.arch }}
 

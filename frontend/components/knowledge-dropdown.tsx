@@ -142,7 +142,7 @@ export function KnowledgeDropdown() {
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
     allFiles: File[];
     nonDuplicateFiles: File[];
-    duplicateCount: number;
+    duplicateNames: string[];
     unsupportedCount: number;
   } | null>(null);
   const isFolderOverwriteConfirmedRef = useRef(false);
@@ -382,13 +382,13 @@ export function KnowledgeDropdown() {
   const handleOverwriteFile = async () => {
     if (pendingFolderUpload) {
       isFolderOverwriteConfirmedRef.current = true;
-      const { allFiles, duplicateCount, unsupportedCount } =
+      const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
       await uploadFolderBatches(allFiles, true);
       const unsupportedMessage =
         unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
       toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateCount} overwrite(s)${unsupportedMessage}`,
+        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
       );
       resetDuplicateDialogState();
       return;
@@ -427,13 +427,13 @@ export function KnowledgeDropdown() {
       if (isFolderOverwriteConfirmedRef.current) {
         isFolderOverwriteConfirmedRef.current = false;
       } else {
-        const { nonDuplicateFiles, duplicateCount, unsupportedCount } =
+        const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
           await uploadFolderBatches(nonDuplicateFiles, false);
           const extraParts: string[] = [];
-          if (duplicateCount > 0) {
-            extraParts.push(`skipped ${duplicateCount} duplicate(s)`);
+          if (duplicateNames.length > 0) {
+            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
           }
           if (unsupportedCount > 0) {
             extraParts.push(`skipped ${unsupportedCount} unsupported`);
@@ -515,9 +515,10 @@ export function KnowledgeDropdown() {
       const nonDuplicateFiles = duplicateResults
         .filter((r) => !r.isDuplicate)
         .map((r) => r.file);
-      const duplicateCount = duplicateResults.filter(
-        (r) => r.isDuplicate,
-      ).length;
+      const duplicateNames = duplicateResults
+        .filter((r) => r.isDuplicate)
+        .map((r) => r.file.name);
+      const duplicateCount = duplicateNames.length;
 
       if (unsupportedCount > 0) {
         toast.error(
@@ -536,7 +537,7 @@ export function KnowledgeDropdown() {
         setPendingFolderUpload({
           allFiles: cleanFiles,
           nonDuplicateFiles,
-          duplicateCount,
+          duplicateNames,
           unsupportedCount,
         });
         setShowDuplicateDialog(true);
@@ -624,8 +625,7 @@ export function KnowledgeDropdown() {
   const cloudConnectorItems = Object.entries(cloudConnectors)
     .filter(([type, info]) => {
       if (!info.available) return false;
-      if (isCloudBrand && (type === "google_drive" || type === "onedrive"))
-        return false;
+      if (isCloudBrand && type === "onedrive") return false;
       return true;
     })
     .map(([type, info]) => ({
@@ -857,7 +857,7 @@ export function KnowledgeDropdown() {
         onOverwrite={handleOverwriteFile}
         isLoading={fileUploading || folderLoading}
         duplicateLabel={duplicateFilename}
-        duplicateCount={pendingFolderUpload?.duplicateCount}
+        duplicateNames={pendingFolderUpload?.duplicateNames}
       />
     </>
   );

@@ -126,13 +126,35 @@ async def delete_chunks_by_document_ids(
     document_ids: list[str],
     opensearch_client,
     index_name: str,
+    field: str = "document_id",
 ) -> int:
-    """Bulk delete OpenSearch chunks by document_id. Returns deleted count."""
+    """Bulk delete OpenSearch chunks by a keyword field. Returns deleted count.
+
+    DLS-safe: enumerate the visible chunk _ids via search, then issue a single
+    delete per primary id. `delete_by_query` is silently no-opped under DLS
+    (returns deleted:N but leaves docs in place — confirmed in the SharePoint
+    rename repro debug log).
+
+    `field` selects which indexed keyword to match against (default: ``document_id``).
+    Pass ``field="connector_file_id"`` to clean up chunks for a deleted connector
+    source file when the connector file ID differs from the content hash stored in
+    ``document_id``.
+    """
     if not document_ids:
         return 0
-    body = {"query": {"terms": {"document_id": document_ids}}}
-    res = await opensearch_client.delete_by_query(index=index_name, body=body, conflicts="proceed")
-    return res.get("deleted", 0)
+    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+    chunk_ids = await collect_visible_document_ids(
+        opensearch_client,
+        index=index_name,
+        query={"terms": {field: document_ids}},
+    )
+    return await delete_document_ids(
+        opensearch_client,
+        index=index_name,
+        document_ids=chunk_ids,
+        refresh=True,
+    )
 
 
 async def _ensure_index_exists(jwt_token: str = None):

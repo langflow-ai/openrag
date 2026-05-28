@@ -70,6 +70,49 @@ PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
+
+# ── JWT roles claim ─────────────────────────────────────────────
+# These are exposed as functions (not module constants) so they are read
+# per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
+# tests drive them via monkeypatch.setenv. This mirrors is_rbac_enforced(),
+# which reads OPENRAG_RBAC_ENFORCE the same way.
+
+
+def get_jwt_roles_claim() -> str:
+    """Name of the JWT claim that carries the user's OpenRAG roles.
+
+    The claim's value MUST be a JSON array of strings; anything else is
+    treated as no roles and rejected (HTTP 401) when JWT-role sync is active.
+    """
+    return os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+
+
+# Mapping from OpenRAG built-in role -> JWT claim value. When the JWT roles
+# claim contains the returned value, the user is granted that OpenRAG role.
+# A None return (viewer, unset by default) means the OpenRAG role cannot be
+# assigned via JWT (e.g. when the IdP only ships 3 roles).
+def get_role_claim_admin() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
+
+
+def get_role_claim_developer() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
+
+
+def get_role_claim_user() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
+
+
+def get_role_claim_viewer() -> str | None:
+    return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+
+
+def get_jwt_auth_header() -> str:
+    """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
+    callers. Read per-call so tests can override via monkeypatch.setenv."""
+    return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+
+
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
@@ -140,6 +183,15 @@ RBAC_CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory").lower()
 # TTL (seconds) for cached RBAC permission lookups. Stale permissions can
 # linger for up to this many seconds after a role mutation.
 RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("OPENRAG_PERM_CACHE_TTL", 60)
+
+# TTL (seconds) for the in-process JWT claims cache. A cached entry is also
+# checked against the token's own `exp` claim on every hit, so a revoked token
+# can linger at most min(this value, token_remaining_lifetime) seconds.
+JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
+
+# Maximum number of distinct tokens kept in the JWT claims cache.
+# Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
+JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
 
 # Docling service URL configuration
 # Priority:
@@ -263,6 +315,7 @@ INDEX_BODY = {
             "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
+            "connector_file_id": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},

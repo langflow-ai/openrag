@@ -17,7 +17,7 @@ import type {
   FunctionCall,
   TokenUsage as TokenUsageType,
 } from "../_types/types";
-import { FunctionCalls } from "./function-calls";
+import { FunctionCallsContainer } from "./function-calls";
 import { Message } from "./message";
 import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
@@ -124,11 +124,12 @@ export function AssistantMessage({
           ) : undefined
         }
       >
-        <FunctionCalls
+        <FunctionCallsContainer
           functionCalls={functionCalls}
           messageIndex={messageIndex}
           expandedFunctionCalls={expandedFunctionCalls}
           onToggle={onToggle}
+          isStreaming={isStreaming}
         />
         <div className="relative">
           {/* Slide animation for initial greeting */}

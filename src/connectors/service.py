@@ -14,14 +14,16 @@ class ConnectorService:
 
     def __init__(
         self,
-        patched_async_client,
-        embed_model: str,
-        index_name: str,
+        patched_async_client=None,
+        embed_model: str = "",
+        index_name: str = "",
         task_service=None,
         session_manager=None,
         models_service=None,
         document_service=None,
         docling_service=None,
+        flows_service=None,
+        langflow_service=None,
     ):
         self.clients = patched_async_client
         self.embed_model = embed_model
@@ -32,6 +34,8 @@ class ConnectorService:
         self.models_service = models_service
         self.document_service = document_service
         self.docling_service = docling_service
+        self.flows_service = flows_service
+        self.langflow_service = langflow_service
 
     async def initialize(self):
         """Initialize the service by loading existing connections"""
@@ -51,108 +55,124 @@ class ConnectorService:
         owner_email: str = None,
         ingest_settings: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Process a document from a connector using existing processing pipeline"""
+        """Process a document from a connector using active processing pipeline"""
 
-        # Create temporary file from document content
-        from utils.file_utils import auto_cleanup_tempfile
+        from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 
-        with auto_cleanup_tempfile(suffix=get_file_extension(document.mimetype)) as tmp_path:
-            # Write document content to temp file
-            with open(tmp_path, "wb") as f:
-                f.write(document.content)
+        if not DISABLE_INGEST_WITH_LANGFLOW and self.langflow_service is not None:
+            # Process via Langflow pipeline
+            from utils.file_utils import langflow_safe_filename_and_mimetype
 
-            logger.info(
-                "[CONNECTOR] Processing document",
-                document_id=document.id,
-                connector_type=connector_type,
-                filename=document.filename,
+            langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
+                document.filename, document.mimetype
             )
+            file_tuple = (langflow_filename, document.content, processed_mimetype)
 
-            # Delete existing chunks for this file before re-ingesting
-            # This prevents duplicate chunks when syncing files
-            if self.session_manager:
+            allowed_users = []
+            allowed_groups = []
+            if document.acl:
                 try:
-                    from config.settings import get_index_name
+                    allowed_users = document.acl.allowed_users or []
+                    allowed_groups = document.acl.allowed_groups or []
+                except AttributeError:
+                    pass
 
-                    opensearch_client = self.session_manager.get_user_opensearch_client(
-                        owner_user_id, jwt_token
-                    )
-                    delete_body = {"query": {"term": {"document_id": document.id}}}
-                    delete_result = await opensearch_client.delete_by_query(
-                        index=get_index_name(), body=delete_body
-                    )
-                    deleted_count = delete_result.get("deleted", 0)
-                    logger.info(
-                        "Deleted existing chunks before re-ingestion",
-                        document_id=document.id,
-                        deleted_count=deleted_count,
-                    )
-                    # Refresh index to make deletion visible before processing
-                    await opensearch_client.indices.refresh(index=get_index_name())
-                except Exception as delete_err:
-                    logger.warning(
-                        "Failed to delete existing chunks before re-ingestion",
-                        document_id=document.id,
-                        error=str(delete_err),
-                    )
+            connector_tweak_settings = None
+            if isinstance(ingest_settings, dict):
+                connector_tweak_settings = dict(ingest_settings)
+                connector_tweak_settings.pop("embeddingModel", None)
 
-            # Process using consolidated processing pipeline
-            from models.processors import TaskProcessor
-
-            processor = TaskProcessor(
-                document_service=self.document_service,
-                models_service=self.models_service,
-                docling_service=self.docling_service,
+            tweaks = self.langflow_service.merge_ui_ingest_settings_into_tweaks(
+                {}, connector_tweak_settings
             )
 
-            standard_kwargs: dict[str, Any] = {}
-            if isinstance(ingest_settings, dict):
-                em = ingest_settings.get("embeddingModel")
-                if isinstance(em, str) and em.strip():
-                    standard_kwargs["embedding_model"] = em.strip()
-                for ui_key, param in (
-                    ("chunkSize", "chunk_size"),
-                    ("chunkOverlap", "chunk_overlap"),
-                ):
-                    raw = ingest_settings.get(ui_key)
-                    if raw is not None:
-                        try:
-                            standard_kwargs[param] = int(raw)
-                        except (TypeError, ValueError):
-                            pass
-
-            result = await processor.process_document_standard(
-                file_path=tmp_path,
-                file_hash=document.id,  # Use connector document ID as hash
-                owner_user_id=owner_user_id,
-                original_filename=document.filename,  # Pass the original Google Doc title
+            result = await self.langflow_service.upload_and_ingest_file(
+                file_tuple=file_tuple,
+                session_id=None,
+                tweaks=tweaks,
+                settings=ingest_settings,
                 jwt_token=jwt_token,
+                owner=owner_user_id,
                 owner_name=owner_name,
                 owner_email=owner_email,
-                file_size=len(document.content) if document.content else 0,
                 connector_type=connector_type,
-                acl=document.acl,
-                **standard_kwargs,
-            )
-
-            logger.info(
-                "[CONNECTOR] Document processed",
+                docling_polling_service=self.task_service.docling_polling_service
+                if self.task_service
+                else None,
                 document_id=document.id,
-                status=result.get("status"),
+                source_url=document.source_url,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
             )
-
-            # If successfully indexed or already exists, update the indexed documents with connector metadata
-            if result["status"] in ["indexed", "unchanged"]:
-                # Update all chunks with connector-specific metadata
-                await self._update_connector_metadata(
-                    document, owner_user_id, connector_type, jwt_token
-                )
-
             return {
-                **result,
+                "status": "indexed",
                 "filename": document.filename,
                 "source_url": document.source_url,
+                "document_id": document.id,
+                "connector_type": connector_type,
+                "langflow_result": result,
             }
+        else:
+            # Create temporary file from document content
+            import os
+
+            from utils.file_utils import auto_cleanup_tempfile
+
+            suffix = os.path.splitext(document.filename)[1]
+            if not suffix:
+                suffix = get_file_extension(document.mimetype)
+
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
+                # Write document content to temp file
+                with open(tmp_path, "wb") as f:
+                    f.write(document.content)
+
+                logger.info(
+                    "[CONNECTOR] Processing document",
+                    document_id=document.id,
+                    connector_type=connector_type,
+                    filename=document.filename,
+                )
+
+                # Process using consolidated processing pipeline
+                from models.processors import TaskProcessor
+
+                processor = TaskProcessor(
+                    document_service=self.document_service,
+                    models_service=self.models_service,
+                    docling_service=self.docling_service,
+                )
+                result = await processor.process_document_standard(
+                    file_path=tmp_path,
+                    file_hash=document.id,  # Use connector document ID as hash
+                    owner_user_id=owner_user_id,
+                    original_filename=document.filename,  # Pass the original Google Doc title
+                    jwt_token=jwt_token,
+                    owner_name=owner_name,
+                    owner_email=owner_email,
+                    file_size=len(document.content) if document.content else 0,
+                    connector_type=connector_type,
+                    acl=document.acl,
+                )
+
+                logger.info(
+                    "[CONNECTOR] Document processed",
+                    document_id=document.id,
+                    status=result.get("status"),
+                )
+
+                # If successfully indexed or already exists, update the indexed documents with connector metadata
+                if result["status"] in ["indexed", "unchanged"]:
+                    # Update all chunks with connector-specific metadata
+                    await self._update_connector_metadata(
+                        document, owner_user_id, connector_type, jwt_token
+                    )
+
+                return {
+                    **result,
+                    "filename": document.filename,
+                    "source_url": document.source_url,
+                }
 
     async def _update_connector_metadata(
         self,
@@ -243,6 +263,7 @@ class ConnectorService:
         max_files: int = None,
         jwt_token: str = None,
         filename_filter: set = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -338,6 +359,7 @@ class ConnectorService:
                 else DocumentService(session_manager=self.session_manager)
             ),
             models_service=self.models_service,
+            replace_duplicates=replace_duplicates,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -365,6 +387,7 @@ class ConnectorService:
         jwt_token: str = None,
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
+        replace_duplicates: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -416,6 +439,7 @@ class ConnectorService:
             original_folder_ids = getattr(connector.cfg, "folder_ids", None)
 
         expanded_file_ids = file_ids  # Default to original IDs
+        expanded_files_info = []
 
         try:
             # Set the file_ids we want to sync in the connector's config
@@ -423,10 +447,15 @@ class ConnectorService:
                 connector.cfg.file_ids = file_ids
                 connector.cfg.folder_ids = None
 
-            # Get the expanded list of file IDs (folders will be expanded to their contents)
-            # This uses the connector's list_files() which calls _iter_selected_items()
-            result = await connector.list_files()
-            expanded_file_ids = [f["id"] for f in result.get("files", [])]
+                # Get the expanded list of file IDs (folders will be expanded to their contents)
+                # This uses the connector's list_files() which calls _iter_selected_items()
+                result = await connector.list_files()
+                expanded_files = result.get("files", [])
+                expanded_file_ids = [f["id"] for f in expanded_files]
+
+                # Save the expanded files info so we can set correct names in the task UI
+                for f in expanded_files:
+                    expanded_files_info.append(f)
 
             if not expanded_file_ids:
                 logger.warning(
@@ -489,14 +518,20 @@ class ConnectorService:
             ),
             models_service=self.models_service,
             ingest_settings=ingest_settings,
+            replace_duplicates=replace_duplicates,
         )
 
         # Create custom task using TaskService
         original_filenames = {}
-        if file_infos:
+
+        # Combine file_infos and expanded_files_info
+        all_infos = (file_infos or []) + expanded_files_info
+        if all_infos:
             original_filenames = {
-                f["id"]: clean_connector_filename(f["name"], f.get("mimeType") or f.get("mimetype"))
-                for f in file_infos
+                f["id"]: clean_connector_filename(
+                    f["name"], f.get("mimeType") or f.get("mimetype", "")
+                )
+                for f in all_infos
                 if "id" in f and "name" in f
             }
 

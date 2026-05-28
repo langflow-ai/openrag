@@ -63,6 +63,7 @@
     --badge-foreground: 0 0% 100%; /* #FFFFFF */
 
     --radius: 0.5rem;
+    --radius-mmd: 13px;
 
     --sidebar-background: 0 0% 98%;
 
@@ -88,6 +89,10 @@
     --failure-message: hsl(var(--foreground));
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: rgba(59, 130, 246, 0.18);
+    --function-call-header-hover: rgba(59, 130, 246, 0.24);
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   .dark {
@@ -156,6 +161,10 @@
     --failure-message: #ffc9c9cc;
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: hsla(219, 30%, 9%, 1);
+    --function-call-header-hover: hsla(219, 30%, 12%, 1);
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   /* IBM Light */
@@ -234,9 +243,17 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --border-border-interactive: #4589ff;
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
+
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-partial-bg: 26 90% 37%; /* #8a3800 */
+    --task-status-partial-fg: 46 100% 90%; /* #fff1c8 */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM: match OSS switch colors — black track when checked, white thumb always */
@@ -324,9 +341,17 @@
     --text-text-01: 0 0% 96%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
+    --border-border-interactive: #4589ff;
 
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
+
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-partial-bg: 22 78% 32%; /* warm orange */
+    --task-status-partial-fg: 46 97% 65%; /* #f1c21b */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
@@ -350,14 +375,30 @@
     letter-spacing: 0;
   }
 
-  [data-theme="ibm"] .ibm-body-compact {
+  /* IBM settings: line-variant tabs — transparent default, blue active/hover */
+  [data-theme="ibm"]
+    .ibm-settings-page
+    [data-slot="tabs-list"][data-variant="line"]
+    [data-slot="tabs-trigger"] {
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    border-bottom-color: transparent;
+    background: transparent;
     color: hsl(var(--text-text-01));
-    font-family: inherit;
-    font-size: 14px !important;
-    font-weight: 400 !important;
-    line-height: 18px !important;
-    font-style: normal;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 18px;
     letter-spacing: 0.16px;
+
+    &:hover {
+      border-bottom-color: var(--border-border-interactive);
+    }
+
+    &[data-state="active"] {
+      border-bottom-color: var(--border-border-interactive);
+      font-weight: 600 !important;
+    }
   }
 
   /* IBM Settings: inline links (Link/link-primary) */
