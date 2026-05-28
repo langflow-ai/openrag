@@ -72,19 +72,40 @@ IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-sess
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 
 # ── JWT roles claim ─────────────────────────────────────────────
-# Name of the JWT claim that carries the user's OpenRAG roles. The claim's
-# value MUST be a JSON array of strings; anything else is treated as no roles
-# and rejected (HTTP 401) when JWT-role sync is active.
-OPENRAG_JWT_ROLES_CLAIM = os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+# These are exposed as functions (not module constants) so they are read
+# per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
+# tests drive them via monkeypatch.setenv. This mirrors is_rbac_enforced(),
+# which reads OPENRAG_RBAC_ENFORCE the same way.
+
+
+def get_jwt_roles_claim() -> str:
+    """Name of the JWT claim that carries the user's OpenRAG roles.
+
+    The claim's value MUST be a JSON array of strings; anything else is
+    treated as no roles and rejected (HTTP 401) when JWT-role sync is active.
+    """
+    return os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+
 
 # Mapping from OpenRAG built-in role -> JWT claim value. When the JWT roles
-# claim contains the right-hand value, the user is granted the OpenRAG role
-# on the left. An unset variable means the corresponding OpenRAG role cannot
-# be assigned via JWT (e.g. viewer when the IdP only ships 3 roles).
-OPENRAG_ROLE_CLAIM_ADMIN = os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
-OPENRAG_ROLE_CLAIM_DEVELOPER = os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
-OPENRAG_ROLE_CLAIM_USER = os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
-OPENRAG_ROLE_CLAIM_VIEWER = os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+# claim contains the returned value, the user is granted that OpenRAG role.
+# A None return (viewer, unset by default) means the OpenRAG role cannot be
+# assigned via JWT (e.g. when the IdP only ships 3 roles).
+def get_role_claim_admin() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
+
+
+def get_role_claim_developer() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
+
+
+def get_role_claim_user() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
+
+
+def get_role_claim_viewer() -> str | None:
+    return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")

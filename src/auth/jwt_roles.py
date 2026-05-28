@@ -4,14 +4,20 @@ Reads the role claim named by `OPENRAG_JWT_ROLES_CLAIM` from a decoded JWT
 and maps each claim value to a built-in OpenRAG role via the
 `OPENRAG_ROLE_CLAIM_*` settings.
 
-Pure helper — no DB access. All env vars are read on each call so test
-overrides (`monkeypatch.setenv`) take effect without process restart.
+Pure helper — no DB access. Config is read through the per-call accessors in
+`config.settings` so test overrides (`monkeypatch.setenv`) take effect without
+a process restart.
 """
 
 from __future__ import annotations
 
-import os
-
+from config.settings import (
+    get_jwt_roles_claim,
+    get_role_claim_admin,
+    get_role_claim_developer,
+    get_role_claim_user,
+    get_role_claim_viewer,
+)
 from services.rbac_service import is_rbac_enforced
 from utils.logging_config import get_logger
 
@@ -25,10 +31,10 @@ def _claim_to_role_map() -> dict[str, list[str]]:
     mappings entirely.
     """
     pairs = (
-        ("admin", os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")),
-        ("developer", os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")),
-        ("user", os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")),
-        ("viewer", os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")),
+        ("admin", get_role_claim_admin()),
+        ("developer", get_role_claim_developer()),
+        ("user", get_role_claim_user()),
+        ("viewer", get_role_claim_viewer()),
     )
     mapping: dict[str, list[str]] = {}
     for openrag_role, claim_value in pairs:
@@ -48,7 +54,7 @@ def extract_jwt_role_names(claims: dict | None) -> list[str]:
     if not claims:
         return []
 
-    claim_name = os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+    claim_name = get_jwt_roles_claim()
     raw = claims.get(claim_name)
     if raw is None:
         return []
