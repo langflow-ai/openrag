@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Check, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import type React from "react";
 import type { OrphanFile } from "@/app/api/mutations/useSyncConnector";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -380,7 +380,11 @@ export const SyncConfirmDialog: React.FC<SyncConfirmDialogProps> = ({
             disabled={busy}
             loading={isSyncing}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            {ctaVariant === "destructive" ? (
+              <Trash2 className="h-3.5 w-3.5" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
             {ctaCopy}
           </Button>
         </DialogFooter>
