@@ -113,6 +113,8 @@ def get_openrag_service_token() -> str | None:
     security context (admin role mapping). Read per-call — like the JWT-claim
     accessors above — so runtime/test overrides take effect without a restart."""
     return os.getenv("OPENRAG_SERVICE_TOKEN")
+
+
 def get_jwt_auth_header() -> str:
     """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
     callers. Read per-call so tests can override via monkeypatch.setenv."""
