@@ -5,15 +5,16 @@ Provides chat functionality with streaming support and conversation history.
 Uses API key authentication. Routes through Langflow (chat_service.langflow_chat).
 """
 import json
-from typing import Optional, Any, Dict
+from typing import Any
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
-from utils.logging_config import get_logger
-from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
-from dependencies import get_chat_service, get_session_manager, get_api_key_user_async
+from pydantic import BaseModel
+
+from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from dependencies import get_chat_service, get_session_manager, require_api_key_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,11 +26,11 @@ def _openrag_user_id(user: User) -> str:
 class ChatV1Body(BaseModel):
     message: str
     stream: bool = False
-    chat_id: Optional[str] = None
-    filters: Optional[Dict[str, Any]] = None
+    chat_id: str | None = None
+    filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
-    filter_id: Optional[str] = None
+    filter_id: str | None = None
 
 
 def _extract_sources(item: dict) -> list[dict]:
@@ -108,7 +109,7 @@ async def chat_create_endpoint(
     body: ChatV1Body,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("chat:use")),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
     message = body.message.strip()
@@ -169,7 +170,7 @@ async def chat_create_endpoint(
 
 async def chat_list_endpoint(
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
@@ -193,7 +194,7 @@ async def chat_list_endpoint(
 async def chat_get_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
@@ -237,7 +238,7 @@ async def chat_get_endpoint(
 async def chat_delete_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:delete:own")),
 ):
     """Delete a conversation. DELETE /v1/chat/{chat_id}"""
     try:

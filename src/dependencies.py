@@ -324,6 +324,40 @@ def require_permission(perm: str):
     return _dep
 
 
+def require_api_key_permission(perm: str):
+    """Like ``require_permission``, but for the /v1 (API-key / forwarded-JWT)
+    surface: resolves identity via ``get_api_key_user_async`` instead of
+    ``get_current_user``.
+
+    ``get_api_key_user_async`` has already attached ``user.db_user_id`` (and, on
+    the forwarded-JWT path, synced the user's roles from the JWT), so the gate
+    only needs to read permissions and compare. When ``OPENRAG_RBAC_ENFORCE`` is
+    off the check is skipped and the authenticated user is returned unchanged —
+    identical kill-switch behavior to ``require_permission``.
+    """
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_api_key_user_async),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            return user
+        db_user_id = user.db_user_id or user.user_id
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        if perm not in perms:
+            await rbac.audit_denied(db_user_id, perm)
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": perm},
+            )
+        return user
+
+    return _dep
+
+
 def require_all_permissions(required_perms: Sequence[str]):
     """FastAPI dependency factory enforcing all listed permissions."""
     required = tuple(required_perms)
