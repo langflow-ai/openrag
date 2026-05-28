@@ -85,3 +85,24 @@ async def test_returns_zero_when_no_visible_chunks_match():
 
     assert deleted == 0
     opensearch_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_chunks_by_remote_ids_targets_remote_id_field():
+    from api.documents import delete_chunks_by_remote_ids
+
+    opensearch_client = AsyncMock()
+    chunk_ids = ["chunk-1"]
+    opensearch_client.search.return_value = {
+        "_scroll_id": None,
+        "hits": {"hits": [{"_id": cid} for cid in chunk_ids]},
+    }
+    opensearch_client.delete.return_value = {"result": "deleted"}
+
+    deleted = await delete_chunks_by_remote_ids(
+        ["remote-a"], opensearch_client, "test-index"
+    )
+
+    assert deleted == 1
+    search_call = opensearch_client.search.await_args
+    assert search_call.kwargs["body"]["query"] == {"terms": {"remote_id": ["remote-a"]}}

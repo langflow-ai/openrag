@@ -92,6 +92,7 @@ class ConnectorService:
                 file_size=len(document.content) if document.content else 0,
                 connector_type=connector_type,
                 acl=document.acl,
+                remote_id=document.id,
             )
 
             logger.info(
@@ -156,6 +157,7 @@ class ConnectorService:
                     "query": {"term": {"document_id": document.id}},
                     "script": {
                         "source": """
+                            ctx._source.remote_id = params.remote_id;
                             ctx._source.source_url = params.source_url;
                             ctx._source.connector_type = params.connector_type;
                             if (params.filename != null) {
@@ -172,6 +174,7 @@ class ConnectorService:
                             }
                         """,
                         "params": {
+                            "remote_id": document.id,
                             "source_url": document.source_url,
                             "connector_type": connector_type,
                             "filename": document.filename,

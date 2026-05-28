@@ -195,6 +195,7 @@ class TaskProcessor:
         chunk_overlap: int = None,
         is_sample_data: bool = False,
         acl: "DocumentACL" = None,
+        remote_id: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -321,10 +322,15 @@ class TaskProcessor:
                 delete_document_ids,
             )
 
+            stale_query = (
+                {"term": {"remote_id": remote_id}}
+                if remote_id
+                else {"term": {"document_id": file_hash}}
+            )
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
                 index=get_index_name(),
-                query={"term": {"document_id": file_hash}},
+                query=stale_query,
             )
             await delete_document_ids(
                 opensearch_client,
@@ -356,6 +362,8 @@ class TaskProcessor:
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat(),
             }
+            if remote_id:
+                chunk_doc["remote_id"] = remote_id
 
             # Set owner and ACL fields
             if acl:
@@ -542,14 +550,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Filename rename (e.g. .txt → .md) is irrelevant here.
                     deleted_chunks = 0
                     try:
-                        from api.documents import delete_chunks_by_document_ids
+                        from api.documents import delete_chunks_by_remote_ids
 
                         opensearch_client = (
                             self.document_service.session_manager.get_user_opensearch_client(
                                 self.user_id, self.jwt_token
                             )
                         )
-                        deleted_chunks = await delete_chunks_by_document_ids(
+                        deleted_chunks = await delete_chunks_by_remote_ids(
                             [file_id], opensearch_client, get_index_name()
                         )
                     except Exception as cleanup_err:
@@ -638,6 +646,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     file_size=len(document.content),
                     connector_type=connection.connector_type,
                     acl=document.acl,
+                    remote_id=document.id,
                     **standard_kwargs,
                 )
 

@@ -73,6 +73,10 @@ async def _ensure_opensearch_index():
         index_name = get_index_name()
         if await clients.opensearch.indices.exists(index=index_name):
             logger.info("[OPENSEARCH] Index already exists", index_name=index_name)
+            from utils.opensearch_remote_id import backfill_remote_id, ensure_remote_id_mapping
+
+            await ensure_remote_id_mapping(clients.opensearch, index_name)
+            await backfill_remote_id(clients.opensearch, index_name)
             return
 
         await clients.opensearch.indices.create(index=index_name, body=INDEX_BODY)
@@ -159,6 +163,11 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             await TelemetryClient.send_event(
                 Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS
             )
+
+        from utils.opensearch_remote_id import backfill_remote_id, ensure_remote_id_mapping
+
+        await ensure_remote_id_mapping(os_client, index_name)
+        await backfill_remote_id(os_client, index_name)
 
         knowledge_filter_index_name = "knowledge_filters"
         knowledge_filter_index_body = {

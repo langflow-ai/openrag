@@ -31,32 +31,30 @@ async def get_synced_file_ids_for_connector(
     jwt_token: str = None,
 ) -> tuple:
     """
-    Query OpenSearch for unique document_id values where connector_type matches.
+    Query OpenSearch for unique remote_id values where connector_type matches.
     Returns tuple of (file_ids, filenames) - use file_ids if available, else filenames as fallback.
 
-    Note: Langflow-ingested files may not have document_id stored. In that case,
-    filenames are returned for filename-based filtering during sync.
+    ``document_id`` on chunks is the content hash for standard ingest; connector source
+    item ids live in ``remote_id``. Legacy rows may lack ``remote_id`` until backfill.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        # Query for both document_id and filename aggregations
         query_body = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
-                "unique_document_ids": {"terms": {"field": "document_id", "size": 10000}},
+                "unique_remote_ids": {"terms": {"field": "remote_id", "size": 10000}},
                 "unique_filenames": {"terms": {"field": "filename", "size": 10000}},
             },
         }
 
         result = await opensearch_client.search(index=get_index_name(), body=query_body)
 
-        # Get document_ids (preferred - these are the actual connector file IDs)
-        doc_id_buckets = (
-            result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+        remote_id_buckets = (
+            result.get("aggregations", {}).get("unique_remote_ids", {}).get("buckets", [])
         )
-        file_ids = [bucket["key"] for bucket in doc_id_buckets if bucket["key"]]
+        file_ids = [bucket["key"] for bucket in remote_id_buckets if bucket["key"]]
 
         # Get filenames as fallback
         filename_buckets = (
@@ -88,9 +86,9 @@ async def get_synced_id_to_filename_map(
     session_manager,
     jwt_token: str | None = None,
 ) -> dict[str, str]:
-    """Return a {document_id: filename} map for files ingested under this connector_type.
+    """Return a {remote_id: filename} map for files ingested under this connector_type.
 
-    Uses a sub-aggregation so each document_id is paired with its top filename in
+    Uses a sub-aggregation so each remote_id is paired with its top filename in
     a single OpenSearch round trip.
     """
     try:
@@ -100,8 +98,8 @@ async def get_synced_id_to_filename_map(
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
-                "by_document_id": {
-                    "terms": {"field": "document_id", "size": 10000},
+                "by_remote_id": {
+                    "terms": {"field": "remote_id", "size": 10000},
                     "aggs": {
                         "top_filename": {"terms": {"field": "filename", "size": 1}},
                     },
@@ -110,7 +108,7 @@ async def get_synced_id_to_filename_map(
         }
 
         result = await opensearch_client.search(index=get_index_name(), body=query_body)
-        buckets = result.get("aggregations", {}).get("by_document_id", {}).get("buckets", [])
+        buckets = result.get("aggregations", {}).get("by_remote_id", {}).get("buckets", [])
 
         mapping: dict[str, str] = {}
         for bucket in buckets:
@@ -234,11 +232,11 @@ async def delete_orphan_documents(
     number of chunks deleted (0 on failure)."""
     if not orphan_ids:
         return 0
-    from .documents import delete_chunks_by_document_ids
+    from .documents import delete_chunks_by_remote_ids
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_chunks_by_document_ids(orphan_ids, opensearch_client, get_index_name())
+        return await delete_chunks_by_remote_ids(orphan_ids, opensearch_client, get_index_name())
     except Exception as e:
         logger.error(
             "Orphan delete failed",

@@ -151,6 +151,29 @@ async def delete_chunks_by_document_ids(
     )
 
 
+async def delete_chunks_by_remote_ids(
+    remote_ids: list[str],
+    opensearch_client,
+    index_name: str,
+) -> int:
+    """Bulk delete OpenSearch chunks by connector ``remote_id``. Returns deleted count."""
+    if not remote_ids:
+        return 0
+    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+    chunk_ids = await collect_visible_document_ids(
+        opensearch_client,
+        index=index_name,
+        query={"terms": {"remote_id": remote_ids}},
+    )
+    return await delete_document_ids(
+        opensearch_client,
+        index=index_name,
+        document_ids=chunk_ids,
+        refresh=True,
+    )
+
+
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
     from config.settings import IBM_AUTH_ENABLED

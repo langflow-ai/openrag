@@ -18,6 +18,7 @@ async def create_index_body() -> dict:
         "mappings": {
             "properties": {
                 "document_id": {"type": "keyword"},
+                "remote_id": {"type": "keyword"},
                 "filename": {"type": "keyword"},
                 "mimetype": {"type": "keyword"},
                 "page": {"type": "integer"},

@@ -86,7 +86,7 @@ export function normalizeFailurePhase(
   if (!phase) {
     return undefined;
   }
-  if (phase in PIPELINE_STEP_LABELS) {
+  if (Object.hasOwn(PIPELINE_STEP_LABELS, phase)) {
     return phase as TaskPipelineStepId;
   }
   return undefined;

@@ -300,6 +300,7 @@ INDEX_BODY = {
     "mappings": {
         "properties": {
             "document_id": {"type": "keyword"},
+            "remote_id": {"type": "keyword"},
             "filename": {"type": "keyword"},
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
