@@ -22,10 +22,12 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 class AgentSettings(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     system_prompt: str | None = None
+
 
 class KnowledgeSettings(BaseModel):
     embedding_provider: str | None = None
@@ -36,9 +38,11 @@ class KnowledgeSettings(BaseModel):
     ocr: bool | None = None
     picture_descriptions: bool | None = None
 
+
 class SettingsResponse(BaseModel):
     agent: AgentSettings
     knowledge: KnowledgeSettings
+
 
 async def get_settings_endpoint(
     user: User = Depends(get_api_key_user_async),
@@ -76,4 +80,6 @@ async def update_settings_endpoint(
     """Update OpenRAG configuration settings. POST /v1/settings"""
     from api.settings import update_settings
 
-    return await update_settings(body=body, session_manager=session_manager, user=user, models_service=models_service)
+    return await update_settings(
+        body=body, session_manager=session_manager, user=user, models_service=models_service
+    )

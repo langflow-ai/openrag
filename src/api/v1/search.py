@@ -4,6 +4,7 @@ Public API v1 Search endpoint.
 Provides semantic search functionality.
 Uses API key authentication.
 """
+
 from typing import Any
 
 from fastapi import Depends

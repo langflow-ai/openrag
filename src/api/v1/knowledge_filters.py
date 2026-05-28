@@ -5,6 +5,7 @@ Provides knowledge filter management.
 Uses API key authentication — delegates to the main api/knowledge_filter.py handlers
 but overrides the user dependency to use API keys.
 """
+
 from fastapi import Depends
 
 from api import knowledge_filter
