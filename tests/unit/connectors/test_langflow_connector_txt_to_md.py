@@ -26,38 +26,19 @@ if str(SRC) not in sys.path:
 
 
 def _make_service():
-    """Build a LangflowConnectorService with the surface
-    process_connector_document touches stubbed:
-    - session_manager (only needed if pre-delete fires; we let it run as
-      a no-op against a mocked OpenSearch client).
-    - langflow_service.upload_user_file / run_ingestion_flow / delete_user_file.
+    """Build a ConnectorService with the surface
+    process_connector_document touches stubbed.
     """
-    from connectors.langflow_connector_service import LangflowConnectorService
+    from connectors.service import ConnectorService
 
-    service = LangflowConnectorService.__new__(LangflowConnectorService)
+    service = ConnectorService.__new__(ConnectorService)
 
-    # OpenSearch mock for the pre-delete step (collect+delete). Empty result
-    # so the pre-delete is a no-op; the test isn't about that path.
-    opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
-    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
-
-    session_manager = MagicMock()
-    session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
-
-    service.session_manager = session_manager
-    service.docling_service = MagicMock()
-    service.connection_manager = MagicMock()
-
-    # Mock Langflow service — the surface we're asserting against is its
-    # upload_user_file (the file_tuple it receives).
+    # Mock Langflow service
     langflow_service = MagicMock()
-    langflow_service.upload_user_file = AsyncMock(
-        return_value={"id": "lf-file-id", "path": "/lf/path/file"}
-    )
-    langflow_service.run_ingestion_flow = AsyncMock(return_value={"status": "ok"})
-    langflow_service.delete_user_file = AsyncMock()
+    langflow_service.upload_and_ingest_file = AsyncMock(return_value={"status": "ok"})
+    langflow_service.merge_ui_ingest_settings_into_tweaks = MagicMock(return_value={})
     service.langflow_service = langflow_service
+    service.task_service = None
 
     return service, langflow_service
 
@@ -81,12 +62,10 @@ def _make_document(filename: str, mimetype: str, content: bytes = b"hello world"
 @pytest.mark.asyncio
 async def test_sharepoint_txt_is_uploaded_to_langflow_as_md():
     """A connector document with mimetype text/plain must reach Langflow's
-    upload_user_file with a .md filename and text/markdown mimetype."""
+    upload_and_ingest_file with a .md filename and text/markdown mimetype."""
     service, langflow_service = _make_service()
     document = _make_document(filename="notes.txt", mimetype="text/plain")
 
-    # auto_cleanup_tempfile is a context manager that yields a real path;
-    # let it run normally — it just creates a temp file we won't use.
     await service.process_connector_document(
         document=document,
         owner_user_id="alice",
@@ -94,8 +73,9 @@ async def test_sharepoint_txt_is_uploaded_to_langflow_as_md():
         jwt_token="jwt",
     )
 
-    langflow_service.upload_user_file.assert_awaited_once()
-    (file_tuple, _jwt) = langflow_service.upload_user_file.await_args.args
+    langflow_service.upload_and_ingest_file.assert_awaited_once()
+    kwargs = langflow_service.upload_and_ingest_file.await_args.kwargs
+    file_tuple = kwargs.get("file_tuple")
     filename, content, mimetype = file_tuple
 
     assert filename.endswith(".md"), (
@@ -125,7 +105,9 @@ async def test_sharepoint_pdf_passes_through_untouched():
         jwt_token="jwt",
     )
 
-    (file_tuple, _jwt) = langflow_service.upload_user_file.await_args.args
+    langflow_service.upload_and_ingest_file.assert_awaited_once()
+    kwargs = langflow_service.upload_and_ingest_file.await_args.kwargs
+    file_tuple = kwargs.get("file_tuple")
     filename, _content, mimetype = file_tuple
     assert filename == "report.pdf"
     assert mimetype == "application/pdf"

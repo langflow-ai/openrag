@@ -4,16 +4,18 @@ Public API v1 Chat endpoint.
 Provides chat functionality with streaming support and conversation history.
 Uses API key authentication. Routes through Langflow (chat_service.langflow_chat).
 """
+
 import json
-from typing import Optional, Any, Dict
+from typing import Any
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
-from utils.logging_config import get_logger
-from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
-from dependencies import get_chat_service, get_session_manager, get_api_key_user_async
+from pydantic import BaseModel
+
+from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from dependencies import get_chat_service, get_session_manager, require_api_key_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,11 +27,11 @@ def _openrag_user_id(user: User) -> str:
 class ChatV1Body(BaseModel):
     message: str
     stream: bool = False
-    chat_id: Optional[str] = None
-    filters: Optional[Dict[str, Any]] = None
+    chat_id: str | None = None
+    filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
-    filter_id: Optional[str] = None
+    filter_id: str | None = None
 
 
 def _extract_sources(item: dict) -> list[dict]:
@@ -37,13 +39,15 @@ def _extract_sources(item: dict) -> list[dict]:
     sources = []
     for result in item.get("results", []):
         if isinstance(result, dict) and "text" in result:
-            sources.append({
-                "filename": result.get("filename", ""),
-                "text": result.get("text", ""),
-                "score": result.get("score", 0),
-                "page": result.get("page"),
-                "mimetype": result.get("mimetype"),
-            })
+            sources.append(
+                {
+                    "filename": result.get("filename", ""),
+                    "text": result.get("text", ""),
+                    "score": result.get("score", 0),
+                    "page": result.get("page"),
+                    "mimetype": result.get("mimetype"),
+                }
+            )
     return sources
 
 
@@ -108,7 +112,7 @@ async def chat_create_endpoint(
     body: ChatV1Body,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("chat:use")),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
     message = body.message.strip()
@@ -120,6 +124,7 @@ async def chat_create_endpoint(
     jwt_token = user.jwt_token
     if body.chat_id:
         from api.chat import _assert_owns
+
         await _assert_owns(body.chat_id, storage_user_id)
 
     if body.filters:
@@ -141,11 +146,15 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        chat_id_container = {}
+        chat_id_container: dict[str, str] = {}
         return StreamingResponse(
             _transform_stream_to_sse(raw_stream, chat_id_container),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
     else:
         result = await chat_service.langflow_chat(
@@ -160,16 +169,18 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        return JSONResponse({
-            "response": result.get("response", ""),
-            "chat_id": result.get("response_id"),
-            "sources": result.get("sources", []),
-        })
+        return JSONResponse(
+            {
+                "response": result.get("response", ""),
+                "chat_id": result.get("response_id"),
+                "sources": result.get("sources", []),
+            }
+        )
 
 
 async def chat_list_endpoint(
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
@@ -193,7 +204,7 @@ async def chat_list_endpoint(
 async def chat_get_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:read:own")),
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
@@ -217,31 +228,40 @@ async def chat_get_endpoint(
                 "timestamp": msg.get("timestamp"),
             }
             # Include token usage if available (from Responses API)
-            usage = msg.get("response_data", {}).get("usage") if isinstance(msg.get("response_data"), dict) else None
+            usage = (
+                msg.get("response_data", {}).get("usage")
+                if isinstance(msg.get("response_data"), dict)
+                else None
+            )
             if usage:
                 message_data["usage"] = usage
             messages.append(message_data)
 
-        return JSONResponse({
-            "chat_id": conversation.get("response_id"),
-            "title": conversation.get("title", ""),
-            "created_at": conversation.get("created_at"),
-            "last_activity": conversation.get("last_activity"),
-            "messages": messages,
-        })
+        return JSONResponse(
+            {
+                "chat_id": conversation.get("response_id"),
+                "title": conversation.get("title", ""),
+                "created_at": conversation.get("created_at"),
+                "last_activity": conversation.get("last_activity"),
+                "messages": messages,
+            }
+        )
     except Exception as e:
-        logger.error("Failed to get conversation", error=str(e), user_id=user.user_id, chat_id=chat_id)
+        logger.error(
+            "Failed to get conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
+        )
         return JSONResponse({"error": f"Failed to get conversation: {str(e)}"}, status_code=500)
 
 
 async def chat_delete_endpoint(
     chat_id: str,
     chat_service=Depends(get_chat_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("conversations:delete:own")),
 ):
     """Delete a conversation. DELETE /v1/chat/{chat_id}"""
     try:
         from api.chat import _assert_owns
+
         storage_user_id = _openrag_user_id(user)
         await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.delete_session(storage_user_id, chat_id)
@@ -257,5 +277,7 @@ async def chat_delete_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id)
+        logger.error(
+            "Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
+        )
         return JSONResponse({"error": f"Failed to delete conversation: {str(e)}"}, status_code=500)

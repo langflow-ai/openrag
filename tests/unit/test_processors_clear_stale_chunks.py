@@ -127,7 +127,9 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
 
     async def _search(**kw):
         op_order.append(("search", kw))
-        return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        if "scroll" in kw:
+            return {"_scroll_id": None, "hits": {"hits": [{"_id": cid} for cid in stale_chunk_ids]}}
+        return {"hits": {"hits": []}}
 
     async def _delete(**kw):
         op_order.append(("delete", kw))
