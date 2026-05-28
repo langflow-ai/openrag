@@ -24,6 +24,7 @@ from dependencies import (
     get_api_key_user_async,
     get_knowledge_filter_service,
     get_search_service,
+    require_api_key_permission,
 )
 from session_manager import User
 from utils.logging_config import get_logger

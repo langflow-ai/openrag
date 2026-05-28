@@ -27,6 +27,7 @@ from dependencies import (
     get_chat_service,
     get_knowledge_filter_service,
     get_session_manager,
+    require_api_key_permission,
 )
 from session_manager import User
 from utils.logging_config import get_logger
