@@ -663,8 +663,8 @@ class ConnectorFileProcessor(TaskProcessor):
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
                     # Extract ACL information
-                    allowed_users = []
-                    allowed_groups = []
+                    allowed_users: list[str] = []
+                    allowed_groups: list[str] = []
                     if document.acl:
                         try:
                             allowed_users = document.acl.allowed_users or []
