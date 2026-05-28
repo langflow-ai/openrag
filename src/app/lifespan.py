@@ -15,12 +15,12 @@ from config.settings import (
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
     OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
-    PLATFORM_SERVICE_JWT,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
     clients,
     get_openrag_config,
+    get_openrag_service_token,
 )
 from services.startup_orchestrator import startup_tasks
 from utils.logging_config import get_logger
@@ -207,22 +207,23 @@ async def run_startup(app: FastAPI):
     # talks to OpenSearch. The corresponding call inside startup_tasks
     # is suppressed when this flag is on.
     if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
-        if not PLATFORM_SERVICE_JWT:
+        service_token = get_openrag_service_token()
+        if not service_token:
             raise RuntimeError(
                 "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
-                "PLATFORM_SERVICE_JWT is not set"
+                "OPENRAG_SERVICE_TOKEN is not set"
             )
         from auth.ibm_auth import admin_username_from_service_jwt
         from utils.opensearch_init import wait_for_opensearch
         from utils.opensearch_utils import setup_opensearch_security
 
-        admin_username = admin_username_from_service_jwt(PLATFORM_SERVICE_JWT)
+        admin_username = admin_username_from_service_jwt(service_token)
         if not admin_username:
             raise RuntimeError(
-                "PLATFORM_SERVICE_JWT has no 'username' or 'sub' claim; "
+                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
                 "cannot bootstrap OpenSearch security"
             )
-        opensearch_client = clients.create_opensearch_client_from_jwt(PLATFORM_SERVICE_JWT)
+        opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
         try:
             await wait_for_opensearch(opensearch_client)
             logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)

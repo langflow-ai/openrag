@@ -71,7 +71,7 @@ async def startup_tasks(services):
         # Skip entirely when the platform manages the security context externally
         # (SaaS / CPD): the call would otherwise either fail with 403/401 or
         # overwrite a curated config. Also skip when the lifespan-level
-        # bootstrap (driven by PLATFORM_SERVICE_JWT) has already handled it.
+        # bootstrap (driven by OPENRAG_SERVICE_TOKEN) has already handled it.
         if OPENRAG_SKIP_OS_SECURITY_SETUP:
             logger.info(
                 "Skipping OpenSearch security setup at startup "

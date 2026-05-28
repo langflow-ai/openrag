@@ -12,7 +12,6 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
-from config.utils import _read_k8s_sa_token, get_opensearch_service_token
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int
@@ -68,25 +67,7 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
 PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
-# Platform-issued service JWT. When present and
-# OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is on, lifespan decodes this
-# token to derive the admin username used to bootstrap the OpenSearch
-# security context (roles + all_access mapping).
-# Falls back to the pod's Kubernetes service account token when running
-# inside a cluster and no explicit JWT is injected.
-_DEFAULT_K8S_SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-K8S_SA_TOKEN_PATH = os.getenv("K8S_SA_TOKEN_PATH", _DEFAULT_K8S_SA_TOKEN_PATH)
-AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
-
-
-K8S_SA_TOKEN = _read_k8s_sa_token(K8S_SA_TOKEN_PATH)
 OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
-OPENRAG_SERVICE_TOKEN = get_opensearch_service_token(
-    AUTH_SERVER_URL, OPENRAG_TENANT_ID, K8S_SA_TOKEN_PATH
-)
-
-
-PLATFORM_SERVICE_JWT = OPENRAG_SERVICE_TOKEN or os.getenv("PLATFORM_SERVICE_JWT")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
@@ -127,6 +108,13 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def get_openrag_service_token() -> str | None:
+    """Platform-issued service JWT used at startup to bootstrap the OpenSearch
+    security context (admin role mapping). Read per-call — like the JWT-claim
+    accessors above — so runtime/test overrides take effect without a restart."""
+    return os.getenv("OPENRAG_SERVICE_TOKEN")
+
+
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
@@ -164,7 +152,7 @@ OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
 ).lower() in ("true", "1", "yes")
 
 # Run setup_opensearch_security once during FastAPI lifespan startup,
-# using the admin username derived from PLATFORM_SERVICE_JWT. Intended
+# using the admin username derived from OPENRAG_SERVICE_TOKEN. Intended
 # for platform-managed deployments (saas / on_prem) where the platform
 # issues a service token that identifies the admin user that must be
 # pinned into the all_access role mapping. Default off.
