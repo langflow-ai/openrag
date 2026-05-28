@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   ALL_TASK_STATUS_CATEGORIES,
   type TaskFileStatusCategory,
@@ -8,18 +9,17 @@ import { cn } from "@/lib/utils";
 import { CATEGORY_CHIPS } from "./constants";
 
 interface TaskDialogCategoryChipsProps {
-  isCloudBrand: boolean;
   counts: Record<TaskFileStatusCategory, number> | null;
   statusCategory: string;
   onStatusCategoryChange: (value: string) => void;
 }
 
 export function TaskDialogCategoryChips({
-  isCloudBrand,
   counts,
   statusCategory,
   onStatusCategoryChange,
 }: TaskDialogCategoryChipsProps) {
+  const isCloudBrand = useIsCloudBrand();
   if (!counts) return null;
 
   return (

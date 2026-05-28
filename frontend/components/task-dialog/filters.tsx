@@ -10,11 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { ALL_TASK_FILE_TYPES, formatTaskFileTypeLabel } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 
 interface TaskDialogFiltersProps {
-  isCloudBrand: boolean;
   search: string;
   onSearchChange: (value: string) => void;
   fileType: string;
@@ -26,7 +26,6 @@ interface TaskDialogFiltersProps {
 }
 
 function FileTypeMenu({
-  isCloudBrand,
   fileType,
   onFileTypeChange,
   fileTypes,
@@ -34,7 +33,6 @@ function FileTypeMenu({
   fileTypeLabel,
   disabled,
 }: {
-  isCloudBrand: boolean;
   fileType: string;
   onFileTypeChange: (value: string) => void;
   fileTypes: string[];
@@ -42,6 +40,7 @@ function FileTypeMenu({
   fileTypeLabel: string;
   disabled: boolean;
 }) {
+  const isCloudBrand = useIsCloudBrand();
   const [open, setOpen] = useState(false);
   const options = [
     { value: ALL_TASK_FILE_TYPES, label: allTypesLabel },
@@ -51,6 +50,20 @@ function FileTypeMenu({
     })),
   ];
 
+  const ChevronIcon = open ? ChevronUp : ChevronDown;
+  const triggerContent = (
+    <>
+      <span className="truncate">{fileTypeLabel}</span>
+      <ChevronIcon
+        className={cn(
+          "h-4 w-4 shrink-0",
+          isCloudBrand ? "opacity-70" : "ml-2 opacity-50",
+        )}
+        aria-hidden
+      />
+    </>
+  );
+
   return (
     <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -58,44 +71,25 @@ function FileTypeMenu({
           <button
             type="button"
             disabled={disabled}
-            className="inline-flex min-h-10 w-task-dialog-file-type shrink-0 items-center justify-between gap-2 bg-layer-contextual px-4 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex min-h-10 w-[var(--task-dialog-file-type-width)] shrink-0 items-center justify-between gap-2 bg-layer-contextual px-4 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           >
-            <span className="truncate">{fileTypeLabel}</span>
-            {open ? (
-              <ChevronUp className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-            ) : (
-              <ChevronDown
-                className="h-4 w-4 shrink-0 opacity-70"
-                aria-hidden
-              />
-            )}
+            {triggerContent}
           </button>
         ) : (
           <Button
             type="button"
             variant="outline"
             disabled={disabled}
-            className="min-h-10 h-10 w-task-dialog-file-type shrink-0 justify-between font-normal"
+            className="min-h-10 h-10 w-[var(--task-dialog-file-type-width)] shrink-0 justify-between font-normal"
           >
-            <span className="truncate">{fileTypeLabel}</span>
-            {open ? (
-              <ChevronUp
-                className="ml-2 h-4 w-4 shrink-0 opacity-50"
-                aria-hidden
-              />
-            ) : (
-              <ChevronDown
-                className="ml-2 h-4 w-4 shrink-0 opacity-50"
-                aria-hidden
-              />
-            )}
+            {triggerContent}
           </Button>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         className={cn(
-          "z-task-dialog-menu w-task-dialog-file-type",
+          "z-[var(--z-task-dialog-menu)] w-[var(--task-dialog-file-type-width)]",
           isCloudBrand &&
             "border-border-subtle-contextual bg-layer-contextual text-layer-contextual-foreground",
         )}
@@ -122,16 +116,15 @@ function FileTypeMenu({
 }
 
 function TaskDialogSearchField({
-  isCloudBrand,
   search,
   onSearchChange,
   disabled,
 }: {
-  isCloudBrand: boolean;
   search: string;
   onSearchChange: (value: string) => void;
   disabled: boolean;
 }) {
+  const isCloudBrand = useIsCloudBrand();
   const input = (
     <Input
       type="search"
@@ -163,7 +156,6 @@ function TaskDialogSearchField({
 }
 
 export function TaskDialogFilters({
-  isCloudBrand,
   search,
   onSearchChange,
   fileType,
@@ -173,8 +165,8 @@ export function TaskDialogFilters({
   searchDisabled,
   fileTypeDisabled,
 }: TaskDialogFiltersProps) {
+  const isCloudBrand = useIsCloudBrand();
   const fileTypeMenuProps = {
-    isCloudBrand,
     fileType,
     onFileTypeChange,
     fileTypes,
@@ -193,7 +185,6 @@ export function TaskDialogFilters({
       )}
     >
       <TaskDialogSearchField
-        isCloudBrand={isCloudBrand}
         search={search}
         onSearchChange={onSearchChange}
         disabled={searchDisabled}

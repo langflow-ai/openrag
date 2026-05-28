@@ -3,6 +3,7 @@
 import { ArrowUpAZ, ChevronDown, FileText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import type { Task } from "@/contexts/task-context";
 import { analyzeTaskFileIngestionFailure } from "@/lib/task-error-display";
 import {
@@ -18,7 +19,6 @@ import { TaskDialogFileErrorDetails } from "./file-error-details";
 type TaskDialogFileListTab = "task-ingestions" | "retry-ingestions";
 
 interface TaskDialogFileListProps {
-  isCloudBrand: boolean;
   task: Task;
   entries: Array<[string, TaskFileEntry]>;
   retryIngestionEntries: Array<[string, TaskFileEntry]>;
@@ -42,7 +42,6 @@ interface TaskDialogFileListProps {
 }
 
 export function TaskDialogFileList({
-  isCloudBrand,
   task,
   entries,
   retryIngestionEntries,
@@ -64,6 +63,7 @@ export function TaskDialogFileList({
   retryIngestionSelectedCount,
   retryingTarget = null,
 }: TaskDialogFileListProps) {
+  const isCloudBrand = useIsCloudBrand();
   const [activeTab, setActiveTab] =
     useState<TaskDialogFileListTab>("task-ingestions");
 
@@ -240,7 +240,6 @@ export function TaskDialogFileList({
 
           {failed && isExpanded && analysis && (
             <TaskDialogFileErrorDetails
-              isCloudBrand={isCloudBrand}
               fileInfo={fileInfo}
               taskError={task.error}
               analysis={analysis}
@@ -346,7 +345,7 @@ export function TaskDialogFileList({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {isTabActive("task-ingestions") && entries.length > 0
+        {isTabActive("task-ingestions")
           ? renderListHeader({
               showSelectAll: selectablePaths.length > 0,
               allSelected: allSelectableSelected,
@@ -355,7 +354,7 @@ export function TaskDialogFileList({
                 selectedCount > 0 ? `${selectedCount} selected` : undefined,
             })
           : null}
-        {isTabActive("retry-ingestions") && retryIngestionEntries.length > 0
+        {isTabActive("retry-ingestions")
           ? renderListHeader({
               showSelectAll: true,
               allSelected: allRetryIngestionsSelected,

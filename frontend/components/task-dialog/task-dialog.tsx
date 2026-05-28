@@ -64,14 +64,13 @@ function TaskDialogContent({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-hidden",
+        "flex h-full min-h-0 flex-col overflow-hidden",
         isCloudBrand
           ? "bg-layer-contextual font-ibm-plex-sans"
           : "bg-task-dialog-oss",
       )}
     >
       <TaskDialogHeader
-        isCloudBrand={isCloudBrand}
         taskId={task_id}
         search={search}
         onSearchChange={setSearch}
@@ -101,7 +100,6 @@ function TaskDialogContent({
           </p>
         ) : (
           <TaskDialogFileList
-            isCloudBrand={isCloudBrand}
             task={task}
             entries={sortedEntries}
             retryIngestionEntries={retryIngestionEntries}
@@ -191,7 +189,7 @@ export default function TaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "flex max-h-task-dialog w-task-dialog max-w-task-dialog flex-col gap-0 overflow-hidden p-0 sm:rounded-lg",
+          "flex h-[var(--task-dialog-max-height)] max-h-[var(--task-dialog-max-height)] w-[var(--task-dialog-width)] max-w-[var(--task-dialog-width)] flex-col gap-0 overflow-hidden p-0 sm:rounded-lg",
           isCloudBrand
             ? "bg-layer-contextual font-ibm-plex-sans"
             : "bg-task-dialog-oss",

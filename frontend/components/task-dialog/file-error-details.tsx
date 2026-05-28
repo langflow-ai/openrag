@@ -2,6 +2,7 @@
 
 import { Ban, Check, Flag } from "lucide-react";
 import type { TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   analyzeTaskFileIngestionFailure,
   type TaskFileIngestionFailureAnalysis,
@@ -9,18 +10,17 @@ import {
 import { cn } from "@/lib/utils";
 
 interface TaskDialogFileErrorDetailsProps {
-  isCloudBrand: boolean;
   fileInfo: TaskFileEntry;
   taskError?: string;
   analysis?: TaskFileIngestionFailureAnalysis;
 }
 
 export function TaskDialogFileErrorDetails({
-  isCloudBrand,
   fileInfo,
   taskError,
   analysis: analysisProp,
 }: TaskDialogFileErrorDetailsProps) {
+  const isCloudBrand = useIsCloudBrand();
   const analysis =
     analysisProp ?? analyzeTaskFileIngestionFailure(fileInfo, taskError);
 

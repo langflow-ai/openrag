@@ -139,8 +139,8 @@ export function getTaskFileStatusCategory(
   return "indexing";
 }
 
-export function countTaskFilesByCategory(
-  task: Task,
+export function countTaskFileEntriesByCategory(
+  entries: Array<[string, TaskFileEntry]>,
 ): Record<TaskFileStatusCategory, number> {
   const counts: Record<TaskFileStatusCategory, number> = {
     completed: 0,
@@ -148,12 +148,18 @@ export function countTaskFilesByCategory(
     indexing: 0,
   };
 
-  for (const [, fileInfo] of getTaskFileEntries(task)) {
+  for (const [, fileInfo] of entries) {
     const category = getTaskFileStatusCategory(fileInfo);
     counts[category] += 1;
   }
 
   return counts;
+}
+
+export function countTaskFilesByCategory(
+  task: Task,
+): Record<TaskFileStatusCategory, number> {
+  return countTaskFileEntriesByCategory(getTaskFileEntries(task));
 }
 
 export function sortTaskFileEntries(

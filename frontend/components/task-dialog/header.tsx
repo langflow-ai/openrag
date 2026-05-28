@@ -1,6 +1,7 @@
 "use client";
 
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   ALL_TASK_FILE_TYPES,
   formatTaskFileTypeLabel,
@@ -11,7 +12,6 @@ import { TaskDialogCategoryChips } from "./category-chips";
 import { TaskDialogFilters } from "./filters";
 
 interface TaskDialogHeaderProps {
-  isCloudBrand: boolean;
   taskId: string;
   search: string;
   onSearchChange: (value: string) => void;
@@ -26,7 +26,6 @@ interface TaskDialogHeaderProps {
 }
 
 export function TaskDialogHeader({
-  isCloudBrand,
   taskId,
   search,
   onSearchChange,
@@ -39,6 +38,7 @@ export function TaskDialogHeader({
   filtersDisabled,
   fileTypeDisabled,
 }: TaskDialogHeaderProps) {
+  const isCloudBrand = useIsCloudBrand();
   const allTypesLabel = isCloudBrand ? "All categories" : "All file types";
   const fileTypeLabel =
     fileType === ALL_TASK_FILE_TYPES
@@ -79,7 +79,6 @@ export function TaskDialogHeader({
         )}
       >
         <TaskDialogFilters
-          isCloudBrand={isCloudBrand}
           search={search}
           onSearchChange={onSearchChange}
           fileType={fileType}
@@ -90,7 +89,6 @@ export function TaskDialogHeader({
           fileTypeDisabled={fileTypeDisabled}
         />
         <TaskDialogCategoryChips
-          isCloudBrand={isCloudBrand}
           counts={categoryCounts}
           statusCategory={statusCategory}
           onStatusCategoryChange={onStatusCategoryChange}

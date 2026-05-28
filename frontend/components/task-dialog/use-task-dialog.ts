@@ -12,7 +12,7 @@ import {
   ALL_TASK_FILE_TYPES,
   ALL_TASK_STATUS_CATEGORIES,
   countRetryIngestionFiles,
-  countTaskFilesByCategory,
+  countTaskFileEntriesByCategory,
   filterTaskFileEntries,
   getRetryableFileEntries,
   getRetryableFilePaths,
@@ -123,15 +123,22 @@ export function useTaskDialog(open: boolean, taskId: string) {
 
   const fileTypes = useMemo(() => (task ? getTaskFileTypes(task) : []), [task]);
 
-  const categoryCounts = useMemo(
-    () => (task ? countTaskFilesByCategory(task) : null),
-    [task],
-  );
-
   const activeFileType =
     fileType === ALL_TASK_FILE_TYPES || fileTypes.includes(fileType)
       ? fileType
       : ALL_TASK_FILE_TYPES;
+
+  const categoryCounts = useMemo(() => {
+    if (!task) {
+      return null;
+    }
+    const scopedEntries = filterTaskFileEntries(fileEntries, {
+      search,
+      fileType: activeFileType,
+      statusCategory: ALL_TASK_STATUS_CATEGORIES,
+    });
+    return countTaskFileEntriesByCategory(scopedEntries);
+  }, [task, fileEntries, search, activeFileType]);
 
   const filteredEntries = useMemo(
     () =>
