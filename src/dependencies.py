@@ -163,10 +163,15 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-async def _ensure_db_user(user: User) -> str | None:
+async def _ensure_db_user(user: User, jwt_roles: list[str] | None = None) -> str | None:
     """Best-effort DB upsert for the authenticated user. Returns the SQL
     `users.id` for this user (so callers can cache the OAuth-sub → DB-id
     mapping). Returns None on failure.
+
+    When ``jwt_roles`` is not None, the user's DB role assignments are
+    reconciled against it on every call — the per-process cache short-
+    circuits the user-row INSERT but not the role sync. Pass None to
+    preserve pre-JWT-roles behavior.
 
     No-ops for anonymous users in no-auth mode beyond the very first call
     (which does set up the synthetic anonymous row + role). Failures are
@@ -176,7 +181,7 @@ async def _ensure_db_user(user: User) -> str | None:
         return None
     cache_key = _user_cache_key(user)
     cached_db_id = _ENSURED_USER_IDS.get(cache_key)
-    if cached_db_id is not None:
+    if cached_db_id is not None and jwt_roles is None:
         return cached_db_id
 
     # Serialize concurrent first-time ensures for the SAME identity so a
@@ -185,14 +190,12 @@ async def _ensure_db_user(user: User) -> str | None:
     # subject) lock so unrelated users never block each other.
     lock = _ENSURE_LOCKS.setdefault(cache_key, asyncio.Lock())
     async with lock:
-        # Re-check the cache inside the lock; the previous holder may
-        # have just populated it.
         cached_db_id = _ENSURED_USER_IDS.get(cache_key)
-        if cached_db_id is not None:
+        if cached_db_id is not None and jwt_roles is None:
             return cached_db_id
         try:
             from db.engine import SessionLocal, init_engine
-            from services.user_service import ensure_user_row
+            from services.user_service import ensure_user_row, sync_jwt_roles
 
             if SessionLocal is None:
                 init_engine()
@@ -201,27 +204,39 @@ async def _ensure_db_user(user: User) -> str | None:
             if _SessionLocal is None:
                 return None
             async with _SessionLocal() as session:
-                db_row = await ensure_user_row(session, user)
+                if cached_db_id is not None and jwt_roles is not None:
+                    # User row already exists in this process; just reconcile
+                    # roles from the JWT.
+                    await sync_jwt_roles(session, cached_db_id, jwt_roles)
+                    await session.commit()
+                    return cached_db_id
+                db_row = await ensure_user_row(session, user, jwt_roles=jwt_roles)
                 await session.commit()
             _ENSURED_USER_IDS[cache_key] = db_row.id
             return db_row.id
+        except HTTPException:
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("ensure_user_row failed", user_id=user.user_id, error=str(exc))
             return None
 
 
-async def _resolve_db_user_id(user: User) -> str:
+async def _resolve_db_user_id(user: User, jwt_roles: list[str] | None = None) -> str:
     """Translate an authenticated `User` (which carries the JWT/OAuth
     subject) to the SQL `users.id` used by the RBAC tables. Falls back to
     `user.user_id` if no DB row can be resolved (no-auth mode, transient
     DB error, etc.) so caller behavior degrades gracefully.
+
+    When ``jwt_roles`` is not None, role sync runs on every call (the cache
+    only short-circuits the INSERT, not the reconcile step).
     """
     if not user or not user.user_id:
         return ""
-    cached = _ENSURED_USER_IDS.get(_user_cache_key(user))
-    if cached is not None:
-        return cached
-    resolved = await _ensure_db_user(user)
+    if jwt_roles is None:
+        cached = _ENSURED_USER_IDS.get(_user_cache_key(user))
+        if cached is not None:
+            return cached
+    resolved = await _ensure_db_user(user, jwt_roles=jwt_roles)
     return resolved or user.user_id
 
 
@@ -236,7 +251,8 @@ async def _attach_db_user_id(request: Request, user: User | None) -> User | None
         request.state.db_user_id = None
         request.state.user = None
         return None
-    db_user_id = await _resolve_db_user_id(user)
+    jwt_roles = getattr(request.state, "jwt_roles", None)
+    db_user_id = await _resolve_db_user_id(user, jwt_roles=jwt_roles)
     user_with_db_id = dataclasses.replace(user, db_user_id=db_user_id)
     request.state.db_user_id = db_user_id
     request.state.user = user_with_db_id
@@ -362,6 +378,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
+    from auth.jwt_roles import extract_jwt_role_names, jwt_roles_enabled
     from config.settings import (
         IBM_CREDENTIALS_HEADER,
         IBM_SESSION_COOKIE_NAME,
@@ -397,6 +414,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     user_id = None
     email = None
     name = None
+    jwt_roles: list[str] | None = None
     if ibm_token:
         logger.debug("[AUTH] IBM JWT token found in request cookies")
         claims = ibm_auth.decode_ibm_jwt(ibm_token)
@@ -411,6 +429,22 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 user_id = claims.get("username", sub)
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
+                # Only consume the roles claim when JWT-role sync is
+                # active. When RBAC is off, leave jwt_roles as None so
+                # the legacy bootstrap-or-default-role path runs and the
+                # user's DB roles are NOT clobbered by an empty claim.
+                if jwt_roles_enabled():
+                    jwt_roles = extract_jwt_role_names(claims)
+                    if not jwt_roles:
+                        logger.warning(
+                            "IBM JWT carries no recognized OpenRAG role claim",
+                            user_id=user_id,
+                        )
+                        raise HTTPException(
+                            status_code=401,
+                            detail="User has no OpenRAG roles assigned",
+                        )
+    request.state.jwt_roles = jwt_roles
 
     if lh_credentials and lh_credentials.strip() != "":
         logger.debug("[AUTH] IBM LH credentials found in request headers")
