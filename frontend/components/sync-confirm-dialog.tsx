@@ -199,7 +199,7 @@ const DeletesAlert: React.FC<{
 const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
   connectors,
 }) => (
-  <Alert variant="destructive">
+  <Alert>
     <AlertTriangle className="size-5" />
     <AlertTitle>Couldn&apos;t check for deletions</AlertTitle>
     <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
