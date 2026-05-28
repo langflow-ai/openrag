@@ -131,7 +131,5 @@ async def test_retry_unknown_path_is_skipped(task_service):
     assert result is not None
     assert result["retried"] == 0
     assert result["status"] == "no_op"
-    assert result["skipped"] == [
-        {"file_path": "/data/missing.pdf", "reason": "file_not_in_task"}
-    ]
+    assert result["skipped"] == [{"file_path": "/data/missing.pdf", "reason": "file_not_in_task"}]
     assert ft_a.status == TaskStatus.FAILED
