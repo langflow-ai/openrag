@@ -362,6 +362,34 @@ def require_all_permissions(required_perms: Sequence[str]):
 # ─────────────────────────────────────────────
 
 
+def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> None:
+    """Extract OpenRAG roles from decoded JWT *claims* and stash them on
+    ``request.state.jwt_roles`` so the subsequent ``_attach_db_user_id`` call
+    syncs them to the DB.
+
+    Behavior mirrors the ibm-openrag-session cookie path:
+      * RBAC off (``jwt_roles_enabled()`` False) -> ``jwt_roles = None`` so the
+        legacy default-role path runs and existing DB roles are not clobbered.
+      * RBAC on -> roles are extracted; if the JWT carries no recognized
+        OpenRAG role, raise HTTP 401.
+    """
+    from auth.jwt_roles import extract_jwt_role_names, jwt_roles_enabled
+
+    jwt_roles: list[str] | None = None
+    if jwt_roles_enabled():
+        jwt_roles = extract_jwt_role_names(claims)
+        if not jwt_roles:
+            logger.warning(
+                "JWT carries no recognized OpenRAG role claim",
+                user_id=user_id,
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="User has no OpenRAG roles assigned",
+            )
+    request.state.jwt_roles = jwt_roles
+
+
 async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """Authenticate via IBM AMS.
 
@@ -378,7 +406,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
-    from auth.jwt_roles import extract_jwt_role_names, jwt_roles_enabled
     from config.settings import (
         IBM_CREDENTIALS_HEADER,
         IBM_SESSION_COOKIE_NAME,
@@ -414,7 +441,9 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     user_id = None
     email = None
     name = None
-    jwt_roles: list[str] | None = None
+    # Default for the no-token / no-claims / no-sub cases; overwritten by
+    # _stage_jwt_roles when a valid JWT subject is present.
+    request.state.jwt_roles = None
     if ibm_token:
         logger.debug("[AUTH] IBM JWT token found in request cookies")
         claims = ibm_auth.decode_ibm_jwt(ibm_token)
@@ -429,22 +458,9 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 user_id = claims.get("username", sub)
                 email = claims.get("username", sub)
                 name = claims.get("display_name", claims.get("username", sub))
-                # Only consume the roles claim when JWT-role sync is
-                # active. When RBAC is off, leave jwt_roles as None so
-                # the legacy bootstrap-or-default-role path runs and the
-                # user's DB roles are NOT clobbered by an empty claim.
-                if jwt_roles_enabled():
-                    jwt_roles = extract_jwt_role_names(claims)
-                    if not jwt_roles:
-                        logger.warning(
-                            "IBM JWT carries no recognized OpenRAG role claim",
-                            user_id=user_id,
-                        )
-                        raise HTTPException(
-                            status_code=401,
-                            detail="User has no OpenRAG roles assigned",
-                        )
-    request.state.jwt_roles = jwt_roles
+                # RBAC off -> jwt_roles stays None (legacy default-role path,
+                # existing DB roles untouched). RBAC on -> extract + 401 if none.
+                _stage_jwt_roles(request, claims, user_id)
 
     if lh_credentials and lh_credentials.strip() != "":
         logger.debug("[AUTH] IBM LH credentials found in request headers")
@@ -654,6 +670,9 @@ async def get_api_key_user_async(
     Async dependency: require API key or IBM authentication.
 
     Accepts:
+      - A gateway-forwarded JWT in the configurable OPENRAG_JWT_AUTH_HEADER
+        (default ``X-OpenRAG-JWT``). When present and verifiable, the JWT is the
+        source of identity; under RBAC it also supplies (and enforces) roles.
       - X-API-Key: orag_... header
       - Authorization: Bearer orag_... header
       - X-Username + X-Api-Key headers (when IBM_AUTH_ENABLED)
@@ -661,6 +680,46 @@ async def get_api_key_user_async(
     Raises HTTP 401 if no valid credentials are provided.
     """
     import base64
+
+    # ── JWT-in-header path ───────────────────────────────────────────────
+    # An upstream gateway may forward the end-user's JWT in a configurable
+    # header. It is verified the same way as the OpenSearch service token
+    # (issuer-pinned signature check via config.utils.verify_jwt_from_issuer)
+    # and, when valid, becomes the source of identity. Under RBAC it also
+    # supplies the user's roles (synced via request.state.jwt_roles ->
+    # _attach_db_user_id), with a 401 when no recognized role is present.
+    from auth.jwt_roles import jwt_roles_enabled
+    from config.settings import AUTH_SERVER_URL, get_jwt_auth_header
+    from config.utils import verify_jwt_from_issuer
+
+    raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+    if raw_jwt and raw_jwt.strip() and AUTH_SERVER_URL:
+        token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
+        claims = verify_jwt_from_issuer(
+            token,
+            allowed_issuer_prefixes=(AUTH_SERVER_URL.rstrip("/"),),
+            verify_tls=False,
+        )
+        sub = claims.get("sub") if claims else None
+        if sub:
+            user = User(
+                user_id=claims.get("username", sub),
+                email=claims.get("username", sub),
+                name=claims.get("display_name", claims.get("username", sub)),
+                picture=None,
+                # Same provider as the cookie path so the forwarded user
+                # resolves to the SAME users row (oauth_provider, oauth_subject).
+                provider="ibm_ams",
+                jwt_token=f"Bearer {token}",
+            )
+            _stage_jwt_roles(request, claims, user.user_id)
+            request.state.user = user
+            return await _attach_db_user_id(request, user)
+        if jwt_roles_enabled():
+            # A JWT was asserted but failed verification/decode. Under RBAC we
+            # must not silently downgrade to the API-key identity.
+            raise HTTPException(status_code=401, detail="Invalid or unverifiable JWT")
+        # RBAC off + missing/invalid JWT -> fall through to the API-key path.
 
     # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
     from config.settings import IBM_AUTH_ENABLED

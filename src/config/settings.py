@@ -71,6 +71,11 @@ IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 
+# Base URL of the platform auth server that issues universal JWTs. Used as the
+# pinned issuer prefix when verifying a forwarded JWT (see config/utils.py
+# verify_jwt_from_issuer). Shared with PR #1626's OpenSearch service-token flow.
+AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
+
 # ── JWT roles claim ─────────────────────────────────────────────
 # These are exposed as functions (not module constants) so they are read
 # per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
@@ -105,6 +110,12 @@ def get_role_claim_user() -> str:
 
 def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+
+
+def get_jwt_auth_header() -> str:
+    """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
+    callers. Read per-call so tests can override via monkeypatch.setenv."""
+    return os.getenv("OPENRAG_JWT_AUTH_HEADER", "X-OpenRAG-JWT")
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
