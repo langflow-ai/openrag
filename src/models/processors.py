@@ -898,6 +898,9 @@ class ConnectorFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            upload_task.processed_files += 1
+            upload_task.updated_at = time.time()
 
 
 class S3FileProcessor(TaskProcessor):
@@ -975,6 +978,8 @@ class S3FileProcessor(TaskProcessor):
             upload_task.failed_files += 1
         finally:
             file_task.updated_at = time.time()
+            upload_task.processed_files += 1
+            upload_task.updated_at = time.time()
 
 
 class LangflowFileProcessor(TaskProcessor):
@@ -1114,3 +1119,6 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            upload_task.processed_files += 1
+            upload_task.updated_at = time.time()
