@@ -1533,6 +1533,7 @@ async def refresh_openrag_docs(
             session_manager=session_manager,
             force=True,
             reason="manual",
+            jwt_token=user.jwt_token if getattr(user, "jwt_token", None) else None,
         )
         return RefreshOpenRAGDocsResponse(
             message=(

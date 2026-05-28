@@ -107,36 +107,57 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     except IntegrityError:
         # The collision could be on any of the three unique constraints:
         # (oauth_provider, oauth_subject), email_lookup_hash, or id (PK).
+        # By the time the flush raises, the peer transaction that lost the
+        # race has committed, so the re-fetches below see its row.
         await session.rollback()
 
-        # Case 1: (oauth_provider, oauth_subject) race — a peer process beat us
-        # to the INSERT for this exact identity.
+        # Case 1: (oauth_provider, oauth_subject) race — a peer beat us to the
+        # INSERT for this exact identity.
         existing = await user_repo.get_by_oauth(provider, subject)
         if existing:
             await user_repo.update_last_login(existing.id)
             return existing
 
-        # Case 2: email_lookup_hash race — same email already inserted (most
-        # common for the synthetic anonymous@localhost user in no-auth mode when
-        # two concurrent requests both observe an empty table). Look up by email;
-        # if the row's (provider, subject) matches ours it's a concurrent insert
-        # of the same identity and we can safely return it.
-        if user.email:
-            by_email = await user_repo.get_by_email(user.email)
-            if (
-                by_email
-                and by_email.oauth_provider == provider
-                and by_email.oauth_subject == subject
-            ):
+        # Case 2: email_lookup_hash collision — some row already owns this
+        # email (email_lookup_hash is UNIQUE). Most common for the synthetic
+        # anonymous@localhost user in no-auth mode when two concurrent requests
+        # both observe an empty table.
+        by_email = await user_repo.get_by_email(user.email) if user.email else None
+        if by_email is not None:
+            if by_email.oauth_provider == provider and by_email.oauth_subject == subject:
+                # Concurrent insert of the *same* identity — safe to reuse.
                 await user_repo.update_last_login(by_email.id)
                 return by_email
 
-        # Case 3: PK collision across providers (a different identity already
-        # occupies id=subject). Retry with a UUID; (provider, subject) differs
-        # from the conflicting row so the INSERT will succeed.
-        # If the collision was on email_lookup_hash for a genuinely different
-        # identity (two real users sharing an email) this insert also fails —
-        # that propagates to the caller as intended.
+            # A *different* identity already owns this email (e.g. the same
+            # person signing in through a second provider). Re-inserting with
+            # the same email is futile — it would collide on email_lookup_hash
+            # again — so create this distinct principal *without* the email so
+            # the request never fails on a UNIQUE constraint. The email stays
+            # attached to the first identity that claimed it.
+            logger.warning(
+                "email already owned by another identity; creating user row without email",
+                provider=provider,
+                subject=subject,
+                existing_provider=by_email.oauth_provider,
+                existing_subject=by_email.oauth_subject,
+            )
+            row = UserRow(
+                id=str(uuid.uuid4()),
+                oauth_provider=provider,
+                oauth_subject=subject,
+                email=None,
+                display_name=user.name,
+                picture_url=user.picture,
+            )
+            await user_repo.add(row)
+            await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
+            return row
+
+        # Case 3: pure PK collision (id==subject already occupied by a
+        # different identity, no email conflict). Retry with a UUID;
+        # (provider, subject) differs from the conflicting row so the INSERT
+        # succeeds.
         new_id = str(uuid.uuid4())
         row = UserRow(
             id=new_id,

@@ -267,6 +267,10 @@ class TaskProcessor:
                         slim_doc["chunks"], cs, max(0, co)
                     )
 
+        # Filter out chunks with empty or whitespace-only text before generating embeddings.
+        # This ensures the length of chunks matches the length of the embeddings array,
+        # since chunk_texts_for_embeddings also drops empty texts.
+        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
         texts = [c["text"] for c in slim_doc["chunks"]]
 
         litellm_embedding_model = (

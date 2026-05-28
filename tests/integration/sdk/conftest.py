@@ -78,7 +78,10 @@ async def client():
     from openrag_sdk import OpenRAGClient
 
     api_key = await _fetch_api_key()
-    c = OpenRAGClient(api_key=api_key, base_url=_base_url)
+    # The SDK defaults to a 30s timeout for *all* requests. Streaming chat on a
+    # cold CI box (model spin-up + flow init before the first byte) routinely
+    # exceeds that, surfacing as httpx.ReadTimeout. Use a generous timeout here.
+    c = OpenRAGClient(api_key=api_key, base_url=_base_url, timeout=120.0)
     yield c
     await c.close()
 
