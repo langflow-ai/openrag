@@ -32,7 +32,7 @@ class _FakeRequest:
 
     def __init__(self, headers: dict | None = None):
         self.headers = headers or {}
-        self.cookies = {}
+        self.cookies: dict[str, str] = {}
         self.state = SimpleNamespace()
 
 
