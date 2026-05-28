@@ -1,14 +1,16 @@
 import asyncio
 import copy
-import os
 import json
+import os
 from collections import Counter
 from typing import Any, Dict
+
 from agentd.tool_decorator import tool
-from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
-from utils.container_utils import transform_localhost_url
+
 from auth_context import get_auth_context
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +34,7 @@ def register_search_service(service: "SearchService") -> None:
 
 
 @tool
-async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]:
+async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]:
     """
     Use this tool to search for documents relevant to the query.
 
@@ -70,7 +72,7 @@ class SearchService:
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
+    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -102,9 +104,9 @@ class SearchService:
         user_id, jwt_token = get_auth_context()
         # Get search filters, limit, and score threshold from context
         from auth_context import (
+            get_score_threshold,
             get_search_filters,
             get_search_limit,
-            get_score_threshold,
         )
 
         filters = get_search_filters() or {}
@@ -467,10 +469,11 @@ class SearchService:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         from opensearchpy.exceptions import RequestError
+
         from utils.opensearch_utils import (
+            DISK_SPACE_ERROR_MESSAGE,
             OpenSearchDiskSpaceError,
             is_disk_space_error,
-            DISK_SPACE_ERROR_MESSAGE,
         )
 
         search_params = {"terminate_after": 0}
@@ -580,7 +583,7 @@ class SearchService:
             if exact_files:
                 chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
 
-                def _build_terms_agg(field: str) -> Dict[str, Any]:
+                def _build_terms_agg(field: str) -> dict[str, Any]:
                     counts = Counter(
                         value
                         for chunk in chunks
@@ -608,7 +611,7 @@ class SearchService:
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
         # instead of treating partial-embedding failure as a hard error.
-        response: Dict[str, Any] = {
+        response: dict[str, Any] = {
             "results": chunks,
             "aggregations": aggregations,
             "total": len(chunks),
@@ -635,11 +638,11 @@ class SearchService:
         query: str,
         user_id: str = None,
         jwt_token: str = None,
-        filters: Dict[str, Any] = None,
+        filters: dict[str, Any] = None,
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Public search method for API endpoints
 
         Args:
@@ -660,7 +663,7 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_search_limit, set_score_threshold
+        from auth_context import set_score_threshold, set_search_limit
 
         set_search_limit(limit)
         set_score_threshold(score_threshold)

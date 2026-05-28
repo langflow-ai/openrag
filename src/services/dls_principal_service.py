@@ -105,7 +105,10 @@ class DLSPrincipalService:
             )
             return []
 
-        connector_principals, connector_labels = await self._resolve_connector_principals_and_labels(
+        (
+            connector_principals,
+            connector_labels,
+        ) = await self._resolve_connector_principals_and_labels(
             user,
             include_group_roles=group_roles is None,
         )
@@ -213,8 +216,8 @@ class DLSPrincipalService:
             else:
                 try:
                     mapping = await client.indices.get_mapping(index=self.index_name)
-                    properties = mapping.get(self.index_name, {}).get("mappings", {}).get(
-                        "properties", {}
+                    properties = (
+                        mapping.get(self.index_name, {}).get("mappings", {}).get("properties", {})
                     )
                     if properties.get("principal_labels") is None:
                         await client.indices.put_mapping(

@@ -605,8 +605,7 @@ class SharePointConnector(BaseConnector):
                             group_info.get("id"),
                             access_token=access_token,
                             tenant_id=self.tenant_id,
-                            display_name=group_info.get("displayName")
-                            or group_info.get("email"),
+                            display_name=group_info.get("displayName") or group_info.get("email"),
                             email=group_info.get("email"),
                         )
                         if label:
