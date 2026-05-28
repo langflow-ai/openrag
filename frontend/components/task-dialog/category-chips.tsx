@@ -22,6 +22,9 @@ export function TaskDialogCategoryChips({
   const isCloudBrand = useIsCloudBrand();
   if (!counts) return null;
 
+  const visibleChips = CATEGORY_CHIPS.filter((chip) => counts[chip.id] > 0);
+  if (visibleChips.length === 0) return null;
+
   return (
     <div
       className={cn(
@@ -29,7 +32,7 @@ export function TaskDialogCategoryChips({
         isCloudBrand ? "gap-2 px-4" : "gap-1.5",
       )}
     >
-      {CATEGORY_CHIPS.map((chip) => {
+      {visibleChips.map((chip) => {
         const Icon = chip.icon;
         const isActive = statusCategory === chip.id;
         const count = counts[chip.id];

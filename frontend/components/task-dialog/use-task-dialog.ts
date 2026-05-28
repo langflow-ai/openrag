@@ -140,6 +140,17 @@ export function useTaskDialog(open: boolean, taskId: string) {
     return countTaskFileEntriesByCategory(scopedEntries);
   }, [task, fileEntries, search, activeFileType]);
 
+  useEffect(() => {
+    if (
+      !categoryCounts ||
+      statusCategory === ALL_TASK_STATUS_CATEGORIES ||
+      (categoryCounts[statusCategory as TaskFileStatusCategory] ?? 0) > 0
+    ) {
+      return;
+    }
+    setStatusCategory(ALL_TASK_STATUS_CATEGORIES);
+  }, [categoryCounts, statusCategory]);
+
   const filteredEntries = useMemo(
     () =>
       filterTaskFileEntries(fileEntries, {
