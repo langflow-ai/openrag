@@ -146,7 +146,7 @@ async def chat_create_endpoint(
             owner_email=user.email,
             storage_user_id=storage_user_id,
         )
-        chat_id_container = {}
+        chat_id_container: dict[str, str] = {}
         return StreamingResponse(
             _transform_stream_to_sse(raw_stream, chat_id_container),
             media_type="text/event-stream",
