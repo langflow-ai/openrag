@@ -366,11 +366,13 @@ class TaskProcessor:
             allowed_users = acl.allowed_users or []
             allowed_groups = acl.allowed_groups or []
             allowed_principals = acl.allowed_principals or []
+            allowed_principal_labels = acl.allowed_principal_labels or []
         else:
             owner = owner_user_id
             allowed_users = []
             allowed_groups = []
             allowed_principals = []
+            allowed_principal_labels = []
 
         filename = original_filename if original_filename else slim_doc["filename"]
         index_context = DocumentIndexContext(
@@ -386,6 +388,7 @@ class TaskProcessor:
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
+            allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
         )
         index_chunks = [

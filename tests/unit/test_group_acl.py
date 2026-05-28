@@ -252,6 +252,16 @@ async def test_dls_principal_service_writes_user_lookup_rows():
         async def get_current_user_group_roles(self):
             return ["g:gdrive:t:engineering"]
 
+        async def get_current_user_principal_labels(self):
+            return [
+                {
+                    "principal": "g:gdrive:t:engineering",
+                    "kind": "group",
+                    "provider": "gdrive",
+                    "display_name": "Engineering",
+                }
+            ]
+
     class ConnectorService:
         connection_manager = ConnectionManager()
 
@@ -299,6 +309,23 @@ async def test_dls_principal_service_writes_user_lookup_rows():
         "ibmlhapikey_user-1",
         "user-1",
     }
+    body = opensearch_client.index_calls[0]["body"]
+    assert any(
+        label.get("principal") == "g:gdrive:t:engineering"
+        and label.get("kind") == "group"
+        and label.get("provider") == "gdrive"
+        and label.get("display_name") == "Engineering"
+        for label in body["principal_labels"]
+    )
+    assert any(
+        label.get("principal") == "u:gdrive:example.com:user"
+        and label.get("kind") == "user"
+        and label.get("provider") == "gdrive"
+        and label.get("display_name") == "User"
+        and label.get("email") == "user@example.com"
+        and label.get("external_id") == "user-1"
+        for label in body["principal_labels"]
+    )
     for call in opensearch_client.index_calls:
         assert call["index"] == "openrag_dls_principals"
         assert call["refresh"] == "wait_for"
@@ -644,6 +671,24 @@ def test_google_drive_file_acl_group_is_canonicalized(tmp_path):
     assert acl.allowed_principals == [
         google_drive_group_role("engineering@example.com"),
         google_drive_user_principal("owner@example.com"),
+    ]
+    assert acl.allowed_principal_labels == [
+        {
+            "principal": google_drive_group_role("engineering@example.com"),
+            "kind": "group",
+            "provider": "gdrive",
+            "display_name": "Engineering@example.com",
+            "email": "Engineering@example.com",
+            "external_id": "Engineering@example.com",
+        },
+        {
+            "principal": google_drive_user_principal("owner@example.com"),
+            "kind": "user",
+            "provider": "gdrive",
+            "display_name": "owner@example.com",
+            "email": "owner@example.com",
+            "external_id": "owner@example.com",
+        },
     ]
 
 

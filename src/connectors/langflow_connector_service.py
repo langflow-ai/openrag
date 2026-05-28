@@ -206,16 +206,19 @@ class LangflowConnectorService:
                 allowed_users: list[str] = []
                 allowed_groups: list[str] = []
                 allowed_principals: list[str] = []
+                allowed_principal_labels: list[dict[str, Any]] = []
                 if getattr(document, "acl", None) is not None:
                     try:
                         allowed_users = document.acl.allowed_users or []
                         allowed_groups = document.acl.allowed_groups or []
                         allowed_principals = document.acl.allowed_principals or []
+                        allowed_principal_labels = document.acl.allowed_principal_labels or []
                     except AttributeError:
                         # If ACL shape is different or missing fields, fall back to empty lists
                         allowed_users = []
                         allowed_groups = []
                         allowed_principals = []
+                        allowed_principal_labels = []
 
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
@@ -231,6 +234,7 @@ class LangflowConnectorService:
                     allowed_users=allowed_users,
                     allowed_groups=allowed_groups,
                     allowed_principals=allowed_principals,
+                    allowed_principal_labels=allowed_principal_labels,
                     selected_embedding_model=(
                         ingest_settings.get("embeddingModel")
                         if isinstance(ingest_settings, dict)

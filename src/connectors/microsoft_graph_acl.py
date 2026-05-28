@@ -8,7 +8,13 @@ from typing import Any
 import httpx
 import jwt
 
-from utils.group_acl import canonical_group_role, canonical_group_roles, canonical_user_principal
+from utils.group_acl import (
+    acl_principal_label,
+    canonical_group_role,
+    canonical_group_roles,
+    canonical_user_principal,
+    unique_acl_principal_labels,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -64,6 +70,55 @@ def microsoft_user_principal(
         MICROSOFT_GRAPH_GROUP_PROVIDER,
         resolved_tenant,
         user_identifier,
+    )
+
+
+def microsoft_group_principal_label(
+    group_id: str | None,
+    *,
+    access_token: str | None = None,
+    tenant_id: str | None = None,
+    display_name: str | None = None,
+    email: str | None = None,
+) -> dict[str, Any] | None:
+    """Return non-authoritative display metadata for a Microsoft group principal."""
+    principal = microsoft_group_role(
+        group_id,
+        access_token=access_token,
+        tenant_id=tenant_id,
+    )
+    return acl_principal_label(
+        principal,
+        kind="group",
+        provider=MICROSOFT_GRAPH_GROUP_PROVIDER,
+        display_name=display_name or email or group_id,
+        email=email,
+        external_id=group_id,
+    )
+
+
+def microsoft_user_principal_label(
+    user_identifier: str | None,
+    *,
+    access_token: str | None = None,
+    tenant_id: str | None = None,
+    display_name: str | None = None,
+    email: str | None = None,
+    external_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Return non-authoritative display metadata for a Microsoft user principal."""
+    principal = microsoft_user_principal(
+        user_identifier,
+        access_token=access_token,
+        tenant_id=tenant_id,
+    )
+    return acl_principal_label(
+        principal,
+        kind="user",
+        provider=MICROSOFT_GRAPH_GROUP_PROVIDER,
+        display_name=display_name or email or user_identifier,
+        email=email,
+        external_id=external_id or user_identifier,
     )
 
 
@@ -236,3 +291,105 @@ async def get_current_user_microsoft_principals(
             seen.add(principal)
             principals.append(principal)
     return principals
+
+
+async def get_current_user_microsoft_principal_labels(
+    oauth: Any,
+    graph_base_url: str,
+    *,
+    tenant_id: str | None = None,
+    timeout_seconds: float = 10.0,
+) -> list[dict[str, Any]]:
+    """Fetch display labels for current Microsoft user and group principals."""
+    if oauth is None:
+        return []
+
+    try:
+        access_token = await get_oauth_access_token(oauth)
+    except Exception as e:
+        logger.warning("Unable to get Microsoft Graph token for principal labels", error=str(e))
+        return []
+
+    if not access_token:
+        return []
+
+    resolved_tenant = tenant_id_from_access_token(access_token, fallback=tenant_id)
+    identifiers = _decode_microsoft_user_identifiers(access_token, tenant_id)
+    labels: list[dict[str, Any]] = []
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.get(
+                f"{graph_base_url}/me",
+                headers=headers,
+                params={"$select": "id,displayName,userPrincipalName,mail"},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                user_email = data.get("mail") or data.get("userPrincipalName")
+                for key in ("id", "userPrincipalName", "mail"):
+                    value = data.get(key)
+                    if value:
+                        identifiers.append(str(value))
+                for identifier in identifiers:
+                    label = microsoft_user_principal_label(
+                        identifier,
+                        access_token=access_token,
+                        tenant_id=resolved_tenant,
+                        display_name=data.get("displayName") or user_email,
+                        email=user_email,
+                        external_id=identifier,
+                    )
+                    if label:
+                        labels.append(label)
+            elif response.status_code in (401, 403):
+                logger.warning(
+                    "Microsoft Graph user principal label lookup denied",
+                    status_code=response.status_code,
+                    response_text=response.text[:500],
+                )
+            else:
+                logger.warning(
+                    "Microsoft Graph user principal label lookup failed",
+                    status_code=response.status_code,
+                    response_text=response.text[:500],
+                )
+
+            group_url = f"{graph_base_url}/me/transitiveMemberOf/microsoft.graph.group"
+            params: dict[str, str] | None = {"$select": "id,displayName,mail"}
+            while group_url:
+                response = await client.get(group_url, headers=headers, params=params)
+                params = None
+                if response.status_code in (401, 403):
+                    logger.warning(
+                        "Microsoft Graph group principal label lookup denied",
+                        status_code=response.status_code,
+                        response_text=response.text[:500],
+                    )
+                    break
+                if response.status_code != 200:
+                    logger.warning(
+                        "Microsoft Graph group principal label lookup failed",
+                        status_code=response.status_code,
+                        response_text=response.text[:500],
+                    )
+                    break
+
+                data = response.json()
+                for entry in data.get("value", []):
+                    group_id = entry.get("id")
+                    label = microsoft_group_principal_label(
+                        group_id,
+                        access_token=access_token,
+                        tenant_id=resolved_tenant,
+                        display_name=entry.get("displayName") or entry.get("mail"),
+                        email=entry.get("mail"),
+                    )
+                    if label:
+                        labels.append(label)
+                group_url = data.get("@odata.nextLink")
+    except Exception as e:
+        logger.warning("Microsoft Graph principal label lookup errored", error=str(e))
+
+    return unique_acl_principal_labels(labels)

@@ -157,6 +157,18 @@ GROUP_ACL_CACHE_TTL_SECONDS = get_env_int("OPENRAG_GROUP_ACL_CACHE_TTL", 0)
 # stale for up to this many seconds; set to 0 for strict per-request refresh.
 DLS_PRINCIPAL_REFRESH_TTL_SECONDS = get_env_int("OPENRAG_DLS_PRINCIPAL_REFRESH_TTL", 60)
 
+ACL_PRINCIPAL_LABELS_MAPPING = {
+    "type": "object",
+    "properties": {
+        "principal": {"type": "keyword"},
+        "kind": {"type": "keyword"},
+        "provider": {"type": "keyword"},
+        "display_name": {"type": "keyword"},
+        "email": {"type": "keyword"},
+        "external_id": {"type": "keyword"},
+    },
+}
+
 # TTL (seconds) for the in-process JWT claims cache. A cached entry is also
 # checked against the token's own `exp` claim on every hit, so a revoked token
 # can linger at most min(this value, token_remaining_lifetime) seconds.
@@ -309,6 +321,7 @@ INDEX_BODY = {
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},
             "allowed_principals": {"type": "keyword"},
+            "allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
             "user_permissions": {"type": "object"},
             "group_permissions": {"type": "object"},
             "created_time": {"type": "date"},
@@ -331,6 +344,7 @@ DLS_PRINCIPAL_INDEX_BODY = {
             "auth_email": {"type": "keyword"},
             "provider": {"type": "keyword"},
             "principals": {"type": "keyword"},
+            "principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
             "updated_at": {"type": "date"},
         }
     },

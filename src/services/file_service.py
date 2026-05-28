@@ -166,6 +166,7 @@ class FileService:
                                     "indexed_time",
                                     "allowed_users",
                                     "allowed_groups",
+                                    "allowed_principal_labels",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
@@ -204,6 +205,7 @@ class FileService:
                     "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
+                    "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
 

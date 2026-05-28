@@ -193,6 +193,7 @@ class LangflowFileService:
         allowed_users: list[str] | None,
         allowed_groups: list[str] | None,
         allowed_principals: list[str] | None,
+        allowed_principal_labels: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
             return None, None
@@ -214,6 +215,7 @@ class LangflowFileService:
             allowed_users=allowed_users or [],
             allowed_groups=allowed_groups or [],
             allowed_principals=allowed_principals or [],
+            allowed_principal_labels=allowed_principal_labels or [],
             ingest_run_id=ingest_run_id,
             is_sample_data=connector_type == "openrag_docs",
             index_name=get_index_name(),
@@ -327,6 +329,7 @@ class LangflowFileService:
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
         allowed_principals: list[str] | None = None,
+        allowed_principal_labels: list[dict[str, Any]] | None = None,
         selected_embedding_model: str | None = None,
         docling_task_id: str | None = None,
     ) -> dict[str, Any]:
@@ -417,6 +420,9 @@ class LangflowFileService:
         headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(allowed_users or [])
         headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(allowed_groups or [])
         headers["X-Langflow-Global-Var-ALLOWED_PRINCIPALS"] = json.dumps(allowed_principals or [])
+        headers["X-Langflow-Global-Var-ALLOWED_PRINCIPAL_LABELS"] = json.dumps(
+            allowed_principal_labels or []
+        )
 
         ingest_token, ingest_run_id = self._configure_ingest_callback(
             document_id=resolved_document_id,
@@ -432,6 +438,7 @@ class LangflowFileService:
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
+            allowed_principal_labels=allowed_principal_labels,
         )
         headers.update(
             self._ingest_callback_global_var_headers(
@@ -595,6 +602,7 @@ class LangflowFileService:
             allowed_users=[],
             allowed_groups=[],
             allowed_principals=[],
+            allowed_principal_labels=[],
         )
         headers.update(
             self._ingest_callback_global_var_headers(

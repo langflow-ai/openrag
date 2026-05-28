@@ -7,6 +7,7 @@ import hashlib
 import re
 import uuid
 from collections.abc import Iterable
+from typing import Any
 
 _SAFE_COMPONENT_RE = re.compile(r"^[a-z0-9_-]+$")
 
@@ -91,4 +92,70 @@ def unique_acl_principals(principals: Iterable[object]) -> list[str]:
         if value and value not in seen:
             seen.add(value)
             unique.append(value)
+    return unique
+
+
+def acl_principal_label(
+    principal: object,
+    *,
+    kind: str,
+    provider: str,
+    display_name: object = None,
+    email: object = None,
+    external_id: object = None,
+) -> dict[str, Any] | None:
+    """Build non-authoritative display metadata for an ACL principal."""
+    principal_value = str(principal or "").strip()
+    if not principal_value:
+        return None
+
+    label: dict[str, Any] = {
+        "principal": principal_value,
+        "kind": str(kind or "").strip() or "unknown",
+        "provider": str(provider or "").strip() or "unknown",
+    }
+    for key, value in (
+        ("display_name", display_name),
+        ("email", email),
+        ("external_id", external_id),
+    ):
+        if value is None:
+            continue
+        value_text = str(value).strip()
+        if value_text:
+            label[key] = value_text
+    return label
+
+
+def unique_acl_principal_labels(labels: Iterable[object]) -> list[dict[str, Any]]:
+    """Return display labels keyed by canonical principal, preserving first-seen order."""
+    unique: list[dict[str, Any]] = []
+    by_principal: dict[str, dict[str, Any]] = {}
+
+    for raw_label in labels or ():
+        if not isinstance(raw_label, dict):
+            continue
+        principal = str(raw_label.get("principal") or "").strip()
+        if not principal:
+            continue
+
+        label: dict[str, Any] = {"principal": principal}
+        for key in ("kind", "provider", "display_name", "email", "external_id"):
+            value = raw_label.get(key)
+            if value is None:
+                continue
+            value_text = str(value).strip()
+            if value_text:
+                label[key] = value_text
+
+        existing = by_principal.get(principal)
+        if existing is None:
+            by_principal[principal] = label
+            unique.append(label)
+            continue
+
+        for key, value in label.items():
+            if key not in existing and value:
+                existing[key] = value
+
     return unique

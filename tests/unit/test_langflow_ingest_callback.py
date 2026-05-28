@@ -29,6 +29,15 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
         owner="user-1",
         allowed_users=["user@example.com"],
         allowed_principals=["u:ms:tenant:user"],
+        allowed_principal_labels=[
+            {
+                "principal": "u:ms:tenant:user",
+                "kind": "user",
+                "provider": "ms",
+                "display_name": "User",
+                "email": "user@example.com",
+            }
+        ],
         ingest_run_id="run-1",
     )
     token = token_service.create_token(context)
@@ -70,6 +79,15 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
     assert indexed_context.owner == "user-1"
     assert indexed_context.allowed_users == ["user@example.com"]
     assert indexed_context.allowed_principals == ["u:ms:tenant:user"]
+    assert indexed_context.allowed_principal_labels == [
+        {
+            "principal": "u:ms:tenant:user",
+            "kind": "user",
+            "provider": "ms",
+            "display_name": "User",
+            "email": "user@example.com",
+        }
+    ]
     assert chunks[0].chunk_id == "doc-1_1_0"
     assert chunks[0].metadata["langflow_chunk_id"] == "doc-1_0"
     assert chunks[0].metadata["owner"] == "forged-owner"

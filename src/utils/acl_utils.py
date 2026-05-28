@@ -16,6 +16,13 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _sorted_principal_labels(labels: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return sorted(
+        [label for label in labels or [] if isinstance(label, dict)],
+        key=lambda label: json.dumps(label, sort_keys=True),
+    )
+
+
 def compute_acl_hash(acl: DocumentACL) -> str:
     """
     Compute SHA256 hash of ACL for change detection.
@@ -31,6 +38,7 @@ def compute_acl_hash(acl: DocumentACL) -> str:
         "allowed_users": sorted(acl.allowed_users),
         "allowed_groups": sorted(acl.allowed_groups),
         "allowed_principals": sorted(acl.allowed_principals),
+        "allowed_principal_labels": _sorted_principal_labels(acl.allowed_principal_labels),
     }
     return hashlib.sha256(json.dumps(acl_data, sort_keys=True).encode()).hexdigest()
 
@@ -62,6 +70,7 @@ async def should_update_acl(document_id: str, new_acl: DocumentACL, opensearch_c
                     "allowed_users",
                     "allowed_groups",
                     "allowed_principals",
+                    "allowed_principal_labels",
                 ],
             },
         )
@@ -78,6 +87,7 @@ async def should_update_acl(document_id: str, new_acl: DocumentACL, opensearch_c
             allowed_users=existing_chunk.get("allowed_users", []),
             allowed_groups=existing_chunk.get("allowed_groups", []),
             allowed_principals=existing_chunk.get("allowed_principals", []),
+            allowed_principal_labels=existing_chunk.get("allowed_principal_labels", []),
         )
 
         existing_hash = compute_acl_hash(existing_acl)
@@ -134,12 +144,14 @@ async def update_document_acl(
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
                         ctx._source.allowed_principals = params.allowed_principals;
+                        ctx._source.allowed_principal_labels = params.allowed_principal_labels;
                     """,
                     "params": {
                         "owner": acl.owner,
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
                         "allowed_principals": acl.allowed_principals,
+                        "allowed_principal_labels": acl.allowed_principal_labels,
                     },
                 },
             },
@@ -211,12 +223,14 @@ async def batch_update_acls(
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
                         ctx._source.allowed_principals = params.allowed_principals;
+                        ctx._source.allowed_principal_labels = params.allowed_principal_labels;
                     """,
                     "params": {
                         "owner": acl.owner,
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
                         "allowed_principals": acl.allowed_principals,
+                        "allowed_principal_labels": acl.allowed_principal_labels,
                     },
                 },
             },

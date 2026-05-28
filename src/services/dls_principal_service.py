@@ -8,7 +8,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from session_manager import User
-from utils.group_acl import unique_acl_principals
+from utils.group_acl import (
+    acl_principal_label,
+    unique_acl_principal_labels,
+    unique_acl_principals,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -101,14 +105,23 @@ class DLSPrincipalService:
             )
             return []
 
+        connector_principals, connector_labels = await self._resolve_connector_principals_and_labels(
+            user,
+            include_group_roles=group_roles is None,
+        )
+        auth_principals = self._resolve_auth_user_principals(user)
         principals = unique_acl_principals(
             [
                 *(group_roles or []),
-                *await self._resolve_connector_principals(
-                    user,
-                    include_group_roles=group_roles is None,
-                ),
-                *self._resolve_auth_user_principals(user),
+                *connector_principals,
+                *auth_principals,
+            ]
+        )
+        principal_labels = unique_acl_principal_labels(
+            [
+                *connector_labels,
+                *self._labels_for_group_roles(group_roles or []),
+                *self._labels_for_auth_user_principals(user, auth_principals),
             ]
         )
 
@@ -124,6 +137,7 @@ class DLSPrincipalService:
                         "auth_email": user.email,
                         "provider": user.provider,
                         "principals": principals,
+                        "principal_labels": principal_labels,
                         "updated_at": updated_at,
                     },
                     refresh="wait_for",
@@ -196,6 +210,28 @@ class DLSPrincipalService:
             if not await client.indices.exists(index=self.index_name):
                 await client.indices.create(index=self.index_name, body=DLS_PRINCIPAL_INDEX_BODY)
                 logger.info("Created DLS principal lookup index", index_name=self.index_name)
+            else:
+                try:
+                    mapping = await client.indices.get_mapping(index=self.index_name)
+                    properties = mapping.get(self.index_name, {}).get("mappings", {}).get(
+                        "properties", {}
+                    )
+                    if properties.get("principal_labels") is None:
+                        await client.indices.put_mapping(
+                            index=self.index_name,
+                            body={
+                                "properties": {
+                                    "principal_labels": DLS_PRINCIPAL_INDEX_BODY["mappings"][
+                                        "properties"
+                                    ]["principal_labels"]
+                                }
+                            },
+                        )
+                except AttributeError:
+                    logger.debug(
+                        "Skipping DLS principal label mapping backfill; client does not expose mapping APIs",
+                        index_name=self.index_name,
+                    )
             self._index_checked = True
 
     def _get_opensearch_client(self) -> Any | None:
@@ -248,23 +284,24 @@ class DLSPrincipalService:
             )
             return []
 
-    async def _resolve_connector_principals(
+    async def _resolve_connector_principals_and_labels(
         self,
         user: User,
         *,
         include_group_roles: bool,
-    ) -> list[str]:
+    ) -> tuple[list[str], list[dict[str, Any]]]:
         connection_manager = getattr(self.connector_service, "connection_manager", None)
         if connection_manager is None:
-            return []
+            return [], []
 
         try:
             connections = await connection_manager.list_connections(user_id=user.user_id)
         except Exception as e:
             logger.warning("Failed to list connector connections for DLS principals", error=str(e))
-            return []
+            return [], []
 
         principals: list[str] = []
+        labels: list[dict[str, Any]] = []
         for connection in connections:
             if not getattr(connection, "is_active", False):
                 continue
@@ -282,6 +319,20 @@ class DLSPrincipalService:
 
             if connector is None:
                 continue
+
+            label_resolver = getattr(connector, "get_current_user_principal_labels", None)
+            if label_resolver is not None:
+                try:
+                    labels.extend(await label_resolver() or [])
+                except NotImplementedError:
+                    pass
+                except Exception as e:
+                    logger.warning(
+                        "Connector DLS principal label lookup failed",
+                        connection_id=getattr(connection, "connection_id", None),
+                        connector_type=getattr(connection, "connector_type", None),
+                        error=str(e),
+                    )
 
             try:
                 principals.extend(await connector.get_current_user_principals() or [])
@@ -310,4 +361,50 @@ class DLSPrincipalService:
                     error=str(e),
                 )
 
-        return principals
+        return principals, labels
+
+    @staticmethod
+    def _principal_label_kind(principal: str) -> str:
+        if principal.startswith("g:"):
+            return "group"
+        if principal.startswith("u:"):
+            return "user"
+        return "unknown"
+
+    @staticmethod
+    def _principal_label_provider(principal: str) -> str:
+        parts = principal.split(":", 2)
+        return parts[1] if len(parts) > 1 and parts[1] else "unknown"
+
+    def _labels_for_group_roles(self, group_roles: list[str]) -> list[dict[str, Any]]:
+        labels: list[dict[str, Any]] = []
+        for role in group_roles:
+            label = acl_principal_label(
+                role,
+                kind="group",
+                provider=self._principal_label_provider(role),
+                display_name=role,
+                external_id=role,
+            )
+            if label:
+                labels.append(label)
+        return labels
+
+    def _labels_for_auth_user_principals(
+        self,
+        user: User,
+        auth_principals: list[str],
+    ) -> list[dict[str, Any]]:
+        labels: list[dict[str, Any]] = []
+        for principal in auth_principals:
+            label = acl_principal_label(
+                principal,
+                kind=self._principal_label_kind(principal),
+                provider=self._principal_label_provider(principal),
+                display_name=user.name or user.email or principal,
+                email=user.email,
+                external_id=user.user_id,
+            )
+            if label:
+                labels.append(label)
+        return labels

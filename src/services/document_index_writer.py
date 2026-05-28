@@ -14,7 +14,7 @@ from typing import Any
 
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
-from utils.group_acl import unique_acl_principals
+from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +35,7 @@ class DocumentIndexContext:
     allowed_users: list[str] = field(default_factory=list)
     allowed_groups: list[str] = field(default_factory=list)
     allowed_principals: list[str] = field(default_factory=list)
+    allowed_principal_labels: list[dict[str, Any]] = field(default_factory=list)
     ingest_run_id: str | None = None
     is_sample_data: bool = False
     index_name: str | None = None
@@ -211,6 +212,9 @@ class DocumentIndexWriter:
             "allowed_users": list(context.allowed_users),
             "allowed_groups": list(context.allowed_groups),
             "allowed_principals": unique_acl_principals(context.allowed_principals),
+            "allowed_principal_labels": unique_acl_principal_labels(
+                context.allowed_principal_labels
+            ),
             "indexed_time": indexed_time,
             "metadata": metadata.get("metadata", {}),
         }
@@ -232,7 +236,12 @@ class DocumentIndexWriter:
     @staticmethod
     def _normalized_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(metadata or {})
-        for key in ("allowed_users", "allowed_groups", "allowed_principals"):
+        for key in (
+            "allowed_users",
+            "allowed_groups",
+            "allowed_principals",
+            "allowed_principal_labels",
+        ):
             value = normalized.get(key)
             if isinstance(value, str):
                 try:

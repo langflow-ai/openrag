@@ -14,7 +14,11 @@ async def create_index_body(
         OpenSearch index body configuration
     """
     from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
-    from config.settings import VECTOR_DIM, get_openrag_config
+    from config.settings import (
+        ACL_PRINCIPAL_LABELS_MAPPING,
+        VECTOR_DIM,
+        get_openrag_config,
+    )
 
     resolved_embedding_model = (
         embedding_model
@@ -42,6 +46,7 @@ async def create_index_body(
         "allowed_users": {"type": "keyword"},
         "allowed_groups": {"type": "keyword"},
         "allowed_principals": {"type": "keyword"},
+        "allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
         "created_time": {"type": "date"},
         "modified_time": {"type": "date"},
         "indexed_time": {"type": "date"},

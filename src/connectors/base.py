@@ -13,6 +13,7 @@ class DocumentACL:
     allowed_users: list[str] = None
     allowed_groups: list[str] = None
     allowed_principals: list[str] = None
+    allowed_principal_labels: list[dict[str, Any]] = None
 
     def __post_init__(self):
         if self.allowed_users is None:
@@ -21,6 +22,8 @@ class DocumentACL:
             self.allowed_groups = []
         if self.allowed_principals is None:
             self.allowed_principals = []
+        if self.allowed_principal_labels is None:
+            self.allowed_principal_labels = []
 
 
 @dataclass
@@ -134,6 +137,10 @@ class BaseConnector(ABC):
     @property
     def is_authenticated(self) -> bool:
         return self._authenticated
+
+    async def get_current_user_principal_labels(self) -> list[dict[str, Any]]:
+        """Return non-authoritative display labels for current-user ACL principals."""
+        return []
 
     async def _detect_base_url(self) -> str | None:
         """Auto-detect base URL for the connector.
