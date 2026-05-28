@@ -8,6 +8,7 @@ to minimize write amplification when ACLs change.
 import asyncio
 import hashlib
 import json
+from typing import Any
 
 from src.connectors.base import DocumentACL
 from utils.logging_config import get_logger
@@ -115,7 +116,7 @@ async def update_document_acl(
     acl: DocumentACL,
     opensearch_client,
     id_fields: tuple[str, ...] = ("document_id",),
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Update ACL for all chunks of a document.
 
@@ -175,7 +176,7 @@ async def batch_update_acls(
     acl_updates: list[tuple[str, DocumentACL]],
     opensearch_client,
     id_fields: tuple[str, ...] = ("document_id",),
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Batch update ACLs for multiple documents.
 
@@ -249,7 +250,7 @@ async def batch_update_acls(
         total_chunks_updated = 0
         errors = []
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 errors.append(str(result))
             else:
                 total_chunks_updated += result.get("updated", 0)
