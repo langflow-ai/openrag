@@ -495,8 +495,10 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
 async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """Authenticate via upstream auth.
 
-    0. Configured credentials header.
-    1. Configured session cookie.
+    0. Configured credentials header containing OpenSearch credentials.
+    1. Configured session cookie. When JWT-role sync is enabled, the JWT is
+       instead read from the gateway-forwarded header named by ``get_jwt_auth_header()``;
+       identity and roles both come from that token.
     2. Local dev basic-auth cookie.
 
     If *required* is True, raises HTTP 401 when none is present.
@@ -504,11 +506,13 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
+    from auth.jwt_roles import jwt_roles_enabled
     from config.settings import (
         IBM_CREDENTIALS_HEADER,
         IBM_SESSION_COOKIE_NAME,
         PLATFORM_PASSWORD,
         PLATFORM_USERNAME,
+        get_jwt_auth_header,
     )
 
     # ── Option -1: Environment variable override (local dev/calls) ───────
@@ -535,7 +539,16 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # ── Option 0: Configurable credentials header (Traefik production) ───
 
     lh_credentials = request.headers.get(IBM_CREDENTIALS_HEADER, "")
-    ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
+    # When RBAC/JWT-role sync is on, the gateway forwards the end-user JWT in the
+    # configured header; use it as the source of identity and roles. When RBAC is
+    # off, preserve the existing ibm-openrag-session cookie flow.
+    if jwt_roles_enabled():
+        raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+        ibm_token = (
+            raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
+        ) or None
+    else:
+        ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
     user_id = None
     email = None
     name = None

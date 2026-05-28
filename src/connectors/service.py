@@ -233,13 +233,16 @@ class ConnectorService:
         if write_client is None:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
 
-        # Update ACL if changed (hash-based skip optimization)
+        # Update ACL if changed (hash-based skip optimization).
+        # Match both document_id and connector_file_id: non-Langflow connector
+        # chunks store the connector id in connector_file_id (document_id holds the
+        # content hash), while Langflow chunks store it in document_id.
         acl_result = await update_document_acl(
             document_id=document.id,
             acl=document.acl,
             opensearch_client=opensearch_client,
             write_opensearch_client=write_client,
-            field=id_field,
+            id_fields=("document_id", "connector_file_id"),
         )
 
         # Log ACL update result
@@ -259,7 +262,18 @@ class ConnectorService:
             await write_client.update_by_query(
                 index=self.index_name,
                 body={
-                    "query": {"term": {id_field: document.id}},
+                    # Match both fields: non-Langflow chunks carry the connector id
+                    # in connector_file_id (document_id is the content hash),
+                    # Langflow chunks carry it in document_id.
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"term": {"document_id": document.id}},
+                                {"term": {"connector_file_id": document.id}},
+                            ],
+                            "minimum_should_match": 1,
+                        }
+                    },
                     "script": {
                         "source": """
                             ctx._source.source_url = params.source_url;

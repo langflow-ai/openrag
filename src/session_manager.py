@@ -349,7 +349,7 @@ class SessionManager:
         if IBM_AUTH_ENABLED and jwt_token:
             return jwt_token
 
-        if jwt_token is not None:
+        if jwt_token is not None and isinstance(jwt_token, str) and jwt_token.strip():
             return jwt_token
 
         # No token — create one

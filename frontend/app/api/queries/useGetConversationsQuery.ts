@@ -48,7 +48,10 @@ export interface ConversationHistoryResponse {
 export const useGetConversationsQuery = (
   endpoint: EndpointType,
   refreshTrigger?: number,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<ChatConversation[], Error, ChatConversation[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();

@@ -64,7 +64,11 @@ const buildTask = (
 
 const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
   let currentTasks = initialTasks;
-  await page.route("**/api/tasks", async (route: Route) => {
+  await page.route("**/api/tasks**", async (route: Route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",

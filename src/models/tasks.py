@@ -52,12 +52,12 @@ class FileTask:
     retry_count: int = 0
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    filename: str | None = None  # Original filename for display
     # Two-phase ingestion fields. Only meaningful for processors that submit
     # files to Docling Serve and then trigger Langflow (i.e. LangflowFileProcessor).
     docling_task_id: str | None = None
     docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
     phase: IngestionPhase = IngestionPhase.DOCLING
-    filename: str | None = None  # Original filename for display
 
     @property
     def duration_seconds(self) -> float:
@@ -80,6 +80,7 @@ class UploadTask:
     updated_at: float = field(default_factory=time.time)
     processor: TaskProcessor | None = field(default=None, repr=False)
     background_task: asyncio.Task[None] | None = field(default=None, repr=False)
+    temp_file_paths: list[str] | None = field(default=None, repr=False)
     _sequence_number: int = field(init=False, repr=False)
 
     def __post_init__(self):

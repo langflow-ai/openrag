@@ -84,7 +84,7 @@ done
 
 echo "Waiting for Backend (via proxy)..."
 ELAPSED=0
-until curl -s http://localhost:8000/health >/dev/null; do
+until [ "$(curl -s http://localhost:8000/search/health -o /dev/null -w "%{http_code}")" -eq 200 ]; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then
@@ -94,5 +94,17 @@ until curl -s http://localhost:8000/health >/dev/null; do
     fi
     echo "Waiting for Backend... (${ELAPSED}s/${TIMEOUT}s)"
 done
+
+echo "Waiting for OpenSearch security configuration to be applied..."
+ELAPSED=0
+until ${CONTAINER_RUNTIME} logs os 2>&1 | grep -q "Security configuration applied successfully" || [ $ELAPSED -ge 60 ]; do
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+done
+if [ $ELAPSED -ge 60 ]; then
+    echo "WARNING: OpenSearch security configuration wait timed out (60s)"
+else
+    echo "OpenSearch security configuration applied successfully"
+fi
 
 echo "Infrastructure Ready!"

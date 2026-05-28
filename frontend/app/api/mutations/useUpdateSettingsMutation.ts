@@ -18,6 +18,7 @@ export interface UpdateSettingsRequest {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
 
