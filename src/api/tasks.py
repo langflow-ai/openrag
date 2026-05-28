@@ -76,6 +76,9 @@ async def retry_task(
     if result.get("error") == "task_in_progress":
         return JSONResponse(result, status_code=409)
 
+    if result.get("error") == "no_processor":
+        return JSONResponse(result, status_code=400)
+
     if result.get("status") == "no_op":
         return JSONResponse(result, status_code=400)
 

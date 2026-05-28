@@ -864,7 +864,7 @@ class AppClients:
                 if api_key:
                     headers["x-api-key"] = api_key
                     response = await self.langflow_http_client.request(
-                        method=method, url=url, headers=headers, **kwargs
+                        method=method, url=url, headers=headers, **request_kwargs
                     )
 
             if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:

@@ -165,6 +165,11 @@ export function useTaskDialog(open: boolean, taskId: string) {
     [sortedEntries],
   );
 
+  const allRetryablePaths = useMemo(
+    () => (task ? getRetryableFilePaths(getRetryableFileEntries(task)) : []),
+    [task],
+  );
+
   const selectedCount = useMemo(() => {
     let count = 0;
     for (const path of selectablePaths) {
@@ -193,8 +198,8 @@ export function useTaskDialog(open: boolean, taskId: string) {
     retryIngestionSelectedCount === retryIngestionPaths.length;
 
   const selectedRetryablePaths = useMemo(
-    () => selectablePaths.filter((path) => selectedPaths.has(path)),
-    [selectablePaths, selectedPaths],
+    () => allRetryablePaths.filter((path) => selectedPaths.has(path)),
+    [allRetryablePaths, selectedPaths],
   );
 
   const runRetry = useCallback(

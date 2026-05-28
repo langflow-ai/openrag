@@ -813,7 +813,7 @@ function SearchPage() {
         toast.success(
           `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
         );
-      } else {
+      } else if (failed.length === 0) {
         toast.warning(
           "No document chunks were deleted. Files may be missing or not deletable in your current context.",
         );

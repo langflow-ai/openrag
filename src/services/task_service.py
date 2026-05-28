@@ -839,8 +839,15 @@ class TaskService:
         background_task = asyncio.create_task(
             self.background_custom_processor(store_user_id, task_id, paths_to_retry, processor)
         )
+        upload_task.background_task = background_task
         self.background_tasks.add(background_task)
-        background_task.add_done_callback(self.background_tasks.discard)
+
+        def _clear_retry_background_task(done_task: asyncio.Task) -> None:
+            self.background_tasks.discard(done_task)
+            if upload_task.background_task is done_task:
+                upload_task.background_task = None
+
+        background_task.add_done_callback(_clear_retry_background_task)
 
         return {
             "task_id": task_id,
