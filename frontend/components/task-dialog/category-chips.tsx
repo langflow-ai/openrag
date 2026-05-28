@@ -26,7 +26,7 @@ export function TaskDialogCategoryChips({
     <div
       className={cn(
         "flex flex-wrap items-center",
-        isCloudBrand ? "gap-2" : "gap-1.5",
+        isCloudBrand ? "gap-2 px-4" : "gap-1.5",
       )}
     >
       {CATEGORY_CHIPS.map((chip) => {
@@ -47,9 +47,13 @@ export function TaskDialogCategoryChips({
               "inline-flex min-h-10 items-center gap-2 border text-sm transition-colors",
               isCloudBrand ? "px-4" : "px-3",
               isCloudBrand ? "rounded-full" : "rounded-lg",
-              isActive
-                ? "border-badge bg-badge text-foreground"
-                : "border-border bg-muted hover:bg-badge hover:text-badge-foreground",
+              isCloudBrand
+                ? isActive
+                  ? "border-[var(--border-border-interactive)] bg-[#333333] text-foreground"
+                  : "border-border-subtle-contextual bg-[#333333] text-layer-contextual-foreground hover:bg-[#333333] hover:text-foreground"
+                : isActive
+                  ? "border-border bg-task-dialog-oss-selected text-foreground"
+                  : "border-border bg-muted hover:bg-badge hover:text-badge-foreground",
             )}
           >
             <Icon className={cn("size-4 shrink-0", chip.iconClassName)} />

@@ -79,7 +79,7 @@ async def retry_task(
     if result.get("status") == "no_op":
         return JSONResponse(result, status_code=400)
 
-    await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CREATED)
+    await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_RETRIED)
     return JSONResponse(result, status_code=202)
 
 

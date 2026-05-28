@@ -15,9 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { TaskDialogFileErrorDetails } from "./file-error-details";
 
-const OSS_ERROR_INDENT = "pl-9";
-const CHECKBOX_CLASS = "h-4 w-4 shrink-0 rounded border-border accent-primary";
-
 type TaskDialogFileListTab = "task-ingestions" | "retry-ingestions";
 
 interface TaskDialogFileListProps {
@@ -100,7 +97,9 @@ export function TaskDialogFileList({
 
   const containerClass = cn(
     "flex min-h-0 flex-1 flex-col overflow-hidden",
-    isCloudBrand ? "rounded-md border" : "border-b border-muted",
+    isCloudBrand
+      ? "rounded-md border-x border-b bg-layer-contextual"
+      : "border-b border-muted bg-task-dialog-oss",
   );
 
   const taskIngestionsTabCount =
@@ -124,7 +123,7 @@ export function TaskDialogFileList({
         : cn(
             "border-0",
             isActive
-              ? "rounded-none rounded-t-lg bg-muted text-foreground"
+              ? "rounded-none rounded-t-lg bg-task-dialog-oss-selected text-foreground"
               : "rounded-none bg-transparent text-muted-foreground hover:text-foreground",
           ),
     );
@@ -162,22 +161,21 @@ export function TaskDialogFileList({
           className={cn(
             "border-b last:border-b-0",
             isCloudBrand ? "border-border" : "border-muted",
-            isSelected && "bg-muted/30",
+            isSelected && (isCloudBrand ? "bg-muted" : "bg-muted/30"),
           )}
         >
           <div
             className={cn(
               rowGridClass,
-              isCloudBrand
-                ? "px-4 hover:bg-muted/40"
-                : "px-3 hover:bg-muted/30",
-              isSelected && "hover:bg-muted/40",
+              isCloudBrand ? "px-4 hover:bg-muted" : "px-3 hover:bg-muted/30",
+              isSelected &&
+                (isCloudBrand ? "hover:bg-muted" : "hover:bg-muted/40"),
             )}
           >
             {retryable ? (
               <input
                 type="checkbox"
-                className={CHECKBOX_CLASS}
+                className="h-4 w-4 shrink-0 rounded border-border accent-primary"
                 checked={isSelected}
                 disabled={isRowRetrying}
                 aria-label={`Select ${fileName}`}
@@ -243,7 +241,6 @@ export function TaskDialogFileList({
           {failed && isExpanded && analysis && (
             <TaskDialogFileErrorDetails
               isCloudBrand={isCloudBrand}
-              indentClassName={!isCloudBrand ? OSS_ERROR_INDENT : ""}
               fileInfo={fileInfo}
               taskError={task.error}
               analysis={analysis}
@@ -266,14 +263,14 @@ export function TaskDialogFileList({
   }) => (
     <div
       className={cn(
-        "flex min-h-10 shrink-0 items-center gap-3 bg-muted text-sm font-medium text-muted-foreground",
-        isCloudBrand ? "px-4" : "px-3",
+        "flex min-h-10 shrink-0 items-center gap-3 text-sm font-medium text-muted-foreground",
+        isCloudBrand ? "bg-muted px-4" : "bg-task-dialog-oss-selected px-3",
       )}
     >
       {showSelectAll ? (
         <input
           type="checkbox"
-          className={CHECKBOX_CLASS}
+          className="h-4 w-4 shrink-0 rounded border-border accent-primary"
           checked={allSelected}
           disabled={retryingTarget != null}
           aria-label="Select all retryable files"

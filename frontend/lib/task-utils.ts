@@ -7,11 +7,7 @@ import {
 export const ALL_TASK_FILE_TYPES = "__all__";
 export const ALL_TASK_STATUS_CATEGORIES = "__all__";
 
-export type TaskFileStatusCategory =
-  | "completed"
-  | "system_error"
-  | "indexing"
-  | "partial";
+export type TaskFileStatusCategory = "completed" | "system_error" | "indexing";
 
 export type TaskFileNameSort = "asc" | "desc";
 
@@ -21,11 +17,6 @@ export type TaskFileFilterOptions = {
   statusCategory?: TaskFileStatusCategory | typeof ALL_TASK_STATUS_CATEGORIES;
   task?: Task;
 };
-
-interface TaskFileCategoryContext {
-  taskHasFailures: boolean;
-  successfulFileCount: number;
-}
 
 export function isTaskFileCompleted(fileInfo: TaskFileEntry): boolean {
   return fileInfo.status === "completed";
@@ -128,21 +119,9 @@ export function countRetryIngestionFiles(task: Task): number {
   ).length;
 }
 
-function getTaskFileCategoryContext(task: Task): TaskFileCategoryContext {
-  return {
-    taskHasFailures: hasFailedFileEntries(task),
-    successfulFileCount: getSuccessfulFileCount(task),
-  };
-}
-
-/**
- * Maps a file to a dialog filter chip bucket.
- * Completed files in a mixed task (failures + successes) use `partial`, not `completed`.
- */
+/** Maps a file to a dialog filter chip bucket (aligned with per-file status labels). */
 export function getTaskFileStatusCategory(
   fileInfo: TaskFileEntry,
-  task: Task,
-  context: TaskFileCategoryContext = getTaskFileCategoryContext(task),
 ): TaskFileStatusCategory {
   if (isTaskFileFailed(fileInfo)) {
     return "system_error";
@@ -154,9 +133,6 @@ export function getTaskFileStatusCategory(
   }
 
   if (status === "completed") {
-    if (context.taskHasFailures && context.successfulFileCount > 0) {
-      return "partial";
-    }
     return "completed";
   }
 
@@ -170,12 +146,10 @@ export function countTaskFilesByCategory(
     completed: 0,
     system_error: 0,
     indexing: 0,
-    partial: 0,
   };
-  const context = getTaskFileCategoryContext(task);
 
   for (const [, fileInfo] of getTaskFileEntries(task)) {
-    const category = getTaskFileStatusCategory(fileInfo, task, context);
+    const category = getTaskFileStatusCategory(fileInfo);
     counts[category] += 1;
   }
 
@@ -203,9 +177,6 @@ export function filterTaskFileEntries(
   const query = options.search?.trim().toLowerCase() ?? "";
   const fileType = options.fileType ?? ALL_TASK_FILE_TYPES;
   const statusCategory = options.statusCategory ?? ALL_TASK_STATUS_CATEGORIES;
-  const categoryContext = options.task
-    ? getTaskFileCategoryContext(options.task)
-    : undefined;
 
   return entries.filter(([filePath, fileInfo]) => {
     if (fileType !== ALL_TASK_FILE_TYPES) {
@@ -216,11 +187,8 @@ export function filterTaskFileEntries(
     }
 
     if (
-      options.task &&
       statusCategory !== ALL_TASK_STATUS_CATEGORIES &&
-      categoryContext &&
-      getTaskFileStatusCategory(fileInfo, options.task, categoryContext) !==
-        statusCategory
+      getTaskFileStatusCategory(fileInfo) !== statusCategory
     ) {
       return false;
     }

@@ -66,14 +66,19 @@ export const useRetryTaskMutation = (
     return payload;
   }
 
+  const { onSuccess, onError, onSettled, ...restOptions } = options ?? {};
+
   return useMutation({
     mutationFn: retryTask,
-    onSuccess: (_data, variables) => {
+    ...restOptions,
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
       queryClient.invalidateQueries({
         queryKey: taskDetailQueryKey(variables.taskId),
       });
+      onSuccess?.(data, variables, context);
     },
-    ...options,
+    onError,
+    onSettled,
   });
 };

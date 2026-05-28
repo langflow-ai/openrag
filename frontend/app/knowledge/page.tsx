@@ -56,10 +56,7 @@ import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
-import {
-  deleteDocumentByFilename,
-  useDeleteDocument,
-} from "../api/mutations/useDeleteDocument";
+import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
 import {
   type SyncAllPreviewResponse,
@@ -366,25 +363,9 @@ function SearchPage() {
     return getKnowledgeFileIdentity(file);
   }, []);
 
-  const indexedFileIdentities = useMemo(
-    () =>
-      new Set(
-        effectiveData
-          .map((file) => getKnowledgeFileIdentity(file))
-          .filter(Boolean),
-      ),
-    [effectiveData],
-  );
-
-  const isDeletableKnowledgeRow = useCallback(
-    (file?: File) => {
-      if ((file?.status || "active") !== "active") {
-        return false;
-      }
-      return indexedFileIdentities.has(getKnowledgeFileIdentity(file));
-    },
-    [indexedFileIdentities],
-  );
+  const isDeletableKnowledgeRow = useCallback((file?: File) => {
+    return (file?.status || "active") === "active";
+  }, []);
 
   const resolveDeleteFilename = useCallback(
     (row: File) => {
@@ -503,9 +484,7 @@ function SearchPage() {
     if (!api) {
       return;
     }
-    if (!pruneNonDeletableGridSelection(api, isDeletableKnowledgeRow)) {
-      return;
-    }
+    pruneNonDeletableGridSelection(api, isDeletableKnowledgeRow);
     const nextSelected = api.getSelectedRows().filter(isDeletableKnowledgeRow);
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
@@ -799,7 +778,9 @@ function SearchPage() {
     try {
       const deleteResults = await Promise.allSettled(
         rowsToDelete.map((row) =>
-          deleteDocumentByFilename(resolveDeleteFilename(row)),
+          deleteDocumentMutation.mutateAsync({
+            filename: resolveDeleteFilename(row),
+          }),
         ),
       );
 
@@ -813,7 +794,7 @@ function SearchPage() {
         (
           result,
         ): result is PromiseFulfilledResult<
-          Awaited<ReturnType<typeof deleteDocumentByFilename>>
+          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
         > =>
           result.status === "fulfilled" &&
           (result.value.deleted_chunks || 0) > 0,

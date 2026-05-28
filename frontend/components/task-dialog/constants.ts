@@ -1,10 +1,4 @@
-import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Focus,
-  type LucideIcon,
-} from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, type LucideIcon } from "lucide-react";
 import type { TaskFileStatusCategory } from "@/lib/task-utils";
 
 export const CATEGORY_CHIPS: Array<{
@@ -29,12 +23,6 @@ export const CATEGORY_CHIPS: Array<{
     id: "indexing",
     label: "Indexing",
     icon: Clock,
-    iconClassName: "text-muted-foreground",
-  },
-  {
-    id: "partial",
-    label: "Partial",
-    icon: Focus,
     iconClassName: "text-muted-foreground",
   },
 ];

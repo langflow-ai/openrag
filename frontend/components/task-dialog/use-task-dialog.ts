@@ -50,7 +50,7 @@ function showRetryResultToast(result: RetryTaskResponse) {
 }
 
 export function useTaskDialog(open: boolean, taskId: string) {
-  const { markTaskFilesProcessing } = useTask();
+  const { markTaskFilesProcessing, refreshTasks } = useTask();
 
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(
     () => new Set(),
@@ -236,6 +236,7 @@ export function useTaskDialog(open: boolean, taskId: string) {
           setSelectedPaths(new Set());
         }
       } catch (error) {
+        await refreshTasks();
         toast.error("Retry failed", {
           description:
             error instanceof Error ? error.message : "Could not retry files",
@@ -251,6 +252,7 @@ export function useTaskDialog(open: boolean, taskId: string) {
       retryMutation,
       refetchTask,
       markTaskFilesProcessing,
+      refreshTasks,
     ],
   );
 

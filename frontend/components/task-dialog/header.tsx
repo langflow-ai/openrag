@@ -49,13 +49,17 @@ export function TaskDialogHeader({
     <header
       className={cn(
         "shrink-0 flex-none",
-        isCloudBrand ? "border-b border-border" : "border-b-0",
+        isCloudBrand
+          ? "border-b border-border bg-layer-contextual"
+          : "border-b-0",
       )}
     >
       <DialogHeader
         className={cn(
           "space-y-0 border-b-0 text-left",
-          isCloudBrand ? "px-6 pt-4 pb-3" : "pt-3 pb-2 pr-12",
+          isCloudBrand
+            ? "bg-layer-contextual px-6 pt-4 pb-3"
+            : "pt-3 pb-2 pr-12",
         )}
       >
         <DialogTitle
@@ -71,7 +75,7 @@ export function TaskDialogHeader({
       <div
         className={cn(
           "flex flex-col gap-2 border-b-0",
-          isCloudBrand ? "gap-3 px-4 pb-4" : "px-4 pb-3",
+          isCloudBrand ? "bg-layer-contextual gap-3 px-0 pb-4" : "px-4 pb-3",
         )}
       >
         <TaskDialogFilters

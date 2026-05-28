@@ -24,6 +24,17 @@ const config = {
     extend: {
       maxWidth: {
         content: "960px",
+        "task-dialog": "var(--task-dialog-width)",
+      },
+      maxHeight: {
+        "task-dialog": "var(--task-dialog-max-height)",
+      },
+      width: {
+        "task-dialog": "var(--task-dialog-width)",
+        "task-dialog-file-type": "var(--task-dialog-file-type-width)",
+      },
+      zIndex: {
+        "task-dialog-menu": "var(--z-task-dialog-menu)",
       },
       screens: {
         xl: "1200px",
@@ -159,6 +170,8 @@ const config = {
         },
         canvas: "hsl(var(--canvas))",
         "layer-contextual": "hsl(var(--layer-contextual))",
+        "task-dialog-oss": "hsl(var(--task-dialog-oss-bg))",
+        "task-dialog-oss-selected": "hsl(var(--task-dialog-oss-selected))",
         "layer-contextual-foreground":
           "hsl(var(--layer-contextual-foreground))",
         "border-subtle-contextual":
@@ -218,6 +231,9 @@ const config = {
       },
       spacing: {
         mmd: "13px",
+        "task-dialog-error-indent": "var(--task-dialog-error-indent)",
+        "task-dialog-error-indent-cloud":
+          "var(--task-dialog-error-indent-cloud)",
       },
       borderRadius: {
         lg: "var(--radius)",

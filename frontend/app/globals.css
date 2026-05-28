@@ -33,6 +33,15 @@
     /* App-level UI tokens (safe defaults, override per brand/theme) */
     --canvas: 0 0% 100%;
     --border-subtle-background-contextual: var(--border);
+    /* Task dialog layout (file row indent = px + checkbox + gaps + chevron) */
+    --task-dialog-width: 40rem;
+    --task-dialog-max-height: 90vh;
+    --task-dialog-file-type-width: 10rem;
+    --task-dialog-error-indent: 4.5rem;
+    --task-dialog-error-indent-cloud: 4.75rem;
+    --task-dialog-oss-bg: var(--background);
+    --task-dialog-oss-selected: var(--muted);
+    --z-task-dialog-menu: 100;
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));
@@ -122,6 +131,8 @@
     /* App-level UI tokens (safe defaults, override per brand/theme) */
     --canvas: 0 0% 3.9%; /* #0A0A0A */
     --border-subtle-background-contextual: var(--border);
+    --task-dialog-oss-bg: 0 0% 9.02%; /* #171717 */
+    --task-dialog-oss-selected: 0 0% 13.73%; /* #232323 */
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));

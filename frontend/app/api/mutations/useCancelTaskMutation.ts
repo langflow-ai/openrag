@@ -36,12 +36,16 @@ export const useCancelTaskMutation = (
     return response.json();
   }
 
+  const { onSuccess, onError, onSettled, ...restOptions } = options ?? {};
+
   return useMutation({
     mutationFn: cancelTask,
-    onSuccess: () => {
-      // Invalidate tasks query to refresh the list
+    ...restOptions,
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
+      onSuccess?.(data, variables, context);
     },
-    ...options,
+    onError,
+    onSettled,
   });
 };

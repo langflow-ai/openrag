@@ -668,74 +668,74 @@ class TaskService:
 
         store_user_id, upload_task = resolved
 
-        if upload_task.status == TaskStatus.RUNNING:
-            return {
-                "error": "task_in_progress",
-                "message": "Task is still running",
-                "task_id": task_id,
-            }
-
-        processor = upload_task.processor
-        if processor is None:
-            return {
-                "error": "no_processor",
-                "message": "Cannot retry: task processor is no longer available",
-                "task_id": task_id,
-            }
-
         paths_to_retry: list[str] = []
         skipped: list[dict] = []
         requested_paths = set(file_paths) if file_paths is not None else None
 
-        if requested_paths is not None:
-            for path in requested_paths:
-                file_task = upload_task.file_tasks.get(path)
-                if file_task is None:
-                    skipped.append({"file_path": path, "reason": "file_not_in_task"})
-                elif file_task.status != TaskStatus.FAILED:
-                    skipped.append(
-                        {
-                            "file_path": path,
-                            "filename": file_task.filename,
-                            "reason": "not_failed",
-                        }
-                    )
+        # Keep status checks, candidate selection, and state transitions inside
+        # one lock to avoid concurrent retry requests enqueueing duplicates.
+        async with self._get_task_lock(task_id):
+            processor = upload_task.processor
+            if upload_task.status == TaskStatus.RUNNING:
+                return {
+                    "error": "task_in_progress",
+                    "message": "Task is still running",
+                    "task_id": task_id,
+                }
 
-        # Build retry candidates before mutating shared task/file state.
-        retry_candidates: list[tuple[str, FileTask]] = []
-        for file_path, file_task in list(upload_task.file_tasks.items()):
-            if requested_paths is not None and file_path not in requested_paths:
-                continue
-            if file_task.status != TaskStatus.FAILED:
-                continue
+            if processor is None:
+                return {
+                    "error": "no_processor",
+                    "message": "Cannot retry: task processor is no longer available",
+                    "task_id": task_id,
+                }
 
-            if retryable_only:
-                metadata = self._infer_failure_metadata(file_task)
-                if not metadata or metadata.get("actionable_by") != "RETRYABLE":
+            if requested_paths is not None:
+                for path in requested_paths:
+                    file_task = upload_task.file_tasks.get(path)
+                    if file_task is None:
+                        skipped.append({"file_path": path, "reason": "file_not_in_task"})
+                    elif file_task.status != TaskStatus.FAILED:
+                        skipped.append(
+                            {
+                                "file_path": path,
+                                "filename": file_task.filename,
+                                "reason": "not_failed",
+                            }
+                        )
+
+            # Build retry candidates before mutating shared task/file state.
+            retry_candidates: list[tuple[str, FileTask]] = []
+            for file_path, file_task in list(upload_task.file_tasks.items()):
+                if requested_paths is not None and file_path not in requested_paths:
+                    continue
+                if file_task.status != TaskStatus.FAILED:
+                    continue
+
+                if retryable_only:
+                    metadata = self._infer_failure_metadata(file_task)
+                    if not metadata or metadata.get("actionable_by") != "RETRYABLE":
+                        skipped.append(
+                            {
+                                "file_path": file_path,
+                                "filename": file_task.filename,
+                                "reason": "not_retryable",
+                            }
+                        )
+                        continue
+
+                if not os.path.isfile(file_path):
                     skipped.append(
                         {
                             "file_path": file_path,
                             "filename": file_task.filename,
-                            "reason": "not_retryable",
+                            "reason": "source_file_missing",
                         }
                     )
                     continue
 
-            if not os.path.isfile(file_path):
-                skipped.append(
-                    {
-                        "file_path": file_path,
-                        "filename": file_task.filename,
-                        "reason": "source_file_missing",
-                    }
-                )
-                continue
+                retry_candidates.append((file_path, file_task))
 
-            retry_candidates.append((file_path, file_task))
-
-        # All shared task/file state transitions are protected by the task lock
-        # so retry requests and background processors cannot interleave updates.
-        async with self._get_task_lock(task_id):
             now = time.time()
             for file_path, file_task in retry_candidates:
                 if upload_task.failed_files > 0:
@@ -753,6 +753,10 @@ class TaskService:
                 file_task.updated_at = now
                 paths_to_retry.append(file_path)
 
+            if paths_to_retry:
+                upload_task.status = TaskStatus.RUNNING
+                upload_task.updated_at = now
+
         if not paths_to_retry:
             return {
                 "task_id": task_id,
@@ -761,10 +765,6 @@ class TaskService:
                 "status": "no_op",
                 "message": "No retryable files with available source data",
             }
-
-        async with self._get_task_lock(task_id):
-            upload_task.status = TaskStatus.RUNNING
-            upload_task.updated_at = time.time()
 
         background_task = asyncio.create_task(
             self.background_custom_processor(store_user_id, task_id, paths_to_retry, processor)

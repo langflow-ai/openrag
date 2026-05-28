@@ -57,11 +57,19 @@ function TaskDialogContent({
   } = useTaskDialog(open, task_id);
 
   const filtersDisabled = !task;
-  const fileTypeDisabled = !task || fileTypes.length === 0;
+  // Always offer "All file types"; only disable while task data is loading.
+  const fileTypeDisabled = !task;
   const showRetryActions = retryableCount > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
+        isCloudBrand
+          ? "bg-layer-contextual font-ibm-plex-sans"
+          : "bg-task-dialog-oss",
+      )}
+    >
       <TaskDialogHeader
         isCloudBrand={isCloudBrand}
         taskId={task_id}
@@ -80,7 +88,7 @@ function TaskDialogContent({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-hidden",
-          !isCloudBrand && "px-4",
+          isCloudBrand ? "bg-layer-contextual" : "bg-task-dialog-oss px-4",
         )}
       >
         {isLoading ? (
@@ -120,14 +128,21 @@ function TaskDialogContent({
 
       <DialogFooter
         className={cn(
-          "shrink-0 flex-row items-center gap-2 border-t sm:justify-end",
-          isCloudBrand ? "px-6 py-4" : "px-4 py-3",
+          "w-full shrink-0 flex-row items-stretch sm:justify-normal sm:space-x-0",
+          isCloudBrand
+            ? "gap-0 border-t bg-layer-contextual p-0"
+            : "gap-2 border-t bg-task-dialog-oss px-6 py-4",
         )}
       >
         <Button
           type="button"
           variant="ghost"
-          className={cn(showRetryActions && "flex-1")}
+          className={cn(
+            showRetryActions && "min-w-0 flex-1",
+            isCloudBrand &&
+              showRetryActions &&
+              "justify-start rounded-none px-4 text-left",
+          )}
           onClick={onClose}
           disabled={isRetrying}
         >
@@ -136,7 +151,10 @@ function TaskDialogContent({
         {showRetryActions && selectedCount > 0 ? (
           <Button
             type="button"
-            className="flex-1"
+            className={cn(
+              "min-w-0 flex-1",
+              isCloudBrand && "justify-start rounded-none px-4 text-left",
+            )}
             disabled={isRetrying || !task}
             onClick={() => void handleRetrySelected()}
           >
@@ -146,7 +164,10 @@ function TaskDialogContent({
         {showRetryActions && selectedCount === 0 ? (
           <Button
             type="button"
-            className="flex-1"
+            className={cn(
+              "min-w-0 flex-1",
+              isCloudBrand && "justify-start rounded-none px-4 text-left",
+            )}
             disabled={isRetrying || !task}
             onClick={() => void handleRetryAll()}
           >
@@ -164,9 +185,18 @@ export default function TaskDialog({
   task_id,
   onClose,
 }: TaskDialogProps) {
+  const isCloudBrand = useIsCloudBrand();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] w-[640px] max-w-[640px] flex-col gap-0 overflow-hidden p-0 sm:rounded-lg">
+      <DialogContent
+        className={cn(
+          "flex max-h-task-dialog w-task-dialog max-w-task-dialog flex-col gap-0 overflow-hidden p-0 sm:rounded-lg",
+          isCloudBrand
+            ? "bg-layer-contextual font-ibm-plex-sans"
+            : "bg-task-dialog-oss",
+        )}
+      >
         <TaskDialogContent
           key={task_id}
           open={open}
