@@ -418,13 +418,11 @@ def register_internal_routes(app: FastAPI):
     # Docling service proxy
     app.add_api_route("/docling/health", docling.health, methods=["GET"], tags=["internal"])
 
-    # ===== Users / RBAC Endpoints (JWT auth) =====
+    # ===== Users Endpoints (JWT auth) =====
     from api import config as config_api
     from api import users as users_api
-    from api.admin import rbac as admin_rbac
 
     app.include_router(users_api.router)
-    app.include_router(admin_rbac.router)
     # Public — must work pre-auth so the onboarding wizard can render.
     app.include_router(config_api.router)
 

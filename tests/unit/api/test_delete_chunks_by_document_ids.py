@@ -85,3 +85,30 @@ async def test_returns_zero_when_no_visible_chunks_match():
 
     assert deleted == 0
     opensearch_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_custom_field_parameter_is_used_in_query():
+    """Passing field='connector_file_id' must produce a terms query against that
+    field instead of the default 'document_id'. This is required for the 404
+    cleanup path in ConnectorFileProcessor where chunks are indexed with
+    document_id=file_hash (SHA) but deleted by connector source file ID."""
+    from api.documents import delete_chunks_by_document_ids
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search.return_value = {
+        "_scroll_id": None,
+        "hits": {"hits": [{"_id": "chunk-x"}]},
+    }
+    opensearch_client.delete.return_value = {"result": "deleted"}
+
+    deleted = await delete_chunks_by_document_ids(
+        ["src-file-1"],
+        opensearch_client,
+        "test-index",
+        field="connector_file_id",
+    )
+
+    assert deleted == 1
+    search_call = opensearch_client.search.await_args
+    assert search_call.kwargs["body"]["query"] == {"terms": {"connector_file_id": ["src-file-1"]}}
