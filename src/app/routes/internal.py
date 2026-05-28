@@ -28,9 +28,9 @@ from api import (
     tasks,
     upload,
 )
-from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
+from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from connectors.aws_s3.api import (
     s3_bucket_status,
     s3_configure,
