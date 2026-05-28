@@ -75,6 +75,37 @@ if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then
     chmod -R 777 config data keys opensearch-data openrag-documents 2>/dev/null || true
 fi
 
+# Extract CA certificate from OpenSearch container for secure HTTPS communication
+echo "Extracting OpenSearch CA certificate..."
+CERT_EXTRACT_TIMEOUT=60
+CERT_EXTRACT_ELAPSED=0
+
+# Wait for OpenSearch container to be running and certificate to be available
+until ${CONTAINER_RUNTIME} exec os test -f /usr/share/opensearch/config/root-ca.pem 2>/dev/null; do
+    sleep 2
+    CERT_EXTRACT_ELAPSED=$((CERT_EXTRACT_ELAPSED + 2))
+    if [ $CERT_EXTRACT_ELAPSED -ge $CERT_EXTRACT_TIMEOUT ]; then
+        echo "WARNING: Could not extract CA certificate from OpenSearch container within ${CERT_EXTRACT_TIMEOUT}s"
+        echo "WARNING: Certificate validation will be skipped"
+        SKIP_CERT_VALIDATION=true
+        break
+    fi
+    echo "Waiting for OpenSearch certificate... (${CERT_EXTRACT_ELAPSED}s/${CERT_EXTRACT_TIMEOUT}s)"
+done
+
+# Extract the certificate if available
+if [ "$SKIP_CERT_VALIDATION" != "true" ]; then
+    mkdir -p securityconfig
+    if ${CONTAINER_RUNTIME} cp os:/usr/share/opensearch/config/root-ca.pem securityconfig/root-ca.pem 2>/dev/null; then
+        echo "Successfully extracted CA certificate to securityconfig/root-ca.pem"
+        chmod 644 securityconfig/root-ca.pem
+    else
+        echo "WARNING: Failed to extract CA certificate from container"
+        echo "WARNING: Certificate validation will be skipped"
+        SKIP_CERT_VALIDATION=true
+    fi
+fi
+
 echo "Waiting for OpenSearch..."
 TIMEOUT=300
 ELAPSED=0
