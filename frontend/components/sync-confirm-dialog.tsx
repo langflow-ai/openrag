@@ -30,6 +30,10 @@ const formatConnectorLabel = (type: string): string =>
 const pluralize = (n: number, singular: string, plural?: string): string =>
   `${n} ${n === 1 ? singular : (plural ?? `${singular}s`)}`;
 
+/** Rough row-count above which the deletes ScrollArea (max-h-60 ≈ 240px) will
+ * overflow and the user needs a scroll affordance. */
+const SCROLL_HINT_THRESHOLD = 8;
+
 interface SyncConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -139,7 +143,7 @@ const DeletesAlert: React.FC<{
       {list.map((o) => (
         <li
           key={o.document_id}
-          className="truncate text-destructive/90"
+          className="truncate"
           title={o.filename || o.document_id}
         >
           {o.filename || o.document_id}
@@ -151,32 +155,44 @@ const DeletesAlert: React.FC<{
   const entries = Object.entries(orphansByType);
 
   return (
-    <Alert variant="destructive">
-      <AlertTriangle />
-      <AlertTitle>{pluralize(totalOrphans, "file")} will be deleted</AlertTitle>
-      <AlertDescription className="col-start-2 block min-w-0">
-        <p>These files no longer exist at the source.</p>
-        <ScrollArea className="mt-2 max-h-60 w-full">
-          {isSyncAll ? (
-            <div className="space-y-3 pr-2">
-              {entries.map(([type, list], index) => (
-                <div key={type}>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-destructive/80 mb-1">
-                    {formatConnectorLabel(type)} ({list.length})
+    <div className="space-y-1.5">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Removing
+      </div>
+      <Alert variant="destructive" className="bg-[#271919] text-[#ffced0]">
+        <AlertTriangle className="size-5" />
+        <AlertTitle>
+          {pluralize(totalOrphans, "file")} will be deleted
+        </AlertTitle>
+        <AlertDescription className="col-start-2 block min-w-0 !text-[#ffced0]">
+          <p>These files no longer exist at the source.</p>
+          <ScrollArea className="mt-2 max-h-60 w-full">
+            {isSyncAll ? (
+              <div className="space-y-3 pr-2">
+                {entries.map(([type, list], index) => (
+                  <div key={type}>
+                    <div className="text-xs font-semibold uppercase tracking-wide mb-1">
+                      {formatConnectorLabel(type)} ({list.length})
+                    </div>
+                    {renderList(list)}
+                    {index < entries.length - 1 ? (
+                      <Separator className="mt-3" />
+                    ) : null}
                   </div>
-                  {renderList(list)}
-                  {index < entries.length - 1 ? (
-                    <Separator className="mt-3" />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="pr-2">{renderList(entries[0]?.[1] ?? [])}</div>
-          )}
-        </ScrollArea>
-      </AlertDescription>
-    </Alert>
+                ))}
+              </div>
+            ) : (
+              <div className="pr-2">{renderList(entries[0]?.[1] ?? [])}</div>
+            )}
+          </ScrollArea>
+          {totalOrphans > SCROLL_HINT_THRESHOLD ? (
+            <p className="mt-2 text-xs italic opacity-80">
+              Scroll to review all {totalOrphans} files.
+            </p>
+          ) : null}
+        </AlertDescription>
+      </Alert>
+    </div>
   );
 };
 
@@ -184,7 +200,7 @@ const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
   connectors,
 }) => (
   <Alert variant="destructive">
-    <AlertTriangle />
+    <AlertTriangle className="size-5" />
     <AlertTitle>Couldn&apos;t check for deletions</AlertTitle>
     <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
       <p>
@@ -209,7 +225,7 @@ const UpdatesAlert: React.FC<{
 
   return (
     <Alert>
-      <RefreshCw />
+      <RefreshCw className="size-5" />
       <AlertTitle>{pluralize(totalUpdates, "file")} will be updated</AlertTitle>
       {isSyncAll && entries.length > 1 ? (
         <AlertDescription className="col-start-2 block min-w-0">
