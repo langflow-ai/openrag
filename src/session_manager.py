@@ -2,7 +2,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Union
+from typing import Any
 
 import httpx
 import jwt
@@ -313,7 +313,7 @@ class SessionManager:
         if IBM_AUTH_ENABLED and jwt_token:
             return jwt_token
 
-        if jwt_token is not None:
+        if jwt_token is not None and isinstance(jwt_token, str) and jwt_token.strip():
             return jwt_token
 
         # No token — create one

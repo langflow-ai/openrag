@@ -202,7 +202,7 @@ class TaskProcessor:
         chunk_size: int = None,
         chunk_overlap: int = None,
         is_sample_data: bool = False,
-        acl: "DocumentACL" = None,
+        acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
     ):
         """
@@ -368,15 +368,19 @@ class TaskProcessor:
             if connector_file_id:
                 chunk_doc["connector_file_id"] = connector_file_id
 
-            # Set owner and ACL fields
+            # Set owner and ACL fields.
+            # owner is always the syncing/uploading user (matching the Langflow
+            # pipeline, which indexes owner from the OWNER global var = user id).
+            # acl.owner (e.g. the SharePoint file's author) is intentionally NOT
+            # used here — read access comes from allowed_users/allowed_groups + DLS,
+            # while owner gates deletion and "my documents" ownership.
+            chunk_doc["owner"] = owner_user_id
             if acl:
-                # Use ACL data if provided (from connector)
-                chunk_doc["owner"] = acl.owner if acl.owner else owner_user_id
+                # Use ACL access lists if provided (from connector)
                 chunk_doc["allowed_users"] = acl.allowed_users
                 chunk_doc["allowed_groups"] = acl.allowed_groups
             else:
-                # Fallback to owner_user_id if no ACL (local uploads)
-                chunk_doc["owner"] = owner_user_id
+                # No ACL provided
                 chunk_doc["allowed_users"] = []
                 chunk_doc["allowed_groups"] = []
 
@@ -435,6 +439,9 @@ class DocumentFileProcessor(TaskProcessor):
         is_sample_data: bool = False,
         connector_type: str = "local",
         docling_service=None,
+        replace_duplicates: bool = False,
+        session_manager=None,
+        settings: dict | None = None,
     ):
         super().__init__(
             document_service,
@@ -448,6 +455,13 @@ class DocumentFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.is_sample_data = is_sample_data
         self.connector_type = connector_type
+        self.replace_duplicates = replace_duplicates
+        self.session_manager = session_manager or (
+            document_service.session_manager if document_service else None
+        )
+        self.settings = settings
+        if self.session_manager is None:
+            raise ValueError("session_manager is required for DocumentFileProcessor")
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a regular file path using consolidated methods"""
@@ -455,6 +469,41 @@ class DocumentFileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
+            # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
+            # This ensures we check/store the original filename with spaces, etc.
+            original_filename = file_task.filename or os.path.basename(item)
+
+            # Check if document with same filename already exists
+            if self.session_manager is None:
+                raise ValueError("session_manager is required to get OpenSearch client")
+            opensearch_client = self.session_manager.get_user_opensearch_client(
+                self.owner_user_id, self.jwt_token
+            )
+
+            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
+
+            if filename_exists and not self.replace_duplicates:
+                # Duplicate exists and user hasn't confirmed replacement
+                file_task.status = TaskStatus.FAILED
+                file_task.error = f"File with name '{original_filename}' already exists"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+            elif filename_exists and self.replace_duplicates:
+                # Delete existing document before uploading new one
+                logger.info(f"Replacing existing document: {original_filename}")
+                await self.delete_document_by_filename(original_filename, opensearch_client)
+                # Refresh index to make deletion visible before processing
+                from config.settings import get_index_name
+
+                try:
+                    await opensearch_client.indices.refresh(index=get_index_name())
+                except Exception as refresh_error:
+                    logger.warning(
+                        "Failed to refresh index after delete",
+                        error=str(refresh_error),
+                    )
+
             # Compute hash
             file_hash = hash_id(item)
 
@@ -464,18 +513,51 @@ class DocumentFileProcessor(TaskProcessor):
             except Exception:
                 file_size = 0
 
+            # Parse ACL from settings if present
+            from connectors.base import DocumentACL
+
+            acl = None
+            if self.settings and (
+                self.settings.get("allowed_users") is not None
+                or self.settings.get("allowed_groups") is not None
+            ):
+                acl = DocumentACL(
+                    owner=self.owner_user_id,
+                    allowed_users=self.settings.get("allowed_users", []),
+                    allowed_groups=self.settings.get("allowed_groups", []),
+                )
+
+            standard_kwargs: dict[str, Any] = {}
+            if self.settings:
+                s = self.settings
+                em = s.get("embeddingModel")
+                if isinstance(em, str) and em.strip():
+                    standard_kwargs["embedding_model"] = em.strip()
+                for ui_key, param in (
+                    ("chunkSize", "chunk_size"),
+                    ("chunkOverlap", "chunk_overlap"),
+                ):
+                    raw = s.get(ui_key)
+                    if raw is not None:
+                        try:
+                            standard_kwargs[param] = int(raw)
+                        except (TypeError, ValueError):
+                            pass
+
             # Use consolidated standard processing
             result = await self.process_document_standard(
                 file_path=item,
                 file_hash=file_hash,
                 owner_user_id=self.owner_user_id,
-                original_filename=os.path.basename(item),
+                original_filename=original_filename,
                 jwt_token=self.jwt_token,
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 file_size=file_size,
                 connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
+                acl=acl,
+                **standard_kwargs,
             )
 
             file_task.status = TaskStatus.COMPLETED
@@ -564,10 +646,9 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
-                    # File gone at source — remove indexed chunks by connector_file_id
-                    # so they stop appearing in search/chat. Chunks are indexed with
-                    # document_id=file_hash (SHA of content), not file_id, so we must
-                    # query the dedicated connector_file_id field set at index time.
+                    # File gone at source — remove indexed chunks by document_id
+                    # (= connector file_id) so it stops appearing in search/chat.
+                    # Filename rename (e.g. .txt → .md) is irrelevant here.
                     deleted_chunks = 0
                     try:
                         from api.documents import delete_chunks_by_document_ids
@@ -578,10 +659,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             )
                         )
                         deleted_chunks = await delete_chunks_by_document_ids(
-                            [file_id],
-                            opensearch_client,
-                            get_index_name(),
-                            field="connector_file_id",
+                            [file_id], opensearch_client, get_index_name()
                         )
                     except Exception as cleanup_err:
                         logger.error(
@@ -658,7 +736,10 @@ class ConnectorFileProcessor(TaskProcessor):
 
                 from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 
-                if not DISABLE_INGEST_WITH_LANGFLOW:
+                if (
+                    not DISABLE_INGEST_WITH_LANGFLOW
+                    and self.connector_service.langflow_service is not None
+                ):
                     # Delete existing chunks for this document before Langflow re-ingestion
                     try:
                         from utils.opensearch_delete import (
@@ -725,7 +806,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
                         connector_type=connection.connector_type,
-                        docling_polling_service=self.connector_service.task_service.docling_polling_service,
+                        docling_polling_service=self.connector_service.task_service.docling_polling_service
+                        if self.connector_service.task_service
+                        else None,
                         file_task=file_task,
                         document_id=document.id,
                         source_url=document.source_url,
@@ -935,6 +1018,16 @@ class LangflowFileProcessor(TaskProcessor):
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
                 await self.delete_document_by_filename(original_filename, opensearch_client)
+                # Refresh index to make deletion visible before processing
+                from config.settings import get_index_name
+
+                try:
+                    await opensearch_client.indices.refresh(index=get_index_name())
+                except Exception as refresh_error:
+                    logger.warning(
+                        "Failed to refresh index after delete",
+                        error=str(refresh_error),
+                    )
 
             # Read file content for processing
             with open(item, "rb") as f:

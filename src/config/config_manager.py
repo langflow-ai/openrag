@@ -1,10 +1,12 @@
 """Configuration management for OpenRAG."""
 
 import os
-import yaml
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict, field
+from typing import Any, Optional
+
+import yaml
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -13,6 +15,7 @@ logger = get_logger(__name__)
 @dataclass
 class OpenAIConfig:
     """OpenAI provider configuration."""
+
     api_key: str = ""
     configured: bool = False
 
@@ -20,6 +23,7 @@ class OpenAIConfig:
 @dataclass
 class AnthropicConfig:
     """Anthropic provider configuration."""
+
     api_key: str = ""
     configured: bool = False
 
@@ -27,6 +31,7 @@ class AnthropicConfig:
 @dataclass
 class WatsonXConfig:
     """IBM WatsonX provider configuration."""
+
     api_key: str = ""
     endpoint: str = ""
     project_id: str = ""
@@ -36,6 +41,7 @@ class WatsonXConfig:
 @dataclass
 class OllamaConfig:
     """Ollama provider configuration."""
+
     endpoint: str = ""
     resolved_endpoint: str = ""
     configured: bool = False
@@ -44,6 +50,7 @@ class OllamaConfig:
 @dataclass
 class ProvidersConfig:
     """All provider configurations."""
+
     openai: OpenAIConfig
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
@@ -80,6 +87,7 @@ class KnowledgeConfig:
     ocr: bool = False
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
+    disable_ingest_with_langflow: bool = False
 
 
 @dataclass
@@ -88,7 +96,7 @@ class AgentConfig:
 
     llm_model: str = ""
     llm_provider: str = "openai"  # Which provider to use for LLM
-    system_prompt: str = "You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a URL.\n  Do not ingest URLs automatically.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### URL Ingestion Rules\nOnly ingest URLs when the user explicitly says:\n- \"Read this link\"\n- \"Summarize this webpage\"\n- \"What does this site say?\"\n- \"Ingest this URL\"\nIf unclear → ask a clarifying question.\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: \"What is OpenRAG\", answer the following:\n\"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.langflow.org/)\n**OpenSearch** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://opensearch.org/)\n**Docling** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.docling.ai/)\"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format:\n   (Source: <document_name_or_id>)\n4. If no supporting evidence is found:\n   Say: \"No relevant supporting sources were found for that request.\"\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought."
+    system_prompt: str = 'You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a URL.\n  Do not ingest URLs automatically.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### URL Ingestion Rules\nOnly ingest URLs when the user explicitly says:\n- "Read this link"\n- "Summarize this webpage"\n- "What does this site say?"\n- "Ingest this URL"\nIf unclear → ask a clarifying question.\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: "What is OpenRAG", answer the following:\n"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.langflow.org/)\n**OpenSearch** – OpenSearch is a community-driven, open source search and analytics suite [Read more](https://opensearch.org/)\n**Docling** – Docling is a tool for document ingestion and semantic search [Read more](https://www.docling.ai/)"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format:\n   (Source: <document_name_or_id>)\n4. If no supporting evidence is found:\n   Say: "No relevant supporting sources were found for that request."\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought.'
 
 
 @dataclass
@@ -96,14 +104,14 @@ class OnboardingState:
     """Onboarding state configuration."""
 
     current_step: int = 0
-    assistant_message: Optional[Dict[str, Any]] = field(default=None)
-    selected_nudge: Optional[str] = field(default=None)
-    card_steps: Optional[Dict[str, Any]] = field(default=None)
-    upload_steps: Optional[Dict[str, Any]] = field(default=None)
-    openrag_docs_filter_id: Optional[str] = field(default=None)
-    user_doc_filter_id: Optional[str] = field(default=None)
-    openrag_docs_ingested_version: Optional[str] = field(default=None)
-    openrag_docs_remote_signature: Optional[str] = field(default=None)
+    assistant_message: dict[str, Any] | None = field(default=None)
+    selected_nudge: str | None = field(default=None)
+    card_steps: dict[str, Any] | None = field(default=None)
+    upload_steps: dict[str, Any] | None = field(default=None)
+    openrag_docs_filter_id: str | None = field(default=None)
+    user_doc_filter_id: str | None = field(default=None)
+    openrag_docs_ingested_version: str | None = field(default=None)
+    openrag_docs_remote_signature: str | None = field(default=None)
 
 
 @dataclass
@@ -117,19 +125,19 @@ class OpenRAGConfig:
     edited: bool = False  # Track if manually edited
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "OpenRAGConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "OpenRAGConfig":
         """Create config from dictionary."""
         providers_data = data.get("providers", {})
-        
+
         # Import inside to avoid circular dependencies if any
         from utils.encryption import decrypt_secret
-        
+
         def _decrypt_provider(p_data: dict) -> dict:
             new_data = dict(p_data)
             if "api_key" in new_data:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
             return new_data
-            
+
         return cls(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
@@ -143,7 +151,7 @@ class OpenRAGConfig:
             edited=data.get("edited", False),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return asdict(self)
 
@@ -159,7 +167,7 @@ class OpenRAGConfig:
 class ConfigManager:
     """Manages OpenRAG configuration from multiple sources."""
 
-    def __init__(self, config_file: Optional[str] = None):
+    def __init__(self, config_file: str | None = None):
         """Initialize configuration manager.
 
         Args:
@@ -169,10 +177,9 @@ class ConfigManager:
             self.config_file = Path(config_file)
         else:
             from config.paths import get_config_file_path
+
             self.config_file = Path(get_config_file_path())
-        self._config: Optional[OpenRAGConfig] = None
-
-
+        self._config: OpenRAGConfig | None = None
 
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.
@@ -186,7 +193,7 @@ class ConfigManager:
             return self._config
 
         # Start with defaults
-        config_data = {
+        config_data: dict[str, Any] = {
             "providers": {
                 "openai": {},
                 "anthropic": {},
@@ -197,14 +204,14 @@ class ConfigManager:
             "agent": {},
             "onboarding": {},
         }
-        
+
         needs_encryption_upgrade = False
         from utils.encryption import get_master_secret
 
         # Load from config file if it exists
         if self.config_file.exists():
             try:
-                with open(self.config_file, "r") as f:
+                with open(self.config_file) as f:
                     file_config = yaml.safe_load(f) or {}
 
                 # Merge file config
@@ -213,7 +220,11 @@ class ConfigManager:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
-                            if "api_key" in provider_data and isinstance(provider_data["api_key"], str) and provider_data["api_key"]:
+                            if (
+                                "api_key" in provider_data
+                                and isinstance(provider_data["api_key"], str)
+                                and provider_data["api_key"]
+                            ):
                                 if get_master_secret() is not None:
                                     needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
@@ -244,7 +255,7 @@ class ConfigManager:
         return self._config
 
     def _load_env_overrides(
-        self, config_data: Dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
+        self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
         """Load environment variable overrides, respecting edited flag."""
 
@@ -294,6 +305,10 @@ class ConfigManager:
             config_data["knowledge"]["picture_descriptions"] = os.getenv(
                 "PICTURE_DESCRIPTIONS_ENABLED"
             ).lower() in ("true", "1", "yes")
+        if os.getenv("DISABLE_INGEST_WITH_LANGFLOW") is not None:
+            config_data["knowledge"]["disable_ingest_with_langflow"] = os.getenv(
+                "DISABLE_INGEST_WITH_LANGFLOW", "false"
+            ).lower() in ("true", "1", "yes")
 
         # Agent settings
         if os.getenv("LLM_MODEL"):
@@ -314,7 +329,9 @@ class ConfigManager:
         self._config = None
         return self.load_config()
 
-    def save_config_file(self, config: Optional[OpenRAGConfig] = None, preserve_edited: bool = False) -> bool:
+    def save_config_file(
+        self, config: OpenRAGConfig | None = None, preserve_edited: bool = False
+    ) -> bool:
         """Save configuration to file.
 
         Args:
@@ -336,11 +353,12 @@ class ConfigManager:
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
             config_dict = config.to_dict()
-            
+
             # Encrypt provider API keys before saving
             from utils.encryption import encrypt_secret
+
             providers = config_dict.get("providers", {})
-            for provider_name, provider_config in providers.items():
+            for _provider_name, provider_config in providers.items():
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
 
@@ -367,14 +385,14 @@ class ConfigManager:
         """
         try:
             config = self.get_config()
-            
+
             # Update only the provided fields
             for key, value in kwargs.items():
                 if hasattr(config.onboarding, key):
                     setattr(config.onboarding, key, value)
                 else:
                     logger.warning(f"Unknown onboarding field: {key}")
-            
+
             # Save the updated config
             return self.save_config_file(config)
         except Exception as e:

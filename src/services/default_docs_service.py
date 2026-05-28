@@ -21,7 +21,6 @@ from config.settings import (
     DEFAULT_DOCS_CRAWL_DEPTH,
     DEFAULT_DOCS_INGEST_SOURCE,
     DEFAULT_DOCS_URL,
-    DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL_INGEST_FLOW_ID,
     config_manager,
     get_index_name,
@@ -67,7 +66,7 @@ async def ingest_openrag_docs_when_ready(
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
             )
-            if DISABLE_INGEST_WITH_LANGFLOW:
+            if get_openrag_config().knowledge.disable_ingest_with_langflow:
                 task_id = await _ingest_default_documents_url(
                     document_service=document_service,
                     models_service=models_service,
@@ -111,7 +110,7 @@ async def ingest_default_documents_when_ready(
     try:
         logger.info(
             "Ingesting default documents when ready",
-            disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+            disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
             ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
         )
         await TelemetryClient.send_event(
@@ -144,7 +143,7 @@ async def ingest_default_documents_when_ready(
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
-        if DISABLE_INGEST_WITH_LANGFLOW:
+        if get_openrag_config().knowledge.disable_ingest_with_langflow:
             new_task_id = await _ingest_default_documents_openrag(
                 document_service,
                 models_service,
@@ -233,6 +232,7 @@ async def _ingest_default_documents_langflow(
         replace_duplicates=True,
         connector_type=connector_type,
         existing_task_id=existing_task_id,
+        temp_file_paths=[],
     )
 
     logger.info(
@@ -540,7 +540,7 @@ async def refresh_default_openrag_docs(
             logger.info(
                 "Skipping OpenRAG docs refresh: URL ingestion is not active",
                 ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
-                disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+                disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
                 has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
                 has_docs_url=bool(DEFAULT_DOCS_URL),
             )

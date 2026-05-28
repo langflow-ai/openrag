@@ -211,6 +211,7 @@ async def get_settings(
                 ocr=knowledge_config.ocr,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
+                disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
             ),
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
@@ -460,6 +461,15 @@ async def update_settings(
                 await _update_langflow_docling_settings(current_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if body.disable_ingest_with_langflow is not None:
+            current_config.knowledge.disable_ingest_with_langflow = (
+                body.disable_ingest_with_langflow
+            )
+            config_updated = True
+            logger.info(
+                f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
+            )
 
         if body.chunk_size is not None:
             effective_overlap = (

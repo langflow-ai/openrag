@@ -87,6 +87,7 @@ async def initialize_services():
         ingestion_timeout=INGESTION_TIMEOUT,
         docling_service=clients.docling_service,
         docling_polling_service=docling_polling_service,
+        session_manager=session_manager,
     )
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)

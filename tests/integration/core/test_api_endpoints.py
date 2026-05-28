@@ -226,20 +226,14 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             }
             upload_resp = await client.post("/router/upload_ingest", files=files)
             body = upload_resp.json()
-            assert upload_resp.status_code in (201, 202), upload_resp.text
+            assert upload_resp.status_code == 202, upload_resp.text
 
-            # Handle different response formats based on whether Langflow is used
-            if disable_langflow_ingest:
-                # Traditional OpenRAG response (201)
-                assert body.get("status") in {"indexed", "unchanged"}
-                assert isinstance(body.get("id"), str)
-            else:
-                # Langflow task response (202)
-                task_id = body.get("task_id")
-                assert isinstance(task_id, str)
-                assert body.get("file_count") == 1
-                # Wait for task completion before searching
-                await _wait_for_task_completion(client, task_id)
+            # Traditional OpenRAG and Langflow upload both use task-based ingestion (202)
+            task_id = body.get("task_id")
+            assert isinstance(task_id, str)
+            assert body.get("file_count") == 1
+            # Wait for task completion before searching
+            await _wait_for_task_completion(client, task_id)
 
             # Poll search for the specific content until it's indexed
             async def _wait_for_indexed(timeout_s: float = 30.0):
@@ -701,14 +695,9 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
             data = resp.json()
 
             print(f"data: {data}")
-            if disable_langflow_ingest:
-                assert resp.status_code == 201 or resp.status_code == 202, resp.text
-                assert data.get("status") in {"indexed", "unchanged"}
-                assert isinstance(data.get("id"), str)
-            else:
-                assert resp.status_code == 201 or resp.status_code == 202, resp.text
-                assert isinstance(data.get("task_id"), str)
-                assert data.get("file_count") == 1
+            assert resp.status_code == 202, resp.text
+            assert isinstance(data.get("task_id"), str)
+            assert data.get("file_count") == 1
     finally:
         from config.settings import clients
 

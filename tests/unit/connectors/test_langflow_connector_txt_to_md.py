@@ -4,8 +4,8 @@ path.
 Background: Langflow's docling component fails on text/plain. The
 user-upload path already applies a .txt -> .md rename (commit f6b9fe0).
 This test pins that the connector path
-(`LangflowConnectorService.process_connector_document`) applies the same
-rule, so a SharePoint .txt reaches Langflow as .md / text/markdown — not
+(`ConnectorService.process_connector_document`) applies the same rule, so
+a SharePoint .txt reaches Langflow as .md / text/markdown — not
 the unhandled text/plain shape that previously broke ingestion.
 
 This test drives the production code path; if the rename is ever removed

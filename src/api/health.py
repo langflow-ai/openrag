@@ -17,7 +17,7 @@ async def health_check(request: Request):
     return JSONResponse({"status": "ok"}, status_code=200)
 
 
-async def opensearch_health_ready(request):
+async def opensearch_health_ready(request: Request):
     """Readiness probe: verifies OpenSearch dependency is reachable."""
     from config.settings import IBM_AUTH_ENABLED, OPENSEARCH_URL
 
