@@ -468,7 +468,6 @@ class ConnectorService:
                 expanded_files = result.get("files", [])
                 expanded_file_ids = [f["id"] for f in expanded_files]
 
-
                 # Save the expanded files info so we can set correct names in the task UI
                 for f in expanded_files:
                     expanded_files_info.append(f)

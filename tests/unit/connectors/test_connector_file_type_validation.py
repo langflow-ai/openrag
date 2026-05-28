@@ -23,36 +23,35 @@ async def test_sync_specific_files_does_not_raise_on_incompatible_type():
     # Mock the connector and config
     connector = MagicMock()
     connector.is_authenticated = True
-    
+
     # Mock list_files returning an incompatible file (e.g. an .exe)
-    connector.list_files = AsyncMock(return_value={
-        "files": [
-            {"id": "file-1", "name": "document.pdf"},
-            {"id": "file-2", "name": "program.exe"}
-        ]
-    })
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                {"id": "file-1", "name": "document.pdf"},
+                {"id": "file-2", "name": "program.exe"},
+            ]
+        }
+    )
     connector.cfg = MagicMock()
-    
+
     service.get_connector = AsyncMock(return_value=connector)
-    
+
     # When creating a custom task, we'll return a dummy task ID
     service.task_service.create_custom_task = AsyncMock(return_value="dummy-task-id")
-    
+
     # Verify that calling sync_specific_files succeeds (no ValueError raised!)
     task_id = await service.sync_specific_files(
-        connection_id="conn-id",
-        user_id="user-id",
-        file_ids=["folder-id"],
-        jwt_token="jwt"
+        connection_id="conn-id", user_id="user-id", file_ids=["folder-id"], jwt_token="jwt"
     )
-    
+
     assert task_id == "dummy-task-id"
 
 
 @pytest.mark.asyncio
 async def test_connector_file_processor_fails_incompatible_file():
     from models.processors import ConnectorFileProcessor
-    from models.tasks import UploadTask, FileTask, TaskStatus
+    from models.tasks import FileTask, TaskStatus, UploadTask
 
     connector_service = MagicMock()
     connector = MagicMock()
@@ -84,9 +83,11 @@ async def test_connector_file_processor_fails_incompatible_file():
 
 @pytest.mark.asyncio
 async def test_connector_check_duplicates():
-    from api.connectors import connector_check_duplicates, ConnectorCheckDuplicatesBody
-    from fastapi.responses import JSONResponse
     import json
+
+    from fastapi.responses import JSONResponse
+
+    from api.connectors import ConnectorCheckDuplicatesBody, connector_check_duplicates
 
     # Mock parameters
     connector_service = MagicMock()
@@ -101,14 +102,20 @@ async def test_connector_check_duplicates():
     connector = MagicMock()
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
-    
+
     # Mock folder expansion
-    connector.list_files = AsyncMock(return_value={
-        "files": [
-            {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
-            {"id": "file-2", "name": "new_file.docx", "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-        ]
-    })
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
+                {
+                    "id": "file-2",
+                    "name": "new_file.docx",
+                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                },
+            ]
+        }
+    )
     connector.cfg = MagicMock()
     connector_service.get_connector = AsyncMock(return_value=connector)
 
@@ -118,13 +125,9 @@ async def test_connector_check_duplicates():
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
 
     # Mock search return value: existing.pdf exists, new_file.docx does not
-    opensearch_client.search = AsyncMock(return_value={
-        "hits": {
-            "hits": [
-                {"_source": {"filename": "existing.pdf"}}
-            ]
-        }
-    })
+    opensearch_client.search = AsyncMock(
+        return_value={"hits": {"hits": [{"_source": {"filename": "existing.pdf"}}]}}
+    )
 
     user = MagicMock()
     user.user_id = "user-id"
@@ -132,7 +135,7 @@ async def test_connector_check_duplicates():
 
     body = ConnectorCheckDuplicatesBody(
         connection_id="conn-id",
-        selected_files=[{"id": "folder-1", "name": "Folder 1", "isFolder": True}]
+        selected_files=[{"id": "folder-1", "name": "Folder 1", "isFolder": True}],
     )
 
     response = await connector_check_duplicates(
@@ -140,7 +143,7 @@ async def test_connector_check_duplicates():
         body=body,
         connector_service=connector_service,
         session_manager=session_manager,
-        user=user
+        user=user,
     )
 
     assert isinstance(response, JSONResponse)
@@ -148,4 +151,3 @@ async def test_connector_check_duplicates():
     assert "existing.pdf" in data["duplicate_names"]
     assert "new_file.docx" not in data["duplicate_names"]
     assert data["total_files"] == 2
-

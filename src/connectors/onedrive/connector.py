@@ -894,7 +894,7 @@ class OneDriveConnector(BaseConnector):
                     if not item_id.startswith("s"):
                         drive_id = potential_drive_id
                         url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
-            
+
             if not drive_id:
                 url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
 

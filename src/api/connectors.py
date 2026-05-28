@@ -417,10 +417,12 @@ async def connector_check_duplicates(
                 result = await connector.list_files()
                 expanded_files = result.get("files", [])
                 for f in expanded_files:
-                    expanded_files_info.append({
-                        "name": f.get("name", ""),
-                        "mimeType": f.get("mime_type") or f.get("mimeType") or ""
-                    })
+                    expanded_files_info.append(
+                        {
+                            "name": f.get("name", ""),
+                            "mimeType": f.get("mime_type") or f.get("mimeType") or "",
+                        }
+                    )
             except Exception as e:
                 logger.error("Failed to expand files in duplicate check", error=str(e))
             finally:
@@ -431,10 +433,9 @@ async def connector_check_duplicates(
         if not expanded_files_info:
             for f in selected_files_raw:
                 if not f.get("isFolder"):
-                    expanded_files_info.append({
-                        "name": f.get("name", ""),
-                        "mimeType": f.get("mimeType") or ""
-                    })
+                    expanded_files_info.append(
+                        {"name": f.get("name", ""), "mimeType": f.get("mimeType") or ""}
+                    )
 
         if not expanded_files_info:
             return JSONResponse({"duplicate_names": []})
@@ -460,12 +461,8 @@ async def connector_check_duplicates(
 
         query_body = {
             "size": 10000,
-            "query": {
-                "terms": {
-                    "filename": list(all_candidates)
-                }
-            },
-            "_source": ["filename"]
+            "query": {"terms": {"filename": list(all_candidates)}},
+            "_source": ["filename"],
         }
 
         existing_filenames = set()
@@ -489,15 +486,13 @@ async def connector_check_duplicates(
             if any(alias in existing_filenames for alias in aliases):
                 duplicate_names.append(name)
 
-        return JSONResponse({
-            "duplicate_names": list(set(duplicate_names)),
-            "total_files": len(cleaned_names)
-        })
+        return JSONResponse(
+            {"duplicate_names": list(set(duplicate_names)), "total_files": len(cleaned_names)}
+        )
 
     except Exception as e:
         logger.error("[CONNECTOR] Error checking duplicates", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
-
 
 
 async def list_connectors(

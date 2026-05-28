@@ -269,7 +269,9 @@ class DoclingService:
                     err_msg_list.append(err["error_message"])
                 elif isinstance(err, str):
                     err_msg_list.append(err)
-            err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            err_details = (
+                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            )
             return DoclingStatusSnapshot(
                 state=DoclingTaskState.FAILED,
                 detail=f"Docling processing failed: {err_details}",
@@ -321,7 +323,9 @@ class DoclingService:
                     err_msg_list.append(err["error_message"])
                 elif isinstance(err, str):
                     err_msg_list.append(err)
-            err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            err_details = (
+                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            )
             raise DoclingServeError(f"Docling processing failed: {err_details}")
 
         doc_content = payload.get("document", {}).get("json_content")
@@ -375,7 +379,9 @@ class DoclingService:
                         err_msg_list.append(err["error_message"])
                     elif isinstance(err, str):
                         err_msg_list.append(err)
-                err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+                err_details = (
+                    "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+                )
                 raise DoclingServeError(f"Docling processing failed: {err_details}")
 
             await asyncio.sleep(poll_interval)

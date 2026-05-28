@@ -626,10 +626,34 @@ class ConnectorFileProcessor(TaskProcessor):
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {
-                "adoc", "asciidoc", "asc", "bmp", "csv", "dotx", "dotm", "docm", "docx",
-                "htm", "html", "jpeg", "jpg", "md", "pdf", "png", "potx", "ppsx",
-                "pptm", "potm", "ppsm", "pptx", "tiff", "txt", "xls", "xlsx", "xhtml",
-                "webp"
+                "adoc",
+                "asciidoc",
+                "asc",
+                "bmp",
+                "csv",
+                "dotx",
+                "dotm",
+                "docm",
+                "docx",
+                "htm",
+                "html",
+                "jpeg",
+                "jpg",
+                "md",
+                "pdf",
+                "png",
+                "potx",
+                "ppsx",
+                "pptm",
+                "potm",
+                "ppsm",
+                "pptx",
+                "tiff",
+                "txt",
+                "xls",
+                "xlsx",
+                "xhtml",
+                "webp",
             }
             if file_task.filename:
                 ext = file_task.filename.split(".")[-1].lower() if "." in file_task.filename else ""
