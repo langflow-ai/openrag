@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { taskDetailQueryKey } from "@/app/api/queries/useGetTaskQuery";
+import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
 
 export interface RetryTaskRequest {
   taskId: string;
@@ -42,14 +43,13 @@ export const useRetryTaskMutation = (
   async function retryTask(
     variables: RetryTaskRequest,
   ): Promise<RetryTaskResponse> {
-    const body =
-      variables.filePaths != null
-        ? JSON.stringify({ file_paths: variables.filePaths })
-        : undefined;
+    const body = JSON.stringify(
+      variables.filePaths != null ? { file_paths: variables.filePaths } : {},
+    );
 
     const response = await fetch(`/api/tasks/${variables.taskId}/retry`, {
       method: "POST",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: { "Content-Type": "application/json" },
       body,
     });
 
@@ -72,7 +72,7 @@ export const useRetryTaskMutation = (
     mutationFn: retryTask,
     ...restOptions,
     onSuccess: (data, variables, context) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
+      queryClient.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY] });
       queryClient.invalidateQueries({
         queryKey: taskDetailQueryKey(variables.taskId),
       });

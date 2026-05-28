@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
 
 export interface CancelTaskRequest {
   taskId: string;
@@ -42,7 +43,7 @@ export const useCancelTaskMutation = (
     mutationFn: cancelTask,
     ...restOptions,
     onSuccess: (data, variables, context) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
+      queryClient.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY] });
       onSuccess?.(data, variables, context);
     },
     onError,

@@ -47,6 +47,18 @@ _DOCLING_TRANSIENT_ERROR_MARKERS = (
     "polling timed out",
 )
 
+# Connector/download/network failures seen while file is still in Docling phase.
+# These are infrastructure/transient and should be retryable.
+_TRANSIENT_CONNECTIVITY_ERROR_MARKERS = (
+    "all connection attempts failed",
+    "connection refused",
+    "connection reset",
+    "temporary failure in name resolution",
+    "name or service not known",
+    "service unavailable",
+    "network is unreachable",
+)
+
 
 def _is_non_retryable_file_error(error: str) -> bool:
     lowered = error.lower()
@@ -55,9 +67,13 @@ def _is_non_retryable_file_error(error: str) -> bool:
 
 def _is_docling_transient_error(error: str) -> bool:
     lowered = error.lower()
-    if "docling conversion did not complete" not in lowered:
-        return False
-    return any(marker in lowered for marker in _DOCLING_TRANSIENT_ERROR_MARKERS)
+    # Legacy timeout messages emitted by Docling polling path.
+    if "docling conversion did not complete" in lowered:
+        return any(marker in lowered for marker in _DOCLING_TRANSIENT_ERROR_MARKERS)
+
+    # Connector-originated transient network failures can still surface while
+    # file phase is DOCLING (before conversion can complete).
+    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
 
 
 class IngestionTimeoutError(Exception):
@@ -661,6 +677,10 @@ class TaskService:
         considered; paths missing from the task or not in a failed state are
         reported in *skipped*. This reuses the task's original processor — it
         does not accept new uploads from the client.
+
+        Connector tasks often use provider IDs (not local absolute paths) as
+        ``file_path`` keys. For those non-absolute identifiers, skip local
+        filesystem existence checks and let the connector processor re-fetch.
         """
         resolved = self._resolve_upload_task_store(user_id, task_id)
         if resolved is None:
@@ -724,7 +744,9 @@ class TaskService:
                         )
                         continue
 
-                if not os.path.isfile(file_path):
+                # Only enforce local source-file existence for absolute paths.
+                # Connector-backed tasks typically store remote IDs as file_path.
+                if os.path.isabs(file_path) and not os.path.isfile(file_path):
                     skipped.append(
                         {
                             "file_path": file_path,

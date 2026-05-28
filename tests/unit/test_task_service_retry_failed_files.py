@@ -133,3 +133,75 @@ async def test_retry_unknown_path_is_skipped(task_service):
     assert result["status"] == "no_op"
     assert result["skipped"] == [{"file_path": "/data/missing.pdf", "reason": "file_not_in_task"}]
     assert ft_a.status == TaskStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_retry_connector_connectivity_error_is_retryable(task_service):
+    processor = Mock()
+    ft = FileTask(file_path="/data/connector.pdf", filename="connector.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.phase = IngestionPhase.DOCLING
+    ft.docling_status = DoclingPhaseStatus.PENDING
+    ft.error = "All connection attempts failed"
+    task = UploadTask(
+        task_id="task-connector",
+        total_files=1,
+        file_tasks={"/data/connector.pdf": ft},
+        status=TaskStatus.FAILED,
+        failed_files=1,
+        processor=processor,
+    )
+    _store_task(task_service, "user1", task)
+
+    with (
+        patch("os.path.isfile", return_value=True),
+        patch.object(
+            task_service,
+            "background_custom_processor",
+            new_callable=AsyncMock,
+        ) as mock_bg,
+        patch("asyncio.create_task", return_value=Mock()),
+    ):
+        result = await task_service.retry_failed_files("user1", "task-connector")
+
+    assert result is not None
+    assert result["retried"] == 1
+    assert result["status"] == "accepted"
+    assert ft.status == TaskStatus.PENDING
+    mock_bg.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_connector_id_path_does_not_require_local_file(task_service):
+    processor = Mock()
+    ft = FileTask(file_path="remote-file-id-123", filename="connector.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.phase = IngestionPhase.DOCLING
+    ft.docling_status = DoclingPhaseStatus.PENDING
+    ft.error = "All connection attempts failed"
+    task = UploadTask(
+        task_id="task-connector-id",
+        total_files=1,
+        file_tasks={"remote-file-id-123": ft},
+        status=TaskStatus.FAILED,
+        failed_files=1,
+        processor=processor,
+    )
+    _store_task(task_service, "user1", task)
+
+    with (
+        patch("os.path.isfile", return_value=False),
+        patch.object(
+            task_service,
+            "background_custom_processor",
+            new_callable=AsyncMock,
+        ) as mock_bg,
+        patch("asyncio.create_task", return_value=Mock()),
+    ):
+        result = await task_service.retry_failed_files("user1", "task-connector-id")
+
+    assert result is not None
+    assert result["retried"] == 1
+    assert result["status"] == "accepted"
+    assert ft.status == TaskStatus.PENDING
+    mock_bg.assert_called_once()
