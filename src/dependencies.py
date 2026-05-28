@@ -705,7 +705,7 @@ async def get_api_key_user_async(
 
     Accepts:
       - A gateway-forwarded JWT in the configurable OPENRAG_JWT_AUTH_HEADER
-        (default ``X-OpenRAG-JWT``). When present and verifiable, the JWT is the
+        (default ``Authorization``). When present and verifiable, the JWT is the
         source of identity; under RBAC it also supplies (and enforces) roles.
       - X-API-Key: orag_... header
       - Authorization: Bearer orag_... header
@@ -717,23 +717,19 @@ async def get_api_key_user_async(
 
     # ── JWT-in-header path ───────────────────────────────────────────────
     # An upstream gateway may forward the end-user's JWT in a configurable
-    # header. It is verified the same way as the OpenSearch service token
-    # (issuer-pinned signature check via config.utils.verify_jwt_from_issuer)
-    # and, when valid, becomes the source of identity. Under RBAC it also
-    # supplies the user's roles (synced via request.state.jwt_roles ->
+    # header. Its signature is verified by discovering the issuer's keys from
+    # the token's own `iss` claim (config.utils.verify_jwt_from_issuer); when
+    # valid the JWT becomes the source of identity. Under RBAC it also supplies
+    # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import AUTH_SERVER_URL, get_jwt_auth_header
+    from config.settings import get_jwt_auth_header
     from config.utils import verify_jwt_from_issuer
 
     raw_jwt = request.headers.get(get_jwt_auth_header(), "")
-    if raw_jwt and raw_jwt.strip() and AUTH_SERVER_URL:
+    if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
-        claims = verify_jwt_from_issuer(
-            token,
-            allowed_issuer_prefixes=(AUTH_SERVER_URL.rstrip("/"),),
-            verify_tls=False,
-        )
+        claims = verify_jwt_from_issuer(token, verify_tls=False)
         sub = claims.get("sub") if claims else None
         if sub:
             user = User(

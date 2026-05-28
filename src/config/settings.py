@@ -71,11 +71,6 @@ IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 
-# Base URL of the platform auth server that issues universal JWTs. Used as the
-# pinned issuer prefix when verifying a forwarded JWT (see config/utils.py
-# verify_jwt_from_issuer). Shared with PR #1626's OpenSearch service-token flow.
-AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
-
 # ── JWT roles claim ─────────────────────────────────────────────
 # These are exposed as functions (not module constants) so they are read
 # per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit

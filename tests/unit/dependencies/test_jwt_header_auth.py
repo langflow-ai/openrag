@@ -22,7 +22,6 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import config.settings as settings  # noqa: E402
 import config.utils as config_utils  # noqa: E402
 import dependencies as deps  # noqa: E402
 from dependencies import _stage_jwt_roles, get_api_key_user_async  # noqa: E402
@@ -45,6 +44,8 @@ def _role_claim_env(monkeypatch):
     monkeypatch.setenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
     monkeypatch.setenv("OPENRAG_ROLE_CLAIM_USER", "user")
     monkeypatch.delenv("OPENRAG_ROLE_CLAIM_VIEWER", raising=False)
+    # Pin the JWT header name so tests stay decoupled from its default.
+    monkeypatch.setenv("OPENRAG_JWT_AUTH_HEADER", "X-OpenRAG-JWT")
 
 
 # ── _stage_jwt_roles ────────────────────────────────────────────────────
@@ -90,7 +91,6 @@ def _patch_attach(monkeypatch):
 
 
 def _patch_verify(monkeypatch, claims):
-    monkeypatch.setattr(settings, "AUTH_SERVER_URL", "https://auth.example")
     monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", lambda *a, **k: claims)
 
 
@@ -167,32 +167,12 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
     """No JWT header -> the JWT branch is skipped entirely (regression guard)."""
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
-    monkeypatch.setattr(settings, "AUTH_SERVER_URL", "https://auth.example")
 
     def _boom(*a, **k):  # must never be called when no header present
         raise AssertionError("verify_jwt_from_issuer should not run without the header")
 
     monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", _boom)
     req = _FakeRequest({})
-
-    with pytest.raises(HTTPException) as exc:
-        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
-    assert exc.value.status_code == 401
-    assert exc.value.detail["error"] == "API key required"
-
-
-@pytest.mark.asyncio
-async def test_auth_server_url_unset_skips_jwt_path(monkeypatch):
-    """Header present but AUTH_SERVER_URL unconfigured -> can't verify -> fall through."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
-    monkeypatch.setattr(settings, "AUTH_SERVER_URL", None)
-
-    def _boom(*a, **k):
-        raise AssertionError("verify must not run when AUTH_SERVER_URL is unset")
-
-    monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", _boom)
-    req = _FakeRequest({"X-OpenRAG-JWT": "tok"})
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
