@@ -134,10 +134,11 @@ else
     fi
     
     echo "Using certificate validation with CA cert: $OPENSEARCH_CA_CERT"
-    CURL_OPTS="--cacert $OPENSEARCH_CA_CERT"
+    CURL_OPTS="--cacert"
+    CURL_CERT_PATH="$OPENSEARCH_CA_CERT"
 fi
 
-until curl -s $CURL_OPTS https://localhost:9200 >/dev/null; do
+until curl -s $CURL_OPTS ${CURL_CERT_PATH:+"$CURL_CERT_PATH"} https://localhost:9200 >/dev/null; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then
