@@ -368,15 +368,19 @@ class TaskProcessor:
             if connector_file_id:
                 chunk_doc["connector_file_id"] = connector_file_id
 
-            # Set owner and ACL fields
+            # Set owner and ACL fields.
+            # owner is always the syncing/uploading user (matching the Langflow
+            # pipeline, which indexes owner from the OWNER global var = user id).
+            # acl.owner (e.g. the SharePoint file's author) is intentionally NOT
+            # used here — read access comes from allowed_users/allowed_groups + DLS,
+            # while owner gates deletion and "my documents" ownership.
+            chunk_doc["owner"] = owner_user_id
             if acl:
-                # Use ACL data if provided (from connector)
-                chunk_doc["owner"] = acl.owner if acl.owner else owner_user_id
+                # Use ACL access lists if provided (from connector)
                 chunk_doc["allowed_users"] = acl.allowed_users
                 chunk_doc["allowed_groups"] = acl.allowed_groups
             else:
-                # Fallback to owner_user_id if no ACL (local uploads)
-                chunk_doc["owner"] = owner_user_id
+                # No ACL provided
                 chunk_doc["allowed_users"] = []
                 chunk_doc["allowed_groups"] = []
 
