@@ -67,6 +67,14 @@ import {
   useSyncAllConnectorsPreview,
 } from "../api/mutations/useSyncConnector";
 
+function sameFileSelection(a: File[], b: File[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const identities = new Set(b.map((row) => getKnowledgeFileIdentity(row)));
+  return a.every((row) => identities.has(getKnowledgeFileIdentity(row)));
+}
+
 /** Failed overlays can stay selected after they lose their checkbox (processing → failed). */
 function syncGridSelectionToDeletableRows(
   api: NonNullable<AgGridReact<File>["api"]>,
@@ -78,6 +86,21 @@ function syncGridSelectionToDeletableRows(
     }
   });
   return api.getSelectedRows().filter(isDeletable);
+}
+
+/** Deselect non-deletable rows in the grid only; returns whether anything changed. */
+function pruneNonDeletableGridSelection(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): boolean {
+  let pruned = false;
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+      pruned = true;
+    }
+  });
+  return pruned;
 }
 
 /** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
@@ -464,28 +487,30 @@ function SearchPage() {
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
 
+  // Re-run only when row identity/status changes, not on every list poll reference.
+  const gridRowsSelectionKey = useMemo(
+    () =>
+      gridRows
+        .map(
+          (row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`,
+        )
+        .join("\0"),
+    [gridRows],
+  );
+
   useEffect(() => {
     const api = gridRef.current?.api;
     if (!api) {
       return;
     }
-    const activeSelected = syncGridSelectionToDeletableRows(
-      api,
-      isDeletableKnowledgeRow,
+    if (!pruneNonDeletableGridSelection(api, isDeletableKnowledgeRow)) {
+      return;
+    }
+    const nextSelected = api.getSelectedRows().filter(isDeletableKnowledgeRow);
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-    setSelectedRows((current) => {
-      if (
-        current.length === activeSelected.length &&
-        current.every(
-          (row, index) =>
-            getFileIdentity(row) === getFileIdentity(activeSelected[index]),
-        )
-      ) {
-        return current;
-      }
-      return activeSelected;
-    });
-  }, [gridRows, getFileIdentity, isDeletableKnowledgeRow]);
+  }, [gridRowsSelectionKey, isDeletableKnowledgeRow]);
 
   const columnDefs: ColDef<File>[] = [
     {
@@ -758,11 +783,12 @@ function SearchPage() {
     if (!gridRef.current) {
       return;
     }
-    setSelectedRows(
-      syncGridSelectionToDeletableRows(
-        gridRef.current.api,
-        isDeletableKnowledgeRow,
-      ),
+    const nextSelected = syncGridSelectionToDeletableRows(
+      gridRef.current.api,
+      isDeletableKnowledgeRow,
+    );
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
   }, [isDeletableKnowledgeRow]);
 

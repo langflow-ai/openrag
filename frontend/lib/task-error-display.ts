@@ -58,6 +58,7 @@ const COMPONENT_LABELS: Record<TaskFailureComponent, TaskErrorComponentCause> =
     docling: "Docling",
     openrag: "OpenRAG",
     langflow: "Langflow",
+    opensearch: "OpenSearch",
   };
 
 function truncateLine(
