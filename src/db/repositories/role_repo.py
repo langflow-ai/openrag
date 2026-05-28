@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import Permission, Role, RolePermission, UserRole
 
@@ -9,23 +10,23 @@ class RoleRepo:
         self.session = session
 
     async def get_by_name(self, name: str) -> Role | None:
-        result = await self.session.execute(select(Role).where(Role.name == name))
+        result = await self.session.execute(select(Role).where(col(Role.name) == name))
         return result.scalar_one_or_none()
 
     async def list_user_roles(self, user_id: str) -> list[Role]:
         result = await self.session.execute(
             select(Role)
-            .join(UserRole, UserRole.role_id == Role.id)
-            .where(UserRole.user_id == user_id)
+            .join(UserRole, col(UserRole.role_id) == col(Role.id))
+            .where(col(UserRole.user_id) == user_id)
         )
         return list(result.scalars().all())
 
     async def list_permissions_for_user(self, user_id: str) -> set[str]:
         result = await self.session.execute(
-            select(Permission.name)
-            .join(RolePermission, RolePermission.permission_id == Permission.id)
-            .join(UserRole, UserRole.role_id == RolePermission.role_id)
-            .where(UserRole.user_id == user_id)
+            select(col(Permission.name))
+            .join(RolePermission, col(RolePermission.permission_id) == col(Permission.id))
+            .join(UserRole, col(UserRole.role_id) == col(RolePermission.role_id))
+            .where(col(UserRole.user_id) == user_id)
         )
         return set(result.scalars().all())
 
@@ -33,9 +34,9 @@ class RoleRepo:
         if not role_ids:
             return set()
         result = await self.session.execute(
-            select(Permission.name)
-            .join(RolePermission, RolePermission.permission_id == Permission.id)
-            .where(RolePermission.role_id.in_(role_ids))
+            select(col(Permission.name))
+            .join(RolePermission, col(RolePermission.permission_id) == col(Permission.id))
+            .where(col(RolePermission.role_id).in_(role_ids))
         )
         return set(result.scalars().all())
 
@@ -43,7 +44,9 @@ class RoleRepo:
         self, user_id: str, role_id: str, granted_by: str | None = None
     ) -> UserRole:
         existing = await self.session.execute(
-            select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
+            select(UserRole).where(
+                col(UserRole.user_id) == user_id, col(UserRole.role_id) == role_id
+            )
         )
         row = existing.scalar_one_or_none()
         if row:
@@ -55,7 +58,9 @@ class RoleRepo:
 
     async def revoke_role(self, user_id: str, role_id: str) -> None:
         result = await self.session.execute(
-            select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
+            select(UserRole).where(
+                col(UserRole.user_id) == user_id, col(UserRole.role_id) == role_id
+            )
         )
         row = result.scalar_one_or_none()
         if row:
