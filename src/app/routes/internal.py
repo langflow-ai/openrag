@@ -251,6 +251,12 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/connectors/{connector_type}/check-duplicates",
+        connectors.connector_check_duplicates,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/connectors/{connector_type}/sync-preview",
         connectors.connector_sync_preview,
         methods=["POST"],

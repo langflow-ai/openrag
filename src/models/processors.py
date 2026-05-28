@@ -542,6 +542,22 @@ class ConnectorFileProcessor(TaskProcessor):
             if not connector or not connection:
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
+            # Validate file extension early if filename is available
+            VALID_EXTENSIONS = {
+                "adoc", "asciidoc", "asc", "bmp", "csv", "dotx", "dotm", "docm", "docx",
+                "htm", "html", "jpeg", "jpg", "md", "pdf", "png", "potx", "ppsx",
+                "pptm", "potm", "ppsm", "pptx", "tiff", "txt", "xls", "xlsx", "xhtml",
+                "webp"
+            }
+            if file_task.filename:
+                ext = file_task.filename.split(".")[-1].lower() if "." in file_task.filename else ""
+                if ext not in VALID_EXTENSIONS:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"The file '{file_task.filename}' has an incompatible type."
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+
             # Get file content from connector
             try:
                 document = await connector.get_file_content(file_id)
@@ -595,6 +611,16 @@ class ConnectorFileProcessor(TaskProcessor):
 
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)
+
+            # Re-check filename validation
+            name = file_task.filename or document.filename or ""
+            ext = name.split(".")[-1].lower() if "." in name else ""
+            if ext not in VALID_EXTENSIONS:
+                file_task.status = TaskStatus.FAILED
+                file_task.error = f"The file '{name}' has an incompatible type."
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
 
             if not self.user_id:
                 raise ValueError("user_id not provided to ConnectorFileProcessor")

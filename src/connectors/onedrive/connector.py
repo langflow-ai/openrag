@@ -892,9 +892,22 @@ class OneDriveConnector(BaseConnector):
             items = data.get("value", [])
             for item in items:
                 if item.get("file"):  # It's a file
-                    file_meta = await self._get_file_metadata_by_id(item.get("id"))
-                    if file_meta:
-                        files.append(file_meta)
+                    file_id = item.get("id")
+                    file_meta = {
+                        "id": file_id,
+                        "name": item.get("name", ""),
+                        "path": f"/drive/items/{file_id}",
+                        "size": int(item.get("size", 0)),
+                        "modified": item.get("lastModifiedDateTime"),
+                        "created": item.get("createdDateTime"),
+                        "mime_type": item.get("file", {}).get(
+                            "mimeType", self._get_mime_type(item.get("name", ""))
+                        ),
+                        "url": item.get("webUrl", ""),
+                        "download_url": item.get("@microsoft.graph.downloadUrl"),
+                        "isFolder": False,
+                    }
+                    files.append(file_meta)
                 elif item.get("folder"):  # It's a subfolder, recurse
                     subfolder_files = await self._list_folder_contents(item.get("id"))
                     files.extend(subfolder_files)

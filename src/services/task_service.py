@@ -621,12 +621,22 @@ class TaskService:
         error = file_task.error or ""
 
         if docling_status == DoclingPhaseStatus.FAILED:
+            msg = "The file could not be processed into readable document content."
+            if error:
+                if "Docling result unavailable after SUCCESS status: " in error:
+                    msg = error.split("Docling result unavailable after SUCCESS status: ", 1)[1]
+                elif "Docling conversion did not complete" in error:
+                    msg = error.split("Docling conversion did not complete", 1)[1]
+                    if msg.startswith(" (failed): "):
+                        msg = msg[len(" (failed): "):]
+                    else:
+                        msg = msg.strip(" ():")
+                else:
+                    msg = error
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
-                "user_facing_message": (
-                    "The file could not be processed into readable document content."
-                ),
+                "user_facing_message": msg,
                 "actionable_by": "USER_ACTIONABLE",
             }
 
@@ -642,11 +652,20 @@ class TaskService:
             }
 
         if phase == IngestionPhase.DOCLING and "Docling conversion did not complete" in error:
+            user_facing_message = "Document processing timed out. Please retry ingestion."
+            if "timeout" not in error.lower() and "expired" not in error.lower():
+                msg = error.split("Docling conversion did not complete", 1)[1]
+                if msg.startswith(" (failed): "):
+                    user_facing_message = msg[len(" (failed): "):]
+                elif msg.startswith(" (timeout): "):
+                    user_facing_message = "Document processing timed out. Please retry ingestion."
+                else:
+                    user_facing_message = msg.strip(" ():")
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
-                "user_facing_message": "Document processing timed out. Please retry ingestion.",
-                "actionable_by": "RETRYABLE",
+                "user_facing_message": user_facing_message,
+                "actionable_by": "RETRYABLE" if "timed out" in user_facing_message.lower() else "USER_ACTIONABLE",
             }
 
         if phase == IngestionPhase.DOCLING and docling_status == DoclingPhaseStatus.PROCESSING:
