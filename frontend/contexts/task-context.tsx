@@ -495,16 +495,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                     return false;
                   }
                   if (file.status === "active") {
-                    const filename = file.filename?.trim();
-                    if (filename && indexedFilenames.has(filename)) {
+                    const identity = getKnowledgeFileIdentity({
+                      filename: file.filename,
+                      source_url: file.source_url,
+                    });
+                    if (identity && indexedIdentities.has(identity)) {
                       return false;
                     }
-                    return !indexedIdentities.has(
-                      getKnowledgeFileIdentity({
-                        filename: file.filename,
-                        source_url: file.source_url,
-                      }),
-                    );
+                    const sourceUrl = file.source_url?.trim();
+                    if (!sourceUrl || !identity) {
+                      const filename = file.filename?.trim();
+                      if (filename && indexedFilenames.has(filename)) {
+                        return false;
+                      }
+                    }
+                    return true;
                   }
                   return false;
                 }),

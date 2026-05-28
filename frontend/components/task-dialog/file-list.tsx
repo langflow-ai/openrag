@@ -345,58 +345,52 @@ export function TaskDialogFileList({
         )}
       </div>
 
-      {isTabActive("task-ingestions") ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {entries.length === 0 ? (
-            renderEmptyPanel("No files match your filters.")
-          ) : (
-            <>
-              {renderListHeader({
-                showSelectAll: selectablePaths.length > 0,
-                allSelected: allSelectableSelected,
-                onToggleSelectAll: onToggleSelectAllVisible,
-                selectedLabel:
-                  selectedCount > 0 ? `${selectedCount} selected` : undefined,
-              })}
-              <div
-                id="task-dialog-panel-task-ingestions"
-                role="tabpanel"
-                aria-labelledby="task-dialog-tab-task-ingestions"
-                className={listScrollClass}
-              >
-                {renderFileRows(entries)}
-              </div>
-            </>
-          )}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {isTabActive("task-ingestions") && entries.length > 0
+          ? renderListHeader({
+              showSelectAll: selectablePaths.length > 0,
+              allSelected: allSelectableSelected,
+              onToggleSelectAll: onToggleSelectAllVisible,
+              selectedLabel:
+                selectedCount > 0 ? `${selectedCount} selected` : undefined,
+            })
+          : null}
+        {isTabActive("retry-ingestions") && retryIngestionEntries.length > 0
+          ? renderListHeader({
+              showSelectAll: true,
+              allSelected: allRetryIngestionsSelected,
+              onToggleSelectAll: onToggleSelectAllRetryIngestions,
+              selectedLabel:
+                retryIngestionSelectedCount > 0
+                  ? `${retryIngestionSelectedCount} selected`
+                  : undefined,
+            })
+          : null}
+        <div
+          id="task-dialog-panel-task-ingestions"
+          role="tabpanel"
+          aria-labelledby="task-dialog-tab-task-ingestions"
+          hidden={!isTabActive("task-ingestions")}
+          className={listScrollClass}
+        >
+          {entries.length === 0
+            ? renderEmptyPanel("No files match your filters.")
+            : renderFileRows(entries)}
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {retryIngestionEntries.length === 0 ? (
-            renderEmptyPanel("No retryable files in this task.")
-          ) : (
-            <>
-              {renderListHeader({
-                showSelectAll: true,
-                allSelected: allRetryIngestionsSelected,
-                onToggleSelectAll: onToggleSelectAllRetryIngestions,
-                selectedLabel:
-                  retryIngestionSelectedCount > 0
-                    ? `${retryIngestionSelectedCount} selected`
-                    : undefined,
-              })}
-              <div
-                id="task-dialog-panel-retry-ingestions"
-                role="tabpanel"
-                aria-labelledby="task-dialog-tab-retry-ingestions"
-                className={listScrollClass}
-                aria-hidden={!showRetryIngestionsTab}
-              >
-                {renderFileRows(retryIngestionEntries)}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+        {showRetryIngestionsTab ? (
+          <div
+            id="task-dialog-panel-retry-ingestions"
+            role="tabpanel"
+            aria-labelledby="task-dialog-tab-retry-ingestions"
+            hidden={!isTabActive("retry-ingestions")}
+            className={listScrollClass}
+          >
+            {retryIngestionEntries.length === 0
+              ? renderEmptyPanel("No retryable files in this task.")
+              : renderFileRows(retryIngestionEntries)}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -38,6 +38,7 @@ export function TaskDialogCategoryChips({
           <button
             key={chip.id}
             type="button"
+            aria-pressed={isActive}
             onClick={() =>
               onStatusCategoryChange(
                 isActive ? ALL_TASK_STATUS_CATEGORIES : chip.id,

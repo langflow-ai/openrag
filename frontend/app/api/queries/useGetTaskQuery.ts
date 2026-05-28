@@ -18,7 +18,9 @@ export function useGetTaskQuery(
       if (!taskId) {
         return null;
       }
-      const response = await fetch(`/api/tasks/${taskId}/enhanced`);
+      const response = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/enhanced`,
+      );
       if (response.status === 404) {
         return null;
       }
