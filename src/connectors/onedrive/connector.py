@@ -636,7 +636,7 @@ class OneDriveConnector(BaseConnector):
 
         # Check if ID contains '!' which indicates driveId!itemId format
         if "!" in file_id:
-            parts = file_id.split("!", 1)
+            parts = file_id.rsplit("!", 1)
             if len(parts) == 2:
                 drive_id = parts[0]
                 item_id = parts[1]
@@ -735,7 +735,7 @@ class OneDriveConnector(BaseConnector):
 
             # Build URL based on ID format
             if "!" in file_id:
-                parts = file_id.split("!", 1)
+                parts = file_id.rsplit("!", 1)
                 if len(parts) == 2:
                     drive_id = parts[0]
                     item_id = parts[1]
@@ -747,7 +747,7 @@ class OneDriveConnector(BaseConnector):
                             return content
 
                     # Try drives endpoint for driveId!itemId format
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}/content"
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
                     logger.info(f"Downloading via drives endpoint: {url}")
                 else:
                     url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
@@ -883,7 +883,16 @@ class OneDriveConnector(BaseConnector):
         files: list[dict[str, Any]] = []
 
         try:
-            url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+            drive_id = None
+            if "!" in folder_id:
+                parts = folder_id.rsplit("!", 1)
+                if len(parts) == 2:
+                    drive_id, item_id = parts
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
+            
+            if not drive_id:
+                url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+
             params = dict(self._default_params)
 
             response = await self._make_graph_request(url, params=params)
@@ -891,13 +900,17 @@ class OneDriveConnector(BaseConnector):
 
             items = data.get("value", [])
             for item in items:
+                parent_ref = item.get("parentReference", {})
+                item_drive_id = parent_ref.get("driveId") or drive_id
+                item_id = item.get("id")
+                final_item_id = f"{item_drive_id}!{item_id}" if item_drive_id else item_id
+
                 if item.get("file"):  # It's a file
-                    file_id = item.get("id")
                     file_meta = {
-                        "id": file_id,
+                        "id": final_item_id,
                         "name": item.get("name", ""),
-                        "path": f"/drive/items/{file_id}",
-                        "size": int(item.get("size", 0)),
+                        "path": f"/drive/items/{item_id}",
+                        "size": int(item.get("size") or 0),
                         "modified": item.get("lastModifiedDateTime"),
                         "created": item.get("createdDateTime"),
                         "mime_type": item.get("file", {}).get(
@@ -909,7 +922,7 @@ class OneDriveConnector(BaseConnector):
                     }
                     files.append(file_meta)
                 elif item.get("folder"):  # It's a subfolder, recurse
-                    subfolder_files = await self._list_folder_contents(item.get("id"))
+                    subfolder_files = await self._list_folder_contents(final_item_id)
                     files.extend(subfolder_files)
         except Exception as e:
             logger.error(f"Failed to list folder contents for {folder_id}: {e}")
