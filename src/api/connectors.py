@@ -490,9 +490,9 @@ async def connector_check_duplicates(
             {"duplicate_names": list(set(duplicate_names)), "total_files": len(cleaned_names)}
         )
 
-    except Exception as e:
-        logger.error("[CONNECTOR] Error checking duplicates", error=str(e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except Exception:
+        logger.exception("[CONNECTOR] Error checking duplicates")
+        return JSONResponse({"error": "An internal error has occurred."}, status_code=500)
 
 
 async def list_connectors(
