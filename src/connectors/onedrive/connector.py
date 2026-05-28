@@ -747,8 +747,11 @@ class OneDriveConnector(BaseConnector):
                             return content
 
                     # Try drives endpoint for driveId!itemId format
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
-                    logger.info(f"Downloading via drives endpoint: {url}")
+                    if not item_id.startswith("s"):
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+                        logger.info(f"Downloading via drives endpoint: {url}")
+                    else:
+                        url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
                 else:
                     url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
             else:
@@ -887,8 +890,10 @@ class OneDriveConnector(BaseConnector):
             if "!" in folder_id:
                 parts = folder_id.rsplit("!", 1)
                 if len(parts) == 2:
-                    drive_id, item_id = parts
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
+                    potential_drive_id, item_id = parts
+                    if not item_id.startswith("s"):
+                        drive_id = potential_drive_id
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
             
             if not drive_id:
                 url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
@@ -903,7 +908,10 @@ class OneDriveConnector(BaseConnector):
                 parent_ref = item.get("parentReference", {})
                 item_drive_id = parent_ref.get("driveId") or drive_id
                 item_id = item.get("id")
-                final_item_id = f"{item_drive_id}!{item_id}" if item_drive_id else item_id
+                if item_id and "!" in item_id:
+                    final_item_id = item_id
+                else:
+                    final_item_id = f"{item_drive_id}!{item_id}" if item_drive_id else item_id
 
                 if item.get("file"):  # It's a file
                     file_meta = {
