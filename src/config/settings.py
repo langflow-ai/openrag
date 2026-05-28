@@ -815,6 +815,7 @@ class AppClients:
         _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
         max_attempts = max(1, LANGFLOW_REQUEST_RETRIES + 1)
         last_error: Exception | None = None
+        auth_retry_attempted = False
         request_kwargs = dict(kwargs)
         passed_headers = request_kwargs.pop("headers", {}) or {}
 
@@ -854,18 +855,48 @@ class AppClients:
                 raise
 
             # Retry once with a fresh API key on auth failure
-            if response.status_code in (401, 403):
+            if response.status_code in (401, 403) and not auth_retry_attempted:
                 logger.warning(
                     "Langflow request auth failed, regenerating API key and retrying",
                     status_code=response.status_code,
                     endpoint=endpoint,
                 )
+                auth_retry_attempted = True
                 api_key = await get_langflow_api_key(force_regenerate=True)
                 if api_key:
                     headers["x-api-key"] = api_key
-                    response = await self.langflow_http_client.request(
-                        method=method, url=url, headers=headers, **request_kwargs
-                    )
+                    try:
+                        response = await self.langflow_http_client.request(
+                            method=method, url=url, headers=headers, **request_kwargs
+                        )
+                    except httpx.RequestError as exc:
+                        last_error = exc
+                        if attempt + 1 < max_attempts:
+                            delay = min(2**attempt, 4)
+                            logger.warning(
+                                "Langflow auth retry transport error, retrying",
+                                endpoint=endpoint,
+                                attempt=attempt + 1,
+                                max_attempts=max_attempts,
+                                error=str(exc),
+                                retry_in_seconds=delay,
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        raise
+
+            if response.status_code in (401, 403) and attempt + 1 < max_attempts:
+                delay = min(2**attempt, 4)
+                logger.warning(
+                    "Langflow auth failure persists, retrying request",
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                    max_attempts=max_attempts,
+                    retry_in_seconds=delay,
+                )
+                await asyncio.sleep(delay)
+                continue
 
             if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:
                 delay = min(2**attempt, 4)
