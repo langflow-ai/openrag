@@ -71,7 +71,7 @@ function FileTypeMenu({
           <button
             type="button"
             disabled={disabled}
-            className="inline-flex min-h-10 w-[var(--task-dialog-file-type-width)] shrink-0 items-center justify-between gap-2 bg-layer-contextual px-4 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex min-h-10 w-task-dialog-file-type shrink-0 items-center justify-between gap-2 bg-layer-contextual px-4 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           >
             {triggerContent}
           </button>
@@ -80,7 +80,7 @@ function FileTypeMenu({
             type="button"
             variant="outline"
             disabled={disabled}
-            className="min-h-10 h-10 w-[var(--task-dialog-file-type-width)] shrink-0 justify-between font-normal"
+            className="min-h-10 h-10 w-task-dialog-file-type shrink-0 justify-between font-normal"
           >
             {triggerContent}
           </Button>
@@ -89,7 +89,7 @@ function FileTypeMenu({
       <DropdownMenuContent
         align="end"
         className={cn(
-          "z-[var(--z-task-dialog-menu)] w-[var(--task-dialog-file-type-width)]",
+          "z-task-dialog-menu w-task-dialog-file-type",
           isCloudBrand &&
             "border-border-subtle-contextual bg-layer-contextual text-layer-contextual-foreground",
         )}

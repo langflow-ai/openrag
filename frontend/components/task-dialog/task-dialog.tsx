@@ -189,7 +189,7 @@ export default function TaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "flex h-[var(--task-dialog-max-height)] max-h-[var(--task-dialog-max-height)] w-[var(--task-dialog-width)] max-w-[var(--task-dialog-width)] flex-col gap-0 overflow-hidden p-0 sm:rounded-lg",
+          "flex h-task-dialog max-h-task-dialog w-task-dialog max-w-task-dialog flex-col gap-0 overflow-hidden p-0 sm:rounded-lg",
           isCloudBrand
             ? "bg-layer-contextual font-ibm-plex-sans"
             : "bg-task-dialog-oss",

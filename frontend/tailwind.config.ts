@@ -24,6 +24,20 @@ const config = {
     extend: {
       maxWidth: {
         content: "960px",
+        "task-dialog": "var(--task-dialog-width)",
+      },
+      height: {
+        "task-dialog": "var(--task-dialog-max-height)",
+      },
+      maxHeight: {
+        "task-dialog": "var(--task-dialog-max-height)",
+      },
+      width: {
+        "task-dialog": "var(--task-dialog-width)",
+        "task-dialog-file-type": "var(--task-dialog-file-type-width)",
+      },
+      zIndex: {
+        "task-dialog-menu": "var(--z-task-dialog-menu)",
       },
       screens: {
         xl: "1200px",
