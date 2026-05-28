@@ -82,6 +82,12 @@ stringData:
     {{- else }}
     WATSONX_PROJECT_ID="None"
     {{- end }}
+    {{- if .Values.llmProviders.watsonx.maxRetries }}
+    WATSONX_MAX_RETRIES={{ .Values.llmProviders.watsonx.maxRetries | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.delayTime }}
+    WATSONX_DELAY_TIME={{ .Values.llmProviders.watsonx.delayTime | quote }}
+    {{- end }}
 
     # LLM / Embedding provider configuration
     {{- if .Values.appConfig.agent.llmProvider }}
