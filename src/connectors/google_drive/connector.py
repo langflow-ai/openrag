@@ -316,7 +316,7 @@ class GoogleDriveConnector(BaseConnector):
                         fileId=file_id,
                         fields=(
                             "id, name, mimeType, modifiedTime, createdTime, size, "
-                            "webViewLink, parents, shortcutDetails, driveId"
+                            "webViewLink, parents, shortcutDetails, driveId, trashed"
                         ),
                         **self._drives_get_flags,
                     )
@@ -368,7 +368,7 @@ class GoogleDriveConnector(BaseConnector):
             )
             for fid in self.cfg.file_ids:
                 meta = self._get_file_meta_by_id(fid)
-                if not meta:
+                if not meta or meta.get("trashed"):
                     logger.debug(
                         "[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid
                     )
@@ -564,11 +564,6 @@ class GoogleDriveConnector(BaseConnector):
 
             logger.debug("[GoogleDrive] authenticate: building Drive service")
             self.service = self.oauth.get_service()
-
-            logger.debug("[GoogleDrive] authenticate: running sanity check (files.get root)")
-            req = self.service.files().get(fileId="root", fields="id")
-            await asyncio.to_thread(req.execute)
-            logger.debug("[GoogleDrive] authenticate: sanity check passed")
 
             self._authenticated = True
             return True

@@ -36,6 +36,10 @@ async def setup():
         admin_user = await ensure_user_row(
             s, User(user_id="admin-sub", email="admin@x.com", name="A", provider="google")
         )
+        # No bootstrap-admin anymore — grant admin explicitly.
+        role_repo = RoleRepo(s)
+        admin_role = await role_repo.get_by_name("admin")
+        await role_repo.assign_role(admin_user.id, admin_role.id)
         end_user = await ensure_user_row(
             s, User(user_id="user-sub", email="u@x.com", name="U", provider="google")
         )

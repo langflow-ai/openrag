@@ -52,6 +52,30 @@ def decode_ibm_jwt(token: str) -> dict | None:
         return None
 
 
+def admin_username_from_service_jwt(token: str) -> str | None:
+    """Return the admin username carried by a platform-issued service JWT.
+
+    Decodes *token* unsigned (the platform issues it; we only parse claims)
+    and returns `username` if present, falling back to `sub`. Matches the
+    claim precedence used by the auth dependency in dependencies.py.
+    Returns None if the token cannot be decoded or has neither claim.
+    """
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.InvalidTokenError as exc:
+        logger.warning("Service JWT decode failed", error=str(exc))
+        return None
+    value = claims.get("username") or claims.get("sub")
+    if not isinstance(value, str):
+        if value is not None:
+            logger.warning(
+                "Service JWT username/sub claim is not a string",
+                claim_type=type(value).__name__,
+            )
+        return None
+    return value
+
+
 async def fetch_ibm_public_key(url: str):
     """Fetch IBM's JWT public key PEM from *url* and cache it."""
     global _cached_public_key

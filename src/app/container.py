@@ -3,7 +3,6 @@
 Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 """
 
-from api.connector_router import ConnectorRouter
 from config.settings import (
     ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
@@ -15,7 +14,6 @@ from config.settings import (
     get_index_name,
     is_no_auth_mode,
 )
-from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
@@ -100,13 +98,7 @@ async def initialize_services():
     )
     langflow_mcp_service = LangflowMCPService()
 
-    langflow_connector_service = LangflowConnectorService(
-        task_service=task_service,
-        session_manager=session_manager,
-        flows_service=flows_service,
-        docling_service=clients.docling_service,
-    )
-    openrag_connector_service = ConnectorService(
+    connector_service = ConnectorService(
         patched_async_client=clients,
         embed_model=get_embedding_model(),
         index_name=get_index_name(),
@@ -115,11 +107,8 @@ async def initialize_services():
         models_service=models_service,
         document_service=document_service,
         docling_service=clients.docling_service,
-    )
-
-    connector_service = ConnectorRouter(
-        langflow_connector_service=langflow_connector_service,
-        openrag_connector_service=openrag_connector_service,
+        flows_service=flows_service,
+        langflow_service=langflow_file_service,
     )
 
     auth_service = AuthService(

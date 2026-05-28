@@ -39,7 +39,6 @@ from services.rbac_service import RBACService  # noqa: E402
 from services.user_service import ensure_user_row  # noqa: E402
 from session_manager import User  # noqa: E402
 
-
 # Map role-name -> User dataclass we hand to overrides
 PERSONAS: dict[str, User] = {}
 
@@ -58,11 +57,11 @@ async def app(monkeypatch):
     PERSONAS.clear()
     async with SessionLocal() as s:
         await seed_roles_and_permissions(s)
-        # First user becomes admin (bootstrap rule)
+        # Every user gets OPENRAG_DEFAULT_ROLE = "user"; promote personas
+        # explicitly (no bootstrap-admin rule).
         admin_db = await ensure_user_row(
             s, User(user_id="admin-sub", email="a@x.com", name="A", provider="google")
         )
-        # Subsequent users get OPENRAG_DEFAULT_ROLE = "user"
         user_db = await ensure_user_row(
             s, User(user_id="user-sub", email="u@x.com", name="U", provider="google")
         )
@@ -73,8 +72,12 @@ async def app(monkeypatch):
         )
         role_repo = RoleRepo(s)
         user_role = await role_repo.get_by_name("user")
+        admin_role = await role_repo.get_by_name("admin")
         dev_role = await role_repo.get_by_name("developer")
         viewer_role = await role_repo.get_by_name("viewer")
+        # Promote the admin persona from its default "user" role to "admin".
+        await role_repo.revoke_role(admin_db.id, user_role.id)
+        await role_repo.assign_role(admin_db.id, admin_role.id)
         await role_repo.revoke_role(dev_db.id, user_role.id)
         await role_repo.assign_role(dev_db.id, dev_role.id)
 
@@ -102,12 +105,8 @@ async def app(monkeypatch):
         # require_permission's lookups via rbac.get_user_permissions(user.user_id)
         # resolve correctly. Note: User.user_id is the *DB id* here so the key
         # lookups (which use db_user.id) line up.
-        PERSONAS["admin"] = User(
-            user_id=admin_db.id, email="a@x.com", name="A", provider="google"
-        )
-        PERSONAS["user"] = User(
-            user_id=user_db.id, email="u@x.com", name="U", provider="google"
-        )
+        PERSONAS["admin"] = User(user_id=admin_db.id, email="a@x.com", name="A", provider="google")
+        PERSONAS["user"] = User(user_id=user_db.id, email="u@x.com", name="U", provider="google")
         PERSONAS["developer"] = User(
             user_id=dev_db.id, email="d@x.com", name="D", provider="google"
         )
@@ -155,7 +154,7 @@ async def app(monkeypatch):
 
     @app.post("/test/upload-context")
     async def upload_context_gate(
-        user=Depends(require_all_permissions(("knowledge:upload", "chat:use")))
+        user=Depends(require_all_permissions(("knowledge:upload", "chat:use"))),
     ):
         return JSONResponse({"user_id": user.user_id})
 

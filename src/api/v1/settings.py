@@ -4,36 +4,45 @@ Public API v1 Settings endpoint.
 Provides access to configuration settings.
 Uses API key authentication.
 """
-from api.settings import SettingsUpdateBody
-from typing import Optional
 
 from fastapi import Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
+
+from api.settings import SettingsUpdateBody
 from config.settings import get_openrag_config
-from dependencies import get_api_key_user_async, get_models_service, get_session_manager
+from dependencies import (
+    get_api_key_user_async,
+    get_models_service,
+    get_session_manager,
+    require_api_key_permission,
+)
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 class AgentSettings(BaseModel):
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    system_prompt: Optional[str] = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    system_prompt: str | None = None
+
 
 class KnowledgeSettings(BaseModel):
-    embedding_provider: Optional[str] = None
-    embedding_model: Optional[str] = None
-    chunk_size: Optional[int] = None
-    chunk_overlap: Optional[int] = None
-    table_structure: Optional[bool] = None
-    ocr: Optional[bool] = None
-    picture_descriptions: Optional[bool] = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    table_structure: bool | None = None
+    ocr: bool | None = None
+    picture_descriptions: bool | None = None
+
 
 class SettingsResponse(BaseModel):
     agent: AgentSettings
     knowledge: KnowledgeSettings
+
 
 async def get_settings_endpoint(
     user: User = Depends(get_api_key_user_async),
@@ -65,10 +74,12 @@ async def get_settings_endpoint(
 async def update_settings_endpoint(
     body: SettingsUpdateBody,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("config:write")),
     models_service=Depends(get_models_service),
 ):
     """Update OpenRAG configuration settings. POST /v1/settings"""
     from api.settings import update_settings
 
-    return await update_settings(body=body, session_manager=session_manager, user=user, models_service=models_service)
+    return await update_settings(
+        body=body, session_manager=session_manager, user=user, models_service=models_service
+    )
