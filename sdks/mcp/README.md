@@ -81,7 +81,7 @@ Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`:
 ```json
 {
   "mcpServers": {
-    "openrag-server-tp": {
+    "openrag": {
       "type": "streamable-http",
       "url": "http://localhost:3000/mcp",
       "headers": {
