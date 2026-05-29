@@ -214,7 +214,6 @@ async def run_startup(app: FastAPI):
         from utils.run_mode_utils import (
             is_run_mode_on_prem,
             is_run_mode_oss,
-            is_run_mode_saas,
         )
 
         # Choose the bootstrap OpenSearch client + admin identity, by run mode:
