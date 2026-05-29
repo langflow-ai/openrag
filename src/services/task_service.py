@@ -388,7 +388,17 @@ class TaskService:
         if temp_file_paths:
             if upload_task.temp_file_paths is None:
                 upload_task.temp_file_paths = []
-            upload_task.temp_file_paths.extend(temp_file_paths)
+            normalized_temp_paths = [str(path) for path in temp_file_paths]
+            unknown_temp_paths = [
+                path for path in normalized_temp_paths if path not in upload_task.file_tasks
+            ]
+            if unknown_temp_paths:
+                logger.warning(
+                    "temp_file_paths do not match file_tasks keys; retry retention may fail",
+                    task_id=task_id,
+                    unknown_temp_paths=unknown_temp_paths,
+                )
+            upload_task.temp_file_paths.extend(normalized_temp_paths)
 
         # Start background processing
         background_task = asyncio.create_task(
@@ -1364,17 +1374,50 @@ class TaskService:
 
         return True
 
+    def _file_task_for_temp_path(
+        self, upload_task: UploadTask, temp_path: str
+    ) -> FileTask | None:
+        """Resolve the FileTask for a staged upload temp path."""
+        file_task = upload_task.file_tasks.get(temp_path)
+        if file_task is not None:
+            return file_task
+        for candidate in upload_task.file_tasks.values():
+            if candidate.file_path == temp_path:
+                return candidate
+        return None
+
     def _is_retryable_local_upload_temp(
         self, upload_task: UploadTask, temp_path: str
     ) -> bool:
-        """True when a staged temp belongs to a failed local RETRYABLE upload."""
-        file_task = upload_task.file_tasks.get(temp_path)
-        if file_task is None or file_task.status != TaskStatus.FAILED:
-            return False
+        """True when a staged temp belongs to a failed local RETRYABLE upload.
+
+        Local uploads use the staged path as the file_tasks key and
+        FileTask.file_path. When those diverge, this falls back to matching
+        FileTask.file_path. Unmapped absolute temps are retained (see
+        _should_retain_upload_temp) rather than deleted silently.
+        """
         if not os.path.isabs(temp_path):
+            return False
+        file_task = self._file_task_for_temp_path(upload_task, temp_path)
+        if file_task is None or file_task.status != TaskStatus.FAILED:
             return False
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
+
+    def _should_retain_upload_temp(
+        self, upload_task: UploadTask, temp_path: str
+    ) -> bool:
+        """Return True when an upload temp should be kept after processing."""
+        if self._is_retryable_local_upload_temp(upload_task, temp_path):
+            return True
+        if os.path.isabs(temp_path) and self._file_task_for_temp_path(upload_task, temp_path) is None:
+            logger.warning(
+                "Upload temp path has no matching file task; retaining staged file",
+                temp_path=temp_path,
+                task_id=upload_task.task_id,
+            )
+            return True
+        return False
 
     def _cleanup_upload_temp_files(
         self, upload_task: UploadTask, *, force: bool = False
@@ -1392,7 +1435,7 @@ class TaskService:
 
         retained: list[str] = []
         for temp_path in upload_task.temp_file_paths:
-            if not force and self._is_retryable_local_upload_temp(upload_task, temp_path):
+            if not force and self._should_retain_upload_temp(upload_task, temp_path):
                 retained.append(temp_path)
                 continue
             safe_unlink(temp_path)

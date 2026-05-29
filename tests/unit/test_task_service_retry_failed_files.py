@@ -260,6 +260,19 @@ def test_is_retryable_local_upload_temp_true_for_failed_local_timeout(task_servi
     assert task_service._is_retryable_local_upload_temp(task, temp_path) is True
 
 
+def test_is_retryable_local_upload_temp_resolves_file_task_by_file_path(task_service):
+    temp_path = "/var/folders/tmp/retryable.tmp"
+    ft = _retryable_failed_file(temp_path)
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"different-key": ft},
+        temp_file_paths=[temp_path],
+    )
+
+    assert task_service._is_retryable_local_upload_temp(task, temp_path) is True
+
+
 def test_is_retryable_local_upload_temp_false_for_connector_id(task_service):
     file_path = "google-drive-file-id"
     ft = FileTask(file_path=file_path, filename="doc.pdf")
@@ -288,7 +301,10 @@ def test_cleanup_upload_temp_files_keeps_retryable_local_failure(task_service):
         temp_file_paths=[retryable_path, other_path],
     )
 
-    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+    with (
+        patch("utils.file_utils.safe_unlink") as mock_unlink,
+        patch("os.path.exists", return_value=False),
+    ):
         task_service._cleanup_upload_temp_files(task)
 
     mock_unlink.assert_called_once_with(other_path)
@@ -307,7 +323,10 @@ def test_cleanup_upload_temp_files_removes_non_retryable_failure(task_service):
         temp_file_paths=[temp_path],
     )
 
-    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+    with (
+        patch("utils.file_utils.safe_unlink") as mock_unlink,
+        patch("os.path.exists", return_value=False),
+    ):
         task_service._cleanup_upload_temp_files(task)
 
     mock_unlink.assert_called_once_with(temp_path)
@@ -350,3 +369,19 @@ def test_cleanup_upload_temp_files_does_not_unlink_retryable_local_failure(task_
 
     mock_unlink.assert_not_called()
     assert task.temp_file_paths == [retryable_path]
+
+
+def test_cleanup_upload_temp_files_retains_unmapped_absolute_temp(task_service):
+    temp_path = "/var/folders/tmp/unmapped.tmp"
+    task = UploadTask(
+        task_id="task-1",
+        total_files=0,
+        file_tasks={},
+        temp_file_paths=[temp_path],
+    )
+
+    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+        task_service._cleanup_upload_temp_files(task)
+
+    mock_unlink.assert_not_called()
+    assert task.temp_file_paths == [temp_path]
