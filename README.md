@@ -133,7 +133,7 @@ console.log(response.response);
 
 OpenRAG ships a built-in MCP server over **streamable HTTP**, mounted on your instance at `/mcp`. Connect AI assistants like Cursor, Claude Desktop, and IBM Bob to your OpenRAG knowledge base — no subprocess and no separate install. Authenticate with the same OpenRAG API key you use for the REST API, passed via the `X-API-Key` header.
 
-> **Note:** The standalone `openrag-mcp` PyPI package is deprecated. Connect your MCP client directly to the `/mcp` endpoint instead.
+> **Important:** The standalone `openrag-mcp` PyPI package is deprecated. Connect your MCP client directly to the `/mcp` endpoint instead.
 
 **Quick Example (Cursor/Claude Desktop config):**
 ```json
@@ -151,7 +151,7 @@ OpenRAG ships a built-in MCP server over **streamable HTTP**, mounted on your in
 
 The MCP server provides tools for RAG-enhanced chat, semantic search, document ingestion, knowledge filters, and settings management.
 
-📖 [Full MCP Documentation](https://docs.openr.ag/reference/mcp)
+📖 [Full MCP Documentation](https://github.com/langflow-ai/openrag/tree/main/sdks/mcp)
 
 ## 🛠️ Development
 
