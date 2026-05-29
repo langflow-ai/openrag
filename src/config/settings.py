@@ -94,26 +94,6 @@ IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-sess
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 
 
-def use_opensearch_basic_auth() -> bool:
-    """Whether IBM auth deployments should use OpenSearch basic-auth credentials.
-
-    In on-prem (CPD) IBM auth deployments the operator may run OpenRAG against an
-    OpenSearch cluster that authenticates with basic-auth credentials rather than
-    the platform JWT. When IBM auth is enabled, the run mode is on_prem, and both
-    OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are provided, OpenRAG bootstraps
-    and writes to OpenSearch using those credentials (with the OpenSearch username
-    acting as the admin user) instead of the service/user JWT.
-    """
-    from utils.run_mode_utils import is_run_mode_on_prem
-
-    return bool(
-        IBM_AUTH_ENABLED
-        and is_run_mode_on_prem()
-        and get_opensearch_username()
-        and get_opensearch_password()
-    )
-
-
 # ── JWT roles claim ─────────────────────────────────────────────
 # These are exposed as functions (not module constants) so they are read
 # per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
@@ -617,25 +597,48 @@ class AppClients:
         self._docling_service = None
 
     async def initialize(self):
-        # In IBM auth mode the global (backend-owned) client normally carries no
-        # credentials — requests are authenticated by the platform JWT. When the
-        # on-prem operator supplies OpenSearch basic-auth credentials, the writer
-        # client uses them so the backend can index documents directly.
-        if IBM_AUTH_ENABLED and not use_opensearch_basic_auth():
-            os_auth = None
-        else:
-            os_auth = (get_opensearch_username(), get_opensearch_password())
-
-        self.opensearch = AsyncOpenSearch(
-            hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
-            connection_class=AIOHttpConnection,
-            scheme="https",
-            use_ssl=True,
-            verify_certs=False,
-            ssl_assert_fingerprint=None,
-            http_auth=os_auth,
-            http_compress=True,
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+            is_run_mode_saas,
         )
+
+        # Credentials for the global (backend-owned) writer client, by run mode:
+        #   saas    -> platform service token (JWT) when available, else unauthenticated
+        #   on_prem -> OpenSearch basic auth
+        #   oss     -> OpenSearch basic auth
+        service_token = get_openrag_service_token() if is_run_mode_saas() else None
+        if service_token:
+            logger.info(
+                "Initializing global OpenSearch writer client: saas mode, "
+                "using platform service token"
+            )
+            self.opensearch = self.create_opensearch_client_from_jwt(service_token)
+        else:
+            if is_run_mode_on_prem() or is_run_mode_oss():
+                os_auth = (get_opensearch_username(), get_opensearch_password())
+                logger.info(
+                    "Initializing global OpenSearch writer client: %s mode, "
+                    "using OpenSearch basic auth"
+                    % ("on_prem" if is_run_mode_on_prem() else "oss")
+                )
+            else:
+                os_auth = None
+                logger.info(
+                    "Initializing global OpenSearch writer client: saas mode without "
+                    "service token, using the unauthenticated client"
+                )
+
+            self.opensearch = AsyncOpenSearch(
+                hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
+                connection_class=AIOHttpConnection,
+                scheme="https",
+                use_ssl=True,
+                verify_certs=False,
+                ssl_assert_fingerprint=None,
+                http_auth=os_auth,
+                http_compress=True,
+            )
 
         # Initialize patched OpenAI client if API key is available
         # This allows the app to start even if OPENAI_API_KEY is not set yet

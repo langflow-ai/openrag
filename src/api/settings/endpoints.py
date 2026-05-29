@@ -1044,26 +1044,26 @@ async def onboarding(
         if body.embedding_model or body.embedding_provider:
             try:
                 from config.settings import (
-                    IBM_AUTH_ENABLED,
                     get_openrag_service_token,
                     get_opensearch_password,
                     get_opensearch_username,
-                    use_opensearch_basic_auth,
                 )
                 from config.settings import clients as app_clients
                 from main import init_index
+                from utils.run_mode_utils import (
+                    is_run_mode_on_prem,
+                    is_run_mode_oss,
+                    is_run_mode_saas,
+                )
 
+                # Choose the OpenSearch client + admin identity for index/security
+                # setup, by run mode:
+                #   saas    -> platform service token (JWT); admin from its claim
+                #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
+                #   oss     -> OpenSearch basic auth; OpenSearch username as admin
                 opensearch_client = None
                 admin_username = None
-                if use_opensearch_basic_auth():
-                    # On-prem IBM auth with OpenSearch basic-auth credentials:
-                    # set up the index using those credentials, with the
-                    # OpenSearch username as admin.
-                    admin_username = get_opensearch_username()
-                    opensearch_client = app_clients.create_basic_opensearch_client(
-                        admin_username, get_opensearch_password()
-                    )
-                elif IBM_AUTH_ENABLED and user:
+                if is_run_mode_saas():
                     service_token = get_openrag_service_token()
                     if service_token:
                         # Prefer the platform service token so onboarding pins the
@@ -1080,22 +1080,42 @@ async def onboarding(
                         opensearch_client = app_clients.create_opensearch_client_from_jwt(
                             service_token
                         )
-                    else:
-                        # TODO: backward-compatibility fallback for deployments
-                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding
-                        # user as admin instead of the platform service identity.
-                        # Remove once the service token is always provided.
-                        logger.warning(
-                            "No OPENRAG_SERVICE_TOKEN during onboarding; falling back to "
-                            "the onboarding user as OpenSearch admin "
-                            "(backward-compatibility path, to be removed later)",
-                            admin_username=user.user_id,
+                        logger.info(
+                            "Onboarding OpenSearch setup: saas mode, using platform "
+                            "service token",
+                            admin_username=admin_username,
                         )
+                    elif user:
+                        # TODO: backward-compatibility fallback for saas deployments
+                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding user as
+                        # admin instead of the platform service identity. Remove once
+                        # the service token is always provided.
                         if user.jwt_token:
                             opensearch_client = app_clients.create_user_opensearch_client(
                                 user.jwt_token
                             )
                         admin_username = user.user_id
+                        logger.warning(
+                            "Onboarding OpenSearch setup: saas mode without "
+                            "OPENRAG_SERVICE_TOKEN; falling back to the onboarding user "
+                            "as admin (backward-compatibility path, to be removed later)",
+                            admin_username=admin_username,
+                        )
+                    else:
+                        logger.info(
+                            "Onboarding OpenSearch setup: saas mode with no service "
+                            "token or user; using the unauthenticated global client"
+                        )
+                elif is_run_mode_on_prem() or is_run_mode_oss():
+                    admin_username = get_opensearch_username()
+                    opensearch_client = app_clients.create_basic_opensearch_client(
+                        admin_username, get_opensearch_password()
+                    )
+                    logger.info(
+                        "Onboarding OpenSearch setup: %s mode, using OpenSearch basic auth"
+                        % ("on_prem" if is_run_mode_on_prem() else "oss"),
+                        admin_username=admin_username,
+                    )
 
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)
@@ -1114,6 +1134,7 @@ async def onboarding(
             if should_ingest_sample_data:
                 try:
                     # Import the function here to avoid circular imports
+                    from config.settings import IBM_AUTH_ENABLED
                     from main import ingest_default_documents_when_ready
 
                     if not config_manager.save_config_file(current_config):
