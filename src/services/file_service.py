@@ -6,6 +6,8 @@ with support for pagination, filtering, sorting, and fuzzy search.
 """
 
 
+from typing import Any
+
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 
