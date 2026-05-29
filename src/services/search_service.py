@@ -271,7 +271,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses: list[dict[str, Any]] = []
+            filter_clauses = []
             if filters:
                 # Map frontend filter names to backend field names
                 field_mapping = {
@@ -329,7 +329,7 @@ class SearchService:
             # fallback mode.
             all_filters = list(filter_clauses)
             if knn_queries:
-                exists_should = [{"exists": {"field": f}} for f in embedding_fields_to_check]
+                exists_should: list[dict[str, Any]] = [{"exists": {"field": f}} for f in embedding_fields_to_check]
                 # Docs indexed under a failed provider have none of the successful
                 # embedding fields, but keyword matching should still surface them.
                 # Allow them through by matching on their embedding_model value.
@@ -395,7 +395,7 @@ class SearchService:
                 ]
             )
 
-            query_block = {
+            query_block: dict[str, Any] = {
                 "bool": {
                     "should": should_clauses,
                     "minimum_should_match": 1,
@@ -403,7 +403,7 @@ class SearchService:
                 }
             }
 
-        search_body = {
+        search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": {
                 "data_sources": {"terms": {"field": "filename", "size": 20}},
