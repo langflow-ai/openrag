@@ -18,7 +18,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _resolve_default_signing_config() -> tuple[object, object, str]:
+def _resolve_default_signing_config() -> tuple[Any, Any, str]:
     """Prefer JWT_SIGNING_KEY when set; otherwise fall back to SESSION_SECRET."""
     from config.settings import JWT_SIGNING_KEY, SESSION_SECRET
 
