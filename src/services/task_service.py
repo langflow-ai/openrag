@@ -939,6 +939,7 @@ class TaskService:
                 "actionable_by": "RETRYABLE",
             }
 
+        # First, check if the error is non-retryable based on common markers
         if _is_non_retryable_file_error(error):
             if phase == IngestionPhase.LANGFLOW:
                 component = "langflow"
@@ -946,14 +947,46 @@ class TaskService:
             else:
                 component = "docling"
                 failure_phase = "parsing"
+
+            # Extract detailed error message if possible, otherwise default to corrupted/invalid msg
+            msg = (
+                "The file appears corrupted or invalid and cannot be processed. "
+                "Upload a valid file."
+            )
+            if "Docling result unavailable after SUCCESS status: " in error:
+                msg = error.split("Docling result unavailable after SUCCESS status: ", 1)[1]
+            elif "Docling conversion did not complete" in error:
+                sub_msg = error.split("Docling conversion did not complete", 1)[1]
+                if sub_msg.startswith(" (failed): "):
+                    msg = sub_msg[len(" (failed): ") :]
+                else:
+                    msg = sub_msg.strip(" ():")
+
             return {
                 "component": component,
                 "failure_phase": failure_phase,
-                "user_facing_message": (
-                    "The file appears corrupted or invalid and cannot be processed. "
-                    "Upload a valid file."
-                ),
+                "user_facing_message": msg,
                 "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Handle docling conversion completion issues (failed / timeout)
+        if phase == IngestionPhase.DOCLING and "Docling conversion did not complete" in error:
+            user_facing_message = "Document processing timed out. Please retry ingestion."
+            if "timeout" not in error.lower() and "expired" not in error.lower():
+                msg = error.split("Docling conversion did not complete", 1)[1]
+                if msg.startswith(" (failed): "):
+                    user_facing_message = msg[len(" (failed): ") :]
+                elif msg.startswith(" (timeout): "):
+                    user_facing_message = "Document processing timed out. Please retry ingestion."
+                else:
+                    user_facing_message = msg.strip(" ():")
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": user_facing_message,
+                "actionable_by": "RETRYABLE"
+                if "timed out" in user_facing_message.lower()
+                else "USER_ACTIONABLE",
             }
 
         if phase == IngestionPhase.DOCLING and _is_docling_transient_error(error):
@@ -974,12 +1007,22 @@ class TaskService:
             }
 
         if docling_status == DoclingPhaseStatus.FAILED:
+            msg = "The file could not be processed into readable document content."
+            if error:
+                if "Docling result unavailable after SUCCESS status: " in error:
+                    msg = error.split("Docling result unavailable after SUCCESS status: ", 1)[1]
+                elif "Docling conversion did not complete" in error:
+                    sub_msg = error.split("Docling conversion did not complete", 1)[1]
+                    if sub_msg.startswith(" (failed): "):
+                        msg = sub_msg[len(" (failed): ") :]
+                    else:
+                        msg = sub_msg.strip(" ():")
+                else:
+                    msg = error
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
-                "user_facing_message": (
-                    "The file could not be processed into readable document content."
-                ),
+                "user_facing_message": msg,
                 "actionable_by": "USER_ACTIONABLE",
             }
 

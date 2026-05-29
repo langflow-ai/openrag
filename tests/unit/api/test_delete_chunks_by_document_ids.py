@@ -124,8 +124,6 @@ async def test_custom_field_parameter_is_used_in_query():
 
     assert deleted == 1
     search_call = opensearch_client.search.await_args
-    assert search_call.kwargs["body"]["query"] == {
-        "terms": {"connector_file_id": ["src-file-1"]}
-    }
+    assert search_call.kwargs["body"]["query"] == {"terms": {"connector_file_id": ["src-file-1"]}}
     opensearch_client.delete.assert_not_awaited()
     write_client.delete.assert_awaited_once()
