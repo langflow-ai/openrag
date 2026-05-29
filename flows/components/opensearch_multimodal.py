@@ -6,9 +6,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-
 import httpx
-
 from lfx.base.vectorstores.model import LCVectorStoreComponent, check_cached_vector_store
 from lfx.base.vectorstores.vector_store_connection_decorator import vector_store_connection
 from lfx.io import (
@@ -841,9 +839,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         return value
 
     def _openrag_ingest_callback_config(self) -> tuple[str, str, str] | None:
-        url = (self.openrag_ingest_url or "").strip()
-        token = (self.openrag_ingest_token or "").strip()
-        ingest_run_id = (self.openrag_ingest_run_id or "").strip()
+        url = self._openrag_callback_value("openrag_ingest_url")
+        token = self._openrag_callback_value("openrag_ingest_token")
+        ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")
 
         masked_token = (
             f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
