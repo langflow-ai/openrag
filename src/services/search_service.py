@@ -300,7 +300,7 @@ class SearchService:
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope
             if filter_clauses:
-                query_block = {"bool": {"filter": filter_clauses}}
+                query_block: dict[str, Any] = {"bool": {"filter": filter_clauses}}
             else:
                 query_block = {"match_all": {}}
         else:
@@ -397,7 +397,7 @@ class SearchService:
                 ]
             )
 
-            query_block: dict[str, Any] = {
+            query_block = {
                 "bool": {
                     "should": should_clauses,
                     "minimum_should_match": 1,
