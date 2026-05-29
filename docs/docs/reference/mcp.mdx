@@ -3,9 +3,6 @@ title: MCP server
 slug: /reference/mcp
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 OpenRAG ships a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server over **streamable HTTP**, mounted on your OpenRAG instance at `/mcp`.
 Any MCP client that supports URL-based server configs — such as [Cursor](https://docs.cursor.com/context/model-context-protocol), [Claude Desktop](https://modelcontextprotocol.io/quickstart/user), and the MCP SDK — can connect directly to this endpoint.
 There is no subprocess to spawn and nothing extra to install: your client connects over HTTP using the same OpenRAG API key you use for the REST API.
@@ -49,8 +46,7 @@ The `Authorization: Bearer orag_...` header is also accepted as an alternative. 
 
 Add OpenRAG to your MCP client config using the `url` of your instance and the `X-API-Key` header. The examples below use the default local Docker URL — swap in your own host for a remote instance.
 
-<Tabs groupId="client">
-<TabItem value="cursor" label="Cursor" default>
+### Cursor
 
 Edit `~/.cursor/mcp.json`:
 
@@ -69,8 +65,7 @@ Edit `~/.cursor/mcp.json`:
 
 Restart Cursor after saving the config.
 
-</TabItem>
-<TabItem value="claude-desktop" label="Claude Desktop">
+### Claude Desktop
 
 Edit your `claude_desktop_config.json`:
 
@@ -92,10 +87,9 @@ Edit your `claude_desktop_config.json`:
 
 Restart Claude Desktop after editing the file.
 
-</TabItem>
-<TabItem value="ibm-bob" label="IBM Bob">
+### IBM Bob
 
-Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`:
+Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`. For a step-by-step walkthrough, see [MCP integration with IBM Bob](https://www.ibm.com/think/tutorials/mcp-integration-ibm-bob).
 
 ```json
 {
@@ -110,9 +104,6 @@ Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`:
   }
 }
 ```
-
-</TabItem>
-</Tabs>
 
 ## Available tools
 

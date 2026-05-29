@@ -76,7 +76,7 @@ Restart Claude Desktop after editing the file.
 
 ## IBM Bob
 
-Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`:
+Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`. For a step-by-step walkthrough, see [MCP integration with IBM Bob](https://www.ibm.com/think/tutorials/mcp-integration-ibm-bob).
 
 ```json
 {
