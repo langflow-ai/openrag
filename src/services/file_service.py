@@ -5,7 +5,6 @@ Aggregates document chunks by filename to produce file-level views,
 with support for pagination, filtering, sorting, and fuzzy search.
 """
 
-
 from typing import Any
 
 from config.settings import get_index_name
