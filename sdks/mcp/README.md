@@ -17,37 +17,31 @@ The OpenRAG backend exposes an MCP endpoint at `/mcp` using the streamable-HTTP 
 - A running OpenRAG instance (v0.3.0 or later)
 - An OpenRAG API key — create one in **Settings → API Keys**
 
+### Which URL to use
+
+The MCP endpoint is `/mcp` on your OpenRAG instance. The host and port depend on how OpenRAG is deployed:
+
+| Deployment | MCP URL |
+|:-----------|:--------|
+| Default Docker deployment | `http://localhost:3000/mcp` |
+| Backend run directly (dev, outside Docker) | `http://localhost:8000/mcp` |
+| Remote / deployed instance | `https://your-openrag-instance.com/mcp` |
+
+In the default Docker deployment the backend port (`8000`) is not published to the host; the frontend on port `3000` proxies `/mcp` to the backend and forwards your auth headers, so `http://localhost:3000/mcp` is the correct local URL. The examples below use the local Docker URL — swap in your own host for a remote instance.
+
 ---
 
 ## Cursor
 
 **Config file:** `~/.cursor/mcp.json`
 
-**Standard API key:**
-
 ```json
 {
   "mcpServers": {
     "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+      "url": "http://localhost:3000/mcp",
       "headers": {
         "X-API-Key": "orag_your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-**IBM auth (when `IBM_AUTH_ENABLED=true` on the server):**
-
-```json
-{
-  "mcpServers": {
-    "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
-      "headers": {
-        "X-Username": "your_ibm_username",
-        "X-Api-Key": "your_ibm_api_key"
       }
     }
   }
@@ -63,13 +57,11 @@ Restart Cursor after saving the config.
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-**Standard API key:**
-
 ```json
 {
   "mcpServers": {
     "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+      "url": "http://localhost:3000/mcp",
       "headers": {
         "X-API-Key": "orag_your_api_key_here"
       }
@@ -78,23 +70,27 @@ Restart Cursor after saving the config.
 }
 ```
 
-**IBM auth:**
+Restart Claude Desktop after editing the file.
+
+---
+
+## IBM Bob
+
+Add the server to your IBM Bob MCP config, setting `type` to `streamable-http`:
 
 ```json
 {
   "mcpServers": {
-    "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+    "openrag-server-tp": {
+      "type": "streamable-http",
+      "url": "http://localhost:3000/mcp",
       "headers": {
-        "X-Username": "your_ibm_username",
-        "X-Api-Key": "your_ibm_api_key"
+        "x-api-key": "orag_your_api_key_here"
       }
     }
   }
 }
 ```
-
-Restart Claude Desktop after editing the file.
 
 ---
 
@@ -127,7 +123,7 @@ All tools are auto-exposed from the `/v1/` API and are available immediately aft
 
 - **No subprocess** — your MCP client connects over HTTP; nothing to install or spawn locally.
 - **Full tool surface** — document ingestion, task tracking, and knowledge filters are available from day one (previously listed as "coming later" in the stdio package).
-- **One auth model** — the same API key or IBM credentials you use for the REST API work for MCP.
+- **One auth model** — the same API key you use for the REST API works for MCP.
 - **Self-hosted and secure** — the `/mcp` endpoint is part of your OpenRAG deployment; nothing leaves your network.
 
 ---

@@ -79,6 +79,11 @@ const sidebars = {
       id: "reference/api-sdk-overview",
       label: "APIs and SDKs",
     },
+    {
+      type: "doc",
+      id: "reference/mcp",
+      label: "MCP server",
+    },
     "support/contribute",
     "support/troubleshoot",
     "support/ibm-elite-support",
