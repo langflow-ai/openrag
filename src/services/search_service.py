@@ -123,7 +123,7 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses = []
+            filter_clauses: list[dict[str, Any]] = []
             if filters:
                 # Map frontend filter names to backend field names
                 field_mapping = {
@@ -271,7 +271,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
+            filter_clauses: list[dict[str, Any]] = []
             if filters:
                 # Map frontend filter names to backend field names
                 field_mapping = {
@@ -438,7 +438,7 @@ class SearchService:
 
         # Prepare fallback search body without num_candidates for clusters that don't support it.
         # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body = None
+        fallback_search_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)

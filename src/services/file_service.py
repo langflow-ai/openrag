@@ -131,7 +131,7 @@ class FileService:
                 }
             )
 
-        query = {"bool": {"filter": filter_clauses}}
+        query: dict[str, Any] = {"bool": {"filter": filter_clauses}}
         if must:
             query["bool"]["must"] = must
 

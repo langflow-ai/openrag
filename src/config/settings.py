@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import threading
+from typing import Any
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -406,7 +407,7 @@ INDEX_BODY = {
 }
 
 DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
-DLS_PRINCIPAL_INDEX_BODY = {
+DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
     "settings": {
         "index": {"number_of_replicas": 0, "number_of_shards": 1},
     },
