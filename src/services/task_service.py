@@ -1374,9 +1374,7 @@ class TaskService:
 
         return True
 
-    def _file_task_for_temp_path(
-        self, upload_task: UploadTask, temp_path: str
-    ) -> FileTask | None:
+    def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""
         file_task = upload_task.file_tasks.get(temp_path)
         if file_task is not None:
@@ -1386,9 +1384,7 @@ class TaskService:
                 return candidate
         return None
 
-    def _is_retryable_local_upload_temp(
-        self, upload_task: UploadTask, temp_path: str
-    ) -> bool:
+    def _is_retryable_local_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """True when a staged temp belongs to a failed local RETRYABLE upload.
 
         Local uploads use the staged path as the file_tasks key and
@@ -1404,13 +1400,14 @@ class TaskService:
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
 
-    def _should_retain_upload_temp(
-        self, upload_task: UploadTask, temp_path: str
-    ) -> bool:
+    def _should_retain_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """Return True when an upload temp should be kept after processing."""
         if self._is_retryable_local_upload_temp(upload_task, temp_path):
             return True
-        if os.path.isabs(temp_path) and self._file_task_for_temp_path(upload_task, temp_path) is None:
+        if (
+            os.path.isabs(temp_path)
+            and self._file_task_for_temp_path(upload_task, temp_path) is None
+        ):
             logger.warning(
                 "Upload temp path has no matching file task; retaining staged file",
                 temp_path=temp_path,
@@ -1419,9 +1416,7 @@ class TaskService:
             return True
         return False
 
-    def _cleanup_upload_temp_files(
-        self, upload_task: UploadTask, *, force: bool = False
-    ) -> None:
+    def _cleanup_upload_temp_files(self, upload_task: UploadTask, *, force: bool = False) -> None:
         """Remove staged upload temp files that are not retryable.
 
         Keeps temps for failed local uploads classified as RETRYABLE so retry
