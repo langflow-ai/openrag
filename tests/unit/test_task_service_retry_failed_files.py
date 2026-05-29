@@ -245,3 +245,108 @@ async def test_retry_connector_id_path_does_not_require_local_file(task_service)
     assert result["status"] == "accepted"
     assert ft.status == TaskStatus.PENDING
     mock_bg.assert_called_once()
+
+
+def test_is_retryable_local_upload_temp_true_for_failed_local_timeout(task_service):
+    temp_path = "/var/folders/tmp/retryable.tmp"
+    ft = _retryable_failed_file(temp_path)
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={temp_path: ft},
+        temp_file_paths=[temp_path],
+    )
+
+    assert task_service._is_retryable_local_upload_temp(task, temp_path) is True
+
+
+def test_is_retryable_local_upload_temp_false_for_connector_id(task_service):
+    file_path = "google-drive-file-id"
+    ft = FileTask(file_path=file_path, filename="doc.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.error = "All connection attempts failed"
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={file_path: ft},
+        temp_file_paths=[],
+    )
+
+    assert task_service._is_retryable_local_upload_temp(task, file_path) is False
+
+
+def test_cleanup_upload_temp_files_keeps_retryable_local_failure(task_service):
+    retryable_path = "/var/folders/tmp/retryable.tmp"
+    other_path = "/var/folders/tmp/success.tmp"
+    ft_retryable = _retryable_failed_file(retryable_path)
+    ft_success = FileTask(file_path=other_path, filename="ok.pdf")
+    ft_success.status = TaskStatus.COMPLETED
+    task = UploadTask(
+        task_id="task-1",
+        total_files=2,
+        file_tasks={retryable_path: ft_retryable, other_path: ft_success},
+        temp_file_paths=[retryable_path, other_path],
+    )
+
+    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+        task_service._cleanup_upload_temp_files(task)
+
+    mock_unlink.assert_called_once_with(other_path)
+    assert task.temp_file_paths == [retryable_path]
+
+
+def test_cleanup_upload_temp_files_removes_non_retryable_failure(task_service):
+    temp_path = "/var/folders/tmp/corrupt.tmp"
+    ft = FileTask(file_path=temp_path, filename="bad.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.error = "The file appears corrupted or invalid"
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={temp_path: ft},
+        temp_file_paths=[temp_path],
+    )
+
+    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+        task_service._cleanup_upload_temp_files(task)
+
+    mock_unlink.assert_called_once_with(temp_path)
+    assert task.temp_file_paths == []
+
+
+def test_cleanup_upload_temp_files_retains_path_when_unlink_fails(task_service):
+    temp_path = "/var/folders/tmp/still-there.tmp"
+    ft = FileTask(file_path=temp_path, filename="ok.pdf")
+    ft.status = TaskStatus.COMPLETED
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={temp_path: ft},
+        temp_file_paths=[temp_path],
+    )
+
+    with (
+        patch("utils.file_utils.safe_unlink") as mock_unlink,
+        patch("os.path.exists", return_value=True),
+    ):
+        task_service._cleanup_upload_temp_files(task)
+
+    mock_unlink.assert_called_once_with(temp_path)
+    assert task.temp_file_paths == [temp_path]
+
+
+def test_cleanup_upload_temp_files_does_not_unlink_retryable_local_failure(task_service):
+    retryable_path = "/var/folders/tmp/retryable.tmp"
+    ft = _retryable_failed_file(retryable_path)
+    task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={retryable_path: ft},
+        temp_file_paths=[retryable_path],
+    )
+
+    with patch("utils.file_utils.safe_unlink") as mock_unlink:
+        task_service._cleanup_upload_temp_files(task)
+
+    mock_unlink.assert_not_called()
+    assert task.temp_file_paths == [retryable_path]

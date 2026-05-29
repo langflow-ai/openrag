@@ -594,20 +594,9 @@ class TaskService:
                 upload_task.status = TaskStatus.COMPLETED
                 upload_task.updated_at = time.time()
 
-            # Clean up temp files after all processing is complete
-            if hasattr(upload_task, "temp_file_paths") and upload_task.temp_file_paths:
-                from utils.file_utils import safe_unlink
-
-                for temp_path in upload_task.temp_file_paths:
-                    try:
-                        safe_unlink(temp_path)
-                        logger.debug("Cleaned up temp file", temp_path=temp_path)
-                    except Exception as cleanup_error:
-                        logger.warning(
-                            "Failed to clean up temp file after processing",
-                            temp_path=temp_path,
-                            error=str(cleanup_error),
-                        )
+            # Clean up upload temps that are not retryable; keep local RETRYABLE
+            # failures so retry can re-read the staged source file.
+            self._cleanup_upload_temp_files(upload_task)
 
             status: str = "FAILED"
 
@@ -1368,7 +1357,51 @@ class TaskService:
                     file_task.error = "Task cancelled by user"
                     file_task.updated_at = time.time()
 
+        self._cleanup_upload_temp_files(upload_task, force=True)
+
         return True
+
+    def _is_retryable_local_upload_temp(
+        self, upload_task: UploadTask, temp_path: str
+    ) -> bool:
+        """True when a staged temp belongs to a failed local RETRYABLE upload."""
+        file_task = upload_task.file_tasks.get(temp_path)
+        if file_task is None or file_task.status != TaskStatus.FAILED:
+            return False
+        if not os.path.isabs(temp_path):
+            return False
+        metadata = self._infer_failure_metadata(file_task)
+        return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
+
+    def _cleanup_upload_temp_files(
+        self, upload_task: UploadTask, *, force: bool = False
+    ) -> None:
+        """Remove staged upload temp files that are not retryable.
+
+        Keeps temps for failed local uploads classified as RETRYABLE so retry
+        can reuse the original source path. Use *force* to delete all temps
+        (e.g. user cancelled the task).
+        """
+        if not getattr(upload_task, "temp_file_paths", None):
+            return
+
+        from utils.file_utils import safe_unlink
+
+        retained: list[str] = []
+        for temp_path in upload_task.temp_file_paths:
+            if not force and self._is_retryable_local_upload_temp(upload_task, temp_path):
+                retained.append(temp_path)
+                continue
+            safe_unlink(temp_path)
+            if os.path.exists(temp_path):
+                retained.append(temp_path)
+                logger.warning(
+                    "Failed to clean up temp file after processing",
+                    temp_path=temp_path,
+                )
+            else:
+                logger.debug("Cleaned up temp file", temp_path=temp_path)
+        upload_task.temp_file_paths = retained
 
     async def shutdown(self):
         """Cleanup process pool and cancel all background tasks
