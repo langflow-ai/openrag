@@ -5,7 +5,7 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from api.v1._filter_resolution import resolve_filter_id
 from auth_context import set_auth_context
 from dependencies import (
-    get_api_key_user_async,
     get_knowledge_filter_service,
     get_search_service,
     require_api_key_permission,

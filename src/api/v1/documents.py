@@ -13,7 +13,6 @@ from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
 from api.v1._filter_resolution import resolve_filter_id
 from dependencies import (
-    get_api_key_user_async,
     get_document_service,
     get_knowledge_filter_service,
     get_langflow_file_service,
