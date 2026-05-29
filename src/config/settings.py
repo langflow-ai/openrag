@@ -50,6 +50,8 @@ def get_opensearch_password() -> str | None:
     """OpenSearch basic-auth password, read per-call so runtime/test overrides
     take effect without a restart. Falls back to the import-time value."""
     return os.getenv("OPENSEARCH_PASSWORD") or OPENSEARCH_PASSWORD
+
+
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
