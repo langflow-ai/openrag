@@ -1,7 +1,5 @@
 """Pydantic request/response models for AWS S3 API endpoints."""
 
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 
