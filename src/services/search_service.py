@@ -329,7 +329,9 @@ class SearchService:
             # fallback mode.
             all_filters = list(filter_clauses)
             if knn_queries:
-                exists_should: list[dict[str, Any]] = [{"exists": {"field": f}} for f in embedding_fields_to_check]
+                exists_should: list[dict[str, Any]] = [
+                    {"exists": {"field": f}} for f in embedding_fields_to_check
+                ]
                 # Docs indexed under a failed provider have none of the successful
                 # embedding fields, but keyword matching should still surface them.
                 # Allow them through by matching on their embedding_model value.
