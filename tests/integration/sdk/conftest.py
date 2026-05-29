@@ -6,6 +6,7 @@ Set OPENRAG_URL (default: http://localhost:3000) before running.
 """
 
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -78,12 +79,36 @@ async def client():
     from openrag_sdk import OpenRAGClient
 
     api_key = await _fetch_api_key()
+
+    async def log_request(request: httpx.Request) -> None:
+        request_id = f"sdk-{uuid.uuid4().hex}"
+        request.headers["x-request-id"] = request_id
+        request.extensions["openrag_request_id"] = request_id
+        request.extensions["openrag_started_at"] = time.perf_counter()
+        print(f"[SDK HTTP] start request_id={request_id} method={request.method} url={request.url}")
+
+    async def log_response(response: httpx.Response) -> None:
+        started_at = response.request.extensions.get("openrag_started_at")
+        duration_ms = (
+            round((time.perf_counter() - started_at) * 1000)
+            if isinstance(started_at, float)
+            else None
+        )
+        request_id = response.request.extensions.get("openrag_request_id")
+        print(
+            "[SDK HTTP] response "
+            f"request_id={request_id} status={response.status_code} duration_ms={duration_ms}"
+        )
+
     # The SDK defaults to a 30s timeout for *all* requests. Streaming chat on a
     # cold CI box (model spin-up + flow init before the first byte) routinely
     # exceeds that, surfacing as httpx.ReadTimeout. Use a generous timeout here.
-    c = OpenRAGClient(api_key=api_key, base_url=_base_url, timeout=120.0)
-    yield c
-    await c.close()
+    async with httpx.AsyncClient(
+        timeout=120.0,
+        event_hooks={"request": [log_request], "response": [log_response]},
+    ) as http_client:
+        c = OpenRAGClient(api_key=api_key, base_url=_base_url, http_client=http_client)
+        yield c
 
 
 @pytest.fixture

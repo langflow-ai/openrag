@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function getRequestId(request: NextRequest): string {
+  return request.headers.get("x-request-id") || crypto.randomUUID();
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -44,6 +48,8 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
   if (backendSSL) {
     backendUrl = `https://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ""}`;
   }
+  const requestId = getRequestId(request);
+  const start = performance.now();
 
   try {
     let body: string | ArrayBuffer | undefined = undefined;
@@ -91,6 +97,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       }
       headers.set(key, value);
     }
+    headers.set("x-request-id", requestId);
 
     const init: RequestInit = {
       method: request.method,
@@ -102,7 +109,22 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
         typeof body === "string" ? body : new Uint8Array(body as ArrayBuffer);
       init.body = bodyInit;
     }
+    // biome-ignore lint/suspicious/noConsole: Server-side proxy timing is needed for CI diagnostics.
+    console.info("[API Proxy] Request started", {
+      request_id: requestId,
+      method: request.method,
+      path: `/${path}`,
+    });
     const response = await fetch(backendUrl, init);
+    const durationMs = Math.round(performance.now() - start);
+    // biome-ignore lint/suspicious/noConsole: Server-side proxy timing is needed for CI diagnostics.
+    console.info("[API Proxy] Request", {
+      request_id: requestId,
+      method: request.method,
+      path: `/${path}`,
+      status_code: response.status,
+      duration_ms: durationMs,
+    });
 
     const responseHeaders = new Headers();
 
@@ -120,6 +142,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     for (const cookie of response.headers.getSetCookie()) {
       responseHeaders.append("set-cookie", cookie);
     }
+    responseHeaders.set("x-request-id", requestId);
 
     // For streaming responses, pass the body directly without buffering
     if (response.body) {
@@ -138,10 +161,17 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       });
     }
   } catch (error) {
-    console.error("Proxy error:", error);
+    const durationMs = Math.round(performance.now() - start);
+    console.error("[API Proxy] Request failed", {
+      request_id: requestId,
+      method: request.method,
+      path: `/${path}`,
+      duration_ms: durationMs,
+      error,
+    });
     return NextResponse.json(
       { error: "Failed to proxy request" },
-      { status: 500 },
+      { status: 500, headers: { "x-request-id": requestId } },
     );
   }
 }

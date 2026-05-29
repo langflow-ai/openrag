@@ -97,7 +97,8 @@ endef
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
-       test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
+       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
@@ -781,6 +782,30 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(YELLOW)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/core/ -v
+
+ci-build-images: ## Build all OpenRAG images for CI artifact sharing
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .
+
+ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	mkdir -p .ci-artifacts; \
+	echo "$(YELLOW)Saving OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) save -o .ci-artifacts/openrag-ci-images.tar \
+		langflowai/openrag-opensearch:$$IMAGE_TAG \
+		langflowai/openrag-backend:$$IMAGE_TAG \
+		langflowai/openrag-frontend:$$IMAGE_TAG \
+		langflowai/openrag-langflow:$$IMAGE_TAG; \
+	ls -lh .ci-artifacts/openrag-ci-images.tar
+
+test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integration suite: TEST_SUITE=core|sdk-python|sdk-typescript
+	@scripts/ci/run_integration_suite.sh "$${TEST_SUITE:-core}"
 
 test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \

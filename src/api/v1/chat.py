@@ -6,9 +6,10 @@ Uses API key authentication. Routes through Langflow (chat_service.langflow_chat
 """
 
 import json
+import time
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -110,6 +111,7 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
 
 async def chat_create_endpoint(
     body: ChatV1Body,
+    request: Request,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("chat:use")),
@@ -122,6 +124,7 @@ async def chat_create_endpoint(
     user_id = user.user_id
     storage_user_id = _openrag_user_id(user)
     jwt_token = user.jwt_token
+    request_id = request.headers.get("x-request-id")
     if body.chat_id:
         from api.chat import _assert_owns
 
@@ -132,6 +135,15 @@ async def chat_create_endpoint(
     set_search_limit(body.limit)
     set_score_threshold(body.score_threshold)
     set_auth_context(user_id, jwt_token)
+    start = time.perf_counter()
+
+    logger.info(
+        "[CHAT V1] Request started",
+        request_id=request_id,
+        stream=body.stream,
+        has_chat_id=bool(body.chat_id),
+        filter_id=body.filter_id,
+    )
 
     if body.stream:
         raw_stream = await chat_service.langflow_chat(
@@ -145,6 +157,11 @@ async def chat_create_endpoint(
             owner_name=user.name,
             owner_email=user.email,
             storage_user_id=storage_user_id,
+        )
+        logger.info(
+            "[CHAT V1] Stream initialized",
+            request_id=request_id,
+            duration_ms=round((time.perf_counter() - start) * 1000),
         )
         chat_id_container: dict[str, str] = {}
         return StreamingResponse(
@@ -168,6 +185,13 @@ async def chat_create_endpoint(
             owner_name=user.name,
             owner_email=user.email,
             storage_user_id=storage_user_id,
+        )
+        logger.info(
+            "[CHAT V1] Request completed",
+            request_id=request_id,
+            duration_ms=round((time.perf_counter() - start) * 1000),
+            response_id=result.get("response_id"),
+            source_count=len(result.get("sources", [])),
         )
         return JSONResponse(
             {
