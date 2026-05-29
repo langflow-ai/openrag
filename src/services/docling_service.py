@@ -33,6 +33,10 @@ class DoclingServeError(Exception):
     """Raised when docling-serve conversion fails."""
 
 
+class DoclingTransientError(DoclingServeError):
+    """Raised for errors that may resolve on retry (network failures, 5xx)."""
+
+
 class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
@@ -257,10 +261,20 @@ class DoclingService:
         status = payload.get("task_status")
         if status == "success":
             return DoclingStatusSnapshot(state=DoclingTaskState.SUCCESS, raw=payload)
-        if status == "failure":
+        if status == "failure" or payload.get("errors"):
+            errors = payload.get("errors", [])
+            err_msg_list = []
+            for err in errors:
+                if isinstance(err, dict) and "error_message" in err:
+                    err_msg_list.append(err["error_message"])
+                elif isinstance(err, str):
+                    err_msg_list.append(err)
+            err_details = (
+                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            )
             return DoclingStatusSnapshot(
                 state=DoclingTaskState.FAILED,
-                detail=str(payload),
+                detail=f"Docling processing failed: {err_details}",
                 raw=payload,
             )
         if status in ("started", "processing", "running"):
@@ -281,8 +295,12 @@ class DoclingService:
         try:
             response = await client.get(url)
         except httpx.RequestError as e:
-            raise DoclingServeError(f"Network error fetching docling result: {str(e)}") from e
+            raise DoclingTransientError(f"Network error fetching docling result: {str(e)}") from e
 
+        if response.status_code >= 500:
+            raise DoclingTransientError(
+                f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
+            )
         if response.status_code == 404:
             raise DoclingServeError(
                 f"Docling result not found for task {task_id} (task expired or unknown)"
@@ -296,6 +314,19 @@ class DoclingService:
             payload = response.json()
         except ValueError as e:
             raise DoclingServeError(f"Malformed docling result payload: {str(e)}") from e
+
+        if payload.get("status") == "failure" or payload.get("errors"):
+            errors = payload.get("errors", [])
+            err_msg_list = []
+            for err in errors:
+                if isinstance(err, dict) and "error_message" in err:
+                    err_msg_list.append(err["error_message"])
+                elif isinstance(err, str):
+                    err_msg_list.append(err)
+            err_details = (
+                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            )
+            raise DoclingServeError(f"Docling processing failed: {err_details}")
 
         doc_content = payload.get("document", {}).get("json_content")
         if doc_content is None:
@@ -340,8 +371,18 @@ class DoclingService:
                     raise DoclingServeError("docling-serve response missing document.json_content")
 
                 return doc_content
-            elif status == "failure":
-                raise DoclingServeError(f"Docling conversion failed: {status_data}")
+            elif status == "failure" or status_data.get("errors"):
+                errors = status_data.get("errors", [])
+                err_msg_list = []
+                for err in errors:
+                    if isinstance(err, dict) and "error_message" in err:
+                        err_msg_list.append(err["error_message"])
+                    elif isinstance(err, str):
+                        err_msg_list.append(err)
+                err_details = (
+                    "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+                )
+                raise DoclingServeError(f"Docling processing failed: {err_details}")
 
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval

@@ -38,6 +38,14 @@ async def test_get_document_acl_returns_read_only_acl_for_document():
                             "owner": "owner",
                             "allowed_users": ["reader"],
                             "allowed_groups": ["engineering"],
+                            "allowed_principal_labels": [
+                                {
+                                    "principal": "g:gdrive:tenant:engineering",
+                                    "kind": "group",
+                                    "provider": "gdrive",
+                                    "display_name": "Engineering",
+                                }
+                            ],
                         }
                     }
                 ]
@@ -56,9 +64,22 @@ async def test_get_document_acl_returns_read_only_acl_for_document():
         "owner": "owner",
         "allowed_users": ["reader"],
         "allowed_groups": ["engineering"],
+        "allowed_principal_labels": [
+            {
+                "principal": "g:gdrive:tenant:engineering",
+                "kind": "group",
+                "provider": "gdrive",
+                "display_name": "Engineering",
+            }
+        ],
     }
     search_body = opensearch_client.search.await_args.kwargs["body"]
-    assert search_body["_source"] == ["owner", "allowed_users", "allowed_groups"]
+    assert search_body["_source"] == [
+        "owner",
+        "allowed_users",
+        "allowed_groups",
+        "allowed_principal_labels",
+    ]
 
 
 def test_document_share_methods_are_not_exposed():

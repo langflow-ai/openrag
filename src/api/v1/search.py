@@ -4,22 +4,24 @@ Public API v1 Search endpoint.
 Provides semantic search functionality.
 Uses API key authentication.
 """
-from typing import Any, Dict, Optional
+
+from typing import Any
 
 from fastapi import Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
-from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
-from dependencies import get_search_service, get_api_key_user_async
+from pydantic import BaseModel
+
+from dependencies import get_search_service, require_api_key_permission
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
 
 
 class SearchV1Body(BaseModel):
     query: str
-    filters: Optional[Dict[str, Any]] = None
+    filters: dict[str, Any] | None = None
     limit: int = 10
     score_threshold: float = 0
 
@@ -27,7 +29,7 @@ class SearchV1Body(BaseModel):
 async def search_endpoint(
     body: SearchV1Body,
     search_service=Depends(get_search_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("search:use")),
 ):
     """Perform semantic search on documents. POST /v1/search"""
     query = body.query.strip()

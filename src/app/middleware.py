@@ -44,6 +44,8 @@ class RequestLoggingMiddleware:
 
         status_code = 500
         start = time.perf_counter()
+        if path == "/v1/chat":
+            logger.info("[API] Request started")
 
         async def send_wrapper(message):
             nonlocal status_code

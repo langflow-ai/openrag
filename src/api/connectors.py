@@ -29,22 +29,32 @@ async def get_synced_file_ids_for_connector(
     user_id: str,
     session_manager,
     jwt_token: str = None,
-) -> tuple:
+) -> tuple[list[str], list[str], str]:
     """
-    Query OpenSearch for unique document_id values where connector_type matches.
-    Returns tuple of (file_ids, filenames) - use file_ids if available, else filenames as fallback.
+    Query OpenSearch for unique file IDs where connector_type matches.
 
-    Note: Langflow-ingested files may not have document_id stored. In that case,
-    filenames are returned for filename-based filtering during sync.
+    Returns a 3-tuple ``(file_ids, filenames, id_field)``:
+
+    - ``file_ids``: connector source IDs to use for orphan detection and sync.
+      Comes from the ``connector_file_id`` field when chunks were indexed via
+      ``ConnectorFileProcessor`` (non-Langflow path); falls back to ``document_id``
+      for Langflow-indexed chunks where ``document_id`` already holds the connector
+      source ID.
+    - ``filenames``: unique filenames as a fallback when ``file_ids`` is empty.
+    - ``id_field``: the OpenSearch field name that ``file_ids`` came from
+      (``"connector_file_id"`` or ``"document_id"``). Callers must pass this to
+      ``delete_orphan_documents`` so deletions target the correct field.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        # Query for both document_id and filename aggregations
         query_body = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
+                "unique_connector_file_ids": {
+                    "terms": {"field": "connector_file_id", "size": 10000}
+                },
                 "unique_document_ids": {"terms": {"field": "document_id", "size": 10000}},
                 "unique_filenames": {"terms": {"field": "filename", "size": 10000}},
             },
@@ -52,26 +62,38 @@ async def get_synced_file_ids_for_connector(
 
         result = await opensearch_client.search(index=get_index_name(), body=query_body)
 
-        # Get document_ids (preferred - these are the actual connector file IDs)
-        doc_id_buckets = (
-            result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+        # Prefer connector_file_id — these are set by ConnectorFileProcessor (non-Langflow)
+        # and hold the actual connector source IDs (e.g. SharePoint GUIDs), not SHA hashes.
+        connector_file_id_buckets = (
+            result.get("aggregations", {}).get("unique_connector_file_ids", {}).get("buckets", [])
         )
-        file_ids = [bucket["key"] for bucket in doc_id_buckets if bucket["key"]]
+        connector_file_ids = [b["key"] for b in connector_file_id_buckets if b["key"]]
 
-        # Get filenames as fallback
+        if connector_file_ids:
+            file_ids = connector_file_ids
+            id_field = "connector_file_id"
+        else:
+            # Langflow path: document_id already holds the connector source ID.
+            doc_id_buckets = (
+                result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+            )
+            file_ids = [b["key"] for b in doc_id_buckets if b["key"]]
+            id_field = "document_id"
+
         filename_buckets = (
             result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
         )
-        filenames = [bucket["key"] for bucket in filename_buckets if bucket["key"]]
+        filenames = [b["key"] for b in filename_buckets if b["key"]]
 
         logger.debug(
             "Found synced files for connector",
             connector_type=connector_type,
             file_ids_count=len(file_ids),
+            id_field=id_field,
             filenames_count=len(filenames),
         )
 
-        return file_ids, filenames
+        return file_ids, filenames, id_field
 
     except Exception as e:
         logger.error(
@@ -79,7 +101,7 @@ async def get_synced_file_ids_for_connector(
             connector_type=connector_type,
             error=str(e),
         )
-        return [], []
+        return [], [], "document_id"
 
 
 async def get_synced_id_to_filename_map(
@@ -229,20 +251,31 @@ async def delete_orphan_documents(
     user_id: str,
     session_manager,
     jwt_token: str | None,
+    id_field: str = "document_id",
 ) -> int:
-    """Delete OpenSearch chunks for the given orphan document IDs. Returns the
-    number of chunks deleted (0 on failure)."""
+    """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
+    chunks deleted (0 on failure).
+
+    ``id_field`` must match the OpenSearch field that ``orphan_ids`` came from —
+    either ``"connector_file_id"`` (ConnectorFileProcessor / non-Langflow path)
+    or ``"document_id"`` (Langflow path, where document_id holds the connector
+    source ID). Pass the value returned as the third element of
+    ``get_synced_file_ids_for_connector()``.
+    """
     if not orphan_ids:
         return 0
     from .documents import delete_chunks_by_document_ids
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_chunks_by_document_ids(orphan_ids, opensearch_client, get_index_name())
+        return await delete_chunks_by_document_ids(
+            orphan_ids, opensearch_client, get_index_name(), field=id_field
+        )
     except Exception as e:
         logger.error(
             "Orphan delete failed",
             orphan_count=len(orphan_ids),
+            id_field=id_field,
             error=str(e),
         )
         return 0
@@ -255,10 +288,15 @@ async def reconcile_orphans_for_connector_type(
     session_manager,
     jwt_token: str | None,
     existing_file_ids: list[str],
+    id_field: str = "document_id",
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
     callers that perform sync immediately after reconcile.
+
+    ``id_field`` must match the OpenSearch field that ``existing_file_ids`` came
+    from. Pass the value returned as the third element of
+    ``get_synced_file_ids_for_connector()``.
 
     Returns the list of orphan file IDs that were deleted (or []).
     """
@@ -279,13 +317,17 @@ async def reconcile_orphans_for_connector_type(
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
+        id_field=id_field,
     )
     logger.info(
         "Orphan reconcile complete",
         connector_type=connector_type,
         orphan_count=len(orphan_ids),
         deleted_chunks=deleted,
+        id_field=id_field,
     )
+    if deleted <= 0:
+        return []
     return orphan_ids
 
 
@@ -293,9 +335,9 @@ class ConnectorSyncBody(BaseModel):
     max_files: int | None = None
     selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
-    # Used by direct-sync providers like IBM COS on initial ingest.
+    # Used by direct-sync providers on initial ingest.
     sync_all: bool = False
-    # When set, only ingest files from these buckets (IBM COS specific).
+    # When set, only ingest files from these buckets.
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
@@ -303,6 +345,156 @@ class ConnectorSyncBody(BaseModel):
     # rather than failing. Set by the provider upload UI after the user confirms
     # overwrite in the duplicate dialog.
     replace_duplicates: bool = False
+
+
+class ConnectorCheckDuplicatesBody(BaseModel):
+    connection_id: str | None = None
+    selected_files: list[Any] | None = None
+
+
+async def connector_check_duplicates(
+    connector_type: str,
+    body: ConnectorCheckDuplicatesBody,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(require_permission("connectors:use")),
+):
+    """Check if any of the selected files or folders contain files that already exist in the index"""
+    selected_files_raw = body.selected_files
+    if not selected_files_raw:
+        return JSONResponse({"duplicate_names": []})
+
+    try:
+        jwt_token = user.jwt_token
+        # Get all active connections for this connector type and user
+        connections = await connector_service.connection_manager.list_connections(
+            user_id=user.user_id, connector_type=connector_type
+        )
+        active_connections = [conn for conn in connections if conn.is_active]
+
+        # If connection_id is provided, find it, otherwise find the first working connection
+        working_connection = None
+        if body.connection_id:
+            for conn in active_connections:
+                if conn.connection_id == body.connection_id:
+                    working_connection = conn
+                    break
+
+        if not working_connection:
+            for conn in active_connections:
+                try:
+                    connector = await connector_service.get_connector(conn.connection_id)
+                    if connector and await connector.authenticate():
+                        working_connection = conn
+                        break
+                except Exception:
+                    continue
+
+        if not working_connection:
+            return JSONResponse(
+                {"error": f"No working {connector_type} connections found"},
+                status_code=404,
+            )
+
+        connector = await connector_service.get_connector(working_connection.connection_id)
+        if not connector:
+            return JSONResponse(
+                {"error": f"Connection '{working_connection.connection_id}' not found"},
+                status_code=404,
+            )
+
+        # Get list of file IDs to expand
+        file_ids = [f.get("id") for f in selected_files_raw if f.get("id")]
+
+        expanded_files_info = []
+
+        # Expand files (handling folders) if possible
+        if file_ids and hasattr(connector, "cfg"):
+            original_file_ids = getattr(connector.cfg, "file_ids", None)
+            original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+            try:
+                connector.cfg.file_ids = file_ids
+                connector.cfg.folder_ids = None
+
+                result = await connector.list_files()
+                expanded_files = result.get("files", [])
+                for f in expanded_files:
+                    expanded_files_info.append(
+                        {
+                            "name": f.get("name", ""),
+                            "mimeType": f.get("mime_type") or f.get("mimeType") or "",
+                        }
+                    )
+            except Exception as e:
+                logger.error("Failed to expand files in duplicate check", error=str(e))
+            finally:
+                connector.cfg.file_ids = original_file_ids
+                connector.cfg.folder_ids = original_folder_ids
+
+        # If expansion returned nothing, fall back to non-folders in selected_files_raw
+        if not expanded_files_info:
+            for f in selected_files_raw:
+                if not f.get("isFolder"):
+                    expanded_files_info.append(
+                        {"name": f.get("name", ""), "mimeType": f.get("mimeType") or ""}
+                    )
+
+        if not expanded_files_info:
+            return JSONResponse({"duplicate_names": []})
+
+        # Process and clean names using clean_connector_filename
+        from utils.file_utils import clean_connector_filename, get_filename_aliases
+
+        cleaned_names = []
+        for f in expanded_files_info:
+            cleaned_name = clean_connector_filename(f["name"], f["mimeType"])
+            cleaned_names.append(cleaned_name)
+
+        # Build candidate filenames (including aliases like .txt / .md mapping)
+        all_candidates = set()
+        for name in cleaned_names:
+            all_candidates.update(get_filename_aliases(name))
+
+        if not all_candidates:
+            return JSONResponse({"duplicate_names": []})
+
+        # Query OpenSearch in one batch
+        opensearch_client = session_manager.get_user_opensearch_client(user.user_id, jwt_token)
+
+        query_body = {
+            "size": 10000,
+            "query": {"terms": {"filename": list(all_candidates)}},
+            "_source": ["filename"],
+        }
+
+        existing_filenames = set()
+        try:
+            response = await opensearch_client.search(index=get_index_name(), body=query_body)
+            hits = response.get("hits", {}).get("hits", [])
+            for hit in hits:
+                fn = hit.get("_source", {}).get("filename")
+                if fn:
+                    existing_filenames.add(fn)
+        except Exception as search_err:
+            if "index_not_found_exception" in str(search_err):
+                # Index doesn't exist yet, so no duplicates can exist
+                return JSONResponse({"duplicate_names": [], "total_files": len(cleaned_names)})
+            raise
+
+        # Check which of the cleaned names have duplicates (based on existing_filenames matching any alias)
+        duplicate_names = []
+        for name in cleaned_names:
+            aliases = get_filename_aliases(name)
+            if any(alias in existing_filenames for alias in aliases):
+                duplicate_names.append(name)
+
+        return JSONResponse(
+            {"duplicate_names": list(set(duplicate_names)), "total_files": len(cleaned_names)}
+        )
+
+    except Exception:
+        logger.exception("[CONNECTOR] Error checking duplicates")
+        return JSONResponse({"error": "An internal error has occurred."}, status_code=500)
 
 
 async def list_connectors(
@@ -422,7 +614,7 @@ async def connector_sync(
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
-            # Used by direct-sync providers (IBM COS) on initial ingest or per-bucket sync.
+            # Used by direct-sync providers on initial ingest or per-bucket sync.
             logger.info(
                 "Full connector ingest requested",
                 connector_type=connector_type,
@@ -472,7 +664,11 @@ async def connector_sync(
         else:
             # No files specified - sync only files already in OpenSearch for this connector
             # This ensures deleted files stay deleted
-            existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
+            (
+                existing_file_ids,
+                existing_filenames,
+                id_field,
+            ) = await get_synced_file_ids_for_connector(
                 connector_type=connector_type,
                 user_id=user.user_id,
                 session_manager=session_manager,
@@ -488,13 +684,14 @@ async def connector_sync(
                     status_code=200,
                 )
 
-            # If we have document_ids (connector file IDs), use sync_specific_files
+            # If we have connector file IDs, use sync_specific_files
             # Otherwise, use filename filtering with sync_connector_files
             if existing_file_ids:
                 logger.info(
-                    "Syncing specific files by document_id",
+                    "Syncing specific files by connector file ID",
                     connector_type=connector_type,
                     file_count=len(existing_file_ids),
+                    id_field=id_field,
                 )
                 # Reconcile orphans (files deleted at the source) before re-syncing.
                 # Strict gating: skip when sync is capped — we'd see a partial remote
@@ -507,6 +704,7 @@ async def connector_sync(
                         session_manager=session_manager,
                         jwt_token=jwt_token,
                         existing_file_ids=existing_file_ids,
+                        id_field=id_field,
                     )
                 task_id = await connector_service.sync_specific_files(
                     working_connection.connection_id,
@@ -742,12 +940,8 @@ async def connector_webhook(
                     affected_count=len(affected_files),
                 )
 
-                # Generate JWT token for the user (needed for OpenSearch authentication)
                 user = session_manager.get_user(connection.user_id)
-                if user:
-                    jwt_token = session_manager.create_jwt_token(user)
-                else:
-                    jwt_token = None
+                jwt_token = user.jwt_token if user else None
 
                 # Trigger incremental sync for affected files
                 task_id = await connector_service.sync_specific_files(
@@ -912,7 +1106,11 @@ async def sync_all_connectors(
         for connector_type in cloud_connector_types:
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
-                existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
+                (
+                    existing_file_ids,
+                    existing_filenames,
+                    id_field,
+                ) = await get_synced_file_ids_for_connector(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     session_manager=session_manager,
@@ -963,12 +1161,13 @@ async def sync_all_connectors(
                     )
                     continue
 
-                # Sync using document_ids if available, else use filename filter
+                # Sync using connector file IDs if available, else use filename filter
                 if existing_file_ids:
                     logger.info(
-                        "Syncing specific files by document_id",
+                        "Syncing specific files by connector file ID",
                         connector_type=connector_type,
                         file_count=len(existing_file_ids),
+                        id_field=id_field,
                     )
                     # Reconcile orphans (files deleted at the source) before re-syncing.
                     # sync_all_connectors has no caps or filters, so gating reduces
@@ -980,6 +1179,7 @@ async def sync_all_connectors(
                         session_manager=session_manager,
                         jwt_token=jwt_token,
                         existing_file_ids=existing_file_ids,
+                        id_field=id_field,
                     )
                     task_id = await connector_service.sync_specific_files(
                         working_connection.connection_id,
@@ -1076,7 +1276,7 @@ async def _preview_orphans_for_connector_type(
     Returns (orphans, synced_count). `orphans` is None when strict gating aborts
     (so the caller can surface a "couldn't determine" state); [] when no orphans.
     """
-    existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
+    existing_file_ids, existing_filenames, _ = await get_synced_file_ids_for_connector(
         connector_type=connector_type,
         user_id=user_id,
         session_manager=session_manager,
@@ -1363,7 +1563,7 @@ async def browse_connection_files(
             remote_files = [f for f in remote_files if search_lower in f.get("name", "").lower()]
 
         # Get already-ingested file IDs from OpenSearch
-        ingested_ids, ingested_filenames = await get_synced_file_ids_for_connector(
+        ingested_ids, ingested_filenames, _ = await get_synced_file_ids_for_connector(
             connector_type=connector_type,
             user_id=user.user_id,
             session_manager=session_manager,

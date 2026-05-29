@@ -82,6 +82,7 @@ from dependencies import (
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
 from session_manager import User
+from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -210,6 +211,7 @@ async def get_settings(
                 ocr=knowledge_config.ocr,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
+                disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
             ),
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
@@ -460,6 +462,15 @@ async def update_settings(
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
+        if body.disable_ingest_with_langflow is not None:
+            current_config.knowledge.disable_ingest_with_langflow = (
+                body.disable_ingest_with_langflow
+            )
+            config_updated = True
+            logger.info(
+                f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
+            )
+
         if body.chunk_size is not None:
             effective_overlap = (
                 body.chunk_overlap
@@ -708,6 +719,8 @@ async def update_settings(
         # Save the updated configuration
         if not config_manager.save_config_file(current_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+
+        provider_health_cache.invalidate()
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
@@ -1064,6 +1077,8 @@ async def onboarding(
                             {"error": "Failed to save configuration"}, status_code=500
                         )
 
+                    provider_health_cache.invalidate()
+
                     ingestion_jwt = (
                         user.jwt_token if IBM_AUTH_ENABLED and user and user.jwt_token else None
                     )
@@ -1098,6 +1113,7 @@ async def onboarding(
                     )
 
         if config_manager.save_config_file(current_config):
+            provider_health_cache.invalidate()
             set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",
@@ -1311,18 +1327,26 @@ async def rollback_onboarding(
                                 opensearch_client = session_manager.get_user_opensearch_client(
                                     user.user_id, user.jwt_token
                                 )
-                                from config.settings import get_index_name
+                                from config.settings import clients, get_index_name
+                                from utils.opensearch_delete import (
+                                    collect_visible_document_ids,
+                                    delete_document_ids,
+                                )
                                 from utils.opensearch_queries import (
-                                    build_filename_delete_body,
+                                    build_owned_filename_query,
                                 )
 
-                                delete_query = build_filename_delete_body(filename)
-                                result = await opensearch_client.delete_by_query(
-                                    index=get_index_name(),
-                                    body=delete_query,
-                                    conflicts="proceed",
+                                index_name = get_index_name()
+                                document_ids = await collect_visible_document_ids(
+                                    opensearch_client,
+                                    index=index_name,
+                                    query=build_owned_filename_query(filename, user.user_id),
                                 )
-                                deleted_count = result.get("deleted", 0)
+                                deleted_count = await delete_document_ids(
+                                    clients.opensearch,
+                                    index=index_name,
+                                    document_ids=document_ids,
+                                )
                                 if deleted_count > 0:
                                     deleted_files.append(filename)
                                     logger.info(
@@ -1533,6 +1557,7 @@ async def refresh_openrag_docs(
             session_manager=session_manager,
             force=True,
             reason="manual",
+            jwt_token=user.jwt_token if getattr(user, "jwt_token", None) else None,
         )
         return RefreshOpenRAGDocsResponse(
             message=(

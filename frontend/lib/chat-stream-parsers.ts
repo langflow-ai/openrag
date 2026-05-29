@@ -2,6 +2,22 @@ import type { FunctionCall, TokenUsage } from "@/app/chat/_types/types";
 
 type Chunk = Record<string, unknown>;
 
+function getDeltaText(delta: unknown): string {
+  if (typeof delta === "string") {
+    return delta;
+  }
+  if (delta && typeof delta === "object") {
+    const d = delta as Chunk;
+    if (typeof d.content === "string") {
+      return d.content;
+    }
+    if (typeof d.text === "string") {
+      return d.text;
+    }
+  }
+  return "";
+}
+
 export function parseOpenAIChatChunk(
   chunk: unknown,
   content: { value: string },
@@ -237,7 +253,7 @@ export function parseRealtimeChunk(
   }
 
   if (type === "response.output_text.delta") {
-    content.value += (c.delta as string) || "";
+    content.value += getDeltaText(c.delta);
     return true;
   }
 
@@ -261,13 +277,9 @@ export function parseOpenRAGChunk(
   }
 
   if (c.delta) {
-    if (typeof c.delta === "string") {
-      content.value += c.delta;
-      return true;
-    }
-    const delta = c.delta as Chunk;
-    if (delta.text && !delta.content) {
-      content.value += delta.text as string;
+    const deltaText = getDeltaText(c.delta);
+    if (deltaText) {
+      content.value += deltaText;
       return true;
     }
   }

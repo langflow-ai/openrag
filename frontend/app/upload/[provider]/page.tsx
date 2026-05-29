@@ -489,40 +489,55 @@ export default function UploadProviderPage() {
 
     setIsCheckingDuplicates(true);
     try {
-      const results = await Promise.all(
-        selectedFiles.map(async (file) => {
-          if (file.isFolder) return { file, isDuplicate: false };
-          try {
-            const fakeFile = new File([], file.name);
-            const { exists } = await duplicateCheck(fakeFile);
-            return { file, isDuplicate: exists };
-          } catch (err) {
-            console.error(
-              `[Connector Sync] Duplicate check failed for ${file.name}:`,
-              err,
-            );
-            return { file, isDuplicate: false };
-          }
-        }),
+      const checkResponse = await fetch(
+        `/api/connectors/${connector.type}/check-duplicates`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            connection_id: connector.connectionId,
+            selected_files: selectedFiles.map((file) => ({
+              id: file.id,
+              name: file.name,
+              mimeType: file.mimeType,
+              downloadUrl: file.downloadUrl,
+              size: file.size,
+              isFolder: file.isFolder,
+            })),
+          }),
+        },
       );
 
-      const duplicates = results.filter((r) => r.isDuplicate);
-      const nonDuplicates = results
-        .filter((r) => !r.isDuplicate)
-        .map((r) => r.file);
+      if (!checkResponse.ok) {
+        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
+      }
 
-      if (duplicates.length === 0) {
+      const checkData = await checkResponse.json();
+      const duplicateNames = checkData.duplicate_names || [];
+      const totalFiles = checkData.total_files || 0;
+
+      if (duplicateNames.length === 0) {
         submitSync(connector, selectedFiles, false);
         return;
       }
 
+      // If all files are duplicates, we set nonDuplicateFiles to empty so it toasts "Nothing was synced" on skip
+      const isAllDuplicate = duplicateNames.length === totalFiles;
+      const nonDuplicateFiles = isAllDuplicate ? [] : selectedFiles;
+
       setPendingSync({
         connector,
         allFiles: selectedFiles,
-        nonDuplicateFiles: nonDuplicates,
-        duplicateNames: duplicates.map((r) => r.file.name),
+        nonDuplicateFiles,
+        duplicateNames,
       });
       setDuplicateDialogOpen(true);
+    } catch (err) {
+      console.error("[Connector Sync] Duplicate check failed:", err);
+      // Fallback: proceed without overwrite
+      submitSync(connector, selectedFiles, false);
     } finally {
       setIsCheckingDuplicates(false);
     }

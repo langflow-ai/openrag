@@ -6,7 +6,19 @@ from urllib.parse import urlparse
 
 import httpx
 
+from utils.group_acl import unique_acl_principal_labels
+
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
+from ..microsoft_graph_acl import (
+    get_current_user_microsoft_group_roles,
+    get_current_user_microsoft_principal_labels,
+    get_current_user_microsoft_principals,
+    get_oauth_access_token,
+    microsoft_group_principal_label,
+    microsoft_group_role,
+    microsoft_user_principal,
+    microsoft_user_principal_label,
+)
 from .oauth import OneDriveOAuth
 
 logger = logging.getLogger(__name__)
@@ -97,7 +109,9 @@ class OneDriveConnector(BaseConnector):
 
         # Graph API defaults
         self._graph_api_version = "v1.0"
-        self._default_params: dict[str, Any] = {}
+        self._default_params: dict[str, Any] = {
+            "$select": "id,name,size,lastModifiedDateTime,createdDateTime,webUrl,file,folder,@microsoft.graph.downloadUrl"
+        }
 
         # Selective sync support (similar to Google Drive)
         self.cfg = type(
@@ -131,6 +145,27 @@ class OneDriveConnector(BaseConnector):
     def base_url(self, value: str):
         """Set base URL"""
         self._base_url = value
+
+    async def get_current_user_group_roles(self) -> list[str]:
+        """Return canonical group ACL roles for the connected Microsoft user."""
+        return await get_current_user_microsoft_group_roles(
+            self.oauth,
+            self._graph_base_url,
+        )
+
+    async def get_current_user_principals(self) -> list[str]:
+        """Return canonical user ACL principals for the connected Microsoft user."""
+        return await get_current_user_microsoft_principals(
+            self.oauth,
+            self._graph_base_url,
+        )
+
+    async def get_current_user_principal_labels(self) -> list[dict[str, Any]]:
+        """Return display labels for current Microsoft user/group ACL principals."""
+        return await get_current_user_microsoft_principal_labels(
+            self.oauth,
+            self._graph_base_url,
+        )
 
     def set_file_infos(self, file_infos: list[dict[str, Any]]) -> None:
         """
@@ -427,7 +462,7 @@ class OneDriveConnector(BaseConnector):
         """
         try:
             # Get access token
-            access_token = self.oauth.get_access_token()
+            access_token = await get_oauth_access_token(self.oauth)
 
             if not access_token:
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
@@ -450,23 +485,66 @@ class OneDriveConnector(BaseConnector):
 
             allowed_users = []
             allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
             owner = None
 
             for perm in permissions_data.get("value", []):
                 roles = perm.get("roles", [])  # ["read", "write", "owner"]
 
-                # Granted to user
-                if "grantedTo" in perm:
-                    user_info = perm["grantedTo"].get("user", {})
+                # Granted to user/group (grantedToV2 is the current Graph shape;
+                # grantedTo is retained for older responses).
+                granted_to = perm.get("grantedToV2") or perm.get("grantedTo")
+                if granted_to:
+                    user_info = granted_to.get("user", {})
                     email = user_info.get("email")
                     if email:
                         allowed_users.append(email)
                         if "owner" in roles:
                             owner = email
+                    for identifier in (
+                        user_info.get("id"),
+                        user_info.get("userPrincipalName"),
+                        email,
+                    ):
+                        user_principal = microsoft_user_principal(
+                            identifier,
+                            access_token=access_token,
+                        )
+                        if user_principal:
+                            allowed_principals.append(user_principal)
+                            label = microsoft_user_principal_label(
+                                identifier,
+                                access_token=access_token,
+                                display_name=user_info.get("displayName") or email,
+                                email=email,
+                                external_id=identifier,
+                            )
+                            if label:
+                                allowed_principal_labels.append(label)
+                    group_info = granted_to.get("group", {})
+                    group_role = microsoft_group_role(
+                        group_info.get("id"),
+                        access_token=access_token,
+                    )
+                    if group_role:
+                        allowed_groups.append(group_role)
+                        allowed_principals.append(group_role)
+                        label = microsoft_group_principal_label(
+                            group_info.get("id"),
+                            access_token=access_token,
+                            display_name=group_info.get("displayName") or group_info.get("email"),
+                            email=group_info.get("email"),
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
                 # Granted to identities (can include users and groups)
-                elif "grantedToIdentities" in perm:
-                    for identity in perm["grantedToIdentities"]:
+                identities = (
+                    perm.get("grantedToIdentitiesV2") or perm.get("grantedToIdentities") or []
+                )
+                if identities:
+                    for identity in identities:
                         # User
                         if "user" in identity:
                             user_info = identity["user"]
@@ -475,19 +553,45 @@ class OneDriveConnector(BaseConnector):
                                 allowed_users.append(email)
                                 if "owner" in roles:
                                     owner = email
+                            for identifier in (
+                                user_info.get("id"),
+                                user_info.get("userPrincipalName"),
+                                email,
+                            ):
+                                user_principal = microsoft_user_principal(
+                                    identifier,
+                                    access_token=access_token,
+                                )
+                                if user_principal:
+                                    allowed_principals.append(user_principal)
 
                         # Group
-                        elif "group" in identity:
+                        if "group" in identity:
                             group_info = identity["group"]
                             group_id = group_info.get("id")
-                            group_display_name = group_info.get("displayName", group_id)
-                            if group_id:
-                                allowed_groups.append(group_display_name)
+                            group_role = microsoft_group_role(
+                                group_id,
+                                access_token=access_token,
+                            )
+                            if group_role:
+                                allowed_groups.append(group_role)
+                                allowed_principals.append(group_role)
+                                label = microsoft_group_principal_label(
+                                    group_id,
+                                    access_token=access_token,
+                                    display_name=group_info.get("displayName")
+                                    or group_info.get("email"),
+                                    email=group_info.get("email"),
+                                )
+                                if label:
+                                    allowed_principal_labels.append(label)
 
             return DocumentACL(
                 owner=owner,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=unique_acl_principal_labels(allowed_principal_labels),
             )
 
         except Exception as e:
@@ -507,9 +611,7 @@ class OneDriveConnector(BaseConnector):
                 logger.info(f"Using cached download URL for file {file_id}")
                 content = await self._download_file_from_url(cached_info["downloadUrl"])
 
-                acl = DocumentACL(
-                    owner="",
-                )
+                acl = DocumentACL(owner="")
 
                 return ConnectorDocument(
                     id=file_id,
@@ -636,7 +738,7 @@ class OneDriveConnector(BaseConnector):
 
         # Check if ID contains '!' which indicates driveId!itemId format
         if "!" in file_id:
-            parts = file_id.split("!", 1)
+            parts = file_id.rsplit("!", 1)
             if len(parts) == 2:
                 drive_id = parts[0]
                 item_id = parts[1]
@@ -672,10 +774,10 @@ class OneDriveConnector(BaseConnector):
                         except Exception as e:
                             logger.debug(f"Shares approach {i + 1} failed: {e}")
 
-                # Try: /drives/{driveId}/items/{file_id} with full file ID
-                logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{file_id}")
+                # Try: /drives/{driveId}/items/{itemId} with full item ID (including 's' prefix)
+                logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{item_id}")
                 try:
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}"
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}"
                     response = await self._make_graph_request(url, params=params)
                     if response.status_code == 200:
                         return response.json()
@@ -684,20 +786,23 @@ class OneDriveConnector(BaseConnector):
                             f"Drives endpoint failed with status {response.status_code}: {response.text}"
                         )
                 except Exception as e:
-                    logger.debug(f"Drives endpoint exception: {e}")
+                    logger.debug(f"Drives endpoint failed: {e}")
 
-                # Try: /drives/{driveId}/items/{clean_file_id} without 's' prefix
+                # Try: /drives/{driveId}/items/{itemId} without 's' prefix
                 if item_id.startswith("s"):
                     clean_item_id = item_id[1:]  # Remove 's' prefix
-                    clean_file_id = f"{drive_id}!{clean_item_id}"
                     logger.info(
-                        f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_file_id}"
+                        f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_item_id}"
                     )
                     try:
-                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_file_id}"
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_item_id}"
                         response = await self._make_graph_request(url, params=params)
                         if response.status_code == 200:
                             return response.json()
+                        else:
+                            logger.warning(
+                                f"Drives endpoint without 's' prefix failed with status {response.status_code}: {response.text}"
+                            )
                     except Exception as e:
                         logger.debug(f"Drives endpoint (no prefix) failed: {e}")
 
@@ -735,7 +840,7 @@ class OneDriveConnector(BaseConnector):
 
             # Build URL based on ID format
             if "!" in file_id:
-                parts = file_id.split("!", 1)
+                parts = file_id.rsplit("!", 1)
                 if len(parts) == 2:
                     drive_id = parts[0]
                     item_id = parts[1]
@@ -747,8 +852,11 @@ class OneDriveConnector(BaseConnector):
                             return content
 
                     # Try drives endpoint for driveId!itemId format
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}/content"
-                    logger.info(f"Downloading via drives endpoint: {url}")
+                    if not item_id.startswith("s"):
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+                        logger.info(f"Downloading via drives endpoint: {url}")
+                    else:
+                        url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
                 else:
                     url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
             else:
@@ -883,7 +991,18 @@ class OneDriveConnector(BaseConnector):
         files: list[dict[str, Any]] = []
 
         try:
-            url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+            drive_id = None
+            if "!" in folder_id:
+                parts = folder_id.rsplit("!", 1)
+                if len(parts) == 2:
+                    potential_drive_id, item_id = parts
+                    if not item_id.startswith("s"):
+                        drive_id = potential_drive_id
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
+
+            if not drive_id:
+                url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+
             params = dict(self._default_params)
 
             response = await self._make_graph_request(url, params=params)
@@ -891,12 +1010,32 @@ class OneDriveConnector(BaseConnector):
 
             items = data.get("value", [])
             for item in items:
+                parent_ref = item.get("parentReference", {})
+                item_drive_id = parent_ref.get("driveId") or drive_id
+                item_id = item.get("id")
+                if item_id and "!" in item_id:
+                    final_item_id = item_id
+                else:
+                    final_item_id = f"{item_drive_id}!{item_id}" if item_drive_id else item_id
+
                 if item.get("file"):  # It's a file
-                    file_meta = await self._get_file_metadata_by_id(item.get("id"))
-                    if file_meta:
-                        files.append(file_meta)
+                    file_meta = {
+                        "id": final_item_id,
+                        "name": item.get("name", ""),
+                        "path": f"/drive/items/{item_id}",
+                        "size": int(item.get("size") or 0),
+                        "modified": item.get("lastModifiedDateTime"),
+                        "created": item.get("createdDateTime"),
+                        "mime_type": item.get("file", {}).get(
+                            "mimeType", self._get_mime_type(item.get("name", ""))
+                        ),
+                        "url": item.get("webUrl", ""),
+                        "download_url": item.get("@microsoft.graph.downloadUrl"),
+                        "isFolder": False,
+                    }
+                    files.append(file_meta)
                 elif item.get("folder"):  # It's a subfolder, recurse
-                    subfolder_files = await self._list_folder_contents(item.get("id"))
+                    subfolder_files = await self._list_folder_contents(final_item_id)
                     files.extend(subfolder_files)
         except Exception as e:
             logger.error(f"Failed to list folder contents for {folder_id}: {e}")

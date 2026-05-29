@@ -6,8 +6,11 @@ that need to (re)create the documents index after onboarding completes.
 """
 
 from config.settings import (
+    ACL_PRINCIPAL_LABELS_MAPPING,
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
+    DLS_PRINCIPAL_INDEX_BODY,
+    DLS_PRINCIPAL_INDEX_NAME,
     IBM_AUTH_ENABLED,
     INDEX_BODY,
     OPENRAG_SKIP_OS_SECURITY_SETUP,
@@ -21,6 +24,82 @@ from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+async def _ensure_keyword_mappings(os_client, index_name: str, field_names: list[str]) -> None:
+    """Add missing keyword mappings to an existing index.
+
+    New ACL fields must be explicit keyword fields before documents are indexed;
+    otherwise OpenSearch dynamic mapping can create analyzed text fields that do
+    not work for exact-match DLS terms queries.
+    """
+    try:
+        current_mapping = await os_client.indices.get_mapping(index=index_name)
+        properties = current_mapping.get(index_name, {}).get("mappings", {}).get("properties", {})
+        missing: dict[str, dict[str, str]] = {}
+        for field_name in field_names:
+            existing = properties.get(field_name)
+            if existing is None:
+                missing[field_name] = {"type": "keyword"}
+            elif existing.get("type") != "keyword":
+                logger.warning(
+                    "OpenSearch field has incompatible mapping for DLS exact match",
+                    index_name=index_name,
+                    field_name=field_name,
+                    mapping=existing,
+                )
+
+        if missing:
+            await os_client.indices.put_mapping(
+                index=index_name,
+                body={"properties": missing},
+            )
+            logger.info(
+                "Updated OpenSearch keyword mappings",
+                index_name=index_name,
+                fields=list(missing),
+            )
+    except Exception as e:
+        logger.warning(
+            "Failed to ensure OpenSearch keyword mappings",
+            index_name=index_name,
+            fields=field_names,
+            error=str(e),
+        )
+
+
+async def _ensure_field_mappings(
+    os_client,
+    index_name: str,
+    field_mappings: dict[str, dict],
+) -> None:
+    """Add missing explicit mappings to an existing index."""
+    try:
+        current_mapping = await os_client.indices.get_mapping(index=index_name)
+        properties = current_mapping.get(index_name, {}).get("mappings", {}).get("properties", {})
+        missing = {
+            field_name: mapping
+            for field_name, mapping in field_mappings.items()
+            if properties.get(field_name) is None
+        }
+
+        if missing:
+            await os_client.indices.put_mapping(
+                index=index_name,
+                body={"properties": missing},
+            )
+            logger.info(
+                "Updated OpenSearch field mappings",
+                index_name=index_name,
+                fields=list(missing),
+            )
+    except Exception as e:
+        logger.warning(
+            "Failed to ensure OpenSearch field mappings",
+            index_name=index_name,
+            fields=list(field_mappings),
+            error=str(e),
+        )
 
 
 async def wait_for_opensearch(opensearch_client=None):
@@ -73,6 +152,16 @@ async def _ensure_opensearch_index():
         index_name = get_index_name()
         if await clients.opensearch.indices.exists(index=index_name):
             logger.info("[OPENSEARCH] Index already exists", index_name=index_name)
+            await _ensure_keyword_mappings(
+                clients.opensearch,
+                index_name,
+                ["allowed_users", "allowed_groups", "allowed_principals", "ingest_run_id"],
+            )
+            await _ensure_field_mappings(
+                clients.opensearch,
+                index_name,
+                {"allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING},
+            )
             return
 
         await clients.opensearch.indices.create(index=index_name, body=INDEX_BODY)
@@ -137,6 +226,16 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 index_name=index_name,
                 embedding_model=embedding_model,
             )
+            await _ensure_keyword_mappings(
+                os_client,
+                index_name,
+                ["allowed_users", "allowed_groups", "allowed_principals", "ingest_run_id"],
+            )
+            await _ensure_field_mappings(
+                os_client,
+                index_name,
+                {"allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING},
+            )
             if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
                 # Set number of replicas to 0 to not create unused nodes in OpenSearch, in case it was created with more replicas
                 try:
@@ -174,6 +273,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                     "owner": {"type": "keyword"},
                     "allowed_users": {"type": "keyword"},
                     "allowed_groups": {"type": "keyword"},
+                    "allowed_principals": {"type": "keyword"},
                     "subscriptions": {"type": "object"},
                     "created_at": {"type": "date"},
                     "updated_at": {"type": "date"},
@@ -196,6 +296,11 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             logger.info(
                 "Knowledge filters index already exists, skipping creation",
                 index_name=knowledge_filter_index_name,
+            )
+            await _ensure_keyword_mappings(
+                os_client,
+                knowledge_filter_index_name,
+                ["allowed_users", "allowed_groups", "allowed_principals"],
             )
 
             if not (IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE):
@@ -228,6 +333,28 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             logger.info(
                 "API keys index already exists, skipping creation",
                 index_name=API_KEYS_INDEX_NAME,
+            )
+
+        if not await os_client.indices.exists(index=DLS_PRINCIPAL_INDEX_NAME):
+            await os_client.indices.create(
+                index=DLS_PRINCIPAL_INDEX_NAME,
+                body=DLS_PRINCIPAL_INDEX_BODY,
+            )
+            logger.info("Created DLS principal index", index_name=DLS_PRINCIPAL_INDEX_NAME)
+        else:
+            logger.info(
+                "DLS principal index already exists, skipping creation",
+                index_name=DLS_PRINCIPAL_INDEX_NAME,
+            )
+            await _ensure_keyword_mappings(
+                os_client,
+                DLS_PRINCIPAL_INDEX_NAME,
+                ["user_name", "auth_user_id", "auth_email", "provider", "principals"],
+            )
+            await _ensure_field_mappings(
+                os_client,
+                DLS_PRINCIPAL_INDEX_NAME,
+                {"principal_labels": ACL_PRINCIPAL_LABELS_MAPPING},
             )
 
         await configure_alerting_security()

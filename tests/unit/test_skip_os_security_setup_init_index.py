@@ -11,6 +11,7 @@ Three cases:
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,6 +33,16 @@ def _fake_os_client():
     return client
 
 
+def _patch_config(monkeypatch, init_mod):
+    monkeypatch.setattr(
+        init_mod,
+        "get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_security_setup_called_when_flag_false(monkeypatch):
     import utils.opensearch_init as init_mod
@@ -39,6 +50,7 @@ async def test_security_setup_called_when_flag_false(monkeypatch):
     monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", False)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
+    _patch_config(monkeypatch, init_mod)
 
     os_client = _fake_os_client()
     setup_mock = AsyncMock()
@@ -66,6 +78,7 @@ async def test_security_setup_skipped_when_flag_true(monkeypatch):
     monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
+    _patch_config(monkeypatch, init_mod)
 
     os_client = _fake_os_client()
     setup_mock = AsyncMock()
@@ -98,6 +111,7 @@ async def test_index_creation_still_runs_when_flag_true(monkeypatch):
     monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
+    _patch_config(monkeypatch, init_mod)
 
     os_client = _fake_os_client()
 

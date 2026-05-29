@@ -1,21 +1,23 @@
 import json
 import os
 import uuid
-import aiofiles
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
 from pathlib import Path
+from typing import Any
+
+import aiofiles
+
 from utils.logging_config import get_logger
 
-logger = get_logger(__name__)
-
+from .aws_s3 import S3Connector
 from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
-from .sharepoint import SharePointConnector
-from .onedrive import OneDriveConnector
 from .ibm_cos import IBMCOSConnector
-from .aws_s3 import S3Connector
+from .onedrive import OneDriveConnector
+from .sharepoint import SharePointConnector
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -25,10 +27,10 @@ class ConnectionConfig:
     connection_id: str
     connector_type: str  # "google_drive", "box", etc.
     name: str  # User-friendly name
-    config: Dict[str, Any]  # Connector-specific config
-    user_id: Optional[str] = None  # For multi-tenant support
+    config: dict[str, Any]  # Connector-specific config
+    user_id: str | None = None  # For multi-tenant support
     created_at: datetime = None
-    last_sync: Optional[datetime] = None
+    last_sync: datetime | None = None
     is_active: bool = True
 
     def __post_init__(self):
@@ -39,7 +41,7 @@ class ConnectionConfig:
 class ConnectionManager:
     """Manages multiple connector connections with persistence"""
 
-    def __init__(self, connections_file: Optional[str] = None):
+    def __init__(self, connections_file: str | None = None):
         if connections_file is None:
             data_dir = Path(os.getenv("OPENRAG_DATA_PATH", "data"))
             self.connections_file = data_dir / "connections.json"
@@ -47,8 +49,8 @@ class ConnectionManager:
             self.connections_file = Path(connections_file)
         # Ensure data directory exists
         self.connections_file.parent.mkdir(parents=True, exist_ok=True)
-        self.connections: Dict[str, ConnectionConfig] = {}
-        self.active_connectors: Dict[str, BaseConnector] = {}
+        self.connections: dict[str, ConnectionConfig] = {}
+        self.active_connectors: dict[str, BaseConnector] = {}
 
     async def load_connections(self):
         """Load connections from persistent storage"""
@@ -72,7 +74,7 @@ class ConnectionManager:
         }
 
         if self.connections_file.exists():
-            async with aiofiles.open(self.connections_file, "r") as f:
+            async with aiofiles.open(self.connections_file) as f:
                 data = json.loads(await f.read())
 
             for conn_data in data.get("connections", []):
@@ -160,8 +162,8 @@ class ConnectionManager:
             await f.write(json.dumps(data, indent=2))
 
     async def _get_existing_connection(
-        self, connector_type: str, user_id: Optional[str] = None
-    ) -> Optional[ConnectionConfig]:
+        self, connector_type: str, user_id: str | None = None
+    ) -> ConnectionConfig | None:
         """Find existing active connection for the same connector type and user"""
         for connection in self.connections.values():
             if (
@@ -250,7 +252,7 @@ class ConnectionManager:
                 )
 
         # Remove or deactivate duplicate connections
-        for connection_id, connection in connections_to_remove:
+        for connection_id, _connection in connections_to_remove:
             if remove_duplicates:
                 await self.delete_connection(connection_id)  # Handles token cleanup
             else:
@@ -267,7 +269,7 @@ class ConnectionManager:
         connection_id: str,
         connector_type: str = None,
         name: str = None,
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] = None,
         user_id: str = None,
     ) -> bool:
         """Update an existing connection configuration"""
@@ -307,8 +309,8 @@ class ConnectionManager:
         self,
         connector_type: str,
         name: str,
-        config: Dict[str, Any],
-        user_id: Optional[str] = None,
+        config: dict[str, Any],
+        user_id: str | None = None,
     ) -> str:
         """Create a new connection configuration, ensuring only one per provider per user"""
 
@@ -358,8 +360,8 @@ class ConnectionManager:
         return connection_id
 
     async def list_connections(
-        self, user_id: Optional[str] = None, connector_type: Optional[str] = None
-    ) -> List[ConnectionConfig]:
+        self, user_id: str | None = None, connector_type: str | None = None
+    ) -> list[ConnectionConfig]:
         """List connections, optionally filtered by user or connector type"""
         connections = list(self.connections.values())
 
@@ -395,7 +397,7 @@ class ConnectionManager:
             try:
                 if hasattr(connector, "webhook_channel_id") and connector.webhook_channel_id:
                     await connector.cleanup_subscription(connector.webhook_channel_id)
-            except:
+            except Exception:
                 pass  # Best effort cleanup
 
             del self.active_connectors[connection_id]
@@ -404,7 +406,7 @@ class ConnectionManager:
         await self.save_connections()
         return True
 
-    async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+    async def get_connector(self, connection_id: str) -> BaseConnector | None:
         """Get an active connector instance"""
         logger.debug(f"Getting connector for connection_id: {connection_id}")
 
@@ -441,8 +443,8 @@ class ConnectionManager:
             return None
 
     def get_available_connector_types(
-        self, user_id: Optional[str] = None
-    ) -> Dict[str, Dict[str, Any]]:
+        self, user_id: str | None = None
+    ) -> dict[str, dict[str, Any]]:
         """Get available connector types with their metadata.
 
         Availability is user-scoped when ``user_id`` is provided:
@@ -483,7 +485,29 @@ class ConnectionManager:
             },
         }
 
-    def _has_saved_credentials_for_user(self, connector_type: str, user_id: Optional[str]) -> bool:
+    def get_auth_user_principals(self, user: Any) -> list[str]:
+        """Return connector ACL principals derivable from the OpenRAG auth user."""
+        from utils.group_acl import unique_acl_principals
+
+        principals: list[str] = []
+        for connector_cls in (
+            GoogleDriveConnector,
+            SharePointConnector,
+            OneDriveConnector,
+            IBMCOSConnector,
+            S3Connector,
+        ):
+            try:
+                principals.extend(connector_cls.get_auth_user_principals(user) or [])
+            except Exception as e:
+                logger.debug(
+                    "Connector auth-user principal resolver failed",
+                    connector=connector_cls.__name__,
+                    error=str(e),
+                )
+        return unique_acl_principals(principals)
+
+    def _has_saved_credentials_for_user(self, connector_type: str, user_id: str | None) -> bool:
         """Check if user has an active saved connection with usable credentials."""
         for connection in self.connections.values():
             if connection.connector_type != connector_type or not connection.is_active:
@@ -499,7 +523,7 @@ class ConnectionManager:
                 continue
         return False
 
-    def _is_connector_available(self, connector_type: str, user_id: Optional[str] = None) -> bool:
+    def _is_connector_available(self, connector_type: str, user_id: str | None = None) -> bool:
         """Check whether connector is available for use by the given user."""
         try:
             temp_config = ConnectionConfig(
@@ -568,11 +592,11 @@ class ConnectionManager:
             return True
         return False
 
-    async def get_connection(self, connection_id: str) -> Optional[ConnectionConfig]:
+    async def get_connection(self, connection_id: str) -> ConnectionConfig | None:
         """Get connection configuration"""
         return self.connections.get(connection_id)
 
-    async def get_connection_by_webhook_id(self, webhook_id: str) -> Optional[ConnectionConfig]:
+    async def get_connection_by_webhook_id(self, webhook_id: str) -> ConnectionConfig | None:
         """Find a connection by its webhook/subscription ID"""
         for connection in self.connections.values():
             # Check if the webhook ID is stored in the connection config
@@ -613,8 +637,9 @@ class ConnectionManager:
             # Store the subscription and resource IDs in connection config
             connection_config.config["webhook_channel_id"] = subscription_id
             connection_config.config["subscription_id"] = subscription_id  # Alternative field
-            if getattr(connector, "webhook_resource_id", None):
-                connection_config.config["resource_id"] = connector.webhook_resource_id
+            resource_id = getattr(connector, "webhook_resource_id", None)
+            if resource_id:
+                connection_config.config["resource_id"] = resource_id
 
             # Save updated connection config
             await self.save_connections()
@@ -658,8 +683,9 @@ class ConnectionManager:
             # Store the subscription and resource IDs in connection config
             connection_config.config["webhook_channel_id"] = subscription_id
             connection_config.config["subscription_id"] = subscription_id
-            if getattr(connector, "webhook_resource_id", None):
-                connection_config.config["resource_id"] = connector.webhook_resource_id
+            resource_id = getattr(connector, "webhook_resource_id", None)
+            if resource_id:
+                connection_config.config["resource_id"] = resource_id
 
             # Save updated connection config
             await self.save_connections()

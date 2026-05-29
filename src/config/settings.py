@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import threading
+from typing import Any
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -36,6 +37,7 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
@@ -46,6 +48,10 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
+    "OPENRAG_BACKEND_INTERNAL_URL",
+    "http://openrag-backend:8000",
+).rstrip("/")
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID") or "ebc01d31-1976-46ce-a385-b0240327226c"
 
 
@@ -55,7 +61,7 @@ LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
 LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
-SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
+SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-production"
 # Optional explicit JWT signing key. When set (and IBM auth is off),
 # RSA keypair generation is skipped. Read here so callers don't poke
 # os.environ directly.
@@ -67,9 +73,60 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
 PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
+OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
+
+# ── JWT roles claim ─────────────────────────────────────────────
+# These are exposed as functions (not module constants) so they are read
+# per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
+# tests drive them via monkeypatch.setenv. This mirrors is_rbac_enforced(),
+# which reads OPENRAG_RBAC_ENFORCE the same way.
+
+
+def get_jwt_roles_claim() -> str:
+    """Name of the JWT claim that carries the user's OpenRAG roles.
+
+    The claim's value MUST be a JSON array of strings; anything else is
+    treated as no roles and rejected (HTTP 401) when JWT-role sync is active.
+    """
+    return os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+
+
+# Mapping from OpenRAG built-in role -> JWT claim value. When the JWT roles
+# claim contains the returned value, the user is granted that OpenRAG role.
+# A None return (viewer, unset by default) means the OpenRAG role cannot be
+# assigned via JWT (e.g. when the IdP only ships 3 roles).
+def get_role_claim_admin() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
+
+
+def get_role_claim_developer() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
+
+
+def get_role_claim_user() -> str:
+    return os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
+
+
+def get_role_claim_viewer() -> str | None:
+    return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+
+
+def get_openrag_service_token() -> str | None:
+    """Platform-issued service JWT used at startup to bootstrap the OpenSearch
+    security context (admin role mapping). Read per-call — like the JWT-claim
+    accessors above — so runtime/test overrides take effect without a restart."""
+    return os.getenv("OPENRAG_SERVICE_TOKEN")
+
+
+def get_jwt_auth_header() -> str:
+    """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
+    callers. Read per-call so tests can override via monkeypatch.setenv."""
+    return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+
+
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
@@ -104,6 +161,18 @@ def _resolve_skip_os_security_default() -> str:
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
     "OPENRAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
+).lower() in ("true", "1", "yes")
+
+# Run setup_opensearch_security once during FastAPI lifespan startup,
+# using the admin username derived from OPENRAG_SERVICE_TOKEN. Intended
+# for platform-managed deployments (saas / on_prem) where the platform
+# issues a service token that identifies the admin user that must be
+# pinned into the all_access role mapping. Default off.
+#
+# When this flag is true the corresponding call inside startup_tasks()
+# is suppressed — bootstrap is the single source of truth on startup.
+OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
+    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
@@ -141,6 +210,29 @@ RBAC_CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory").lower()
 # linger for up to this many seconds after a role mutation.
 RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("OPENRAG_PERM_CACHE_TTL", 60)
 
+# TTL (seconds) for cached upstream group memberships used when minting
+# OpenSearch JWTs. Defaults to 0 so group membership changes are resolved per
+# request unless an operator explicitly accepts bounded staleness.
+GROUP_ACL_CACHE_TTL_SECONDS = get_env_int("OPENRAG_GROUP_ACL_CACHE_TTL", 0)
+
+# Minimum interval (seconds) between DLS principal lookup-index refreshes for
+# the same effective OpenSearch user. This bounds connector directory calls and
+# lookup-index writes on authenticated request paths. Group/alias changes can be
+# stale for up to this many seconds; set to 0 for strict per-request refresh.
+DLS_PRINCIPAL_REFRESH_TTL_SECONDS = get_env_int("OPENRAG_DLS_PRINCIPAL_REFRESH_TTL", 60)
+
+ACL_PRINCIPAL_LABELS_MAPPING = {
+    "type": "object",
+    "properties": {
+        "principal": {"type": "keyword"},
+        "kind": {"type": "keyword"},
+        "provider": {"type": "keyword"},
+        "display_name": {"type": "keyword"},
+        "email": {"type": "keyword"},
+        "external_id": {"type": "keyword"},
+    },
+}
+
 # TTL (seconds) for the in-process JWT claims cache. A cached entry is also
 # checked against the token's own `exp` claim on every hit, so a revoked token
 # can linger at most min(this value, token_remaining_lifetime) seconds.
@@ -149,6 +241,13 @@ JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
 # Maximum number of distinct tokens kept in the JWT claims cache.
 # Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
 JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
+
+# TTL (seconds) for the in-process provider health-check response cache.
+# The banner polls GET /api/provider/health every 5-30 s per browser tab;
+# caching coalesces concurrent identical calls so watsonx round-trips are
+# not fanned out. Must be >= 1; non-positive values fall back to the default.
+_raw_phc_ttl = get_env_int("OPENRAG_PROVIDER_HEALTH_TTL", 10)
+PROVIDER_HEALTH_CACHE_TTL_SECONDS = _raw_phc_ttl if _raw_phc_ttl > 0 else 10
 
 # Docling service URL configuration
 # Priority:
@@ -206,11 +305,29 @@ UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 # Default: 40 minutes total, 40 minutes read timeout
 LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
+# Retries for transient Langflow HTTP failures (disconnects, 502/503/504).
+LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
 
 # Per-file processing timeout for document ingestion tasks (in seconds)
 # Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
 # Default: 3600 seconds (60 minutes)
 INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
+LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
+    "LANGFLOW_INGEST_CALLBACK_TTL_SECONDS",
+    INGESTION_TIMEOUT + 300,
+)
+LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
+
+OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
+
+
+def get_opensearch_jwt_ttl_seconds() -> int:
+    """Return the effective short-lived OpenSearch JWT TTL."""
+    return get_env_int(
+        "OPENRAG_OPENSEARCH_JWT_TTL",
+        INGESTION_TIMEOUT + OPENSEARCH_JWT_TTL_BUFFER_SECONDS,
+    )
+
 
 # Two-phase ingestion: backend-side Docling polling configuration.
 # Controls how the OpenRAG backend waits for Docling Serve to finish converting
@@ -272,15 +389,37 @@ INDEX_BODY = {
             "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
+            "ingest_run_id": {"type": "keyword"},
+            "connector_file_id": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},
+            "allowed_principals": {"type": "keyword"},
+            "allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
             "user_permissions": {"type": "object"},
             "group_permissions": {"type": "object"},
             "created_time": {"type": "date"},
             "modified_time": {"type": "date"},
             "indexed_time": {"type": "date"},
             "metadata": {"type": "object"},
+        }
+    },
+}
+
+DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
+DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
+    "settings": {
+        "index": {"number_of_replicas": 0, "number_of_shards": 1},
+    },
+    "mappings": {
+        "properties": {
+            "user_name": {"type": "keyword"},
+            "auth_user_id": {"type": "keyword"},
+            "auth_email": {"type": "keyword"},
+            "provider": {"type": "keyword"},
+            "principals": {"type": "keyword"},
+            "principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
+            "updated_at": {"type": "date"},
         }
     },
 }
@@ -295,7 +434,7 @@ API_KEYS_INDEX_BODY = {
     "mappings": {
         "properties": {
             "key_id": {"type": "keyword"},
-            "key_hash": {"type": "keyword"},  # SHA-256 hash, never store plaintext
+            "key_hash": {"type": "keyword"},  # Keyed digest, never store plaintext
             "key_prefix": {"type": "keyword"},  # First 8 chars for display (e.g., "orag_abc1")
             "user_id": {"type": "keyword"},
             "user_email": {"type": "keyword"},
@@ -807,42 +946,113 @@ class AppClients:
     async def langflow_request(self, method: str, endpoint: str, **kwargs):
         """Central method for all Langflow API requests.
 
-        Retries once with a fresh API key on auth failures (401/403).
+        Retries transient transport/server errors and once with a fresh API key on
+        auth failures (401/403).
         """
-        api_key = await get_langflow_api_key()
-        if not api_key:
-            raise ValueError("No Langflow API key available")
+        _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+        max_attempts = max(1, LANGFLOW_REQUEST_RETRIES + 1)
+        last_error: Exception | None = None
+        auth_retry_attempted = False
+        request_kwargs = dict(kwargs)
+        passed_headers = request_kwargs.pop("headers", {}) or {}
 
-        # Merge headers properly - passed headers take precedence over defaults
-        default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
-        existing_headers = kwargs.pop("headers", {})
-        headers = {**default_headers, **existing_headers}
+        for attempt in range(max_attempts):
+            api_key = await get_langflow_api_key()
+            if not api_key:
+                raise ValueError("No Langflow API key available")
 
-        # Remove Content-Type if explicitly set to None (for file uploads)
-        if headers.get("Content-Type") is None:
-            headers.pop("Content-Type", None)
+            # Merge headers properly - passed headers take precedence over defaults
+            default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+            headers = {**default_headers, **passed_headers}
 
-        url = f"{LANGFLOW_URL}{endpoint}"
+            # Remove Content-Type if explicitly set to None (for file uploads)
+            if headers.get("Content-Type") is None:
+                headers.pop("Content-Type", None)
 
-        response = await self.langflow_http_client.request(
-            method=method, url=url, headers=headers, **kwargs
-        )
+            url = f"{LANGFLOW_URL}{endpoint}"
 
-        # Retry once with a fresh API key on auth failure
-        if response.status_code in (401, 403):
-            logger.warning(
-                "Langflow request auth failed, regenerating API key and retrying",
-                status_code=response.status_code,
-                endpoint=endpoint,
-            )
-            api_key = await get_langflow_api_key(force_regenerate=True)
-            if api_key:
-                headers["x-api-key"] = api_key
+            try:
                 response = await self.langflow_http_client.request(
-                    method=method, url=url, headers=headers, **kwargs
+                    method=method, url=url, headers=headers, **request_kwargs
                 )
+            except httpx.RequestError as exc:
+                last_error = exc
+                if attempt + 1 < max_attempts:
+                    delay = min(2**attempt, 4)
+                    logger.warning(
+                        "Langflow request transport error, retrying",
+                        endpoint=endpoint,
+                        attempt=attempt + 1,
+                        max_attempts=max_attempts,
+                        error=str(exc),
+                        retry_in_seconds=delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
 
-        return response
+            # Retry once with a fresh API key on auth failure
+            if response.status_code in (401, 403) and not auth_retry_attempted:
+                logger.warning(
+                    "Langflow request auth failed, regenerating API key and retrying",
+                    status_code=response.status_code,
+                    endpoint=endpoint,
+                )
+                auth_retry_attempted = True
+                api_key = await get_langflow_api_key(force_regenerate=True)
+                if api_key:
+                    headers["x-api-key"] = api_key
+                    try:
+                        response = await self.langflow_http_client.request(
+                            method=method, url=url, headers=headers, **request_kwargs
+                        )
+                    except httpx.RequestError as exc:
+                        last_error = exc
+                        if attempt + 1 < max_attempts:
+                            delay = min(2**attempt, 4)
+                            logger.warning(
+                                "Langflow auth retry transport error, retrying",
+                                endpoint=endpoint,
+                                attempt=attempt + 1,
+                                max_attempts=max_attempts,
+                                error=str(exc),
+                                retry_in_seconds=delay,
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        raise
+
+            if response.status_code in (401, 403) and attempt + 1 < max_attempts:
+                delay = min(2**attempt, 4)
+                logger.warning(
+                    "Langflow auth failure persists, retrying request",
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                    max_attempts=max_attempts,
+                    retry_in_seconds=delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:
+                delay = min(2**attempt, 4)
+                logger.warning(
+                    "Langflow request returned transient status, retrying",
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                    max_attempts=max_attempts,
+                    retry_in_seconds=delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            return response
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Langflow request failed without a response")
 
     async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
         """Create a global variable in Langflow via API"""
@@ -953,8 +1163,8 @@ class AppClients:
                 error=str(e),
             )
 
-    def create_user_opensearch_client(self, jwt_token: str):
-        """Create OpenSearch client with user's auth token.
+    def create_opensearch_client_from_jwt(self, jwt_token: str):
+        """Create an OpenSearch client authenticated with a JWT bearer token.
 
         If jwt_token already contains an auth scheme (e.g. "Basic ..." or "Bearer ..."),
         it is used verbatim. Otherwise it is wrapped as a Bearer token.
@@ -980,6 +1190,26 @@ class AppClients:
             max_retries=3,
             retry_on_timeout=True,
         )
+
+    def create_basic_opensearch_client(self, username: str, password: str):
+        """Create an OpenSearch client with explicit basic credentials."""
+        return AsyncOpenSearch(
+            hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
+            connection_class=AIOHttpConnection,
+            scheme="https",
+            use_ssl=True,
+            verify_certs=False,
+            ssl_assert_fingerprint=None,
+            http_auth=(username, password),
+            http_compress=True,
+            timeout=30,
+            max_retries=3,
+            retry_on_timeout=True,
+        )
+
+    def create_user_opensearch_client(self, jwt_token: str):
+        """Create OpenSearch client with user's auth token."""
+        return self.create_opensearch_client_from_jwt(jwt_token)
 
 
 # Component template paths — derived from the centralized flows directory
@@ -1063,7 +1293,9 @@ def get_agent_config():
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
     return get_openrag_config().knowledge.embedding_model or (
-        OPENAI_DEFAULT_EMBEDDING_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+        OPENAI_DEFAULT_EMBEDDING_MODEL
+        if get_openrag_config().knowledge.disable_ingest_with_langflow
+        else ""
     )
 
 

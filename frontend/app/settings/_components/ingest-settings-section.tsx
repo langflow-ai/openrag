@@ -46,6 +46,8 @@ export function IngestSettingsSection() {
   const [ocr, setOcr] = useState<boolean>(false);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
+  const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
+    useState<boolean>(false);
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -146,13 +148,22 @@ export function IngestSettingsSection() {
       setPictureDescriptions(settings.knowledge.picture_descriptions);
   }, [settings.knowledge?.picture_descriptions]);
 
+  useEffect(() => {
+    if (settings.knowledge?.disable_ingest_with_langflow !== undefined)
+      setDisableIngestWithLangflow(
+        settings.knowledge.disable_ingest_with_langflow,
+      );
+  }, [settings.knowledge?.disable_ingest_with_langflow]);
+
   const k = settings.knowledge;
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
-    pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions);
+    pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
+    disableIngestWithLangflow !==
+      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
 
   const handleEmbeddingModelChange = (newModel: string, provider?: string) => {
     if (newModel && provider) {
@@ -195,6 +206,7 @@ export function IngestSettingsSection() {
         table_structure: tableStructure,
         ocr,
         picture_descriptions: pictureDescriptions,
+        disable_ingest_with_langflow: disableIngestWithLangflow,
       },
       { onSuccess: () => setChunkValidationError(null) },
     );
@@ -238,6 +250,7 @@ export function IngestSettingsSection() {
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
+        setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
         closeDialog();
       })
@@ -429,6 +442,25 @@ export function IngestSettingsSection() {
             </div>
           </div>
           <div>
+            <div className="flex items-center justify-between py-3 border-b border-border">
+              <div className="flex-1">
+                <Label
+                  htmlFor="disable-ingest-with-langflow"
+                  className="text-base font-medium cursor-pointer pb-3"
+                >
+                  Disable Langflow Ingestion
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Bypass Langflow for document ingestion and use traditional
+                  processing.
+                </div>
+              </div>
+              <Switch
+                id="disable-ingest-with-langflow"
+                checked={disableIngestWithLangflow}
+                onCheckedChange={setDisableIngestWithLangflow}
+              />
+            </div>
             <div className="flex items-center justify-between py-3 border-b border-border">
               <div className="flex-1">
                 <Label

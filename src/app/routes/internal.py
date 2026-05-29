@@ -6,7 +6,7 @@ Auth and service injection are handled inside each handler via FastAPI
 Depends, not here. This module only wires URL → handler.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 
 from api import (
     auth,
@@ -18,6 +18,7 @@ from api import (
     flows,
     knowledge_filter,
     langflow_files,
+    langflow_ingest,
     models,
     nudges,
     oidc,
@@ -30,6 +31,7 @@ from api import (
 )
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
+from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from connectors.aws_s3.api import (
     s3_bucket_status,
     s3_configure,
@@ -70,6 +72,12 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/internal/ingest/chunks",
+        langflow_ingest.ingest_langflow_chunks,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # Upload endpoints
     app.add_api_route("/upload_context", upload.upload_context, methods=["POST"], tags=["internal"])
@@ -78,8 +86,33 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/upload_bucket", upload.upload_bucket, methods=["POST"], tags=["internal"])
 
     # Task endpoints
+    # Literal sub-paths must be registered before the parameterised /{task_id}
+    # so Starlette does not absorb "enhanced" as a task_id value.
+    app.add_api_route(
+        "/tasks/enhanced", tasks.all_tasks_enhanced, methods=["GET"], tags=["internal"]
+    )
     app.add_api_route("/tasks/{task_id}", tasks.task_status, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/{task_id}/enhanced",
+        tasks.task_status_enhanced,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route("/tasks", tasks.all_tasks, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/{task_id}/retry",
+        tasks.retry_task,
+        methods=["POST"],
+        tags=["internal"],
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=TaskRetryResponse,
+        responses={
+            400: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+            500: {"model": ErrorResponse},
+        },
+    )
     app.add_api_route(
         "/tasks/{task_id}/cancel",
         tasks.cancel_task,
@@ -236,6 +269,12 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/connectors/{connector_type}/sync",
         connectors.connector_sync,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/check-duplicates",
+        connectors.connector_check_duplicates,
         methods=["POST"],
         tags=["internal"],
     )
@@ -407,13 +446,11 @@ def register_internal_routes(app: FastAPI):
     # Docling service proxy
     app.add_api_route("/docling/health", docling.health, methods=["GET"], tags=["internal"])
 
-    # ===== Users / RBAC Endpoints (JWT auth) =====
+    # ===== Users Endpoints (JWT auth) =====
     from api import config as config_api
     from api import users as users_api
-    from api.admin import rbac as admin_rbac
 
     app.include_router(users_api.router)
-    app.include_router(admin_rbac.router)
     # Public — must work pre-auth so the onboarding wizard can render.
     app.include_router(config_api.router)
 

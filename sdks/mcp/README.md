@@ -1,35 +1,50 @@
-# OpenRAG MCP — Final Release Notice
+# OpenRAG MCP
 
-> **This package (`openrag-mcp`) has been retired.**
->
-> OpenRAG now ships a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server over **streamable HTTP** — no subprocess, no separate install, no API key in a subprocess env block. Connect your MCP client directly to your running OpenRAG instance.
->
-> The last published version of `openrag-mcp` on PyPI is the final release. No further updates will be made to this package.
+> **The Python package `openrag-mcp` is deprecated and no longer updated. Use the built-in streamable HTTP endpoint instead.**
 
----
+OpenRAG ships a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server over **streamable HTTP**, mounted on your OpenRAG instance at `/mcp`. This endpoint is part of your OpenRAG deployment; when connecting locally, nothing leaves your network.
 
-## Migrating to streamable HTTP
+Any MCP client that supports URL-based server configs, such as [Cursor](https://docs.cursor.com/context/model-context-protocol), [Claude Desktop](https://modelcontextprotocol.io/quickstart/user), and the MCP SDK, can connect directly to this endpoint.
 
-The OpenRAG backend exposes an MCP endpoint at `/mcp` using the streamable-HTTP transport. Any MCP client that supports `"url"`-based server configs (Cursor, Claude Desktop, and the MCP SDK) can connect to it directly.
+There is no subprocess to spawn and nothing extra to install. Your client connects over HTTP using the same OpenRAG API key you use for the REST API. Document ingestion, task tracking, and knowledge filter tools are available directly.
 
-### Prerequisites
+## Prerequisites
 
-- A running OpenRAG instance (v0.3.0 or later)
-- An OpenRAG API key — create one in **Settings → API Keys**
+In addition to a running OpenRAG instance, you need an OpenRAG API key and your OpenRAG MCP endpoint URL.
 
----
+### Authentication
+
+You need an OpenRAG API key (prefixed by `orag_`). You can create an OpenRAG API key in **Settings → API Keys**.
+
+Pass your OpenRAG API key on every request using the `X-API-Key` or `Authorization: Bearer` headers.
+
+The same key works for both the REST API and MCP, and it is forwarded transparently to the underlying endpoints.
+
+### Endpoint URL
+
+The MCP endpoint is `/mcp` on your OpenRAG instance. The host and port depend on how OpenRAG is deployed:
+
+| Deployment | MCP URL |
+|:-----------|:--------|
+| Default Docker deployment | `http://localhost:3000/mcp` |
+| Backend run directly (dev, outside Docker) | `http://localhost:8000/mcp` |
+| Remote / deployed instance | `https://your-openrag-instance.com/mcp` |
+
+In the default Docker deployment the backend port (`8000`) is not published to the host. The OpenRAG frontend on port `3000` proxies `/mcp` to the backend and forwards your authentication headers. Therefore, **`http://localhost:3000/mcp`** is the correct local URL for a standard install.
+
+Use `http://localhost:8000/mcp` only when you run the backend directly without the frontend.
+
+The following examples use the local Docker URL; replace this URL with your own host if you need to connect to a remote instance.
 
 ## Cursor
 
-**Config file:** `~/.cursor/mcp.json`
-
-**Standard API key:**
+Config file: `~/.cursor/mcp.json`
 
 ```json
 {
   "mcpServers": {
     "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+      "url": "http://localhost:3000/mcp",
       "headers": {
         "X-API-Key": "orag_your_api_key_here"
       }
@@ -38,38 +53,20 @@ The OpenRAG backend exposes an MCP endpoint at `/mcp` using the streamable-HTTP 
 }
 ```
 
-**IBM auth (when `IBM_AUTH_ENABLED=true` on the server):**
-
-```json
-{
-  "mcpServers": {
-    "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
-      "headers": {
-        "X-Username": "your_ibm_username",
-        "X-Api-Key": "your_ibm_api_key"
-      }
-    }
-  }
-}
-```
-
-Restart Cursor after saving the config.
-
----
+Restart Cursor after saving the config file.
 
 ## Claude Desktop
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+Config file:
 
-**Standard API key:**
+* macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+* Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+      "url": "http://localhost:3000/mcp",
       "headers": {
         "X-API-Key": "orag_your_api_key_here"
       }
@@ -78,32 +75,34 @@ Restart Cursor after saving the config.
 }
 ```
 
-**IBM auth:**
+Restart Claude Desktop after editing the config file.
+
+## IBM Bob
+
+Add the server to your IBM Bob MCP config with `type` set to `streamable-http`:
 
 ```json
 {
   "mcpServers": {
     "openrag": {
-      "url": "https://your-openrag-instance.com/mcp",
+      "type": "streamable-http",
+      "url": "http://localhost:3000/mcp",
       "headers": {
-        "X-Username": "your_ibm_username",
-        "X-Api-Key": "your_ibm_api_key"
+        "x-api-key": "orag_your_api_key_here"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop after editing the file.
-
----
+For more information, see [MCP integration with IBM Bob](https://www.ibm.com/think/tutorials/mcp-integration-ibm-bob).
 
 ## Available tools
 
-All tools are auto-exposed from the `/v1/` API and are available immediately after connecting:
+All tools are auto-exposed from the `/v1/` API, and they are available immediately after connecting:
 
 | Tool | Description |
-|:-----|:------------|
+| ---- | ----------- |
 | `openrag_chat` | Send a message and get a RAG-enhanced response. Supports `chat_id` and `filter_id`. |
 | `openrag_list_chats` | List all chat conversations. |
 | `openrag_get_chat` | Get a specific chat conversation by ID. |
@@ -120,17 +119,6 @@ All tools are auto-exposed from the `/v1/` API and are available immediately aft
 | `openrag_get_knowledge_filter` | Get a knowledge filter by ID. |
 | `openrag_update_knowledge_filter` | Update an existing knowledge filter. |
 | `openrag_delete_knowledge_filter` | Delete a knowledge filter by ID. |
-
----
-
-## Why streamable HTTP?
-
-- **No subprocess** — your MCP client connects over HTTP; nothing to install or spawn locally.
-- **Full tool surface** — document ingestion, task tracking, and knowledge filters are available from day one (previously listed as "coming later" in the stdio package).
-- **One auth model** — the same API key or IBM credentials you use for the REST API work for MCP.
-- **Self-hosted and secure** — the `/mcp` endpoint is part of your OpenRAG deployment; nothing leaves your network.
-
----
 
 ## License
 

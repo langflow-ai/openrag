@@ -207,6 +207,7 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 
 	// Verify Backend defaults
 	assert.NotNil(t, manager.DefaultOpenRagBEEnvVars)
+	assert.Equal(t, "http://openrag-be:8000", manager.DefaultOpenRagBEEnvVars["OPENRAG_BACKEND_INTERNAL_URL"])
 	assert.Equal(t, "2400", manager.DefaultOpenRagBEEnvVars["LANGFLOW_TIMEOUT"])
 	assert.Equal(t, "/app/backend-data", manager.DefaultOpenRagBEEnvVars["OPENRAG_DATA_PATH"])
 	assert.Equal(t, "/app/openrag-documents", manager.DefaultOpenRagBEEnvVars["OPENRAG_DOCUMENTS_PATH"])
