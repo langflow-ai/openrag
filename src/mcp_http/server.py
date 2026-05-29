@@ -97,10 +97,28 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     # it is excluded from MCP exposure entirely (see route_maps below).
     # Multipart file uploads are not supported through FastMCP's from_fastapi
     # auto-conversion; use the HTTP API or SDK directly to ingest documents.
+    ("/v1/tasks/enhanced", "GET"): {
+        "name": "openrag_list_tasks_enhanced",
+        "description": (
+            "List all ingestion tasks with structured failure metadata "
+            "(component, failure_phase, user_facing_message, actionable_by) "
+            "on any failed file. Completed files are omitted to reduce payload "
+            "size; use openrag_get_task_status_enhanced for a task's full file list."
+        ),
+    },
     ("/v1/tasks/{task_id}", "GET"): {
         "name": "openrag_get_task_status",
         "description": (
             "Check the status of an ingestion task. Use the task_id returned from openrag_ingest."
+        ),
+    },
+    ("/v1/tasks/{task_id}/enhanced", "GET"): {
+        "name": "openrag_get_task_status_enhanced",
+        "description": (
+            "Check the status of an ingestion task with structured failure "
+            "metadata (component, failure_phase, user_facing_message, "
+            "actionable_by) on any failed file. Includes completed files in "
+            "the task's file list. Use the task_id returned from openrag_ingest."
         ),
     },
     ("/v1/documents", "DELETE"): {
