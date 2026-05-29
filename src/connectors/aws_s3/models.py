@@ -1,6 +1,7 @@
 """Pydantic request/response models for AWS S3 API endpoints."""
 
 from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -9,5 +10,6 @@ class S3ConfigureBody(BaseModel):
     secret_key: Optional[str] = None
     endpoint_url: Optional[str] = None
     region: Optional[str] = None
+    session_token: Optional[str] = None
     bucket_names: Optional[List[str]] = None
     connection_id: Optional[str] = None
