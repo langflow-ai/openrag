@@ -347,6 +347,156 @@ class ConnectorSyncBody(BaseModel):
     replace_duplicates: bool = False
 
 
+class ConnectorCheckDuplicatesBody(BaseModel):
+    connection_id: str | None = None
+    selected_files: list[Any] | None = None
+
+
+async def connector_check_duplicates(
+    connector_type: str,
+    body: ConnectorCheckDuplicatesBody,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(require_permission("connectors:use")),
+):
+    """Check if any of the selected files or folders contain files that already exist in the index"""
+    selected_files_raw = body.selected_files
+    if not selected_files_raw:
+        return JSONResponse({"duplicate_names": []})
+
+    try:
+        jwt_token = user.jwt_token
+        # Get all active connections for this connector type and user
+        connections = await connector_service.connection_manager.list_connections(
+            user_id=user.user_id, connector_type=connector_type
+        )
+        active_connections = [conn for conn in connections if conn.is_active]
+
+        # If connection_id is provided, find it, otherwise find the first working connection
+        working_connection = None
+        if body.connection_id:
+            for conn in active_connections:
+                if conn.connection_id == body.connection_id:
+                    working_connection = conn
+                    break
+
+        if not working_connection:
+            for conn in active_connections:
+                try:
+                    connector = await connector_service.get_connector(conn.connection_id)
+                    if connector and await connector.authenticate():
+                        working_connection = conn
+                        break
+                except Exception:
+                    continue
+
+        if not working_connection:
+            return JSONResponse(
+                {"error": f"No working {connector_type} connections found"},
+                status_code=404,
+            )
+
+        connector = await connector_service.get_connector(working_connection.connection_id)
+        if not connector:
+            return JSONResponse(
+                {"error": f"Connection '{working_connection.connection_id}' not found"},
+                status_code=404,
+            )
+
+        # Get list of file IDs to expand
+        file_ids = [f.get("id") for f in selected_files_raw if f.get("id")]
+
+        expanded_files_info = []
+
+        # Expand files (handling folders) if possible
+        if file_ids and hasattr(connector, "cfg"):
+            original_file_ids = getattr(connector.cfg, "file_ids", None)
+            original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+            try:
+                connector.cfg.file_ids = file_ids
+                connector.cfg.folder_ids = None
+
+                result = await connector.list_files()
+                expanded_files = result.get("files", [])
+                for f in expanded_files:
+                    expanded_files_info.append(
+                        {
+                            "name": f.get("name", ""),
+                            "mimeType": f.get("mime_type") or f.get("mimeType") or "",
+                        }
+                    )
+            except Exception as e:
+                logger.error("Failed to expand files in duplicate check", error=str(e))
+            finally:
+                connector.cfg.file_ids = original_file_ids
+                connector.cfg.folder_ids = original_folder_ids
+
+        # If expansion returned nothing, fall back to non-folders in selected_files_raw
+        if not expanded_files_info:
+            for f in selected_files_raw:
+                if not f.get("isFolder"):
+                    expanded_files_info.append(
+                        {"name": f.get("name", ""), "mimeType": f.get("mimeType") or ""}
+                    )
+
+        if not expanded_files_info:
+            return JSONResponse({"duplicate_names": []})
+
+        # Process and clean names using clean_connector_filename
+        from utils.file_utils import clean_connector_filename, get_filename_aliases
+
+        cleaned_names = []
+        for f in expanded_files_info:
+            cleaned_name = clean_connector_filename(f["name"], f["mimeType"])
+            cleaned_names.append(cleaned_name)
+
+        # Build candidate filenames (including aliases like .txt / .md mapping)
+        all_candidates = set()
+        for name in cleaned_names:
+            all_candidates.update(get_filename_aliases(name))
+
+        if not all_candidates:
+            return JSONResponse({"duplicate_names": []})
+
+        # Query OpenSearch in one batch
+        opensearch_client = session_manager.get_user_opensearch_client(user.user_id, jwt_token)
+
+        query_body = {
+            "size": 10000,
+            "query": {"terms": {"filename": list(all_candidates)}},
+            "_source": ["filename"],
+        }
+
+        existing_filenames = set()
+        try:
+            response = await opensearch_client.search(index=get_index_name(), body=query_body)
+            hits = response.get("hits", {}).get("hits", [])
+            for hit in hits:
+                fn = hit.get("_source", {}).get("filename")
+                if fn:
+                    existing_filenames.add(fn)
+        except Exception as search_err:
+            if "index_not_found_exception" in str(search_err):
+                # Index doesn't exist yet, so no duplicates can exist
+                return JSONResponse({"duplicate_names": [], "total_files": len(cleaned_names)})
+            raise
+
+        # Check which of the cleaned names have duplicates (based on existing_filenames matching any alias)
+        duplicate_names = []
+        for name in cleaned_names:
+            aliases = get_filename_aliases(name)
+            if any(alias in existing_filenames for alias in aliases):
+                duplicate_names.append(name)
+
+        return JSONResponse(
+            {"duplicate_names": list(set(duplicate_names)), "total_files": len(cleaned_names)}
+        )
+
+    except Exception:
+        logger.exception("[CONNECTOR] Error checking duplicates")
+        return JSONResponse({"error": "An internal error has occurred."}, status_code=500)
+
+
 async def list_connectors(
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
