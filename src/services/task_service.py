@@ -1284,6 +1284,9 @@ class TaskService:
                     task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
                     and current_time - task.updated_at > max_age_seconds
                 ):
+                    # Task is leaving memory; reclaim any retained upload temps
+                    # (including RETRYABLE locals kept for in-flight retry).
+                    self._cleanup_upload_temp_files(task, force=True)
                     del self.task_store[user_id][task_id]
                     # Clean up the associated lock
                     self._task_locks.pop(task_id, None)
@@ -1410,7 +1413,8 @@ class TaskService:
         1. Cancelling the periodic cleanup task
         2. Cancelling all running background tasks
         3. Waiting for cancellation to complete
-        4. Shutting down the process pool
+        4. Force-cleaning staged upload temps for all tracked tasks
+        5. Shutting down the process pool
         """
         logger.info("Shutting down TaskService", background_tasks_count=len(self.background_tasks))
 
@@ -1436,3 +1440,7 @@ class TaskService:
                     logger.warning(
                         "Background task raised exception during shutdown", error=str(result)
                     )
+
+        for user_tasks in self.task_store.values():
+            for upload_task in user_tasks.values():
+                self._cleanup_upload_temp_files(upload_task, force=True)

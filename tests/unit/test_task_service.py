@@ -5,7 +5,7 @@ Tests timeout handling, cancellation, and cleanup functionality
 
 import asyncio
 import time
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -98,6 +98,45 @@ async def test_cleanup_old_tasks(task_service):
     # Verify lock was also cleaned up
     assert "old_task" not in task_service._task_locks
     assert "recent_task" in task_service._task_locks  # Recent task lock should remain
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_tasks_force_cleans_retained_temp_files(task_service):
+    """Evicted tasks must reclaim temps kept for retryable local failures."""
+    temp_path = "/var/folders/tmp/retryable.tmp"
+    old_task = UploadTask(
+        task_id="old_task",
+        total_files=1,
+        file_tasks={"file1": FileTask(file_path="file1")},
+        temp_file_paths=[temp_path],
+        status=TaskStatus.FAILED,
+    )
+    old_task.updated_at = time.time() - 7200
+
+    task_service.task_store["user1"] = {"old_task": old_task}
+
+    with patch.object(task_service, "_cleanup_upload_temp_files") as mock_cleanup:
+        cleaned = await task_service.cleanup_old_tasks(max_age_seconds=3600)
+
+    assert cleaned == 1
+    mock_cleanup.assert_called_once_with(old_task, force=True)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_force_cleans_upload_temp_files(task_service):
+    upload_task = UploadTask(
+        task_id="task1",
+        total_files=1,
+        file_tasks={},
+        temp_file_paths=["/var/folders/tmp/retryable.tmp"],
+        status=TaskStatus.FAILED,
+    )
+    task_service.task_store["user1"] = {"task1": upload_task}
+
+    with patch.object(task_service, "_cleanup_upload_temp_files") as mock_cleanup:
+        await task_service.shutdown()
+
+    mock_cleanup.assert_called_once_with(upload_task, force=True)
 
 
 @pytest.mark.asyncio
