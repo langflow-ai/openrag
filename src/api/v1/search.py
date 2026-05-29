@@ -5,19 +5,12 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
-from typing import Any
 from typing import Any, Dict, Optional
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from dependencies import get_search_service, require_api_key_permission
-from session_manager import User
-from utils.logging_config import get_logger
-from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
-from utils.logging_config import get_logger
-from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
 from api.v1._filter_resolution import resolve_filter_id
 from auth_context import set_auth_context
 from dependencies import (

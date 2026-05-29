@@ -8,22 +8,14 @@ Uses API key authentication. Routes through Langflow (chat_service.langflow_chat
 import json
 import time
 from typing import Any
-from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
-from dependencies import get_chat_service, get_session_manager, require_api_key_permission
-from session_manager import User
-from utils.logging_config import get_logger
-from utils.logging_config import get_logger
-from auth_context import set_search_filters, set_search_limit, set_score_threshold, set_auth_context
 from api.v1._filter_resolution import resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from dependencies import (
-    get_api_key_user_async,
     get_chat_service,
     get_knowledge_filter_service,
     get_session_manager,
