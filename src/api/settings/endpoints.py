@@ -1045,6 +1045,7 @@ async def onboarding(
             try:
                 from config.settings import (
                     IBM_AUTH_ENABLED,
+                    get_openrag_service_token,
                     get_opensearch_password,
                     get_opensearch_username,
                     use_opensearch_basic_auth,
@@ -1063,11 +1064,38 @@ async def onboarding(
                         admin_username, get_opensearch_password()
                     )
                 elif IBM_AUTH_ENABLED and user:
-                    if user.jwt_token:
-                        opensearch_client = app_clients.create_user_opensearch_client(
-                            user.jwt_token
+                    service_token = get_openrag_service_token()
+                    if service_token:
+                        # Prefer the platform service token so onboarding pins the
+                        # same admin identity as the startup security bootstrap
+                        # (see app/lifespan.py).
+                        from auth.ibm_auth import admin_username_from_service_jwt
+
+                        admin_username = admin_username_from_service_jwt(service_token)
+                        if not admin_username:
+                            raise RuntimeError(
+                                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                                "cannot determine OpenSearch admin during onboarding"
+                            )
+                        opensearch_client = app_clients.create_opensearch_client_from_jwt(
+                            service_token
                         )
-                    admin_username = user.user_id
+                    else:
+                        # TODO: backward-compatibility fallback for deployments
+                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding
+                        # user as admin instead of the platform service identity.
+                        # Remove once the service token is always provided.
+                        logger.warning(
+                            "No OPENRAG_SERVICE_TOKEN during onboarding; falling back to "
+                            "the onboarding user as OpenSearch admin "
+                            "(backward-compatibility path, to be removed later)",
+                            admin_username=user.user_id,
+                        )
+                        if user.jwt_token:
+                            opensearch_client = app_clients.create_user_opensearch_client(
+                                user.jwt_token
+                            )
+                        admin_username = user.user_id
 
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)
