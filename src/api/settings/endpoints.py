@@ -1043,12 +1043,12 @@ async def onboarding(
         # Initialize the OpenSearch index if embedding model is configured
         if body.embedding_model or body.embedding_provider:
             try:
+                from config.settings import clients as app_clients
                 from config.settings import (
                     get_openrag_service_token,
                     get_opensearch_password,
                     get_opensearch_username,
                 )
-                from config.settings import clients as app_clients
                 from main import init_index
                 from utils.run_mode_utils import (
                     is_run_mode_on_prem,
@@ -1081,8 +1081,7 @@ async def onboarding(
                             service_token
                         )
                         logger.info(
-                            "Onboarding OpenSearch setup: saas mode, using platform "
-                            "service token",
+                            "Onboarding OpenSearch setup: saas mode, using platform service token",
                             admin_username=admin_username,
                         )
                     elif user:

@@ -619,8 +619,7 @@ class AppClients:
                 os_auth = (get_opensearch_username(), get_opensearch_password())
                 logger.info(
                     "Initializing global OpenSearch writer client: %s mode, "
-                    "using OpenSearch basic auth"
-                    % ("on_prem" if is_run_mode_on_prem() else "oss")
+                    "using OpenSearch basic auth" % ("on_prem" if is_run_mode_on_prem() else "oss")
                 )
             else:
                 os_auth = None
