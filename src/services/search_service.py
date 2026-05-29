@@ -1,9 +1,8 @@
 import asyncio
 import copy
-import json
 import os
 from collections import Counter
-from typing import Any, Dict
+from typing import Any
 
 from agentd.tool_decorator import tool
 
@@ -251,7 +250,7 @@ class SearchService:
                 return_exceptions=True,
             )
 
-            for model_name, result in zip(available_models, embedding_results):
+            for model_name, result in zip(available_models, embedding_results, strict=False):
                 if isinstance(result, BaseException):
                     failed_models.append(model_name)
                     logger.warning(
