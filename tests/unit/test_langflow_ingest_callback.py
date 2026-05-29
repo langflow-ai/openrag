@@ -303,7 +303,9 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     assert "OPENRAG_INGEST_URL" in template["code"]["value"]
     assert "_openrag_ingest_global_placeholders" in template["code"]["value"]
     assert 'url = self._openrag_callback_value("openrag_ingest_url")' in template["code"]["value"]
-    assert 'token = self._openrag_callback_value("openrag_ingest_token")' in template["code"]["value"]
+    assert (
+        'token = self._openrag_callback_value("openrag_ingest_token")' in template["code"]["value"]
+    )
     assert (
         'ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")'
         in template["code"]["value"]
