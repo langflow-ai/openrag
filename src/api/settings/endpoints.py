@@ -1043,16 +1043,33 @@ async def onboarding(
         # Initialize the OpenSearch index if embedding model is configured
         if body.embedding_model or body.embedding_provider:
             try:
-                from config.settings import IBM_AUTH_ENABLED
+                from config.settings import (
+                    IBM_AUTH_ENABLED,
+                    get_opensearch_password,
+                    get_opensearch_username,
+                    use_opensearch_basic_auth,
+                )
                 from config.settings import clients as app_clients
                 from main import init_index
 
                 opensearch_client = None
-                if IBM_AUTH_ENABLED and user and user.jwt_token:
-                    opensearch_client = app_clients.create_user_opensearch_client(user.jwt_token)
+                admin_username = None
+                if use_opensearch_basic_auth():
+                    # On-prem IBM auth with OpenSearch basic-auth credentials:
+                    # set up the index using those credentials, with the
+                    # OpenSearch username as admin.
+                    admin_username = get_opensearch_username()
+                    opensearch_client = app_clients.create_basic_opensearch_client(
+                        admin_username, get_opensearch_password()
+                    )
+                elif IBM_AUTH_ENABLED and user:
+                    if user.jwt_token:
+                        opensearch_client = app_clients.create_user_opensearch_client(
+                            user.jwt_token
+                        )
+                    admin_username = user.user_id
 
                 logger.info("Initializing OpenSearch index after onboarding configuration")
-                admin_username = user.user_id if IBM_AUTH_ENABLED and user else None
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:

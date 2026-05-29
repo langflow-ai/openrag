@@ -37,6 +37,19 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+
+
+def get_opensearch_username() -> str:
+    """OpenSearch admin/basic-auth username, read per-call so runtime/test
+    overrides (e.g. credentials supplied during onboarding) take effect without
+    a restart. Falls back to the value captured at import time, then "admin"."""
+    return os.getenv("OPENSEARCH_USERNAME") or OPENSEARCH_USERNAME or "admin"
+
+
+def get_opensearch_password() -> str | None:
+    """OpenSearch basic-auth password, read per-call so runtime/test overrides
+    take effect without a restart. Falls back to the import-time value."""
+    return os.getenv("OPENSEARCH_PASSWORD") or OPENSEARCH_PASSWORD
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
@@ -77,6 +90,27 @@ OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
+
+
+def use_opensearch_basic_auth() -> bool:
+    """Whether IBM auth deployments should use OpenSearch basic-auth credentials.
+
+    In on-prem (CPD) IBM auth deployments the operator may run OpenRAG against an
+    OpenSearch cluster that authenticates with basic-auth credentials rather than
+    the platform JWT. When IBM auth is enabled, the run mode is on_prem, and both
+    OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are provided, OpenRAG bootstraps
+    and writes to OpenSearch using those credentials (with the OpenSearch username
+    acting as the admin user) instead of the service/user JWT.
+    """
+    from utils.run_mode_utils import is_run_mode_on_prem
+
+    return bool(
+        IBM_AUTH_ENABLED
+        and is_run_mode_on_prem()
+        and get_opensearch_username()
+        and get_opensearch_password()
+    )
+
 
 # ── JWT roles claim ─────────────────────────────────────────────
 # These are exposed as functions (not module constants) so they are read
@@ -581,7 +615,14 @@ class AppClients:
         self._docling_service = None
 
     async def initialize(self):
-        os_auth = None if IBM_AUTH_ENABLED else (OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD)
+        # In IBM auth mode the global (backend-owned) client normally carries no
+        # credentials — requests are authenticated by the platform JWT. When the
+        # on-prem operator supplies OpenSearch basic-auth credentials, the writer
+        # client uses them so the backend can index documents directly.
+        if IBM_AUTH_ENABLED and not use_opensearch_basic_auth():
+            os_auth = None
+        else:
+            os_auth = (get_opensearch_username(), get_opensearch_password())
 
         self.opensearch = AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
