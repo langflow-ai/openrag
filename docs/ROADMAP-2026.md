@@ -1,32 +1,32 @@
 # Axioma-2.0 (OpenRAG) — Roadmap 2026
 
 > Documento maestro con el estado actual del proyecto y plan a futuro.
-> Basado en langflow-ai/openrag — 90% ya está resuelto 🔥
+> Basado en langflow-ai/openrag — core RAG implementado; deploy y enterprise pendientes
 > Última actualización: 2026-04-15
 
 ---
 
-## tl;dr: 100% del código implementado
+## tl;dr: código implementado — falta deploy y flags opt-in
 
-| Lo que YA está |
+| Lo que YA está (código) |
 |----------------|
 | Docling (OCR, chunking) |
 | OpenSearch + Búsqueda híbrida + RRF |
-| Langflow (agentes visuales) |
-| APIs FastAPI (/v1/*) |
+| Langflow (agentes visuales) — **path de chat RAG** |
+| APIs FastAPI (`/v1/*` backend; `/api/v1/*` vía frontend) |
 | MCP Server nativo |
 | OAuth, OIDC, API Keys |
 | Conectores (OneDrive, S3, etc) |
-| Langfuse (trazas + scores Ragas + Guardian) |
+| Langfuse (vars listas; trazas al configurar keys) |
 | **Rate Limiting (Valkey + fallback en memoria)** |
 | **Valkey I/O threading — 4 threads, lazyfree** |
 | **OpenSearch Hybrid + RRF** |
-| **Ragas batch eval nocturno** |
-| **LLMRouter (Granite 4.0 H-Tiny via Ollama)** |
-| **Granite Guardian 3.3 async guardrail** |
-| **HybridChunker + Context Expansion** |
+| **Ragas batch eval** (script + cron opt-in) |
+| **LLMRouter** — módulo; **no en path de chat** (Granite vía Langflow) |
+| **Granite Guardian 3.3** — `GUARDIAN_ENABLED=false` default |
+| **HybridChunker + Context Expansion** — flags OFF default |
 
-**Tu trabajo:** Ensamblar, configurar y personalizar. El código está completo.
+**Tu trabajo:** Desplegar ([PLAN-DEPLOY.md](./PLAN-DEPLOY.md)), configurar `.env`, diseñar flows Langflow, activar extensiones opt-in.
 
 ---
 
@@ -34,26 +34,26 @@
 
 **Axioma** es una plataforma **RAG (Retrieval-Augmented Generation)** self-hosted de nivel empresarial basada en [langflow-ai/openrag](https://github.com/langflow-ai/openrag).
 
-### El 90% YA está resuelto 🔥
+### El core RAG está implementado
 
 | Feature | Estado | Descripción |
 |---------|--------|-------------|
 | Docling | ✅ | OCR, chunking automático, preservación de jerarquía |
 | OpenSearch | ✅ | Vector store + búsqueda híbrida con RRF |
-| Langflow | ✅ | Orquestación visual de agentes (drag-and-drop) |
-| APIs FastAPI | ✅ | Endpoints: /v1/chat, /v1/search, /v1/documents |
+| Langflow | ✅ | Orquestación visual — **chat RAG no usa LLMRouter** |
+| APIs FastAPI | ✅ | Backend `/v1/*`; frontend proxy `/api/v1/*` |
 | MCP Server | ✅ | Conexión nativa con Cursor/Claude Desktop |
 | OAuth/OIDC | ✅ | Autenticación Google, Microsoft |
 | API Keys | ✅ | Gestión de claves para API pública |
 | Conectores | ✅ | OneDrive, SharePoint, S3, IBM COS |
-| Langfuse | ✅ | Trazas + scores Ragas (nocturno) + Guardian (por request) |
-| **Rate Limiting** | ✅ | Valkey 9.x + fallback en memoria. Tiers: free/pro/enterprise |
-| **Valkey I/O threading** | ✅ | 4 threads, lazyfree — 230%+ throughput en carga alta |
+| Langfuse | ✅ | Vars configuradas; trazas al añadir keys |
+| **Rate Limiting** | ✅ | Valkey + fallback. Cablear `VALKEY_URL` en Compose |
+| **Valkey I/O threading** | ✅ | 4 threads, lazyfree |
 | **OpenSearch Hybrid + RRF** | ✅ | BM25 + KNN via Reciprocal Rank Fusion |
-| **Ragas batch eval** | ✅ | `scripts/ragas_batch_eval.py` — corre nightly vía cron |
-| **LLMRouter** | ✅ | Granite 4.0 H-Tiny (Ollama). Toggle `GRANITE_BACKEND=sglang` para Fase 3 |
-| **Granite Guardian 3.3** | ✅ | Guardrail async. Activar: `GUARDIAN_ENABLED=true` |
-| **HybridChunker** | ✅ | Secciones + context expansion. Activar: `HYBRID_CHUNKER_ENABLED=true` |
+| **Ragas batch eval** | ✅ | `scripts/ragas_batch_eval.py` — cron opt-in |
+| **LLMRouter** | ⚠️ Módulo | Existe; Granite en chat vía **Langflow** (Ollama component) |
+| **Granite Guardian 3.3** | ⚠️ Opt-in | `GUARDIAN_ENABLED=true` para activar |
+| **HybridChunker** | ⚠️ Opt-in | `HYBRID_CHUNKER_ENABLED=true` + re-ingesta |
 
 ### Tu trabajo como desarrollador
 

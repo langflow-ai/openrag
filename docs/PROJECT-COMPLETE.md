@@ -1,7 +1,8 @@
 # Axioma-2.0 (OpenRAG) — Proyecto Completo
 
 > Documento maestro con toda la información del proyecto.
-> Última actualización: 2026-04-15
+> Última actualización: 2026-05-31  
+> **Deploy operativo:** ver [PLAN-DEPLOY.md](./PLAN-DEPLOY.md)
 
 ---
 
@@ -26,28 +27,28 @@
 
 **Axioma** (anteriormente **OpenRAG**) es una plataforma **RAG (Retrieval-Augmented Generation)** self-hosted de nivel empresarial basada en el código base de [langflow-ai/openrag](https://github.com/langflow-ai/openrag).
 
-### 🎯 Lo que YA está resuelto (100%)
+### 🎯 Lo que YA está resuelto (código base)
 
-El código base incluye todo esto listo para usar:
+El código base incluye la mayoría del stack listo para **configurar y desplegar** (no implica producción sin `.env`, Ollama/Docling y smoke tests):
 
 | Feature | Estado | Descripción |
 |---------|--------|-------------|
 | **Docling** | ✅ | OCR, chunking automático, preservación de jerarquía (títulos, tablas, gráficos) |
 | **OpenSearch** | ✅ | Vector store + búsqueda híbrida con Reciprocal Rank Fusion (RRF) |
-| **Langflow** | ✅ | Orquestación visual de agentes (drag-and-drop) |
-| **APIs FastAPI** | ✅ | Endpoints listos: /v1/chat, /v1/search, /v1/documents |
+| **Langflow** | ✅ | Orquestación visual de agentes (drag-and-drop) — **chat RAG usa Langflow, no LLMRouter** |
+| **APIs FastAPI** | ✅ | Backend `/v1/*`; cliente web vía frontend `/api/v1/*` |
 | **MCP Server** | ✅ | Conexión nativa con Cursor y Claude Desktop |
 | **OAuth/OIDC** | ✅ | Autenticación con Google, Microsoft |
 | **API Keys** | ✅ | Autenticación para clientes API |
 | **Conectores** | ✅ | OneDrive, SharePoint, S3, IBM COS |
-| **Langfuse** | ✅ | Observabilidad y evaluación — trazas + scores desde guardrail y Ragas |
-| **Rate Limiting** | ✅ | Valkey 9.x + fallback en memoria. Tiers: free/pro/enterprise |
-| **Valkey I/O threading** | ✅ | 4 threads, lazyfree eviction — 230%+ throughput en carga alta |
-| **OpenSearch Hybrid + RRF** | ✅ | BM25 + KNN via Reciprocal Rank Fusion — mejor relevancia en retrieval |
-| **Ragas batch eval** | ✅ | Evaluación nocturna automática: Faithfulness, Answer Relevancy, Context Precision |
-| **LLMRouter** | ✅ | Enrutador LLM provider-agnóstico (Ollama/SGLang). Granite 4.0 H-Tiny listo |
-| **Granite Guardian** | ✅ | Guardrail asíncrono fire-and-forget: safety + faithfulness. Scores a Langfuse |
-| **HybridChunker** | ✅ | Chunking con jerarquía de secciones + context expansion en retrieval |
+| **Langfuse** | ✅ | Observabilidad — trazas + scores (Guardian/Ragas cuando se activan) |
+| **Rate Limiting** | ✅ | Valkey + fallback en memoria. Tiers: free/pro/enterprise |
+| **Valkey I/O threading** | ✅ | 4 threads, lazyfree eviction |
+| **OpenSearch Hybrid + RRF** | ✅ | BM25 + KNN via Reciprocal Rank Fusion |
+| **Ragas batch eval** | ✅ | Script `scripts/ragas_batch_eval.py` (cron opt-in) |
+| **LLMRouter** | ⚠️ Módulo | `src/services/llm_router.py` existe; **no está en el path de chat** — usar Granite en Langflow |
+| **Granite Guardian** | ⚠️ Opt-in | `GUARDIAN_ENABLED=false` por defecto |
+| **HybridChunker** | ⚠️ Opt-in | `HYBRID_CHUNKER_ENABLED=false` por defecto |
 
 ### Tu trabajo como desarrollador
 
@@ -192,7 +193,7 @@ User → ChatService → SearchService (context) → Langflow → Response
 - [x] Servicio Valkey con fallback en memoria (`services/rate_limiter.py`)
 - [x] Tiers: free (100 req/min), pro (1000 req/min), enterprise (ilimitado)
 - [x] Headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
-- [x] 13 tests unitarios
+- [x] 15+ tests unitarios (`tests/unit/test_rate_limiter.py`)
 
 ### ✅ Infra & DevOps
 - [x] Docker Compose (incluye Valkey 9.x con healthcheck)
@@ -222,11 +223,11 @@ User → ChatService → SearchService (context) → Langflow → Response
 
 | Endpoint | Método | Descripción |
 |----------|--------|-------------|
-| `/api/v1/search` | POST | Búsqueda semántica |
-| `/api/v1/chat` | POST | Chat RAG |
-| `/api/v1/documents` | POST | Upload documento |
-| `/api/v1/models` | GET | Modelos disponibles |
-| `/api/v1/knowledge_filters` | GET | Filtros |
+| `/v1/search` (cliente: `/api/v1/search` vía frontend) | POST | Búsqueda semántica |
+| `/v1/chat` | POST | Chat RAG |
+| `/v1/documents` | POST | Upload documento |
+| `/v1/models` | GET | Modelos disponibles |
+| `/v1/knowledge_filters` | GET | Filtros |
 | `/v1/mcp/...` | GET | Servidor MCP |
 
 ### API Keys
@@ -327,12 +328,12 @@ Store primario: Valkey 9.x. Fallback automático a memoria si Valkey no está di
 [x]    Ragas batch eval nocturno (scripts/ragas_batch_eval.py)
 ```
 
-### Fase 2: Capacidades de Modelo ✅ COMPLETA (2026-04-15) — commit 0b0b8319
+### Fase 2: Capacidades de Modelo ✅ Código (2026-04-15) — activación opt-in
 
 ```
-[x]    LLMRouter (src/services/llm_router.py) — Granite 4.0 H-Tiny via Ollama
-[x]    Granite Guardian 3.3 async guardrail (src/services/guardrail_service.py)
-[x]    HybridChunker + Context Expansion (document_processing.py + search_service.py)
+[x]    LLMRouter (src/services/llm_router.py) — módulo listo; chat usa Langflow, no este router
+[x]    Granite Guardian 3.3 async guardrail (src/services/guardrail_service.py) — GUARDIAN_ENABLED=false default
+[x]    HybridChunker + Context Expansion — flags OFF; requiere re-ingesta
 ```
 
 ### Fase 3: Diferenciación Enterprise (Q2-Q3 2026)
@@ -386,7 +387,7 @@ Marco arquitectónico:
 |---------|-------------|
 | `src/rate_limit_middleware.py` | Middleware Starlette — intercepta `/v1/*`, extrae API key, aplica límites |
 | `src/services/rate_limiter.py` | Servicio Valkey con fallback en memoria y cache de tiers (TTL 5 min) |
-| `tests/unit/test_rate_limiter.py` | 13 tests unitarios (TDD) |
+| `tests/unit/test_rate_limiter.py` | 15 tests unitarios (TDD) |
 | `src/config/settings.py` | Variables `VALKEY_URL`, `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW`, `RATE_LIMITS` |
 | `docker-compose.yml` | Servicio `valkey/valkey-bundle:latest` con healthcheck y volumen persistente |
 | `pyproject.toml` | Dependencia `redis[asyncio]>=5.0.0` |

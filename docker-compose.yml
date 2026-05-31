@@ -44,7 +44,10 @@ services:
       dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
-      - langflow
+      langflow:
+        condition: service_started
+      valkey:
+        condition: service_healthy
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
@@ -102,6 +105,22 @@ services:
       - INGESTION_TIMEOUT=${INGESTION_TIMEOUT:-3600}
       - UPLOAD_BATCH_SIZE=${UPLOAD_BATCH_SIZE:-25}
       - MAX_WORKERS=${MAX_WORKERS:-4}
+      - VALKEY_URL=${VALKEY_URL:-redis://valkey:6379/0}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      - RATE_LIMIT_FREE=${RATE_LIMIT_FREE:-100}
+      - RATE_LIMIT_PRO=${RATE_LIMIT_PRO:-1000}
+      - LANGCACHE_ENABLED=${LANGCACHE_ENABLED:-true}
+      - LANGCACHE_SIMILARITY_THRESHOLD=${LANGCACHE_SIMILARITY_THRESHOLD:-0.95}
+      - LANGCACHE_TTL=${LANGCACHE_TTL:-3600}
+      - GUARDIAN_ENABLED=${GUARDIAN_ENABLED:-false}
+      - GUARDIAN_MODEL=${GUARDIAN_MODEL:-granite-guardian-3.3:8b}
+      - GUARDIAN_SAMPLE_RATE=${GUARDIAN_SAMPLE_RATE:-1.0}
+      - GRANITE_MODEL=${GRANITE_MODEL:-granite4.0-htiny:instruct}
+      - GRANITE_ENDPOINT=${GRANITE_ENDPOINT:-}
+      - GRANITE_BACKEND=${GRANITE_BACKEND:-ollama}
+      - HYBRID_CHUNKER_ENABLED=${HYBRID_CHUNKER_ENABLED:-false}
+      - CONTEXT_EXPANSION_ENABLED=${CONTEXT_EXPANSION_ENABLED:-false}
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
