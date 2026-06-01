@@ -746,6 +746,12 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	// Add .env secret hash to trigger pod restart when secret changes
 	podAnnotations["openr.ag/backend-env-hash"] = envHash
+	// When a PVC is mounted the SQLite DB (backend-data/openrag.db) must stay
+	// group-writable across pod/UID changes; default fsGroupChangePolicy=Always.
+	podSecurityContext := spec.PodSecurityContext
+	if spec.Storage != nil && spec.Storage.Enabled {
+		podSecurityContext = podSecurityContextWithFSGroupPolicy(spec.PodSecurityContext)
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("be"),
@@ -768,7 +774,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
+					SecurityContext:    podSecurityContext,
 					Volumes:            volumes,
 					Containers: []corev1.Container{
 						{
@@ -868,6 +874,12 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	// Add .env secret hash to trigger pod restart when secret changes
 	podAnnotations["openr.ag/langflow-env-hash"] = envHash
+	// When a PVC is mounted the SQLite DB (langflow.db) must stay group-writable
+	// across pod/UID changes; default fsGroupChangePolicy=Always.
+	podSecurityContext := spec.PodSecurityContext
+	if spec.Storage != nil && spec.Storage.Enabled {
+		podSecurityContext = podSecurityContextWithFSGroupPolicy(spec.PodSecurityContext)
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        resourceName("lf"),
@@ -890,7 +902,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
+					SecurityContext:    podSecurityContext,
 					InitContainers:     initContainers,
 					Volumes:            volumes,
 					Containers: []corev1.Container{
@@ -2406,6 +2418,33 @@ func replicasOrDefault(r *int32) int32 {
 		return *r
 	}
 	return 1
+}
+
+// podSecurityContextWithFSGroupPolicy returns the caller-supplied pod security
+// context with FSGroupChangePolicy defaulted to "Always". It is used for pods
+// that mount an operator-managed PVC holding a SQLite database
+// (backend-data/openrag.db, langflow.db).
+//
+// The kubelet default ("OnRootMismatch") only re-applies fsGroup ownership +
+// group-write when the volume *root* looks wrong, so a DB file written by an
+// earlier pod/UID keeps its original 0644 mode and is not group-writable. The
+// non-root runtime user can then only read it and every write fails with
+// "attempt to write a readonly database". "Always" forces a recursive
+// re-apply on every mount so the DB stays writable across pod restarts and
+// arbitrary-UID reassignments (e.g. OpenShift).
+//
+// A caller-provided FSGroupChangePolicy is preserved. Setting the policy is
+// harmless when fsGroup is unset (the kubelet ignores it).
+func podSecurityContextWithFSGroupPolicy(psc *corev1.PodSecurityContext) *corev1.PodSecurityContext {
+	out := psc.DeepCopy()
+	if out == nil {
+		out = &corev1.PodSecurityContext{}
+	}
+	if out.FSGroupChangePolicy == nil {
+		always := corev1.FSGroupChangeAlways
+		out.FSGroupChangePolicy = &always
+	}
+	return out
 }
 
 func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {

@@ -32,6 +32,21 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
+    # Pod runs as UID/GID 1500. fsGroup group-owns the PVC; fsGroupChangePolicy
+    # "Always" makes the kubelet recursively re-apply group-write to existing
+    # files on every mount, so the SQLite DB (backend-data/openrag.db) stays
+    # writable across pod/UID changes (otherwise writes fail with
+    # "attempt to write a readonly database"). The operator defaults
+    # fsGroupChangePolicy to "Always" when storage is enabled; set it here to
+    # be explicit. On OpenShift, omit fsGroup to let the platform assign it.
+    podSecurityContext:
+      runAsNonRoot: true
+      fsGroup: 1500
+      fsGroupChangePolicy: Always
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsUser: 1500
+      runAsGroup: 1500
 
   langflow:
     image: langflowai/openrag-langflow:latest
@@ -45,6 +60,16 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
+    # Same rationale as backend: keep the Langflow SQLite DB (langflow.db)
+    # group-writable across pod/UID changes.
+    podSecurityContext:
+      runAsNonRoot: true
+      fsGroup: 1500
+      fsGroupChangePolicy: Always
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsUser: 1500
+      runAsGroup: 1500
     flowsRef: release-saas-0.1   # branch name or commit SHA
     # flowsInitImage: python:3-alpine
 
