@@ -14,11 +14,14 @@ RUN dnf install -y --allowerasing \
     ca-certificates \
     && dnf clean all
 
-# Install pysqlite3-binary first to provide SQLite >= 3.35.0 (UBI9 has 3.34.1)
-# Then create sitecustomize.py to override sqlite3 module globally
+# Install SQLite >= 3.35.0 (UBI9 has 3.34.1) from source, since there are no built wheels available for Python 3.12
 # This is required by chromadb which is a dependency of langflow
-RUN pip install --no-cache-dir pysqlite3-binary \
-    && python -c "import site, pathlib; p=pathlib.Path(site.getsitepackages()[0])/'sitecustomize.py'; p.write_text('import sys\\nimport pysqlite3\\nsys.modules[\"sqlite3\"]=pysqlite3\\n')"
+RUN curl -L https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz | tar -xz \
+    && cd sqlite-autoconf-3460000 \
+    && ./configure --prefix=/usr --libdir=/usr/lib64 \
+    && make -j$(nproc) install \
+    && cd .. \
+    && rm -rf sqlite-autoconf-3460000
 
 # Install Langflow and dependencies
 RUN pip install --no-cache-dir \
@@ -48,6 +51,7 @@ ENV XDG_CACHE_HOME=/app/data/.cache
 ENV MEM0_DIR=/app/data/.mem0
 ENV LANGFLOW_CONFIG_DIR=/app/data
 ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /app/data/.gunicorn"
+ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
 
 # Set proper ownership for the app directory with OpenShift compatibility
 # Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
