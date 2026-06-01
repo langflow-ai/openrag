@@ -105,6 +105,15 @@ OPENRAG_BACKEND_ROUTER_URL = (
     os.getenv("OPENRAG_BACKEND_ROUTER_URL") or _derive_router_url()
 ).rstrip("/")
 
+# Upstream the router FORWARDS callbacks to. The router is co-located with the
+# backend (same process), so this is loopback to the backend's fixed listen port
+# (8000), NOT OPENRAG_BACKEND_INTERNAL_URL — that advertised service name need
+# not resolve from where the router runs (e.g. a host-run backend). Loopback is
+# correct in every mode: host dev, single container, and same k8s pod.
+OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = os.getenv(
+    "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", "http://127.0.0.1:8000"
+).rstrip("/")
+
 
 def get_ingest_callback_url() -> str:
     """URL Langflow should call back to: the router when enabled, else the backend."""

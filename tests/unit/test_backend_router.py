@@ -74,7 +74,10 @@ def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
-    # Forwarded to the real backend ingest endpoint with the original body.
+    # Forwarded to the co-located backend over LOOPBACK (not the service name),
+    # with the original body.
+    assert captured["url"] == router_app._UPSTREAM_URL
+    assert captured["url"].startswith("http://127.0.0.1:8000")
     assert captured["url"].endswith(settings.INGEST_CALLBACK_PATH)
     assert captured["content"] == b'{"ingest_run_id":"run-1","chunks":[]}'
     fwd = {k.lower() for k in captured["headers"]}
