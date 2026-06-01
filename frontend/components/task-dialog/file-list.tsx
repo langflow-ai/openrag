@@ -175,10 +175,7 @@ export function TaskDialogFileList({
             {retryable ? (
               <input
                 type="checkbox"
-                className={cn(
-                  "h-4 w-4 shrink-0 rounded accent-primary",
-                  isCloudBrand ? "border-border" : "border-checkbox",
-                )}
+                className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
                 checked={isSelected}
                 disabled={isRowRetrying}
                 aria-label={`Select ${fileName}`}
@@ -272,10 +269,7 @@ export function TaskDialogFileList({
       {showSelectAll ? (
         <input
           type="checkbox"
-          className={cn(
-            "h-4 w-4 shrink-0 rounded accent-primary",
-            isCloudBrand ? "border-border" : "border-checkbox",
-          )}
+          className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
           checked={allSelected}
           disabled={retryingTarget != null}
           aria-label="Select all retryable files"

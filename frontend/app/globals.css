@@ -26,7 +26,6 @@
     --accent: 240 5% 96%;
     --accent-foreground: 0 0% 0%;
     --border: 240 4.8% 95.9%;
-    --checkbox-border: 0 0% 32%; /* #525252 */
     --input: 240 6% 90%;
     --ring: 0 0% 0%;
     --placeholder-foreground: 240 5% 65%;
@@ -125,7 +124,6 @@
     --accent: 240 4% 16%;
     --accent-foreground: 0 0% 100%;
     --border: 240 3.7% 15.9%;
-    --checkbox-border: 0 0% 32%; /* #525252 */
     --input: 240 5% 34%;
     --ring: 0 0% 100%;
     --placeholder-foreground: 240 4% 46%;
