@@ -83,7 +83,8 @@
   },
   "overrides": {
     "brace-expansion": "5.0.5",
-    "picomatch": "4.0.4"
+    "picomatch": "4.0.4",
+    "sharp": "file:./stubs/sharp-0.34.5.tgz"
   },
   "lint-staged": {
     "**/*.{js,ts,jsx,tsx,css}": "biome check --write --files-ignore-unknown=true"
