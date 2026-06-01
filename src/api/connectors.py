@@ -696,8 +696,9 @@ async def connector_sync(
                 # Reconcile orphans (files deleted at the source) before re-syncing.
                 # Strict gating: skip when sync is capped — we'd see a partial remote
                 # listing and delete legitimate files.
+                ids_to_sync = list(existing_file_ids)
                 if body.max_files is None:
-                    await reconcile_orphans_for_connector_type(
+                    orphan_ids = await reconcile_orphans_for_connector_type(
                         connector_type=connector_type,
                         user_id=user.user_id,
                         connector_service=connector_service,
@@ -706,10 +707,21 @@ async def connector_sync(
                         existing_file_ids=existing_file_ids,
                         id_field=id_field,
                     )
+                    if orphan_ids:
+                        orphan_id_set = set(orphan_ids)
+                        ids_to_sync = [fid for fid in existing_file_ids if fid not in orphan_id_set]
+                if not ids_to_sync:
+                    return JSONResponse(
+                        {
+                            "status": "no_files",
+                            "message": f"Deleted stale {connector_type} files; no remaining files to sync.",
+                        },
+                        status_code=200,
+                    )
                 task_id = await connector_service.sync_specific_files(
                     working_connection.connection_id,
                     user.user_id,
-                    existing_file_ids,
+                    ids_to_sync,
                     jwt_token=jwt_token,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
@@ -1101,6 +1113,7 @@ async def sync_all_connectors(
         all_task_ids = []
         synced_connectors = []
         skipped_connectors = []
+        deleted_only_connectors = []
         errors = []
 
         for connector_type in cloud_connector_types:
@@ -1172,7 +1185,7 @@ async def sync_all_connectors(
                     # Reconcile orphans (files deleted at the source) before re-syncing.
                     # sync_all_connectors has no caps or filters, so gating reduces
                     # to the strict checks inside the helper.
-                    await reconcile_orphans_for_connector_type(
+                    orphan_ids = await reconcile_orphans_for_connector_type(
                         connector_type=connector_type,
                         user_id=user.user_id,
                         connector_service=connector_service,
@@ -1181,6 +1194,14 @@ async def sync_all_connectors(
                         existing_file_ids=existing_file_ids,
                         id_field=id_field,
                     )
+                    if orphan_ids:
+                        orphan_id_set = set(orphan_ids)
+                        existing_file_ids = [
+                            fid for fid in existing_file_ids if fid not in orphan_id_set
+                        ]
+                    if not existing_file_ids:
+                        deleted_only_connectors.append(connector_type)
+                        continue
                     task_id = await connector_service.sync_specific_files(
                         working_connection.connection_id,
                         user.user_id,
@@ -1224,6 +1245,16 @@ async def sync_all_connectors(
                 errors.append({"connector_type": connector_type, "error": str(e)})
 
         if not all_task_ids and not errors:
+            if deleted_only_connectors:
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": "Deleted stale cloud files; no remaining files to sync.",
+                        "skipped_connectors": skipped_connectors if skipped_connectors else None,
+                        "deleted_only_connectors": deleted_only_connectors,
+                    },
+                    status_code=200,
+                )
             if skipped_connectors:
                 return JSONResponse(
                     {
@@ -1305,6 +1336,8 @@ async def _preview_orphans_for_connector_type(
         existing_file_ids=existing_file_ids,
         id_to_filename=id_to_filename,
     )
+    if orphans is not None:
+        synced_count = max(0, synced_count - len(orphans))
     return orphans, synced_count
 
 

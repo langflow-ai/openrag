@@ -10,6 +10,7 @@ interface SyncResponse {
   connections_synced?: number;
   synced_connectors?: string[];
   skipped_connectors?: string[];
+  deleted_only_connectors?: string[];
   errors?: Array<{ connector_type: string; error: string }> | null;
 }
 
