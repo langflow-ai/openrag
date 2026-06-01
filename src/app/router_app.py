@@ -42,9 +42,7 @@ async def _proxy_ingest_chunks(request: Request) -> Response:
     upstream_url = f"{OPENRAG_BACKEND_INTERNAL_URL}{INGEST_CALLBACK_PATH}"
     body = await request.body()
     headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower() in _FORWARDED_HEADERS
+        key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
     }
     try:
         async with httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT) as client:

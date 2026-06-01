@@ -76,9 +76,11 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 # pointed at the router instead of the backend internal URL, so Langflow's
 # reachable surface narrows to that single endpoint.
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
-    "OPENRAG_BACKEND_ROUTER_ENABLE", "false"
-).lower() in ("true", "1", "yes")
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 OPENRAG_BACKEND_ROUTER_HOST = os.getenv("OPENRAG_BACKEND_ROUTER_HOST", "0.0.0.0")
 OPENRAG_BACKEND_ROUTER_PORT = get_env_int("OPENRAG_BACKEND_ROUTER_PORT", 8100)
 

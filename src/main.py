@@ -96,9 +96,7 @@ if __name__ == "__main__":
         from app.router_app import start_backend_router
 
         start_backend_router()
-        logger.info(
-            "Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT
-        )
+        logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
 
     uvicorn.run(
         app,

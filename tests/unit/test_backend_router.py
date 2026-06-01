@@ -12,10 +12,7 @@ from config import settings
 def test_callback_url_uses_router_when_enabled(monkeypatch):
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", True)
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_URL", "http://router:8100")
-    assert (
-        settings.get_ingest_callback_url()
-        == "http://router:8100/internal/ingest/chunks"
-    )
+    assert settings.get_ingest_callback_url() == "http://router:8100/internal/ingest/chunks"
 
 
 def test_callback_url_uses_backend_when_disabled(monkeypatch):
@@ -25,9 +22,7 @@ def test_callback_url_uses_backend_when_disabled(monkeypatch):
 
 
 def test_router_url_derives_backend_host_on_router_port(monkeypatch):
-    monkeypatch.setattr(
-        settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000"
-    )
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000")
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_PORT", 8100)
     assert settings._derive_router_url() == "http://openrag-be:8100"
 
@@ -58,16 +53,12 @@ class _FakeClient:
         self._captured["url"] = url
         self._captured["content"] = content
         self._captured["headers"] = headers
-        return _FakeResponse(
-            200, b'{"status":"ok"}', {"content-type": "application/json"}
-        )
+        return _FakeResponse(200, b'{"status":"ok"}', {"content-type": "application/json"})
 
 
 def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
     captured: dict = {}
-    monkeypatch.setattr(
-        router_app.httpx, "AsyncClient", lambda *a, **k: _FakeClient(captured)
-    )
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeClient(captured))
 
     client = TestClient(router_app.create_router_app())
     resp = client.post(
@@ -97,9 +88,7 @@ def test_proxy_returns_502_when_upstream_unreachable(monkeypatch):
         async def post(self, *a, **k):
             raise router_app.httpx.ConnectError("nope")
 
-    monkeypatch.setattr(
-        router_app.httpx, "AsyncClient", lambda *a, **k: _BoomClient({})
-    )
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _BoomClient({}))
     client = TestClient(router_app.create_router_app())
     resp = client.post("/internal/ingest/chunks", content=b"{}")
     assert resp.status_code == 502
