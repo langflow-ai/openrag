@@ -8,6 +8,7 @@ On macOS with Podman the virtiofs layer does not faithfully propagate
 host-side chmod into the container, so permissions must be fixed from
 inside the container after the mount is established.
 """
+
 import os
 import pathlib
 import pwd
