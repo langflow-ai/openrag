@@ -12,8 +12,8 @@ from config.settings import (
     LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
-    OPENRAG_BACKEND_INTERNAL_URL,
     clients,
+    get_ingest_callback_url,
 )
 from services.document_index_writer import DocumentIndexContext
 from utils.hash_utils import hash_id
@@ -226,7 +226,7 @@ class LangflowFileService:
             document_id=document_id,
             ingest_run_id=ingest_run_id,
             index_name=context.index_name,
-            callback_url=f"{OPENRAG_BACKEND_INTERNAL_URL}/internal/ingest/chunks",
+            callback_url=get_ingest_callback_url(),
         )
         return token, ingest_run_id
 
@@ -239,9 +239,7 @@ class LangflowFileService:
         if not ingest_token or not ingest_run_id:
             return {}
         return {
-            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": (
-                f"{OPENRAG_BACKEND_INTERNAL_URL}/internal/ingest/chunks"
-            ),
+            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": get_ingest_callback_url(),
             "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN": ingest_token,
             "X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID": ingest_run_id,
             "X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE": str(

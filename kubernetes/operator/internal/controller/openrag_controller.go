@@ -33,6 +33,10 @@ const (
 	specHashAnnotation  = "openr.ag/spec-hash"
 	immutableAnnotation = "openr.ag/immutable"
 
+	// backendIngestRouterPort is the port the optional ingestion-callback proxy
+	// router listens on inside the backend pod (OPENRAG_BACKEND_ROUTER_ENABLE).
+	backendIngestRouterPort int32 = 8100
+
 	// Condition types
 	conditionBackendReady = "BackendReady"
 
@@ -607,6 +611,18 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 			continue
 		}
 
+		svcPorts := []corev1.ServicePort{
+			{Name: "http", Port: d.port, Protocol: corev1.ProtocolTCP},
+		}
+		// The backend optionally serves the ingestion-callback proxy router on
+		// its own port (OPENRAG_BACKEND_ROUTER_ENABLE); expose it so Langflow
+		// can reach only that endpoint instead of the full backend API.
+		if d.role == "be" {
+			svcPorts = append(svcPorts, corev1.ServicePort{
+				Name: "ingest-router", Port: backendIngestRouterPort, Protocol: corev1.ProtocolTCP,
+			})
+		}
+
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      getServiceName(o, d.role), // Use custom name if specified
@@ -616,9 +632,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 			Spec: corev1.ServiceSpec{
 				Type:     corev1.ServiceTypeClusterIP,
 				Selector: componentLabels(o.Name, d.role),
-				Ports: []corev1.ServicePort{
-					{Name: "http", Port: d.port, Protocol: corev1.ProtocolTCP},
-				},
+				Ports:    svcPorts,
 			},
 		}
 		if err := r.setOwnerOrLabel(o, svc, targetNS); err != nil {
@@ -775,7 +789,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Name:            "backend",
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
-							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}},
+							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}, {Name: "ingest-router", ContainerPort: backendIngestRouterPort}},
 							Env:             envVars,
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,

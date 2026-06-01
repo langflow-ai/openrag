@@ -97,6 +97,8 @@ RUN mkdir -p keys data config flows/backup openrag-documents \
 # (belt-and-suspenders for Docker where :U is not supported), then execs the
 # application as appuser via gosu.
 EXPOSE 8000
+# Ingestion-callback proxy router (OPENRAG_BACKEND_ROUTER_ENABLE), when enabled.
+EXPOSE 8100
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "src/main.py"]

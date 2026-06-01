@@ -13,6 +13,12 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.backend.ingestRouter.enabled }}
+    - port: {{ .Values.backend.ingestRouter.port }}
+      targetPort: ingest-router
+      protocol: TCP
+      name: ingest-router
+    {{- end }}
   selector:
     {{- include "openrag.backend.selectorLabels" . | nindent 4 }}
 {{- end }}
