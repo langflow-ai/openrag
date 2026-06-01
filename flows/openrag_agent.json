@@ -286,6 +286,8 @@
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       },
       {
+        "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "MCPTools",
@@ -305,6 +307,7 @@
           }
         },
         "id": "xy-edge__MCPTools-uu7m3{œdataTypeœ:œMCPToolsœ,œidœ:œMCPTools-uu7m3œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
         "source": "MCPTools-uu7m3",
         "sourceHandle": "{œdataTypeœ:œMCPToolsœ,œidœ:œMCPTools-uu7m3œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-Nfw7u",
@@ -1034,7 +1037,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "add_current_date_tool": {
@@ -1428,109 +1431,6 @@
                     },
                     "name": "gpt-4o",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "Ollama",
-                    "icon": "Ollama",
-                    "metadata": {
-                      "api_key_param": "api_key",
-                      "base_url_param": "base_url",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatOllama",
-                      "model_name_param": "model"
-                    },
-                    "name": "gpt-oss:20b",
-                    "provider": "Ollama"
-                  },
-                  {
-                    "category": "Ollama",
-                    "icon": "Ollama",
-                    "metadata": {
-                      "api_key_param": "api_key",
-                      "base_url_param": "base_url",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatOllama",
-                      "model_name_param": "model"
-                    },
-                    "name": "qwen3:8b",
-                    "provider": "Ollama"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-4-h-small",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-8b-code-instruct",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-guardian-3-8b",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "meta-llama/llama-3-2-11b-vision-instruct",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "meta-llama/llama-3-3-70b-instruct",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -1783,16 +1683,14 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-04-28T13:28:59.343Z",
             "legacy": false,
-            "lf_version": "1.9.0",
             "metadata": {
-              "code_hash": "37caa1aba62c",
+              "code_hash": "d0b2936e74fa",
               "dependencies": {
                 "dependencies": [
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.4.3"
                   }
                 ],
                 "total_dependencies": 1
@@ -1823,12 +1721,6 @@
             ],
             "pinned": false,
             "template": {
-              "_frontend_node_flow_id": {
-                "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
-              },
-              "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
-              },
               "_type": "Component",
               "code": {
                 "advanced": true,
@@ -1846,7 +1738,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "import ast\nimport operator\nfrom collections.abc import Callable\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs.inputs import MessageTextInput\nfrom lfx.io import Output\nfrom lfx.schema.data import Data\n\n\nclass CalculatorComponent(Component):\n    display_name = \"Calculator\"\n    description = \"Perform basic arithmetic operations on a given expression.\"\n    documentation: str = \"https://docs.langflow.org/calculator\"\n    icon = \"calculator\"\n\n    # Cache operators dictionary as a class variable\n    OPERATORS: dict[type[ast.operator], Callable] = {\n        ast.Add: operator.add,\n        ast.Sub: operator.sub,\n        ast.Mult: operator.mul,\n        ast.Div: operator.truediv,\n        ast.Pow: operator.pow,\n    }\n\n    inputs = [\n        MessageTextInput(\n            name=\"expression\",\n            display_name=\"Expression\",\n            info=\"The arithmetic expression to evaluate (e.g., '4*4*(33/22)+12-20').\",\n            tool_mode=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"JSON\", name=\"result\", type_=Data, method=\"evaluate_expression\"),\n    ]\n\n    def _eval_expr(self, node: ast.AST) -> float:\n        \"\"\"Evaluate an AST node recursively.\"\"\"\n        if isinstance(node, ast.Constant):\n            if isinstance(node.value, int | float):\n                return float(node.value)\n            error_msg = f\"Unsupported constant type: {type(node.value).__name__}\"\n            raise TypeError(error_msg)\n        if isinstance(node, ast.Num):  # For backwards compatibility\n            if isinstance(node.n, int | float):\n                return float(node.n)\n            error_msg = f\"Unsupported number type: {type(node.n).__name__}\"\n            raise TypeError(error_msg)\n\n        if isinstance(node, ast.BinOp):\n            op_type = type(node.op)\n            if op_type not in self.OPERATORS:\n                error_msg = f\"Unsupported binary operator: {op_type.__name__}\"\n                raise TypeError(error_msg)\n\n            left = self._eval_expr(node.left)\n            right = self._eval_expr(node.right)\n            return self.OPERATORS[op_type](left, right)\n\n        error_msg = f\"Unsupported operation or expression type: {type(node).__name__}\"\n        raise TypeError(error_msg)\n\n    def evaluate_expression(self) -> Data:\n        \"\"\"Evaluate the mathematical expression and return the result.\"\"\"\n        try:\n            tree = ast.parse(self.expression, mode=\"eval\")\n            result = self._eval_expr(tree.body)\n\n            formatted_result = f\"{float(result):.6f}\".rstrip(\"0\").rstrip(\".\")\n            self.log(f\"Calculation result: {formatted_result}\")\n\n            self.status = formatted_result\n            return Data(data={\"result\": formatted_result})\n\n        except ZeroDivisionError:\n            error_message = \"Error: Division by zero\"\n            self.status = error_message\n            return Data(data={\"error\": error_message, \"input\": self.expression})\n\n        except (SyntaxError, TypeError, KeyError, ValueError, AttributeError, OverflowError) as e:\n            error_message = f\"Invalid expression: {e!s}\"\n            self.status = error_message\n            return Data(data={\"error\": error_message, \"input\": self.expression})\n\n    def build(self):\n        \"\"\"Return the main evaluation function.\"\"\"\n        return self.evaluate_expression\n"
+                "value": "import ast\nimport operator\nfrom collections.abc import Callable\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs.inputs import MessageTextInput\nfrom lfx.io import Output\nfrom lfx.schema.data import Data\n\n\nclass CalculatorComponent(Component):\n    display_name = \"Calculator\"\n    description = \"Perform basic arithmetic operations on a given expression.\"\n    documentation: str = \"https://docs.langflow.org/calculator\"\n    icon = \"calculator\"\n\n    # Cache operators dictionary as a class variable\n    OPERATORS: dict[type[ast.operator], Callable] = {\n        ast.Add: operator.add,\n        ast.Sub: operator.sub,\n        ast.Mult: operator.mul,\n        ast.Div: operator.truediv,\n        ast.Pow: operator.pow,\n    }\n\n    inputs = [\n        MessageTextInput(\n            name=\"expression\",\n            display_name=\"Expression\",\n            info=\"The arithmetic expression to evaluate (e.g., '4*4*(33/22)+12-20').\",\n            tool_mode=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"JSON\", name=\"result\", type_=Data, method=\"evaluate_expression\"),\n    ]\n\n    def _eval_expr(self, node: ast.AST) -> float:\n        \"\"\"Evaluate an AST node recursively.\"\"\"\n        if isinstance(node, ast.Constant):\n            if isinstance(node.value, int | float):\n                return float(node.value)\n            error_msg = f\"Unsupported constant type: {type(node.value).__name__}\"\n            raise TypeError(error_msg)\n\n        if isinstance(node, ast.BinOp):\n            op_type = type(node.op)\n            if op_type not in self.OPERATORS:\n                error_msg = f\"Unsupported binary operator: {op_type.__name__}\"\n                raise TypeError(error_msg)\n\n            left = self._eval_expr(node.left)\n            right = self._eval_expr(node.right)\n            return self.OPERATORS[op_type](left, right)\n\n        error_msg = f\"Unsupported operation or expression type: {type(node).__name__}\"\n        raise TypeError(error_msg)\n\n    def evaluate_expression(self) -> Data:\n        \"\"\"Evaluate the mathematical expression and return the result.\"\"\"\n        try:\n            tree = ast.parse(self.expression, mode=\"eval\")\n            result = self._eval_expr(tree.body)\n\n            formatted_result = f\"{float(result):.6f}\".rstrip(\"0\").rstrip(\".\")\n            self.log(f\"Calculation result: {formatted_result}\")\n\n            self.status = formatted_result\n            return Data(data={\"result\": formatted_result})\n\n        except ZeroDivisionError:\n            error_message = \"Error: Division by zero\"\n            self.status = error_message\n            return Data(data={\"error\": error_message, \"input\": self.expression})\n\n        except (SyntaxError, TypeError, KeyError, ValueError, AttributeError, OverflowError) as e:\n            error_message = f\"Invalid expression: {e!s}\"\n            self.status = error_message\n            return Data(data={\"error\": error_message, \"input\": self.expression})\n\n    def build(self):\n        \"\"\"Return the main evaluation function.\"\"\"\n        return self.evaluate_expression\n"
               },
               "expression": {
                 "_input_type": "MessageTextInput",
@@ -1873,7 +1765,6 @@
                 "type": "str",
                 "value": ""
               },
-              "is_refresh": false,
               "tools_metadata": {
                 "_input_type": "ToolsInput",
                 "advanced": false,
@@ -2012,7 +1903,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "api_base": {
@@ -2281,113 +2172,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "Ollama",
-                    "icon": "Ollama",
-                    "metadata": {
-                      "embedding_class": "OllamaEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "base_url": "base_url",
-                        "model": "model",
-                        "model_kwargs": "model_kwargs",
-                        "num_ctx": "num_ctx",
-                        "request_timeout": "request_timeout"
-                      }
-                    },
-                    "name": "nomic-embed-text:latest",
-                    "provider": "Ollama"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -2619,7 +2403,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-04-28T13:28:59.343Z",
+            "last_updated": "2026-05-18T18:15:01.796Z",
             "legacy": false,
             "lf_version": "1.9.0",
             "metadata": {
@@ -2671,7 +2455,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "auth_mode": {
@@ -3469,7 +3253,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "api_base": {
@@ -3738,113 +3522,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "Ollama",
-                    "icon": "Ollama",
-                    "metadata": {
-                      "embedding_class": "OllamaEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "base_url": "base_url",
-                        "model": "model",
-                        "model_kwargs": "model_kwargs",
-                        "num_ctx": "num_ctx",
-                        "request_timeout": "request_timeout"
-                      }
-                    },
-                    "name": "nomic-embed-text:latest",
-                    "provider": "Ollama"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -4106,7 +3783,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "api_base": {
@@ -4375,113 +4052,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "Ollama",
-                    "icon": "Ollama",
-                    "metadata": {
-                      "embedding_class": "OllamaEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "base_url": "base_url",
-                        "model": "model",
-                        "model_kwargs": "model_kwargs",
-                        "num_ctx": "num_ctx",
-                        "request_timeout": "request_timeout"
-                      }
-                    },
-                    "name": "nomic-embed-text:latest",
-                    "provider": "Ollama"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -5058,7 +4628,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-04-28T13:55:00.662Z",
+            "last_updated": "2026-05-18T18:15:01.797Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -5109,7 +4679,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "3b7ac23f-e74d-4fa3-ae00-a54b24a27f93"
+                "value": "ef261332-778a-4347-96bc-99b4207d86b1"
               },
               "_type": "Component",
               "code": {
@@ -5406,16 +4976,16 @@
       }
     ],
     "viewport": {
-      "x": -144.06609500883735,
-      "y": -221.7218791332906,
-      "zoom": 0.3639973872497736
+      "x": 44.66212804073905,
+      "y": -301.06294556867385,
+      "zoom": 0.47224912881136594
     }
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.3",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [
