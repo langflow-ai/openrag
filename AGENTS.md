@@ -44,7 +44,7 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 
 **RBAC is opt-in.** `OPENRAG_RBAC_ENFORCE` defaults to `false`, which makes OpenRAG behave like the pre-RBAC release: every authenticated user has full access; API-key role overrides are also bypassed. To turn the permissions system on (admin/developer/user/viewer roles, `require_permission` gates, audit denials), set `OPENRAG_RBAC_ENFORCE=true`. Available in all `OPENRAG_RUN_MODE` values — operators own the trade-off. The startup event logs the enforcement state on every boot.
 
-**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `openrag-backend` to the host machine so it can fetch JWKS for OIDC validation. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
+**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `openrag-backend` to the host machine so it can fetch JWKS for OIDC validation. Langflow also needs that name for backend ingest callbacks. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
@@ -52,4 +52,4 @@ make backend     # in another terminal
 make frontend    # in another terminal
 ```
 
-The override only adds `extra_hosts: openrag-backend:host-gateway` to the OpenSearch service. Without it, OIDC works because docker DNS routes `openrag-backend` to the in-compose backend container.
+The override only adds `extra_hosts: openrag-backend:host-gateway` to the OpenSearch and Langflow services. Without it, OIDC and ingest callbacks work because docker DNS routes `openrag-backend` to the in-compose backend container.

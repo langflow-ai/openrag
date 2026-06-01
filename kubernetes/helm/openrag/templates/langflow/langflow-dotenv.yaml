@@ -155,6 +155,11 @@ stringData:
     SOURCE_URL={{ .Values.langflow.flowDefaults.sourceUrl | quote }}
     ALLOWED_USERS={{ .Values.langflow.flowDefaults.allowedUsers | quote }}
     ALLOWED_GROUPS={{ .Values.langflow.flowDefaults.allowedGroups | quote }}
+    ALLOWED_PRINCIPALS={{ .Values.langflow.flowDefaults.allowedPrincipals | quote }}
+    OPENRAG_INGEST_URL={{ .Values.langflow.flowDefaults.openragIngestUrl | quote }}
+    OPENRAG_INGEST_TOKEN={{ .Values.langflow.flowDefaults.openragIngestToken | quote }}
+    OPENRAG_INGEST_RUN_ID={{ .Values.langflow.flowDefaults.openragIngestRunId | quote }}
+    OPENRAG_INGEST_BATCH_SIZE={{ .Values.langflow.flowDefaults.openragIngestBatchSize | quote }}
     OPENRAG-QUERY-FILTER={{ .Values.langflow.openragQueryFilter | quote }}
     DOCLING_TASK_ID={{ .Values.langflow.flowDefaults.doclingTaskId | quote }}
     FILENAME={{ .Values.langflow.flowDefaults.filename | quote }}

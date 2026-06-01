@@ -165,8 +165,11 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
         "services.startup_orchestrator",
         "app.routes.internal",
         "app.routes",
+        "app.container",
         "app.factory",
         "app.lifespan",
+        "dependencies",
+        "utils.opensearch_init",
     ]:
         sys.modules.pop(mod, None)
     from config.settings import clients, get_index_name
@@ -390,8 +393,11 @@ async def test_langflow_chat_and_nudges_endpoints():
         "services.startup_orchestrator",
         "app.routes.internal",
         "app.routes",
+        "app.container",
         "app.factory",
         "services.chat_service",
+        "dependencies",
+        "utils.opensearch_init",
     ]:
         sys.modules.pop(mod, None)
 
@@ -497,8 +503,11 @@ async def test_search_multi_embedding_models(tmp_path: Path):
         "services.startup_orchestrator",
         "app.routes.internal",
         "app.routes",
+        "app.container",
         "app.factory",
         "app.lifespan",
+        "dependencies",
+        "utils.opensearch_init",
     ]:
         sys.modules.pop(mod, None)
 
@@ -641,8 +650,11 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
         "services.startup_orchestrator",
         "app.routes.internal",
         "app.routes",
+        "app.container",
         "app.factory",
         "app.lifespan",
+        "dependencies",
+        "utils.opensearch_init",
     ]:
         sys.modules.pop(mod, None)
     from config.settings import clients, get_index_name

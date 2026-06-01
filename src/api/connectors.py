@@ -326,6 +326,8 @@ async def reconcile_orphans_for_connector_type(
         deleted_chunks=deleted,
         id_field=id_field,
     )
+    if deleted <= 0:
+        return []
     return orphan_ids
 
 
@@ -333,9 +335,9 @@ class ConnectorSyncBody(BaseModel):
     max_files: int | None = None
     selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
-    # Used by direct-sync providers like IBM COS on initial ingest.
+    # Used by direct-sync providers on initial ingest.
     sync_all: bool = False
-    # When set, only ingest files from these buckets (IBM COS specific).
+    # When set, only ingest files from these buckets.
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
@@ -612,7 +614,7 @@ async def connector_sync(
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
-            # Used by direct-sync providers (IBM COS) on initial ingest or per-bucket sync.
+            # Used by direct-sync providers on initial ingest or per-bucket sync.
             logger.info(
                 "Full connector ingest requested",
                 connector_type=connector_type,
@@ -938,12 +940,8 @@ async def connector_webhook(
                     affected_count=len(affected_files),
                 )
 
-                # Generate JWT token for the user (needed for OpenSearch authentication)
                 user = session_manager.get_user(connection.user_id)
-                if user:
-                    jwt_token = session_manager.create_jwt_token(user)
-                else:
-                    jwt_token = None
+                jwt_token = user.jwt_token if user else None
 
                 # Trigger incremental sync for affected files
                 task_id = await connector_service.sync_specific_files(

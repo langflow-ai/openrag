@@ -21,6 +21,8 @@ from config.settings import (
     clients,
     get_openrag_config,
     get_openrag_service_token,
+    get_opensearch_password,
+    get_opensearch_username,
 )
 from services.startup_orchestrator import startup_tasks
 from utils.logging_config import get_logger
@@ -207,23 +209,47 @@ async def run_startup(app: FastAPI):
     # talks to OpenSearch. The corresponding call inside startup_tasks
     # is suppressed when this flag is on.
     if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
-        service_token = get_openrag_service_token()
-        if not service_token:
-            raise RuntimeError(
-                "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
-                "OPENRAG_SERVICE_TOKEN is not set"
-            )
-        from auth.ibm_auth import admin_username_from_service_jwt
         from utils.opensearch_init import wait_for_opensearch
         from utils.opensearch_utils import setup_opensearch_security
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+        )
 
-        admin_username = admin_username_from_service_jwt(service_token)
-        if not admin_username:
-            raise RuntimeError(
-                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
-                "cannot bootstrap OpenSearch security"
+        # Choose the bootstrap OpenSearch client + admin identity, by run mode:
+        #   saas    -> platform service token (JWT); admin from its claim
+        #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
+        #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+        if is_run_mode_on_prem() or is_run_mode_oss():
+            admin_username = get_opensearch_username()
+            opensearch_client = clients.create_basic_opensearch_client(
+                admin_username, get_opensearch_password()
             )
-        opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
+            logger.info(
+                "OpenSearch security bootstrap: %s mode, using OpenSearch basic auth"
+                % ("on_prem" if is_run_mode_on_prem() else "oss"),
+                admin_username=admin_username,
+            )
+        else:
+            service_token = get_openrag_service_token()
+            if not service_token:
+                raise RuntimeError(
+                    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
+                    "OPENRAG_SERVICE_TOKEN is not set"
+                )
+            from auth.ibm_auth import admin_username_from_service_jwt
+
+            admin_username = admin_username_from_service_jwt(service_token)
+            if not admin_username:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                    "cannot bootstrap OpenSearch security"
+                )
+            opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
+            logger.info(
+                "OpenSearch security bootstrap: saas mode, using platform service token",
+                admin_username=admin_username,
+            )
         try:
             await wait_for_opensearch(opensearch_client)
             logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)

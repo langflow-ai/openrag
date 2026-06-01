@@ -45,6 +45,37 @@ class ConnectorService:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
+    async def _get_effective_sync_jwt(
+        self,
+        user_id: str,
+        jwt_token: str | None = None,
+    ) -> str | None:
+        """Return a current OpenSearch JWT for connector sync work."""
+        if not self.session_manager:
+            return jwt_token
+
+        user = self.session_manager.get_user(user_id)
+        if user is None and user_id:
+            from session_manager import User
+
+            user = User(
+                user_id=user_id,
+                email=user_id,
+                name=user_id,
+                provider="connector",
+            )
+            self.session_manager.users[user_id] = user
+        if user is None:
+            return self.session_manager.get_effective_jwt_token(user_id, jwt_token)
+
+        effective_token = jwt_token or user.jwt_token
+        if (
+            effective_token is None
+            and getattr(self.session_manager, "private_key", None) is not None
+        ):
+            return self.session_manager.create_jwt_token(user)
+        return self.session_manager.get_effective_jwt_token(user.user_id, effective_token)
+
     async def process_connector_document(
         self,
         document: ConnectorDocument,
@@ -56,6 +87,7 @@ class ConnectorService:
         ingest_settings: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Process a document from a connector using active processing pipeline"""
+        jwt_token = await self._get_effective_sync_jwt(owner_user_id, jwt_token)
 
         from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 
@@ -70,10 +102,14 @@ class ConnectorService:
 
             allowed_users = []
             allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
             if document.acl:
                 try:
                     allowed_users = document.acl.allowed_users or []
                     allowed_groups = document.acl.allowed_groups or []
+                    allowed_principals = document.acl.allowed_principals or []
+                    allowed_principal_labels = document.acl.allowed_principal_labels or []
                 except AttributeError:
                     pass
 
@@ -103,6 +139,8 @@ class ConnectorService:
                 source_url=document.source_url,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=allowed_principal_labels,
             )
             return {
                 "status": "indexed",
@@ -180,6 +218,7 @@ class ConnectorService:
         owner_user_id: str,
         connector_type: str,
         jwt_token: str = None,
+        id_field: str = "document_id",
     ):
         """Update indexed chunks with connector-specific metadata"""
         from utils.acl_utils import update_document_acl
@@ -190,6 +229,9 @@ class ConnectorService:
         opensearch_client = self.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
         )
+        write_client = self.clients.opensearch
+        if write_client is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
 
         # Update ACL if changed (hash-based skip optimization).
         # Match both document_id and connector_file_id: non-Langflow connector
@@ -199,6 +241,7 @@ class ConnectorService:
             document_id=document.id,
             acl=document.acl,
             opensearch_client=opensearch_client,
+            write_opensearch_client=write_client,
             id_fields=("document_id", "connector_file_id"),
         )
 
@@ -213,9 +256,10 @@ class ConnectorService:
             logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
 
         # Update other metadata fields (source_url, timestamps, etc.)
-        # Use update_by_query for efficiency
+        # Use the backend client for writes; the scoped client above is only
+        # used for DLS visibility/ACL-change checks.
         try:
-            await opensearch_client.update_by_query(
+            await write_client.update_by_query(
                 index=self.index_name,
                 body={
                     # Match both fields: non-Langflow chunks carry the connector id
@@ -292,6 +336,8 @@ class ConnectorService:
                            in this set will be synced. Used to prevent deleted files
                            from being re-synced.
         """
+        jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
+
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -418,6 +464,8 @@ class ConnectorService:
             ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …) passed to
                 ``ConnectorFileProcessor`` when Langflow ingest is disabled.
         """
+        jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
+
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"

@@ -150,7 +150,7 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -161,7 +161,7 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -202,9 +202,7 @@ async def _ingest_default_documents_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -267,9 +265,7 @@ async def _ingest_default_documents_url_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -368,7 +364,13 @@ async def _ingest_default_documents_url(
 
 async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
     """Delete previously ingested default OpenRAG docs before reingestion."""
+    from config.settings import clients
     from session_manager import AnonymousUser
+    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+    write_client = clients.opensearch
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
 
     if session_manager is None:
         logger.warning(
@@ -379,9 +381,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str, jw
     anonymous_user = AnonymousUser()
     effective_jwt = jwt_token
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     opensearch_client = session_manager.get_user_opensearch_client(
         anonymous_user.user_id, effective_jwt
@@ -405,14 +405,20 @@ async def _delete_existing_default_docs(session_manager, connector_type: str, jw
             }
         }
     }
-    result = await opensearch_client.delete_by_query(
-        index=get_index_name(),
-        body=delete_query,
-        conflicts="proceed",
+    index_name = get_index_name()
+    document_ids = await collect_visible_document_ids(
+        opensearch_client,
+        index=index_name,
+        query=delete_query["query"],
+    )
+    deleted_chunks = await delete_document_ids(
+        write_client,
+        index=index_name,
+        document_ids=document_ids,
     )
     logger.info(
         "Deleted existing default OpenRAG docs before reingestion",
-        deleted_chunks=result.get("deleted", 0),
+        deleted_chunks=deleted_chunks,
     )
 
 

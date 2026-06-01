@@ -18,6 +18,7 @@ from api import (
     flows,
     knowledge_filter,
     langflow_files,
+    langflow_ingest,
     models,
     nudges,
     oidc,
@@ -68,6 +69,12 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/langflow/upload_ingest",
         langflow_files.upload_and_ingest_user_file,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/internal/ingest/chunks",
+        langflow_ingest.ingest_langflow_chunks,
         methods=["POST"],
         tags=["internal"],
     )

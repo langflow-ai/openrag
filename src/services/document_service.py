@@ -85,10 +85,17 @@ def chunk_texts_for_embeddings(
 
 
 class DocumentService:
-    def __init__(self, session_manager=None, models_service=None, docling_service=None):
+    def __init__(
+        self,
+        session_manager=None,
+        models_service=None,
+        docling_service=None,
+        document_index_writer=None,
+    ):
         self.session_manager = session_manager
         self.models_service = models_service
         self.docling_service = docling_service
+        self.document_index_writer = document_index_writer
         self._mapping_ensured = False
 
     async def process_upload_file(

@@ -1,11 +1,11 @@
 """Re-indexing in `process_document_standard` must clear prior chunks for the
 same `document_id` before writing the new ones.
 
-Per-chunk indexing uses ids `{file_hash}_{i}` with `opensearch_client.index`
-(upsert). Without a pre-delete, a re-index that produces fewer chunks than the
-prior pass leaves trailing chunks `{file_hash}_{N..M-1}` behind with the OLD
-metadata — most visibly, the old filename after a SharePoint rename. This test
-pins the invariant introduced to fix that.
+Chunk indexing uses ids `{file_hash}_{i}` through the centralized
+DocumentIndexWriter upsert path. Without a pre-delete, a re-index that produces
+fewer chunks than the prior pass leaves trailing chunks `{file_hash}_{N..M-1}`
+behind with the OLD metadata — most visibly, the old filename after a
+SharePoint rename. This test pins that invariant.
 
 Pins: `src/models/processors.py` :: TaskProcessor.process_document_standard.
 """
@@ -30,7 +30,7 @@ def _make_processor_with_mocks():
 
     opensearch_client = AsyncMock()
     # exists() is checked at the top of process_document_standard; returning
-    # False forces the re-index path (the path where delete_by_query must fire).
+    # False forces the re-index path (the path where stale chunks are cleared).
     opensearch_client.exists = AsyncMock(return_value=False)
 
     session_manager = MagicMock()
@@ -38,6 +38,7 @@ def _make_processor_with_mocks():
 
     document_service = MagicMock()
     document_service.session_manager = session_manager
+    document_service.document_index_writer = None
 
     models_service = MagicMock()
     models_service.get_litellm_model_name = AsyncMock(return_value="text-embedding-3-small")
@@ -52,7 +53,7 @@ def _make_processor_with_mocks():
     return processor, opensearch_client
 
 
-def _patch_embedding_pipeline(monkeypatch, chunk_count: int):
+def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     """Stub out the docling / embedding / index-mapping side of
     process_document_standard so the test focuses on the OpenSearch write
     ordering. `chunk_count` controls how many chunks the simulated text-file
@@ -74,14 +75,6 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int):
     monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: fake_config)
     monkeypatch.setattr(processors_mod, "get_embedding_model", lambda: "text-embedding-3-small")
     monkeypatch.setattr(processors_mod, "get_index_name", lambda: "test-index")
-
-    # Field-mapping helper writes nothing useful for this test.
-    async def _ensure_embedding_field_exists(_client, _model, _index, _dims):
-        return "embedding_field"
-
-    monkeypatch.setattr(
-        processors_mod, "ensure_embedding_field_exists", _ensure_embedding_field_exists
-    )
 
     # chunk_texts_for_embeddings is imported lazily inside the function from
     # services.document_service — patch it at its source.
@@ -106,21 +99,21 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int):
     )
     fake_clients = MagicMock()
     fake_clients.patched_embedding_client = fake_embed_client
+    fake_clients.opensearch = write_client
     monkeypatch.setattr(processors_mod, "clients", fake_clients)
 
 
 @pytest.mark.asyncio
 async def test_stale_chunks_cleared_before_reindex(monkeypatch):
-    """Stale chunks must be cleared (via primary-id deletes) before any new
-    `index()` call so prior chunks (e.g. with an old filename after a rename)
-    cannot survive the per-chunk upsert.
+    """Stale chunks must be cleared (via primary-id deletes) before the writer
+    upsert so prior chunks cannot survive a re-index with fewer chunks.
 
     DLS-safe pattern: enumerate visible chunk _ids via search, then issue a
     `delete` per primary `_id`. `delete_by_query` is silently filtered under
     DLS and must NOT be used.
     """
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=3)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=3, write_client=opensearch_client)
 
     stale_chunk_ids = ["abc123_0", "abc123_1", "abc123_2", "abc123_3", "abc123_4"]
     op_order: list[tuple[str, dict]] = []
@@ -135,12 +128,23 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
         op_order.append(("delete", kw))
         return {"result": "deleted"}
 
-    async def _index(**kw):
-        op_order.append(("index", kw))
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            op_order.append(
+                (
+                    "index",
+                    {
+                        "context": context,
+                        "chunks": chunks,
+                        "final": final,
+                    },
+                )
+            )
+            return {"indexed_chunks": len(chunks)}
 
     opensearch_client.search = AsyncMock(side_effect=_search)
     opensearch_client.delete = AsyncMock(side_effect=_delete)
-    opensearch_client.index = AsyncMock(side_effect=_index)
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -183,7 +187,14 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
         assert call["id"] == expected_id
         assert call.get("refresh") is True
 
-    # 4) delete_by_query must NEVER be used (DLS would silently filter it).
+    # 4) The centralized writer receives the new chunks after cleanup.
+    index_call = next(kw for op, kw in op_order if op == "index")
+    assert index_call["context"].document_id == "abc123"
+    assert index_call["context"].filename == "renamed.txt"
+    assert len(index_call["chunks"]) == 3
+    assert index_call["final"] is True
+
+    # 5) delete_by_query must NEVER be used (DLS would silently filter it).
     if hasattr(opensearch_client, "delete_by_query"):
         opensearch_client.delete_by_query.assert_not_called()
 
@@ -193,14 +204,20 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
     """A transient delete failure must be logged and swallowed — the per-chunk
     upsert still runs so the sync isn't worse off than today's behavior."""
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=2)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=2, write_client=opensearch_client)
 
     # Have the enumerate step itself blow up — that's the only "delete failure"
     # surface the helper exposes, since per-id delete swallows NotFoundError.
     opensearch_client.search = AsyncMock(side_effect=RuntimeError("os 503"))
     opensearch_client.delete = AsyncMock()
     index_calls: list[dict] = []
-    opensearch_client.index = AsyncMock(side_effect=lambda **kw: index_calls.append(kw))
+
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            index_calls.append({"context": context, "chunks": chunks, "final": final})
+            return {"indexed_chunks": len(chunks)}
+
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -218,23 +235,28 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
         Path(tmp_path).unlink(missing_ok=True)
 
     assert result["status"] == "indexed"
-    assert len(index_calls) == 2, "indexing must still happen if the pre-delete fails"
+    assert len(index_calls) == 1, "indexing must still happen if the pre-delete fails"
+    assert len(index_calls[0]["chunks"]) == 2
+    assert index_calls[0]["final"] is True
 
 
 @pytest.mark.asyncio
 async def test_connector_file_id_stored_in_chunk_when_provided(monkeypatch):
-    """When connector_file_id is passed to process_document_standard, every
-    indexed chunk must carry that value so the 404 cleanup path can find and
-    delete chunks by their connector source ID."""
+    """Connector reindex uses the file hash as document_id and stores the
+    upstream connector ID separately so orphan cleanup can query connector_file_id."""
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=2)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=2, write_client=opensearch_client)
 
     opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
     opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
-    indexed_bodies: list[dict] = []
-    opensearch_client.index = AsyncMock(
-        side_effect=lambda **kw: indexed_bodies.append(kw.get("body", {}))
-    )
+    index_calls: list[dict] = []
+
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            index_calls.append({"context": context, "chunks": chunks, "final": final})
+            return {"indexed_chunks": len(chunks)}
+
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -253,27 +275,30 @@ async def test_connector_file_id_stored_in_chunk_when_provided(monkeypatch):
         Path(tmp_path).unlink(missing_ok=True)
 
     assert result["status"] == "indexed"
-    assert len(indexed_bodies) == 2, "expected one index call per chunk"
-    for body in indexed_bodies:
-        assert body.get("connector_file_id") == "sharepoint-item-xyz", (
-            f"connector_file_id missing or wrong in chunk: {body}"
-        )
-        assert body.get("document_id") == "sha-abc", "document_id must still be the content hash"
+    assert len(index_calls) == 1
+    assert index_calls[0]["context"].document_id == "sha-abc"
+    assert len(index_calls[0]["chunks"]) == 2
+    for chunk in index_calls[0]["chunks"]:
+        assert chunk.metadata["connector_file_id"] == "sharepoint-item-xyz"
 
 
 @pytest.mark.asyncio
 async def test_connector_file_id_absent_when_not_provided(monkeypatch):
-    """When connector_file_id is not passed (local uploads, non-connector paths),
-    the field must be absent from indexed chunks — no None/empty pollution."""
+    """Local uploads and other non-connector paths should not write an empty
+    connector_file_id marker."""
     processor, opensearch_client = _make_processor_with_mocks()
-    _patch_embedding_pipeline(monkeypatch, chunk_count=1)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=opensearch_client)
 
     opensearch_client.search = AsyncMock(return_value={"_scroll_id": None, "hits": {"hits": []}})
     opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
-    indexed_bodies: list[dict] = []
-    opensearch_client.index = AsyncMock(
-        side_effect=lambda **kw: indexed_bodies.append(kw.get("body", {}))
-    )
+    index_calls: list[dict] = []
+
+    class _FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            index_calls.append({"context": context, "chunks": chunks, "final": final})
+            return {"indexed_chunks": len(chunks)}
+
+    processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -288,5 +313,36 @@ async def test_connector_file_id_absent_when_not_provided(monkeypatch):
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-    assert len(indexed_bodies) == 1
-    assert "connector_file_id" not in indexed_bodies[0]
+    assert len(index_calls) == 1
+    assert index_calls[0]["chunks"][0].metadata == {}
+
+
+def test_document_index_writer_outputs_connector_file_id_when_present():
+    from services.document_index_writer import (
+        DocumentIndexChunk,
+        DocumentIndexContext,
+        DocumentIndexWriter,
+    )
+
+    writer = DocumentIndexWriter()
+    doc = writer._build_chunk_document(
+        context=DocumentIndexContext(
+            document_id="sha-abc",
+            filename="report.txt",
+            mimetype="text/plain",
+            embedding_model="text-embedding-3-small",
+            owner="alice",
+        ),
+        chunk=DocumentIndexChunk(
+            chunk_id="sha-abc_0",
+            text="hello",
+            vector=[0.1, 0.2, 0.3],
+            page=1,
+            metadata={"connector_file_id": "sharepoint-item-xyz"},
+        ),
+        embedding_field="chunk_embedding_text_embedding_3_small",
+        indexed_time="2026-05-28T00:00:00+00:00",
+    )
+
+    assert doc["document_id"] == "sha-abc"
+    assert doc["connector_file_id"] == "sharepoint-item-xyz"

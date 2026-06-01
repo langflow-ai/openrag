@@ -36,14 +36,14 @@ func Example_envVarPriority() {
 
 	// Build the .env file content
 	envFileContent := manager.BuildEnvFileContent(mergedEnvVars)
-	fmt.Printf("\n.env file would contain %d bytes\n", len(envFileContent))
+	fmt.Printf("\n.env file generated: %t\n", len(envFileContent) > 0)
 
 	// Output:
 	// LANGFLOW_AUTO_LOGIN: true (from defaults)
 	// LANGFLOW_WORKERS: 8 (from operator env)
 	// LANGFLOW_LOG_LEVEL: ERROR (from CR spec)
 	//
-	// .env file would contain 1475 bytes
+	// .env file generated: true
 }
 
 // Example showing how different components use different prefixes

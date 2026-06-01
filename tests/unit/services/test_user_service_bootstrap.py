@@ -90,6 +90,38 @@ async def test_repeated_calls_are_idempotent(session, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_existing_user_without_roles_is_repaired_on_signin(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    await ensure_user_row(session, _user(uid="oauth-admin", email="root@x.com"))
+    await session.commit()
+
+    from db.models import User as UserRow
+    from db.repositories._helpers import email_lookup_hash
+
+    row = UserRow(
+        id="roleless-user",
+        oauth_provider="google",
+        oauth_subject="roleless-user",
+        email="roleless@example.com",
+        email_lookup_hash=email_lookup_hash("roleless@example.com"),
+        display_name="Roleless",
+    )
+    session.add(row)
+    await session.commit()
+
+    repaired = await ensure_user_row(
+        session,
+        _user(uid="roleless-user", email="roleless@example.com", name="Roleless"),
+    )
+    await session.commit()
+
+    assert repaired.id == "roleless-user"
+    role_repo = RoleRepo(session)
+    roles = {r.name for r in await role_repo.list_user_roles(repaired.id)}
+    assert roles == {"user"}
+
+
+@pytest.mark.asyncio
 async def test_new_user_id_matches_oauth_subject(session):
     """Regression: the SQL users.id must equal the OAuth subject so
     require_permission can use the JWT sub directly (no extra lookup)."""

@@ -79,6 +79,9 @@ openrag = "tui.main:run_tui"
 filterwarnings = [
     "error::RuntimeWarning",
 ]
+markers = [
+    "openrag_skip_app_onboard: selected tests manage their own infrastructure clients and do not need the session app onboarding fixture",
+]
 
 [tool.uv]
 package = true
@@ -153,5 +156,4 @@ exclude = ["flows/components"]
 [[tool.mypy.overrides]]
 module = ["api.settings.endpoints", "api.v1.settings"]
 disable_error_code = ["return-value"]
-
 

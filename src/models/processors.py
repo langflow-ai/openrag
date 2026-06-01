@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import mimetypes
 import os
 import time
@@ -11,7 +10,6 @@ from utils.document_processing import (
     process_text_file,
     resplit_chunks_character_windows,
 )
-from utils.embedding_fields import ensure_embedding_field_exists
 from utils.file_utils import (
     auto_cleanup_tempfile,
     clean_connector_filename,
@@ -21,7 +19,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_filename_delete_body, build_filename_search_body
+from utils.opensearch_queries import build_filename_search_body
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -160,25 +158,46 @@ class TaskProcessor:
         self,
         filename: str,
         opensearch_client,
+        owner_user_id: str | None = None,
     ) -> None:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
+        from config.settings import clients, get_index_name
+        from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+        from utils.opensearch_queries import build_owned_filename_query
+
         try:
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
+
             deleted_count = 0
+            if not owner_user_id:
+                logger.warning(
+                    "Skipped delete_by_filename because owner_user_id is missing",
+                    filename=filename,
+                )
+                return
+
             candidate_filenames = get_filename_aliases(filename)
             if not candidate_filenames:
                 logger.info(
-                    "Skipped delete_by_filename due to empty filename input",
+                    "Skipped delete_by_filename because filename input is empty",
                     filename=filename,
                 )
                 return
             for candidate in candidate_filenames:
-                delete_body = build_filename_delete_body(candidate)
-                response = await opensearch_client.delete_by_query(
-                    index=get_index_name(), body=delete_body
+                document_ids = await collect_visible_document_ids(
+                    opensearch_client,
+                    index=get_index_name(),
+                    query=build_owned_filename_query(candidate, owner_user_id),
                 )
-                deleted_count += response.get("deleted", 0)
+                deleted_count += await delete_document_ids(
+                    write_client,
+                    index=get_index_name(),
+                    document_ids=document_ids,
+                )
             logger.info(
                 "Deleted existing document chunks", filename=filename, deleted_count=deleted_count
             )
@@ -311,24 +330,31 @@ class TaskProcessor:
             )
             return {"status": "error", "error": "No text content could be extracted from document"}
 
-        dimensions = len(embeddings[0])
-
-        # Ensure the embedding field exists for this model
-        embedding_field_name = await ensure_embedding_field_exists(
-            opensearch_client, embedding_model, get_index_name(), dimensions
+        from services.document_index_writer import (
+            DocumentIndexChunk,
+            DocumentIndexContext,
+            DocumentIndexWriter,
         )
 
+        document_index_writer = getattr(self.document_service, "document_index_writer", None)
+        if document_index_writer is None:
+            document_index_writer = DocumentIndexWriter()
+
         # Clear stale chunks from a prior indexing of this document. Chunks are
-        # stored under ids {file_hash}_{i}; if the new chunk count is lower than
-        # the prior one, trailing chunks (e.g. with an old filename after a
-        # SharePoint rename) would otherwise survive the per-chunk upsert.
-        # DLS-safe: enumerate then delete by primary _id (delete_by_query is
-        # silently filtered under DLS).
+        # stored under ids {file_hash}_{i}; if the new chunk count is lower
+        # than the prior one, trailing chunks would otherwise survive the
+        # writer's idempotent upsert.
+        # DLS-safe: enumerate visible chunk ids with the scoped user client,
+        # then delete concrete ids with the trusted backend client.
         try:
             from utils.opensearch_delete import (
                 collect_visible_document_ids,
                 delete_document_ids,
             )
+
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
 
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
@@ -336,7 +362,7 @@ class TaskProcessor:
                 query={"term": {"document_id": file_hash}},
             )
             await delete_document_ids(
-                opensearch_client,
+                write_client,
                 index=get_index_name(),
                 document_ids=stale_chunk_ids,
                 refresh=True,
@@ -348,62 +374,48 @@ class TaskProcessor:
                 error=str(e),
             )
 
-        # Index each chunk as a separate document
-        for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True)):
-            chunk_doc = {
-                "document_id": file_hash,
-                "filename": original_filename if original_filename else slim_doc["filename"],
-                "mimetype": slim_doc["mimetype"],
-                "page": chunk["page"],
-                "text": chunk["text"],
-                # Store embedding in model-specific field
-                embedding_field_name: vect,
-                # Track which model was used
-                "embedding_model": embedding_model,
-                "embedding_dimensions": len(vect),
-                "file_size": file_size,
-                "connector_type": connector_type,
-                "indexed_time": datetime.datetime.now().isoformat(),
-            }
-            if connector_file_id:
-                chunk_doc["connector_file_id"] = connector_file_id
+        # Owner is always the authenticated uploading/syncing user. Upstream ACL
+        # owners/authors only contribute read access through allowed principals.
+        owner = owner_user_id
+        if acl:
+            allowed_users = acl.allowed_users or []
+            allowed_groups = acl.allowed_groups or []
+            allowed_principals = acl.allowed_principals or []
+            allowed_principal_labels = acl.allowed_principal_labels or []
+        else:
+            allowed_users = []
+            allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
 
-            # Set owner and ACL fields.
-            # owner is always the syncing/uploading user (matching the Langflow
-            # pipeline, which indexes owner from the OWNER global var = user id).
-            # acl.owner (e.g. the SharePoint file's author) is intentionally NOT
-            # used here — read access comes from allowed_users/allowed_groups + DLS,
-            # while owner gates deletion and "my documents" ownership.
-            chunk_doc["owner"] = owner_user_id
-            if acl:
-                # Use ACL access lists if provided (from connector)
-                chunk_doc["allowed_users"] = acl.allowed_users
-                chunk_doc["allowed_groups"] = acl.allowed_groups
-            else:
-                # No ACL provided
-                chunk_doc["allowed_users"] = []
-                chunk_doc["allowed_groups"] = []
-
-            # Set owner metadata fields (for display)
-            if owner_name is not None:
-                chunk_doc["owner_name"] = owner_name
-            if owner_email is not None:
-                chunk_doc["owner_email"] = owner_email
-
-            # Mark as sample data if specified
-            if is_sample_data:
-                chunk_doc["is_sample_data"] = "true"
-            chunk_id = f"{file_hash}_{i}"
-            try:
-                await opensearch_client.index(index=get_index_name(), id=chunk_id, body=chunk_doc)
-            except Exception as e:
-                logger.error(
-                    "OpenSearch indexing failed for chunk",
-                    chunk_id=chunk_id,
-                    error=str(e),
-                )
-                logger.error("Chunk document details", chunk_doc=chunk_doc)
-                raise
+        filename = original_filename if original_filename else slim_doc["filename"]
+        index_context = DocumentIndexContext(
+            document_id=file_hash,
+            filename=filename,
+            mimetype=slim_doc["mimetype"],
+            embedding_model=embedding_model,
+            owner=owner,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            file_size=file_size,
+            connector_type=connector_type,
+            allowed_users=allowed_users,
+            allowed_groups=allowed_groups,
+            allowed_principals=allowed_principals,
+            allowed_principal_labels=allowed_principal_labels,
+            is_sample_data=is_sample_data,
+        )
+        index_chunks = [
+            DocumentIndexChunk(
+                chunk_id=f"{file_hash}_{i}",
+                text=chunk["text"],
+                vector=vect,
+                page=chunk["page"],
+                metadata={"connector_file_id": connector_file_id} if connector_file_id else {},
+            )
+            for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
+        ]
+        await document_index_writer.index_chunks(index_context, index_chunks, final=True)
         return {"status": "indexed", "id": file_hash}
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
@@ -873,7 +885,11 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Update indexed chunks with connector-specific metadata
                     if result["status"] in ["indexed", "unchanged"]:
                         await self.connector_service._update_connector_metadata(
-                            document, self.user_id, connection.connector_type, self.jwt_token
+                            document,
+                            self.user_id,
+                            connection.connector_type,
+                            self.jwt_token,
+                            id_field="connector_file_id",
                         )
 
                     # Add connector-specific metadata
@@ -928,6 +944,10 @@ class S3FileProcessor(TaskProcessor):
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
+        import time
+
+        from models.tasks import TaskStatus
+
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
@@ -1038,10 +1058,12 @@ class LangflowFileProcessor(TaskProcessor):
             elif filename_exists and self.replace_duplicates:
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
-                # Refresh index to make deletion visible before processing
-                from config.settings import get_index_name
-
+                await self.delete_document_by_filename(
+                    original_filename,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
+                # Refresh index to make deletion visible before processing.
                 try:
                     await opensearch_client.indices.refresh(index=get_index_name())
                 except Exception as refresh_error:
@@ -1066,16 +1088,12 @@ class LangflowFileProcessor(TaskProcessor):
             )
             file_tuple = (langflow_filename, content, content_type)
 
-            # Get JWT token using same logic as DocumentFileProcessor
-            # This will handle anonymous JWT creation if needed
             effective_jwt = self.jwt_token
             if self.session_manager and not effective_jwt:
-                # Let session manager handle anonymous JWT creation if needed
-                self.session_manager.get_user_opensearch_client(self.owner_user_id, self.jwt_token)
-                # The session manager would have created anonymous JWT if needed
-                # Get it from the session manager's internal state
-                if hasattr(self.session_manager, "_anonymous_jwt"):
-                    effective_jwt = self.session_manager._anonymous_jwt
+                effective_jwt = self.session_manager.get_effective_jwt_token(
+                    self.owner_user_id,
+                    None,
+                )
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}

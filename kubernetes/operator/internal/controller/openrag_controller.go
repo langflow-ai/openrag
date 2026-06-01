@@ -279,6 +279,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
+	envVars["OPENRAG_BACKEND_INTERNAL_URL"] = "http://" + getServiceName(o, "be") + ":8000"
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {

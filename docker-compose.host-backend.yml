@@ -28,3 +28,6 @@ services:
   opensearch:
     extra_hosts:
       - "openrag-backend:host-gateway"
+  langflow:
+    extra_hosts:
+      - "openrag-backend:host-gateway"

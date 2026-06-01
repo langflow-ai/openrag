@@ -5,9 +5,20 @@ from urllib.parse import urlparse
 
 import httpx
 
+from utils.group_acl import unique_acl_principal_labels
 from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
+from ..microsoft_graph_acl import (
+    get_current_user_microsoft_group_roles,
+    get_current_user_microsoft_principal_labels,
+    get_current_user_microsoft_principals,
+    get_oauth_access_token,
+    microsoft_group_principal_label,
+    microsoft_group_role,
+    microsoft_user_principal,
+    microsoft_user_principal_label,
+)
 from .oauth import SharePointOAuth
 
 logger = get_logger(__name__)
@@ -144,6 +155,30 @@ class SharePointConnector(BaseConnector):
     def base_url(self, value: str):
         """Set base URL (updates sharepoint_url internally)"""
         self.sharepoint_url = value
+
+    async def get_current_user_group_roles(self) -> list[str]:
+        """Return canonical group ACL roles for the connected Microsoft user."""
+        return await get_current_user_microsoft_group_roles(
+            self.oauth,
+            self._graph_base_url,
+            tenant_id=self.tenant_id,
+        )
+
+    async def get_current_user_principals(self) -> list[str]:
+        """Return canonical user ACL principals for the connected Microsoft user."""
+        return await get_current_user_microsoft_principals(
+            self.oauth,
+            self._graph_base_url,
+            tenant_id=self.tenant_id,
+        )
+
+    async def get_current_user_principal_labels(self) -> list[dict[str, Any]]:
+        """Return display labels for current Microsoft user/group ACL principals."""
+        return await get_current_user_microsoft_principal_labels(
+            self.oauth,
+            self._graph_base_url,
+            tenant_id=self.tenant_id,
+        )
 
     def set_file_infos(self, file_infos: list[dict[str, Any]]) -> None:
         """
@@ -488,7 +523,7 @@ class SharePointConnector(BaseConnector):
         """
         try:
             # Get access token - use same approach as _make_graph_request
-            access_token = self.oauth.get_access_token()
+            access_token = await get_oauth_access_token(self.oauth)
 
             if not access_token:
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
@@ -517,6 +552,8 @@ class SharePointConnector(BaseConnector):
 
             allowed_users = []
             allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
             owner = None
 
             for perm in permissions_data.get("value", []):
@@ -533,6 +570,46 @@ class SharePointConnector(BaseConnector):
                         allowed_users.append(user_identifier)
                         if "owner" in roles:
                             owner = user_identifier
+                    for identifier in (
+                        user_info.get("id"),
+                        user_info.get("userPrincipalName"),
+                        email,
+                    ):
+                        user_principal = microsoft_user_principal(
+                            identifier,
+                            access_token=access_token,
+                            tenant_id=self.tenant_id,
+                        )
+                        if user_principal:
+                            allowed_principals.append(user_principal)
+                            label = microsoft_user_principal_label(
+                                identifier,
+                                access_token=access_token,
+                                tenant_id=self.tenant_id,
+                                display_name=display_name or email,
+                                email=email,
+                                external_id=identifier,
+                            )
+                            if label:
+                                allowed_principal_labels.append(label)
+                    group_info = granted_to.get("group", {})
+                    group_role = microsoft_group_role(
+                        group_info.get("id"),
+                        access_token=access_token,
+                        tenant_id=self.tenant_id,
+                    )
+                    if group_role:
+                        allowed_groups.append(group_role)
+                        allowed_principals.append(group_role)
+                        label = microsoft_group_principal_label(
+                            group_info.get("id"),
+                            access_token=access_token,
+                            tenant_id=self.tenant_id,
+                            display_name=group_info.get("displayName") or group_info.get("email"),
+                            email=group_info.get("email"),
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
                 # Granted to identities (can include users and groups)
                 if "grantedToIdentitiesV2" in perm or "grantedToIdentities" in perm:
@@ -550,19 +627,48 @@ class SharePointConnector(BaseConnector):
                                 allowed_users.append(user_identifier)
                                 if "owner" in roles:
                                     owner = user_identifier
+                            for identifier in (
+                                user_info.get("id"),
+                                user_info.get("userPrincipalName"),
+                                email,
+                            ):
+                                user_principal = microsoft_user_principal(
+                                    identifier,
+                                    access_token=access_token,
+                                    tenant_id=self.tenant_id,
+                                )
+                                if user_principal:
+                                    allowed_principals.append(user_principal)
 
                         # Group
                         if "group" in identity:
                             group_info = identity["group"]
                             group_id = group_info.get("id")
-                            group_display_name = group_info.get("displayName", group_id)
-                            if group_id or group_display_name:
-                                allowed_groups.append(group_display_name or group_id)
+                            group_role = microsoft_group_role(
+                                group_id,
+                                access_token=access_token,
+                                tenant_id=self.tenant_id,
+                            )
+                            if group_role:
+                                allowed_groups.append(group_role)
+                                allowed_principals.append(group_role)
+                                label = microsoft_group_principal_label(
+                                    group_id,
+                                    access_token=access_token,
+                                    tenant_id=self.tenant_id,
+                                    display_name=group_info.get("displayName")
+                                    or group_info.get("email"),
+                                    email=group_info.get("email"),
+                                )
+                                if label:
+                                    allowed_principal_labels.append(label)
 
             return DocumentACL(
                 owner=owner,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=unique_acl_principal_labels(allowed_principal_labels),
             )
 
         except Exception as e:

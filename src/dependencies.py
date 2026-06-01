@@ -113,8 +113,24 @@ def get_connector_service(services: dict = Depends(get_services)):
     return services["connector_service"]
 
 
+def get_group_acl_service(services: dict = Depends(get_services)):
+    return services.get("group_acl_service")
+
+
+def get_dls_principal_service(services: dict = Depends(get_services)):
+    return services.get("dls_principal_service")
+
+
 def get_langflow_file_service(services: dict = Depends(get_services)):
     return services["langflow_file_service"]
+
+
+def get_document_index_writer(services: dict = Depends(get_services)):
+    return services["document_index_writer"]
+
+
+def get_langflow_ingest_token_service(services: dict = Depends(get_services)):
+    return services["langflow_ingest_token_service"]
 
 
 def get_models_service(services: dict = Depends(get_services)):
@@ -259,6 +275,58 @@ async def _attach_db_user_id(request: Request, user: User | None) -> User | None
     return user_with_db_id
 
 
+async def _attach_opensearch_jwt(
+    request: Request,
+    user: User | None,
+    session_manager,
+    token_hint: str | None = None,
+) -> User | None:
+    """Attach OpenSearch auth state and refresh DLS principal lookup state."""
+    if user is None:
+        return None
+
+    effective_token = session_manager.get_effective_jwt_token(
+        user.user_id,
+        token_hint if token_hint is not None else user.jwt_token,
+    )
+    if effective_token != user.jwt_token:
+        user = dataclasses.replace(user, jwt_token=effective_token)
+
+    services = getattr(getattr(request, "app", None), "state", None)
+    services = getattr(services, "services", {}) or {}
+    dls_principal_service = services.get("dls_principal_service")
+
+    if dls_principal_service is not None:
+        try:
+            principals = await dls_principal_service.refresh_user_principals(user)
+            request.state.opensearch_dls_principals = principals
+        except Exception as e:
+            logger.warning(
+                "Failed to refresh OpenSearch DLS principals",
+                user_id=user.user_id,
+                error=str(e),
+            )
+
+    request.state.opensearch_group_roles = []
+
+    return user
+
+
+async def _attach_request_user(
+    request: Request,
+    user: User | None,
+    session_manager,
+    token_hint: str | None = None,
+) -> User | None:
+    user_with_opensearch_jwt = await _attach_opensearch_jwt(
+        request,
+        user,
+        session_manager,
+        token_hint=token_hint,
+    )
+    return await _attach_db_user_id(request, user_with_opensearch_jwt)
+
+
 def invalidate_user_ensured_cache(
     oauth_provider: str | None = None,
     oauth_subject: str | None = None,
@@ -392,7 +460,7 @@ def require_all_permissions(required_perms: Sequence[str]):
 
 
 # ─────────────────────────────────────────────
-# IBM AMS authentication helper
+# Upstream authentication helper
 # ─────────────────────────────────────────────
 
 
@@ -425,18 +493,13 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
 
 
 async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
-    """Authenticate via IBM AMS.
+    """Authenticate via upstream auth.
 
-    0. X-IBM-LH-Credentials header (configurable via IBM_CREDENTIALS_HEADER) —
-       injected by Traefik on every forwarded request. Contains Basic credentials
-       for OpenSearch. Decoded and persisted to connections.json per user.
-    1. ibm-openrag-session cookie — set by Traefik after validating credentials
-       with AMS. JWT is decoded without re-validation (Traefik already validated).
-       When RBAC/JWT-role sync is enabled, this JWT is instead read from the
-       gateway-forwarded header named by ``get_jwt_auth_header()`` (the cookie is
-       used only when RBAC is off); identity and roles both come from that token.
-    2. ibm-auth-basic cookie — local dev fallback set by our ibm_login endpoint
-       when Traefik is not present.
+    0. Configured credentials header containing OpenSearch credentials.
+    1. Configured session cookie. When JWT-role sync is enabled, the JWT is
+       instead read from the gateway-forwarded header named by ``get_jwt_auth_header()``;
+       identity and roles both come from that token.
+    2. Local dev basic-auth cookie.
 
     If *required* is True, raises HTTP 401 when none is present.
     If *required* is False, returns None instead of raising.
@@ -516,6 +579,9 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         logger.debug("[AUTH] IBM LH credentials found in request headers")
         opensearch_username, _ = extract_ibm_credentials(lh_credentials)
         logger.debug("[AUTH] IBM LH credentials extracted successfully")
+        user_id = user_id or opensearch_username
+        email = email or opensearch_username
+        name = name or opensearch_username
 
         # Persist credentials to connections.json for reuse by background processes
         connector_service = request.app.state.services.get("connector_service")
@@ -542,8 +608,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = user
         return user
 
-    # ── Option 1: ibm-openrag-session cookie (production via Traefik) ───
-    # ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
     if ibm_token and user_id:
         logger.debug("[AUTH] IBM JWT cookie present and user_id found")
         logger.debug("[AUTH] LH credentials not available in header, reading from connections.json")
@@ -588,7 +652,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = None
         return None
 
-    # ── Option 2: ibm-auth-basic cookie (local dev, no Traefik) ─────────
     auth_header = request.cookies.get("ibm-auth-basic", "")
     if auth_header.startswith("Basic "):
         logger.debug("[AUTH] Debug mode enabled, extracting IBM LH credentials from cookie")
@@ -633,19 +696,17 @@ async def get_current_user(
     from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
     from session_manager import AnonymousUser
 
-    # IBM AMS cookie auth takes priority when enabled
+    # Upstream cookie auth takes priority when enabled.
     if IBM_AUTH_ENABLED:
         logger.debug("[AUTH] IBM auth mode enabled, getting current user")
         user = await _get_ibm_user(request, required=True)
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
-        return await _attach_db_user_id(request, user)
+        return await _attach_request_user(request, user, session_manager)
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        effective_token = session_manager.get_effective_jwt_token(None, None)
-        user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        return await _attach_db_user_id(request, user_with_token)
+        return await _attach_request_user(request, user, session_manager)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -655,11 +716,12 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # get_effective_jwt_token handles anonymous JWT creation if needed
-    effective_token = session_manager.get_effective_jwt_token(user.user_id, auth_token)
-    user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-
-    return await _attach_db_user_id(request, user_with_token)
+    return await _attach_request_user(
+        request,
+        user,
+        session_manager,
+        token_hint=auth_token,
+    )
 
 
 async def get_optional_user(
@@ -675,22 +737,20 @@ async def get_optional_user(
     from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
     from session_manager import AnonymousUser
 
-    # IBM AMS cookie auth takes priority when enabled
+    # Upstream cookie auth takes priority when enabled.
     if IBM_AUTH_ENABLED:
         logger.debug("[AUTH] IBM auth mode enabled, getting optional user")
         user = await _get_ibm_user(request, required=False)
         if user and user.user_id and user.user_id not in session_manager.users:
             session_manager.users[user.user_id] = user
         if user:
-            return await _attach_db_user_id(request, user)
+            return await _attach_request_user(request, user, session_manager)
         request.state.db_user_id = None
         return None
 
     if is_no_auth_mode():
         user = AnonymousUser()
-        effective_token = session_manager.get_effective_jwt_token(None, None)
-        user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-        return await _attach_db_user_id(request, user_with_token)
+        return await _attach_request_user(request, user, session_manager)
 
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -698,14 +758,13 @@ async def get_optional_user(
         return None
 
     user = session_manager.get_user_from_token(auth_token)
-    # get_effective_jwt_token handles anonymous JWT creation if needed
-    effective_token = (
-        session_manager.get_effective_jwt_token(user.user_id, auth_token) if user else None
-    )
-    user_with_token = dataclasses.replace(user, jwt_token=effective_token) if user else None
-
-    if user_with_token:
-        return await _attach_db_user_id(request, user_with_token)
+    if user:
+        return await _attach_request_user(
+            request,
+            user,
+            session_manager,
+            token_hint=auth_token,
+        )
     request.state.user = None
     request.state.db_user_id = None
     return None
@@ -717,7 +776,7 @@ async def get_api_key_user_async(
     session_manager=Depends(get_session_manager),
 ) -> User:
     """
-    Async dependency: require API key or IBM authentication.
+    Async dependency: require API key or upstream authentication.
 
     Accepts:
       - A gateway-forwarded JWT in the configurable OPENRAG_JWT_AUTH_HEADER
@@ -725,7 +784,7 @@ async def get_api_key_user_async(
         source of identity; under RBAC it also supplies (and enforces) roles.
       - X-API-Key: orag_... header
       - Authorization: Bearer orag_... header
-      - X-Username + X-Api-Key headers (when IBM_AUTH_ENABLED)
+      - X-Username + X-Api-Key headers when upstream auth mode is enabled
 
     Raises HTTP 401 if no valid credentials are provided.
     """
@@ -767,10 +826,9 @@ async def get_api_key_user_async(
             raise HTTPException(status_code=401, detail="Invalid or unverifiable JWT")
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
 
-    # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
     from config.settings import IBM_AUTH_ENABLED
 
-    # IBM auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK
+    # Upstream auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK.
     if IBM_AUTH_ENABLED:
         ibm_username = request.headers.get("X-Username")
         ibm_api_key = request.headers.get("X-Api-Key")
@@ -789,8 +847,7 @@ async def get_api_key_user_async(
                 opensearch_username=ibm_username,
                 opensearch_credentials=ibm_api_key_b64,
             )
-            request.state.user = user
-            return await _attach_db_user_id(request, user)
+            return await _attach_request_user(request, user, session_manager)
 
     # API key path
     api_key = request.headers.get("X-API-Key")
@@ -832,13 +889,10 @@ async def get_api_key_user_async(
     if user.user_id not in session_manager.users:
         session_manager.users[user.user_id] = user
 
-    effective_token = session_manager.get_effective_jwt_token(user.user_id, None)
-    user_with_token = dataclasses.replace(user, jwt_token=effective_token)
-
     request.state.api_key_id = user_info["key_id"]
     # Phase 2 will populate api_key_role_ids from the SQL api_keys table.
     # In Phase 1 we leave it unset so require_permission falls back to the
     # user's live role membership (no privilege escalation possible).
     request.state.api_key_role_ids = getattr(request.state, "api_key_role_ids", None)
 
-    return await _attach_db_user_id(request, user_with_token)
+    return await _attach_request_user(request, user, session_manager)

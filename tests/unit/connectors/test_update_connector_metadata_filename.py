@@ -31,6 +31,10 @@ def _make_service():
 
     opensearch_client = AsyncMock()
     service.session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+    service.clients = MagicMock()
+    # Keep the same mock for visibility checks and trusted writes so these
+    # tests can focus on the update_by_query body.
+    service.clients.opensearch = opensearch_client
     return service, opensearch_client
 
 

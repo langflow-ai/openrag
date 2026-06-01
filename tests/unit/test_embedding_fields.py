@@ -8,11 +8,13 @@ OpenRAG's ``knn_vector`` field mapping. Callers across ``config.settings``,
 JVector/DiskANN method configuration with only the dimension varying per
 embedding model.
 """
-from typing import Any, Dict
+
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
-from utils.embedding_fields import build_knn_vector_field
+from utils.embedding_fields import build_knn_vector_field, get_embedding_field_name
 
 
 class TestBuildKnnVectorFieldStructure:
@@ -99,6 +101,26 @@ class TestBuildKnnVectorFieldCallSitesMatch:
     def test_index_body_uses_helper_output(self) -> None:
         from config.settings import INDEX_BODY, VECTOR_DIM
 
-        chunk_field: Dict[str, Any] = INDEX_BODY["mappings"]["properties"]["chunk_embedding"]
+        chunk_field: dict[str, Any] = INDEX_BODY["mappings"]["properties"]["chunk_embedding"]
         expected = build_knn_vector_field(VECTOR_DIM)
         assert chunk_field == expected
+
+    @pytest.mark.asyncio
+    async def test_create_index_body_precreates_configured_embedding_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: SimpleNamespace(
+                knowledge=SimpleNamespace(embedding_model="text-embedding-3-large")
+            ),
+        )
+
+        from utils.embeddings import create_index_body
+
+        body = await create_index_body("text-embedding-3-large", 3072)
+        properties = body["mappings"]["properties"]
+        embedding_field = get_embedding_field_name("text-embedding-3-large")
+
+        assert properties[embedding_field] == build_knn_vector_field(3072)
+        assert properties["owner_email"] == {"type": "keyword"}

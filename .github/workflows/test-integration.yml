@@ -9,6 +9,8 @@ on:
       - 'uv.lock'
       - 'sdks/**'
       - 'flows/**'
+      - 'Makefile'
+      - 'scripts/**'
       - '.github/workflows/test-integration.yml'
   workflow_dispatch:
     inputs:
@@ -18,21 +20,22 @@ on:
         type: boolean
         default: true
 
+env:
+  # Prefer repository/environment variable first, then secret, then a sane fallback
+  OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  LANGFLOW_AUTO_LOGIN: "True"
+  LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+  LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+  LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+  LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+  NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
+  CI_IMAGE_TAG: ci-${{ github.sha }}
+
 jobs:
-  tests:
+  build-images:
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
-    env:
-      # Prefer repository/environment variable first, then secret, then a sane fallback
-      OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      LANGFLOW_AUTO_LOGIN: "True"
-      LANGFLOW_NEW_USER_IS_ACTIVE: "True"
-      LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
-      LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
-      LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
-      NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
-
     steps:
       - run: df -h
 
@@ -54,7 +57,72 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-        
+
+      - name: Verify workspace
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+          ls -la
+
+      - name: Build OpenRAG images
+        run: |
+          USE_LOCAL="${{ inputs.use_local_images }}"
+          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
+            echo "Building PR images locally..."
+            OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-build-images
+          else
+            echo "Preparing DockerHub images..."
+            docker pull langflowai/openrag-backend:latest
+            docker pull langflowai/openrag-frontend:latest
+            docker pull langflowai/openrag-langflow:latest
+            docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}"
+            docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}"
+            docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}"
+            docker build --no-cache -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" -f Dockerfile .
+          fi
+
+      - name: Save OpenRAG images
+        run: OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-save-images
+
+      - name: Upload OpenRAG image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrag-ci-images-${{ github.sha }}
+          path: .ci-artifacts/openrag-ci-images.tar
+          retention-days: 1
+          compression-level: 0
+
+  test-suite:
+    needs: build-images
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, sdk-python, sdk-typescript]
+    name: tests (${{ matrix.suite }})
+    steps:
+      - run: df -h
+
+      - name: Cleanup Docker cache
+        run: |
+          docker system prune -af || true
+          docker builder prune -af || true
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+
+      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
+        run: |
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+      - run: df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Verify workspace
         run: |
           echo "Current directory: $(pwd)"
@@ -67,6 +135,7 @@ jobs:
           version: latest
 
       - name: Set up Node.js
+        if: matrix.suite == 'sdk-typescript'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -74,10 +143,16 @@ jobs:
       - name: Python version
         run: uv python install 3.13
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Download OpenRAG image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openrag-ci-images-${{ github.sha }}
+          path: .ci-artifacts
 
-      - name: Run integration tests
+      - name: Load OpenRAG images
+        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+
+      - name: Run ${{ matrix.suite }} integration suite
         env:
           OPENSEARCH_HOST: localhost
           OPENSEARCH_PORT: 9200
@@ -90,15 +165,24 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
-          # For PRs, always build locally since we're testing new code
-          # For workflow_dispatch, use the input (defaults to true)
-          USE_LOCAL="${{ inputs.use_local_images }}"
-          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
-            echo "Running tests with locally built images..."
-            make test-ci-local
-          else
-            echo "Running tests with DockerHub images..."
-            make test-ci
-          fi
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
+
+  tests:
+    needs: [build-images, test-suite]
+    if: always()
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    steps:
+      - name: Check split integration result
+        run: |
+          if [ "${{ needs.build-images.result }}" != "success" ]; then
+            echo "build-images failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-suite.result }}" != "success" ]; then
+            echo "one or more integration suites failed"
+            exit 1
+          fi
+          echo "all integration suites passed"

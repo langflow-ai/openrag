@@ -11,9 +11,18 @@ from typing import Any
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
+from utils.group_acl import acl_principal_label, unique_acl_principal_labels
 from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
+from ..google_drive_acl import (
+    GOOGLE_DRIVE_GROUP_PROVIDER,
+    get_current_user_google_group_roles,
+    get_current_user_google_principal_labels,
+    get_current_user_google_principals,
+    google_drive_group_role,
+    google_drive_user_principal,
+)
 from .oauth import GoogleDriveOAuth
 
 logger = get_logger(__name__)
@@ -82,6 +91,15 @@ class GoogleDriveConnector(BaseConnector):
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
     _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
 
+    @classmethod
+    def get_auth_user_principals(cls, user: Any) -> list[str]:
+        """Return Google Drive principals derivable from a Google-auth OpenRAG user."""
+        provider = str(getattr(user, "provider", "") or "").lower()
+        if not provider.startswith("google"):
+            return []
+        principal = google_drive_user_principal(getattr(user, "email", None))
+        return [principal] if principal else []
+
     def emit(self, doc: ConnectorDocument) -> None:
         """
         Emit a ConnectorDocument instance.
@@ -92,6 +110,8 @@ class GoogleDriveConnector(BaseConnector):
         logger.debug(f"Emitting document: {doc.id} ({doc.filename})")
 
     def __init__(self, config: dict[str, Any]) -> None:
+        super().__init__(config)
+
         # Read from config OR env (backend env, not NEXT_PUBLIC_*):
         env_client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
         env_client_secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
@@ -573,6 +593,24 @@ class GoogleDriveConnector(BaseConnector):
             logger.error("[GoogleDrive] authenticate failed: %s", e)
             return False
 
+    async def get_current_user_group_roles(self) -> list[str]:
+        """Return canonical group ACL roles for the connected Google user."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_group_roles(self.service, self.creds)
+
+    async def get_current_user_principals(self) -> list[str]:
+        """Return canonical user ACL principals for the connected Google user."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_principals(self.service, self.creds)
+
+    async def get_current_user_principal_labels(self) -> list[dict[str, Any]]:
+        """Return display labels for current Google user/group ACL principals."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_principal_labels(self.service, self.creds)
+
     async def list_files(
         self,
         page_token: str | None = None,
@@ -641,6 +679,8 @@ class GoogleDriveConnector(BaseConnector):
 
             allowed_users = []
             allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
             owner = None
 
             for perm in permissions_list.get("permissions", []):
@@ -658,19 +698,60 @@ class GoogleDriveConnector(BaseConnector):
                 # Add allowed users
                 if perm_type == "user" and email:
                     allowed_users.append(email)
+                    user_principal = google_drive_user_principal(email)
+                    if user_principal:
+                        allowed_principals.append(user_principal)
+                        label = acl_principal_label(
+                            user_principal,
+                            kind="user",
+                            provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                            display_name=perm.get("displayName") or email,
+                            email=email,
+                            external_id=email,
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
                 # Add allowed groups
                 elif perm_type == "group" and email:
-                    allowed_groups.append(email)
+                    group_role = google_drive_group_role(email)
+                    if group_role:
+                        allowed_groups.append(group_role)
+                        allowed_principals.append(group_role)
+                        label = acl_principal_label(
+                            group_role,
+                            kind="group",
+                            provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                            display_name=perm.get("displayName") or email,
+                            email=email,
+                            external_id=email,
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
             # Fallback to file owners if no owner found in permissions
             if not owner and file_meta.get("owners"):
                 owner = file_meta["owners"][0].get("emailAddress")
+                owner_principal = google_drive_user_principal(owner)
+                if owner_principal:
+                    allowed_principals.append(owner_principal)
+                    label = acl_principal_label(
+                        owner_principal,
+                        kind="user",
+                        provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                        display_name=owner,
+                        email=owner,
+                        external_id=owner,
+                    )
+                    if label:
+                        allowed_principal_labels.append(label)
 
             return DocumentACL(
                 owner=owner,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=unique_acl_principal_labels(allowed_principal_labels),
             )
 
         except Exception as e:
@@ -679,10 +760,21 @@ class GoogleDriveConnector(BaseConnector):
             owner = None
             if file_meta.get("owners"):
                 owner = file_meta["owners"][0].get("emailAddress")
+            owner_principal = google_drive_user_principal(owner)
+            owner_label = acl_principal_label(
+                owner_principal,
+                kind="user",
+                provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                display_name=owner,
+                email=owner,
+                external_id=owner,
+            )
             return DocumentACL(
                 owner=owner,
                 allowed_users=[owner] if owner else [],
                 allowed_groups=[],
+                allowed_principals=[owner_principal] if owner_principal else [],
+                allowed_principal_labels=[owner_label] if owner_label else [],
             )
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

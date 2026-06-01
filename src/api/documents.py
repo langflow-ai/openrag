@@ -21,7 +21,8 @@ async def delete_documents_by_filename_core(
 ):
     """Shared delete-by-filename logic for v1 and non-v1 endpoints."""
     from config.settings import get_index_name
-    from utils.opensearch_queries import build_filename_delete_body
+    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+    from utils.opensearch_queries import build_filename_query, build_owned_filename_query
 
     normalized_filename = (filename or "").strip()
     if not normalized_filename:
@@ -38,20 +39,24 @@ async def delete_documents_by_filename_core(
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+        index_name = get_index_name()
 
-        # Owner check: only the document owner may delete
-        check = await opensearch_client.search(
-            index=get_index_name(),
-            body={
-                "query": {"term": {"filename": normalized_filename}},
-                "size": 1,
-                "_source": ["owner"],
-            },
+        owned_document_ids = await collect_visible_document_ids(
+            opensearch_client,
+            index=index_name,
+            query=build_owned_filename_query(normalized_filename, user_id),
         )
-        hits = check.get("hits", {}).get("hits", [])
-        if hits:
-            doc_owner = hits[0]["_source"].get("owner")
-            if doc_owner and doc_owner != user_id:
+
+        if not owned_document_ids:
+            visible_check = await opensearch_client.search(
+                index=index_name,
+                body={
+                    "query": build_filename_query(normalized_filename),
+                    "size": 1,
+                    "_source": ["owner"],
+                },
+            )
+            if visible_check.get("hits", {}).get("hits", []):
                 return (
                     {
                         "success": False,
@@ -63,14 +68,24 @@ async def delete_documents_by_filename_core(
                     403,
                 )
 
-        delete_query = build_filename_delete_body(normalized_filename)
-        result = await opensearch_client.delete_by_query(
-            index=get_index_name(),
-            body=delete_query,
-            conflicts="proceed",
-        )
+            return (
+                {
+                    "success": False,
+                    "deleted_chunks": 0,
+                    "filename": normalized_filename,
+                    "message": None,
+                    "error": "No matching document chunks were deleted. The file may be missing or not deletable in the current user context.",
+                },
+                404,
+            )
 
-        deleted_count = result.get("deleted", 0)
+        from config.settings import clients
+
+        deleted_count = await delete_document_ids(
+            clients.opensearch,
+            index=index_name,
+            document_ids=owned_document_ids,
+        )
         logger.info(
             f"Deleted {deleted_count} chunks for filename {normalized_filename}",
             user_id=user_id,
@@ -126,14 +141,14 @@ async def delete_chunks_by_document_ids(
     document_ids: list[str],
     opensearch_client,
     index_name: str,
+    write_opensearch_client=None,
     field: str = "document_id",
 ) -> int:
     """Bulk delete OpenSearch chunks by a keyword field. Returns deleted count.
 
-    DLS-safe: enumerate the visible chunk _ids via search, then issue a single
+    DLS-safe: enumerate the visible chunk _ids via search, then issue a trusted
     delete per primary id. `delete_by_query` is silently no-opped under DLS
-    (returns deleted:N but leaves docs in place — confirmed in the SharePoint
-    rename repro debug log).
+    (returns deleted:N but leaves docs in place).
 
     `field` selects which indexed keyword to match against (default: ``document_id``).
     Pass ``field="connector_file_id"`` to clean up chunks for a deleted connector
@@ -142,6 +157,7 @@ async def delete_chunks_by_document_ids(
     """
     if not document_ids:
         return 0
+    from config.settings import clients
     from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
 
     chunk_ids = await collect_visible_document_ids(
@@ -149,8 +165,11 @@ async def delete_chunks_by_document_ids(
         index=index_name,
         query={"terms": {field: document_ids}},
     )
+    write_client = write_opensearch_client or clients.opensearch
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
     return await delete_document_ids(
-        opensearch_client,
+        write_client,
         index=index_name,
         document_ids=chunk_ids,
         refresh=True,

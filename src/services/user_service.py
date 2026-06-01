@@ -68,6 +68,8 @@ async def ensure_user_row(
         await user_repo.update_last_login(existing.id)
         if jwt_roles is not None:
             await _sync_jwt_roles(role_repo, audit_repo, existing.id, jwt_roles)
+        else:
+            await _assign_default_role_if_missing(session, role_repo, audit_repo, existing.id)
         return existing
 
     # Possible legacy row (oauth_provider='legacy', oauth_subject==user_id)
@@ -293,6 +295,18 @@ async def _assign_default_role(
         target_id=user_id,
         audit_metadata={"role": target_name},
     )
+
+
+async def _assign_default_role_if_missing(
+    session: AsyncSession,
+    role_repo: RoleRepo,
+    audit_repo: AuditRepo,
+    user_id: str,
+) -> None:
+    roles = await role_repo.list_user_roles(user_id)
+    if roles:
+        return
+    await _assign_default_role(session, role_repo, audit_repo, user_id)
 
 
 async def get_effective_provider_keys(session: AsyncSession, user_id: str) -> dict:

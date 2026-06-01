@@ -16,20 +16,20 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _sorted_principal_labels(labels: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return sorted(
+        [label for label in labels or [] if isinstance(label, dict)],
+        key=lambda label: json.dumps(label, sort_keys=True),
+    )
+
+
 def compute_acl_hash(acl: DocumentACL) -> str:
-    """
-    Compute SHA256 hash of ACL for change detection.
-
-    Args:
-        acl: DocumentACL instance
-
-    Returns:
-        Hexadecimal hash string
-    """
+    """Compute SHA256 hash of ACL fields that are refreshed after ingest."""
     acl_data = {
-        "owner": acl.owner,
         "allowed_users": sorted(acl.allowed_users),
         "allowed_groups": sorted(acl.allowed_groups),
+        "allowed_principals": sorted(acl.allowed_principals),
+        "allowed_principal_labels": _sorted_principal_labels(acl.allowed_principal_labels),
     }
     return hashlib.sha256(json.dumps(acl_data, sort_keys=True).encode()).hexdigest()
 
@@ -58,55 +58,41 @@ async def should_update_acl(
     opensearch_client,
     id_fields: tuple[str, ...] = ("document_id",),
 ) -> bool:
-    """
-    Check if ACL has changed by querying one chunk and comparing hashes.
+    """Return whether indexed ACL lists differ from ``new_acl``.
 
-    This optimization queries only a single chunk instead of updating all chunks,
-    enabling efficient skip when ACLs haven't changed (most common case).
-
-    Args:
-        document_id: Document identifier
-        new_acl: New ACL to compare against
-        opensearch_client: OpenSearch client instance
-
-    Returns:
-        True if ACL has changed and update is needed, False otherwise
+    The owner field is intentionally not compared here: ownership is set at
+    ingest to the authenticated uploading/syncing user and ACL refresh must not
+    reassign it to the upstream file author.
     """
     try:
-        # Query one chunk for this document
         response = await opensearch_client.search(
             index="documents",
             body={
                 "query": _build_id_query(document_id, id_fields),
                 "size": 1,
                 "_source": [
-                    "owner",
                     "allowed_users",
                     "allowed_groups",
+                    "allowed_principals",
+                    "allowed_principal_labels",
                 ],
             },
         )
 
         if not response["hits"]["hits"]:
-            # New document, need to index
             return True
 
         existing_chunk = response["hits"]["hits"][0]["_source"]
-
-        # Reconstruct existing ACL and compute hash
         existing_acl = DocumentACL(
-            owner=existing_chunk.get("owner"),
             allowed_users=existing_chunk.get("allowed_users", []),
             allowed_groups=existing_chunk.get("allowed_groups", []),
+            allowed_principals=existing_chunk.get("allowed_principals", []),
+            allowed_principal_labels=existing_chunk.get("allowed_principal_labels", []),
         )
 
-        existing_hash = compute_acl_hash(existing_acl)
-        new_hash = compute_acl_hash(new_acl)
-
-        return existing_hash != new_hash
+        return compute_acl_hash(existing_acl) != compute_acl_hash(new_acl)
 
     except Exception as e:
-        # On error, assume update needed to be safe
         logger.error("[OPENSEARCH] ACL check failed", document_id=document_id, error=str(e))
         return True
 
@@ -115,40 +101,31 @@ async def update_document_acl(
     document_id: str,
     acl: DocumentACL,
     opensearch_client,
+    write_opensearch_client=None,
     id_fields: tuple[str, ...] = ("document_id",),
 ) -> dict[str, Any]:
+    """Update ACL lists for all chunks of a document.
+
+    The user-scoped ``opensearch_client`` is used for visibility/change checks;
+    ``write_opensearch_client`` performs the mutation. Only access-list fields
+    are updated. ``owner`` is intentionally left untouched.
     """
-    Update ACL for all chunks of a document.
-
-    Uses hash-based skip optimization: queries one chunk to check if ACL changed,
-    only updates if changed. When updating, uses bulk update_by_query for efficiency.
-
-    Only the access lists (``allowed_users``/``allowed_groups``) are updated — the
-    ``owner`` field is intentionally left untouched so an ACL re-sync never
-    reassigns document ownership (owner is set once at ingest to the syncing user).
-
-    Args:
-        document_id: Document identifier
-        acl: New ACL to apply
-        opensearch_client: OpenSearch client instance
-        id_fields: Chunk fields to match ``document_id`` against. Defaults to
-            ``("document_id",)``; pass ``("document_id", "connector_file_id")`` for
-            connector chunks where the connector id lives in ``connector_file_id``.
-
-    Returns:
-        Dict with status ("unchanged" or "updated") and chunks_updated count
-    """
-    # Check if ACL changed (queries one chunk)
     should_update = await should_update_acl(
-        document_id, acl, opensearch_client, id_fields=id_fields
+        document_id,
+        acl,
+        opensearch_client,
+        id_fields=id_fields,
     )
 
     if not should_update:
         return {"status": "unchanged", "chunks_updated": 0}
 
-    # Bulk update all chunks for this document
+    write_client = write_opensearch_client
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
+
     try:
-        response = await opensearch_client.update_by_query(
+        response = await write_client.update_by_query(
             index="documents",
             body={
                 "query": _build_id_query(document_id, id_fields),
@@ -156,10 +133,14 @@ async def update_document_acl(
                     "source": """
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
+                        ctx._source.allowed_principals = params.allowed_principals;
+                        ctx._source.allowed_principal_labels = params.allowed_principal_labels;
                     """,
                     "params": {
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
+                        "allowed_principals": acl.allowed_principals,
+                        "allowed_principal_labels": acl.allowed_principal_labels,
                     },
                 },
             },
@@ -175,39 +156,19 @@ async def update_document_acl(
 async def batch_update_acls(
     acl_updates: list[tuple[str, DocumentACL]],
     opensearch_client,
+    write_opensearch_client=None,
     id_fields: tuple[str, ...] = ("document_id",),
 ) -> dict[str, Any]:
-    """
-    Batch update ACLs for multiple documents.
-
-    Optimizations:
-    - Parallel ACL change detection (query one chunk per document)
-    - Skip unchanged ACLs (95%+ of webhook notifications)
-    - Parallel bulk updates for changed ACLs
-
-    Only ``allowed_users``/``allowed_groups`` are updated; ``owner`` is left
-    untouched (see :func:`update_document_acl`).
-
-    Args:
-        acl_updates: List of (document_id, acl) tuples
-        opensearch_client: OpenSearch client instance
-        id_fields: Chunk fields to match the id against (see
-            :func:`update_document_acl`).
-
-    Returns:
-        Dict with status, documents_updated count, and chunks_updated count
-    """
+    """Batch update ACL lists for multiple documents."""
     if not acl_updates:
         return {"status": "no_updates", "documents_updated": 0, "chunks_updated": 0}
 
-    # Filter to only changed ACLs (parallel chunk queries)
     check_tasks = [
         should_update_acl(doc_id, acl, opensearch_client, id_fields=id_fields)
         for doc_id, acl in acl_updates
     ]
     should_update_flags = await asyncio.gather(*check_tasks)
 
-    # Filter to documents with changed ACLs
     changed = [
         (doc_id, acl)
         for (doc_id, acl), should_update in zip(acl_updates, should_update_flags, strict=True)
@@ -222,9 +183,12 @@ async def batch_update_acls(
             "skipped": len(acl_updates),
         }
 
-    # Bulk update chunks for each document (parallelized)
+    write_client = write_opensearch_client
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
+
     update_tasks = [
-        opensearch_client.update_by_query(
+        write_client.update_by_query(
             index="documents",
             body={
                 "query": _build_id_query(doc_id, id_fields),
@@ -232,10 +196,14 @@ async def batch_update_acls(
                     "source": """
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
+                        ctx._source.allowed_principals = params.allowed_principals;
+                        ctx._source.allowed_principal_labels = params.allowed_principal_labels;
                     """,
                     "params": {
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
+                        "allowed_principals": acl.allowed_principals,
+                        "allowed_principal_labels": acl.allowed_principal_labels,
                     },
                 },
             },
@@ -245,8 +213,6 @@ async def batch_update_acls(
 
     try:
         results = await asyncio.gather(*update_tasks, return_exceptions=True)
-
-        # Count successful updates
         total_chunks_updated = 0
         errors = []
         for result in results:
