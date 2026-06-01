@@ -108,6 +108,9 @@ const config = {
       },
       colors: {
         border: "hsl(var(--border))",
+        checkbox: {
+          border: "hsl(var(--checkbox-border))",
+        },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",

@@ -26,6 +26,7 @@
     --accent: 240 5% 96%;
     --accent-foreground: 0 0% 0%;
     --border: 240 4.8% 95.9%;
+    --checkbox-border: 0 0% 32%; /* #525252 */
     --input: 240 6% 90%;
     --ring: 0 0% 0%;
     --placeholder-foreground: 240 5% 65%;
@@ -124,6 +125,7 @@
     --accent: 240 4% 16%;
     --accent-foreground: 0 0% 100%;
     --border: 240 3.7% 15.9%;
+    --checkbox-border: 0 0% 32%; /* #525252 */
     --input: 240 5% 34%;
     --ring: 0 0% 100%;
     --placeholder-foreground: 240 4% 46%;
@@ -190,9 +192,9 @@
     --card-foreground: 0 0% 15%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 15%;
-    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary: 219 99% 53%; /* IBM Blue 60 #0f62fe */
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 100% 35%; /* IBM Blue 70 #0043ce */
+    --primary-hover: 219 100% 45%; /* #0050e6 */
     --secondary: 0 0% 97%;
     --secondary-foreground: 0 0% 15%;
     --secondary-hover: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
@@ -260,6 +262,8 @@
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
     --border-border-interactive: #4589ff;
+    --ibm-overwrite-button: 0 0% 22%; /* #393939 */
+    --ibm-overwrite-button-hover: 0 0% 28%; /* #474747 */
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
@@ -290,9 +294,9 @@
     --card-foreground: 0 0% 97%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 97%;
-    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary: 219 99% 53%; /* IBM Blue 60 #0f62fe */
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 100% 82%;
+    --primary-hover: 219 100% 45%; /* #0050e6 */
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 97%;
     --secondary-hover: 0 0% 18%; /* IBM Gray 80 #393939 */
@@ -359,6 +363,8 @@
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
     --border-border-interactive: #4589ff;
+    --ibm-overwrite-button: 0 0% 22%; /* #393939 */
+    --ibm-overwrite-button-hover: 0 0% 28%; /* #474747 */
 
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
