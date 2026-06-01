@@ -392,6 +392,7 @@ async def test_document_id_field_used_by_default(monkeypatch):
     assert search_body["query"] == {"terms": {"document_id": ["lf-id-b"]}}
     write_client.delete.assert_awaited_once()
 
+
 @pytest.mark.asyncio
 async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
     from api.connectors import _preview_orphans_for_connector_type
