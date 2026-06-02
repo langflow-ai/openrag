@@ -40,6 +40,7 @@ Usage (MCP client config):
       }
     }
 """
+
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import (
@@ -50,6 +51,7 @@ from fastmcp.server.providers.openapi import (
     RouteMap,
 )
 from fastmcp.server.providers.openapi.routing import HTTPRoute
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -84,28 +86,49 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "description": (
             "Search the OpenRAG knowledge base using semantic search. "
             "Returns matching document chunks with relevance scores. "
-            "Optionally filter by data sources or document types."
+            "Optionally pass `filter_id` to scope results to a knowledge "
+            "filter's data_sources, or inline `filters` (data_sources, "
+            "document_types, owners, connector_types) for a per-call scope. "
+            "If both are provided, inline filters override per-field."
         ),
     },
     # Documents endpoints
-    ("/v1/documents/ingest", "POST"): {
-        "name": "openrag_ingest",
+    # NOTE: /v1/documents/ingest is intentionally NOT customized here because
+    # it is excluded from MCP exposure entirely (see route_maps below).
+    # Multipart file uploads are not supported through FastMCP's from_fastapi
+    # auto-conversion; use the HTTP API or SDK directly to ingest documents.
+    ("/v1/tasks/enhanced", "GET"): {
+        "name": "openrag_list_tasks_enhanced",
         "description": (
-            "Ingest documents into the OpenRAG knowledge base. "
-            "Supports file uploads, URLs, and text content. "
-            "Returns a task_id for tracking ingestion progress."
+            "List all ingestion tasks with structured failure metadata "
+            "(component, failure_phase, user_facing_message, actionable_by) "
+            "on any failed file. Completed files are omitted to reduce payload "
+            "size; use openrag_get_task_status_enhanced for a task's full file list."
         ),
     },
     ("/v1/tasks/{task_id}", "GET"): {
         "name": "openrag_get_task_status",
         "description": (
-            "Check the status of an ingestion task. "
-            "Use the task_id returned from openrag_ingest."
+            "Check the status of an ingestion task. Use the task_id returned from openrag_ingest."
+        ),
+    },
+    ("/v1/tasks/{task_id}/enhanced", "GET"): {
+        "name": "openrag_get_task_status_enhanced",
+        "description": (
+            "Check the status of an ingestion task with structured failure "
+            "metadata (component, failure_phase, user_facing_message, "
+            "actionable_by) on any failed file. Includes completed files in "
+            "the task's file list. Use the task_id returned from openrag_ingest."
         ),
     },
     ("/v1/documents", "DELETE"): {
         "name": "openrag_delete_document",
-        "description": "Delete a document from the OpenRAG knowledge base by filename.",
+        "description": (
+            "Delete document(s) from the OpenRAG knowledge base. "
+            "Provide exactly one of: `filename` to delete a single file, "
+            "or `filter_id` to delete every filename listed in that "
+            "knowledge filter's `data_sources` (wildcards rejected for safety)."
+        ),
     },
     # Settings endpoints
     ("/v1/settings", "GET"): {
@@ -188,27 +211,31 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
     FastMCP.from_fastapi() can discover them.
 
     Route mapping:
-    - /v1/* routes → MCP tools (POST, PUT, DELETE, PATCH)
-    - /v1/* routes → MCP resource templates (GET with path params)
-    - /v1/* routes → MCP resources (GET without path params)
+    - /v1/* routes → MCP tools (GET, POST, PUT, DELETE, PATCH)
     - All other routes → excluded
+
+    Note: GET endpoints are exposed as TOOLS, not resources/resource templates.
+    The MCP convention is "GET = resource," but most LLM clients in agent mode
+    only invoke tools — resources require a separate read protocol that many
+    clients don't surface to the model. Exposing GETs as tools makes
+    operations like `openrag_get_knowledge_filter` callable in agent loops.
     """
     route_maps = [
-        # Expose all /v1/ GET routes with path params as resource templates
+        # Exclude /v1/documents/ingest: multipart/form-data file uploads are
+        # not supported through FastMCP's from_fastapi proxy (the LLM-facing
+        # base64-array schema does not get marshaled back into multipart on
+        # the way to the FastAPI handler, so the endpoint always sees the
+        # `file` field as missing). Clients should ingest via the HTTP API
+        # or SDK directly. This RouteMap must come before the catch-all
+        # patterns below.
         RouteMap(
-            methods=["GET"],
-            pattern=r"^/v1/",
-            mcp_type=MCPType.RESOURCE_TEMPLATE,
+            methods=["POST"],
+            pattern=r"^/v1/documents/ingest$",
+            mcp_type=MCPType.EXCLUDE,
         ),
-        # Expose all /v1/ GET routes without path params as resources
+        # Expose all /v1/ routes (read + write) as MCP tools.
         RouteMap(
-            methods=["GET"],
-            pattern=r"^/v1/",
-            mcp_type=MCPType.RESOURCE,
-        ),
-        # Expose all /v1/ mutating routes as tools
-        RouteMap(
-            methods=["POST", "PUT", "DELETE", "PATCH"],
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),

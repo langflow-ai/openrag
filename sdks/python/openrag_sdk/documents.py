@@ -125,27 +125,46 @@ class DocumentsClient:
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
 
-        raise TimeoutError(f"Ingestion task {task_id} did not complete within {timeout}s")
+        raise TimeoutError(
+            f"Ingestion task {task_id} did not complete within {timeout}s"
+        )
 
-    async def delete(self, filename: str) -> DeleteDocumentResponse:
+    async def delete(
+        self,
+        filename: str | None = None,
+        *,
+        filter_id: str | None = None,
+    ) -> DeleteDocumentResponse:
         """
-        Delete a document from the knowledge base.
+        Delete document(s) from the knowledge base.
 
-        Args:
-            filename: Name of the file to delete.
+        Provide exactly one of:
+            filename: delete all chunks for that filename.
+            filter_id: delete chunks for each filename in the filter's data_sources.
 
         Returns:
             DeleteDocumentResponse with deleted chunk count.
         """
+        if bool(filename) == bool(filter_id):
+            raise ValueError("Provide exactly one of `filename` or `filter_id`")
+
+        body: dict[str, str] = {}
+        if filename is not None:
+            body["filename"] = filename
+        if filter_id is not None:
+            body["filter_id"] = filter_id
+
         try:
             response = await self._client._request(
                 "DELETE",
                 "/api/v1/documents",
-                json={"filename": filename},
+                json=body,
             )
         except NotFoundError as e:
-            # Keep delete idempotent for SDK callers: a missing document is not an exception.
-            if getattr(e, "status_code", None) == 404:
+            # Keep delete idempotent for SDK callers: a missing document is not
+            # an exception.
+            # (Filter-not-found 404s do raise — that's a caller error, not idempotency.)
+            if filename is not None and getattr(e, "status_code", None) == 404:
                 return DeleteDocumentResponse(
                     success=False,
                     deleted_chunks=0,

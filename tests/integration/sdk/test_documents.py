@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from openrag_sdk.exceptions import OpenRAGError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",
@@ -119,3 +120,84 @@ class TestDocumentsExtended:
         assert final.status in ("completed", "failed")
 
         await client.documents.delete(file_path.name)
+
+
+class TestDeleteByFilterId:
+    """Verify DELETE /v1/documents resolves filter_id to data_sources and deletes those files only."""
+
+    async def _ingest_two(self, client, tmp_path):
+        """Helper: ingest two docs and return their Paths."""
+        token = uuid.uuid4().hex[:8]
+        alpha = tmp_path / f"alpha_{token}.md"
+        beta = tmp_path / f"beta_{token}.md"
+        alpha.write_text("# Alpha\n\nUnique content about purple elephants.\n")
+        beta.write_text("# Beta\n\nUnique content about yellow tigers.\n")
+        await client.documents.ingest(file_path=str(alpha))
+        await client.documents.ingest(file_path=str(beta))
+        return alpha, beta
+
+    async def _create_filter(self, client, data_sources: list[str]) -> str:
+        result = await client.knowledge_filters.create(
+            {
+                "name": f"SDK delete-filter {uuid.uuid4().hex[:6]}",
+                "description": "Auto-created by SDK delete-by-filter test",
+                "queryData": {
+                    "query": "",
+                    "filters": {
+                        "data_sources": data_sources,
+                        "document_types": ["*"],
+                        "owners": ["*"],
+                        "connector_types": ["*"],
+                    },
+                    "limit": 10,
+                    "scoreThreshold": 0,
+                },
+            }
+        )
+        assert result.success is True, f"Failed to create filter: {result.error}"
+        return result.id
+
+    @pytest.mark.asyncio
+    async def test_delete_documents_by_filter_id(self, client, tmp_path):
+        """Deleting by filter_id removes only the filenames in the filter's data_sources."""
+        alpha, beta = await self._ingest_two(client, tmp_path)
+        filter_id = await self._create_filter(client, [alpha.name])
+
+        try:
+            result = await client.documents.delete(filter_id=filter_id)
+            assert result.success is True
+            assert result.filter_id == filter_id
+            assert alpha.name in (result.filenames or [])
+            assert beta.name not in (result.filenames or [])
+            # Beta still searchable
+            still_there = await client.search.query("tigers")
+            assert any(r.filename == beta.name for r in still_there.results), (
+                "Beta should still be present after filter-id delete of alpha"
+            )
+        finally:
+            await client.knowledge_filters.delete(filter_id)
+            # Best-effort cleanup
+            await client.documents.delete(alpha.name)
+            await client.documents.delete(beta.name)
+
+    @pytest.mark.asyncio
+    async def test_delete_by_filter_id_with_wildcard_rejects(self, client):
+        """A filter with `["*"]` data_sources must NOT be allowed to mass-delete."""
+        filter_id = await self._create_filter(client, ["*"])
+        try:
+            with pytest.raises(OpenRAGError):
+                await client.documents.delete(filter_id=filter_id)
+        finally:
+            await client.knowledge_filters.delete(filter_id)
+
+    @pytest.mark.asyncio
+    async def test_delete_with_both_filename_and_filter_id_rejects(self, client):
+        """Passing both filename and filter_id must be rejected by the SDK."""
+        with pytest.raises(ValueError):
+            await client.documents.delete("foo.pdf", filter_id="something")
+
+    @pytest.mark.asyncio
+    async def test_delete_with_neither_filename_nor_filter_id_rejects(self, client):
+        """Passing neither filename nor filter_id must be rejected by the SDK."""
+        with pytest.raises(ValueError):
+            await client.documents.delete()
