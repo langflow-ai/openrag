@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
 from config.settings import get_openrag_config
-from dependencies import get_models_service, get_current_user
+from dependencies import get_models_service, require_permission
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -28,7 +28,7 @@ class IBMBody(BaseModel):
 async def get_openai_models(
     body: Optional[OpenAIBody] = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available OpenAI models"""
     try:
@@ -56,7 +56,7 @@ async def get_openai_models(
 async def get_anthropic_models(
     body: Optional[AnthropicBody] = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Anthropic models"""
     try:
@@ -84,7 +84,7 @@ async def get_anthropic_models(
 async def get_ollama_models(
     endpoint: Optional[str] = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Ollama models"""
     try:
@@ -111,7 +111,7 @@ async def get_ollama_models(
 async def get_ibm_models(
     body: Optional[IBMBody] = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available IBM Watson models"""
     try:

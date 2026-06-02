@@ -105,7 +105,7 @@ def _admin_perms() -> set[str]:
 
 def _developer_perms() -> set[str]:
     return {
-        "providers:override:self",
+        # NOTE: providers are admin-only — no provider perms for developers.
         "connectors:list:own", "connectors:create", "connectors:delete:own", "connectors:use",
         "knowledge:upload", "knowledge:delete:own", "knowledge:read:own",
         "kf:create", "kf:edit:own",
@@ -119,7 +119,7 @@ def _developer_perms() -> set[str]:
 
 def _user_perms() -> set[str]:
     return {
-        "providers:override:self",
+        # NOTE: providers are admin-only — no provider perms for users.
         "connectors:list:own", "connectors:create", "connectors:delete:own", "connectors:use",
         "knowledge:upload", "knowledge:delete:own", "knowledge:read:own",
         "kf:create", "kf:edit:own",
