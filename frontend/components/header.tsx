@@ -1,7 +1,6 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import { useMemo } from "react";
 import { BrandSwitcher } from "@/components/brand-switcher";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import Logo from "@/components/icons/openrag-logo";
@@ -21,10 +20,7 @@ export function Header() {
       task.status === "running" ||
       task.status === "processing",
   );
-  const primaryActiveTaskId = useMemo(
-    () => activeTasks[0]?.task_id ?? null,
-    [activeTasks],
-  );
+  const primaryActiveTaskId = activeTasks[0]?.task_id;
 
   return (
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
@@ -62,17 +58,20 @@ export function Header() {
             </>
           )}
 
-          {primaryActiveTaskId && (
-            <button
-              type="button"
-              onClick={() => openTaskDialog(primaryActiveTaskId)}
-              data-testid="active-task-dialog-toggle"
-              className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground"
-              aria-label="Open task details"
-            >
-              <IncidentReporterIcon className="size-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (primaryActiveTaskId) {
+                openTaskDialog(primaryActiveTaskId);
+              }
+            }}
+            disabled={!primaryActiveTaskId}
+            data-testid="active-task-dialog-toggle"
+            className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+            aria-label="Open task details"
+          >
+            <IncidentReporterIcon className="size-4" />
+          </button>
 
           {/* Task Notification Bell */}
           <button
