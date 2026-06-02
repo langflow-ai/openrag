@@ -59,6 +59,9 @@ async def _create_filter_for(client, name: str, data_sources: list[str]) -> str:
         }
     )
     assert result.success is True, f"Failed to create filter: {result.error}"
+    assert isinstance(result.id, str) and result.id, (
+        f"Filter creation returned no id: {result.error}"
+    )
     return result.id
 
 
