@@ -50,7 +50,19 @@ spec:
               containerPort: 7860
               protocol: TCP
 
-          command: ["langflow", "run", "--env-file", "/app/.env"]
+          env:
+            - name: HOME
+              value: /app/data
+            - name: XDG_CACHE_HOME
+              value: /app/data/.cache
+            - name: MEM0_DIR
+              value: /app/data/.mem0
+            - name: LANGFLOW_CONFIG_DIR
+              value: /app/data
+            - name: LANGFLOW_WORKERS
+              value: "1"
+
+          args: ["langflow", "run", "--env-file", "/app/.env"]
 
           volumeMounts:
             - name: openrag-langflow-dotenv
