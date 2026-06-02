@@ -243,12 +243,6 @@ def configure_stdlib_logging(log_level: str = "INFO") -> None:
     Uvicorn access logs are suppressed here because the ASGI middleware handles
     request logging with richer context (request_id, duration_ms).
     """
-    foreign_chain = list(_shared_processors) + [
-        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-        drop_color_message_key,
-        structlog.processors.JSONRenderer(),
-    ]
-
     logging.config.dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
