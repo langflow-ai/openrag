@@ -579,6 +579,7 @@
             ],
             "frozen": false,
             "icon": "Docling",
+            "last_updated": "2026-06-02T20:40:57.828Z",
             "legacy": false,
             "metadata": {
               "code_hash": "dcf9aeedd059",
@@ -629,6 +630,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
+              },
+              "_frontend_node_folder_id": {
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
+              },
               "_type": "Component",
               "api_headers": {
                 "_input_type": "TableInput",
@@ -676,10 +683,16 @@
                 "type": "table",
                 "value": [
                   {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
                     "key": "Authorization",
                     "value": "JWT"
                   },
                   {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
                     "key": "X-Tenant-Id",
                     "value": "OWNER"
                   }
@@ -772,7 +785,7 @@
                   "do_picture_classification": false,
                   "do_picture_description": false,
                   "do_table_structure": true,
-                  "ocr_engine": "ocrmac",
+                  "ocr_engine": "easyocr",
                   "picture_description_local": {
                     "prompt": "Describe this image in a few sentences.",
                     "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct"
@@ -843,6 +856,7 @@
                 "type": "bool",
                 "value": true
               },
+              "is_refresh": false,
               "max_concurrency": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -4022,7 +4036,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "2be9efb3-6f08-4dee-9d08-1747bd9c33ee"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -4550,7 +4564,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "2be9efb3-6f08-4dee-9d08-1747bd9c33ee"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -5078,7 +5092,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "2be9efb3-6f08-4dee-9d08-1747bd9c33ee"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -5530,16 +5544,16 @@
       }
     ],
     "viewport": {
-      "x": 88.5162499041611,
-      "y": -383.79779651448473,
-      "zoom": 0.39626280960074645
+      "x": 91.09392360442735,
+      "y": -726.3579579832333,
+      "zoom": 0.6220209268560802
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.6",
   "locked": true,
   "name": "OpenSearch Ingestion Flow",
   "tags": [

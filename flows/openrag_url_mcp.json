@@ -34,122 +34,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-tahMb",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_owner_name",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-tahMb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-tahMbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_nameœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-tahMb",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-tahMbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_owner_nameœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-Rm9YX",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_owner_email",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-Rm9YX{œdataTypeœ:œTextInputœ,œidœ:œTextInput-Rm9YXœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-Rm9YX",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-Rm9YXœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-G5CiZ",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_owner",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-G5CiZ{œdataTypeœ:œTextInputœ,œidœ:œTextInput-G5CiZœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-G5CiZ",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-G5CiZœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-OPyEf",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_connector_type",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-OPyEf{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OPyEfœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-OPyEf",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OPyEfœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "URLComponent",
             "id": "URLComponent-lnA0q",
             "name": "page_results",
@@ -473,35 +357,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "AdvancedDynamicFormBuilder",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "name": "form_data",
-            "output_types": [
-              "JSON"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "docs_metadata",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-            "inputTypes": [
-              "Data",
-              "JSON"
-            ],
-            "type": "table"
-          }
-        },
-        "id": "xy-edge__AdvancedDynamicFormBuilder-ziCu4{œdataTypeœ:œAdvancedDynamicFormBuilderœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œnameœ:œform_dataœ,œoutput_typesœ:[œJSONœ]}-OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV{œfieldNameœ:œdocs_metadataœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œDataœ,œJSONœ],œtypeœ:œtableœ}",
-        "selected": false,
-        "source": "AdvancedDynamicFormBuilder-ziCu4",
-        "sourceHandle": "{œdataTypeœ:œAdvancedDynamicFormBuilderœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œnameœ:œform_dataœ,œoutput_typesœ:[œJSONœ]}",
-        "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-        "targetHandle": "{œfieldNameœ:œdocs_metadataœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œDataœ,œJSONœ],œtypeœ:œtableœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "SplitText",
             "id": "SplitText-QIKhg",
             "name": "dataframe",
@@ -526,93 +381,6 @@
         "sourceHandle": "{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
         "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
         "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-OpenRAGIngest-url",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "openrag_ingest_url",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-OpenRAGIngest-url{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-urlœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV{œfieldNameœ:œopenrag_ingest_urlœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-OpenRAGIngest-url",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-urlœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-        "targetHandle": "{œfieldNameœ:œopenrag_ingest_urlœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-OpenRAGIngest-token",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "openrag_ingest_token",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-OpenRAGIngest-token{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-tokenœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV{œfieldNameœ:œopenrag_ingest_tokenœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-OpenRAGIngest-token",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-tokenœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-        "targetHandle": "{œfieldNameœ:œopenrag_ingest_tokenœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "TextInput",
-            "id": "TextInput-OpenRAGIngest-run_id",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "openrag_ingest_run_id",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__TextInput-OpenRAGIngest-run_id{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-run_idœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV{œfieldNameœ:œopenrag_ingest_run_idœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "TextInput-OpenRAGIngest-run_id",
-        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OpenRAGIngest-run_idœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-        "targetHandle": "{œfieldNameœ:œopenrag_ingest_run_idœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGVœ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
       }
     ],
     "nodes": [
@@ -3664,9 +3432,11 @@
             "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
             "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
             "documentation": "",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "docs_metadata",
+              "openrag_ingest_token",
+              "openrag_ingest_run_id",
               "opensearch_url",
               "index_name",
               "engine",
@@ -3691,30 +3461,38 @@
               "use_ssl",
               "verify_certs",
               "request_timeout",
-              "max_retries"
+              "max_retries",
+              "openrag_ingest_url",
+              "openrag_ingest_token",
+              "openrag_ingest_run_id",
+              "openrag_ingest_batch_size"
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-04-07T18:51:06.910Z",
+            "last_updated": "2026-06-02T20:38:12.785Z",
             "legacy": false,
             "metadata": {
-              "code_hash": "4a05432fb489",
+              "code_hash": "220fbf21a963",
               "dependencies": {
                 "dependencies": [
                   {
-                    "name": "opensearchpy",
-                    "version": "2.8.0"
+                    "name": "httpx",
+                    "version": "0.28.1"
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.4.6"
+                  },
+                  {
+                    "name": "opensearchpy",
+                    "version": "2.8.0"
                   },
                   {
                     "name": "tenacity",
                     "version": "8.5.0"
                   }
                 ],
-                "total_dependencies": 3
+                "total_dependencies": 4
               },
               "module": "custom_components.opensearch_multimodel_multiembedding"
             },
@@ -3782,7 +3560,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "auth_mode": {
@@ -3793,11 +3571,13 @@
                 "display_name": "Authentication Mode",
                 "dynamic": false,
                 "external_options": {},
-                "info": "Authentication method: 'basic' for username/password authentication, or 'jwt' for JSON Web Token (Bearer) authentication.",
+                "info": "Authentication method: 'basic' for username/password authentication, 'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to delegate writes to the OpenRAG backend ingest callback (no direct OpenSearch credentials required — only OPENRAG_* fields).",
+                "load_from_db": false,
                 "name": "auth_mode",
                 "options": [
                   "basic",
-                  "jwt"
+                  "jwt",
+                  "openrag"
                 ],
                 "options_metadata": [],
                 "override_skip": false,
@@ -3811,7 +3591,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "jwt"
+                "value": "openrag"
               },
               "bearer_prefix": {
                 "_input_type": "BoolInput",
@@ -3825,7 +3605,7 @@
                 "override_skip": false,
                 "placeholder": "",
                 "required": false,
-                "show": true,
+                "show": false,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
@@ -4073,8 +3853,8 @@
                 "name": "jwt_header",
                 "override_skip": false,
                 "placeholder": "",
-                "required": true,
-                "show": true,
+                "required": false,
+                "show": false,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
@@ -4089,17 +3869,17 @@
                 "dynamic": false,
                 "info": "Valid JSON Web Token for authentication. Will be sent in the Authorization header (with optional 'Bearer ' prefix).",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "jwt_token",
                 "override_skip": false,
                 "password": true,
                 "placeholder": "",
-                "required": true,
-                "show": true,
+                "required": false,
+                "show": false,
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "JWT"
+                "value": ""
               },
               "m": {
                 "_input_type": "IntInput",
@@ -4181,6 +3961,101 @@
                 "track_in_telemetry": true,
                 "type": "int",
                 "value": 10
+              },
+              "openrag_ingest_batch_size": {
+                "_input_type": "IntInput",
+                "advanced": false,
+                "display_name": "OpenRAG Ingest Batch Size",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "openrag_ingest_batch_size",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 100
+              },
+              "openrag_ingest_run_id": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "OpenRAG Ingest Run ID",
+                "dynamic": false,
+                "info": "",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_run_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_RUN_ID"
+              },
+              "openrag_ingest_token": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "OpenRAG Ingest Token",
+                "dynamic": false,
+                "info": "Short-lived token used only for OpenRAG ingest callbacks.",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_token",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_TOKEN"
+              },
+              "openrag_ingest_url": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "OpenRAG Ingest URL",
+                "dynamic": false,
+                "info": "Internal OpenRAG callback URL for backend-owned document indexing.",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_url",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_URL"
               },
               "opensearch_url": {
                 "_input_type": "StrInput",
@@ -4399,99 +4274,6 @@
                 "track_in_telemetry": true,
                 "type": "bool",
                 "value": false
-              },
-              "openrag_ingest_url": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "OpenRAG Ingest URL",
-                "dynamic": false,
-                "info": "Internal OpenRAG callback URL for backend-owned document indexing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "name": "openrag_ingest_url",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_URL",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ]
-              },
-              "openrag_ingest_token": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "OpenRAG Ingest Token",
-                "dynamic": false,
-                "info": "Short-lived token used only for OpenRAG ingest callbacks.",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ],
-                "load_from_db": true,
-                "name": "openrag_ingest_token",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_TOKEN"
-              },
-              "openrag_ingest_run_id": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "OpenRAG Ingest Run ID",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "name": "openrag_ingest_run_id",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_RUN_ID",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ]
-              },
-              "openrag_ingest_batch_size": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "OpenRAG Ingest Batch Size",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openrag_ingest_batch_size",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "int",
-                "value": 100
               }
             },
             "tool_mode": false
@@ -4503,358 +4285,14 @@
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
         "measured": {
-          "height": 967,
+          "height": 1213,
           "width": 320
         },
         "position": {
           "x": 2729.318175939116,
           "y": 1398.252846147518
         },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "AdvancedDynamicFormBuilder-ziCu4",
-          "node": {
-            "base_classes": [
-              "Data",
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Creates dynamic input fields that can receive data from other components or manual input.",
-            "display_name": "Create Data",
-            "documentation": "",
-            "edited": true,
-            "field_order": [
-              "form_fields",
-              "include_metadata"
-            ],
-            "frozen": false,
-            "icon": "braces",
-            "last_updated": "2026-04-17T22:34:51.074Z",
-            "legacy": false,
-            "lf_version": "1.8.0",
-            "metadata": {},
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Data",
-                "group_outputs": false,
-                "hidden": null,
-                "loop_types": null,
-                "method": "process_form",
-                "name": "form_data",
-                "options": null,
-                "required_inputs": null,
-                "selected": "JSON",
-                "tool_mode": true,
-                "types": [
-                  "JSON"
-                ],
-                "value": "__UNDEFINED__"
-              },
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Message",
-                "group_outputs": false,
-                "hidden": null,
-                "loop_types": null,
-                "method": "get_message",
-                "name": "message",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\r\n\r\nfrom langflow.custom import Component\r\nfrom langflow.io import (\r\n    BoolInput,\r\n    FloatInput,\r\n    HandleInput,\r\n    IntInput,\r\n    MultilineInput,\r\n    Output,\r\n    StrInput,\r\n    TableInput,\r\n)\r\nfrom langflow.schema.data import Data\r\nfrom langflow.schema.message import Message\r\n\r\n\r\nclass CrateData(Component):\r\n    \"\"\"Dynamic Form Component\r\n\r\n    This component creates dynamic inputs that can receive data from other components\r\n    or be filled manually. It demonstrates advanced dynamic input functionality with\r\n    component connectivity.\r\n\r\n    ## Features\r\n    - **Dynamic Input Generation**: Create inputs based on table configuration\r\n    - **Component Connectivity**: Inputs can receive data from other components\r\n    - **Multiple Input Types**: Support for text, number, boolean, and handle inputs\r\n    - **Flexible Data Sources**: Manual input OR component connections\r\n    - **Real-time Updates**: Form fields update immediately when table changes\r\n         - **Multiple Output Formats**: Data and formatted Message outputs\r\n    - **JSON Output**: Collects all dynamic inputs into a structured JSON response\r\n\r\n    ## Use Cases\r\n    - Dynamic API parameter collection from multiple sources\r\n    - Variable data aggregation from different components\r\n    - Flexible pipeline configuration\r\n    - Multi-source data processing\r\n\r\n    ## Field Types Available\r\n    - **text**: Single-line text input (can connect to Text/String outputs)\r\n    - **multiline**: Multi-line text input (can connect to Text outputs)\r\n    - **number**: Integer input (can connect to Number outputs)\r\n    - **float**: Decimal number input (can connect to Number outputs)\r\n    - **boolean**: True/false checkbox (can connect to Boolean outputs)\r\n    - **handle**: Generic data input (can connect to any component output)\r\n    - **data**: Structured data input (can connect to Data outputs)\r\n\r\n    ## Input Types for Connections\r\n    - **Text**: Text/String data from components\r\n    - **Data**: Structured data objects\r\n    - **Message**: Message objects with text content\r\n    - **Number**: Numeric values\r\n    - **Boolean**: True/false values\r\n    - **Any**: Accepts any type of connection\r\n    - **Combinations**: Text,Message | Data,Text | Text,Data,Message | etc.\r\n    \"\"\"\r\n\r\n    display_name = \"Create Data\"\r\n    description = \"Creates dynamic input fields that can receive data from other components or manual input.\"\r\n    icon = \"braces\"\r\n    name = \"AdvancedDynamicFormBuilder\"\r\n\r\n    def __init__(self, **kwargs):\r\n        super().__init__(**kwargs)\r\n        self._dynamic_inputs = {}\r\n\r\n    inputs = [\r\n        TableInput(\r\n            name=\"form_fields\",\r\n            display_name=\"Input Configuration\",\r\n            info=\"Define the dynamic form fields. Each row creates a new input field that can connect to other components.\",\r\n            table_schema=[\r\n                {\r\n                    \"name\": \"field_name\",\r\n                    \"display_name\": \"Field Name\",\r\n                    \"type\": \"str\",\r\n                    \"description\": \"Name for the field (used as both internal name and display label)\",\r\n                },\r\n                {\r\n                    \"name\": \"field_type\",\r\n                    \"display_name\": \"Field Type\",\r\n                    \"type\": \"str\",\r\n                    \"description\": \"Type of input field to create\",\r\n                    \"options\": [\"Text\", \"Data\", \"Number\", \"Handle\", \"Boolean\"],\r\n                    \"value\": \"Text\",\r\n                },\r\n            ],\r\n            value=[{\"field_name\": \"field_name\", \"field_type\": \"Text\"}],\r\n            real_time_refresh=True,\r\n        ),\r\n        BoolInput(\r\n            name=\"include_metadata\",\r\n            display_name=\"Include Metadata\",\r\n            info=\"Include form configuration metadata in the output.\",\r\n            value=False,\r\n            advanced=True,\r\n        ),\r\n    ]\r\n\r\n    outputs = [\r\n        Output(display_name=\"Data\", name=\"form_data\", method=\"process_form\"),\r\n        Output(display_name=\"Message\", name=\"message\", method=\"get_message\"),\r\n    ]\r\n\r\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str = None) -> dict:\r\n        \"\"\"Update build configuration to add dynamic inputs that can connect to other components.\"\"\"\r\n        if field_name == \"form_fields\":\r\n            # Store current values before clearing dynamic inputs\r\n            current_values = {}\r\n            keys_to_remove = [key for key in build_config if key.startswith(\"dynamic_\")]\r\n            for key in keys_to_remove:\r\n                # Preserve the current value before deletion\r\n                if hasattr(self, key):\r\n                    current_values[key] = getattr(self, key)\r\n                del build_config[key]\r\n\r\n            # Add dynamic inputs based on table configuration\r\n            # Safety check to ensure field_value is not None and is iterable\r\n            if field_value is None:\r\n                field_value = []\r\n\r\n            for i, field_config in enumerate(field_value):\r\n                # Safety check to ensure field_config is not None\r\n                if field_config is None:\r\n                    continue\r\n\r\n                field_name = field_config.get(\"field_name\", f\"field_{i}\")\r\n                display_name = field_name  # Use field_name as display_name\r\n                field_type_option = field_config.get(\"field_type\", \"Text\")\r\n                default_value = \"\"  # All fields have empty default value\r\n                required = False  # All fields are optional by default\r\n                help_text = \"\"  # All fields have empty help text\r\n\r\n                # Map field type options to actual field types and input types\r\n                field_type_mapping = {\r\n                    \"Text\": {\"field_type\": \"multiline\", \"input_types\": [\"Text\", \"Message\"]},\r\n                    \"Data\": {\"field_type\": \"data\", \"input_types\": [\"Data\"]},\r\n                    \"Number\": {\"field_type\": \"number\", \"input_types\": [\"Text\", \"Message\"]},\r\n                    \"Handle\": {\"field_type\": \"handle\", \"input_types\": [\"Text\", \"Data\", \"Message\"]},\r\n                    \"Boolean\": {\"field_type\": \"boolean\", \"input_types\": None},\r\n                }\r\n\r\n                field_config_mapped = field_type_mapping.get(\r\n                    field_type_option, {\"field_type\": \"text\", \"input_types\": []}\r\n                )\r\n                field_type = field_config_mapped[\"field_type\"]\r\n                input_types_list = field_config_mapped[\"input_types\"]\r\n\r\n                # Create the appropriate input type based on field_type\r\n                dynamic_input_name = f\"dynamic_{field_name}\"\r\n\r\n                if field_type == \"text\":\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    if input_types_list:\r\n                        build_config[dynamic_input_name] = StrInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=f\"{help_text} (Can connect to: {', '.join(input_types_list)})\",\r\n                            value=current_value,\r\n                            required=required,\r\n                            input_types=input_types_list,\r\n                        )\r\n                    else:\r\n                        build_config[dynamic_input_name] = StrInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=help_text,\r\n                            value=current_value,\r\n                            required=required,\r\n                        )\r\n\r\n                elif field_type == \"multiline\":\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    if input_types_list:\r\n                        build_config[dynamic_input_name] = MultilineInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=f\"{help_text} (Can connect to: {', '.join(input_types_list)})\",\r\n                            value=current_value,\r\n                            required=required,\r\n                            input_types=input_types_list,\r\n                        )\r\n                    else:\r\n                        build_config[dynamic_input_name] = MultilineInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=help_text,\r\n                            value=current_value,\r\n                            required=required,\r\n                        )\r\n\r\n                elif field_type == \"number\":\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    try:\r\n                        if current_value:\r\n                            current_int = int(current_value)\r\n                        else:\r\n                            current_int = 0\r\n                    except (ValueError, TypeError):\r\n                        try:\r\n                            current_int = int(default_value) if default_value else 0\r\n                        except ValueError:\r\n                            current_int = 0\r\n\r\n                    if input_types_list:\r\n                        build_config[dynamic_input_name] = IntInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=f\"{help_text} (Can connect to: {', '.join(input_types_list)})\",\r\n                            value=current_int,\r\n                            required=required,\r\n                            input_types=input_types_list,\r\n                        )\r\n                    else:\r\n                        build_config[dynamic_input_name] = IntInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=help_text,\r\n                            value=current_int,\r\n                            required=required,\r\n                        )\r\n\r\n                elif field_type == \"float\":\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    try:\r\n                        if current_value:\r\n                            current_float = float(current_value)\r\n                        else:\r\n                            current_float = 0.0\r\n                    except (ValueError, TypeError):\r\n                        try:\r\n                            current_float = float(default_value) if default_value else 0.0\r\n                        except ValueError:\r\n                            current_float = 0.0\r\n\r\n                    if input_types_list:\r\n                        build_config[dynamic_input_name] = FloatInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=f\"{help_text} (Can connect to: {', '.join(input_types_list)})\",\r\n                            value=current_float,\r\n                            required=required,\r\n                            input_types=input_types_list,\r\n                        )\r\n                    else:\r\n                        build_config[dynamic_input_name] = FloatInput(\r\n                            name=dynamic_input_name,\r\n                            display_name=display_name,\r\n                            info=help_text,\r\n                            value=current_float,\r\n                            required=required,\r\n                        )\r\n\r\n                elif field_type == \"boolean\":\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    # Convert current value to boolean\r\n                    if isinstance(current_value, bool):\r\n                        current_bool = current_value\r\n                    else:\r\n                        current_bool = str(current_value).lower() in [\"true\", \"1\", \"yes\"] if current_value else False\r\n\r\n                    # Boolean fields don't use input_types parameter to avoid errors\r\n                    build_config[dynamic_input_name] = BoolInput(\r\n                        name=dynamic_input_name,\r\n                        display_name=display_name,\r\n                        info=help_text,\r\n                        value=current_bool,\r\n                        input_types=[],\r\n                        required=required,\r\n                    )\r\n\r\n                elif field_type == \"handle\":\r\n                    # HandleInput for generic data connections\r\n                    build_config[dynamic_input_name] = HandleInput(\r\n                        name=dynamic_input_name,\r\n                        display_name=display_name,\r\n                        info=f\"{help_text} (Accepts: {', '.join(input_types_list) if input_types_list else 'Any'})\",\r\n                        input_types=input_types_list if input_types_list else [\"Data\", \"Text\", \"Message\"],\r\n                        required=required,\r\n                    )\r\n\r\n                elif field_type == \"data\":\r\n                    # Specialized for Data type connections\r\n                    build_config[dynamic_input_name] = HandleInput(\r\n                        name=dynamic_input_name,\r\n                        display_name=display_name,\r\n                        info=f\"{help_text} (Data input)\",\r\n                        input_types=[\"Data\"] if not input_types_list else input_types_list,\r\n                        required=required,\r\n                    )\r\n\r\n                else:\r\n                    # Default to text input for unknown types\r\n                    # Use preserved value if available, otherwise use default\r\n                    current_value = current_values.get(dynamic_input_name, default_value)\r\n                    if current_value is None:\r\n                        current_value = default_value\r\n                    \r\n                    build_config[dynamic_input_name] = StrInput(\r\n                        name=dynamic_input_name,\r\n                        display_name=display_name,\r\n                        info=f\"{help_text} (Unknown type '{field_type}', defaulting to text)\",\r\n                        value=current_value,\r\n                        required=required,\r\n                    )\r\n\r\n        return build_config\r\n\r\n    def get_dynamic_values(self) -> dict[str, Any]:\r\n        \"\"\"Extract simple values from all dynamic inputs, handling both manual and connected inputs.\"\"\"\r\n        dynamic_values = {}\r\n        connection_info = {}\r\n        form_fields = getattr(self, \"form_fields\", [])\r\n\r\n        for field_config in form_fields:\r\n            # Safety check to ensure field_config is not None\r\n            if field_config is None:\r\n                continue\r\n\r\n            field_name = field_config.get(\"field_name\", \"\")\r\n            if field_name:\r\n                dynamic_input_name = f\"dynamic_{field_name}\"\r\n                value = getattr(self, dynamic_input_name, None)\r\n\r\n                # Extract simple values from connections or manual input\r\n                if value is not None:\r\n                    try:\r\n                        extracted_value = self._extract_simple_value(value)\r\n                        dynamic_values[field_name] = extracted_value\r\n\r\n                        # Determine connection type for status\r\n                        if hasattr(value, \"text\") and hasattr(value, \"timestamp\"):\r\n                            connection_info[field_name] = \"Connected (Message)\"\r\n                        elif hasattr(value, \"data\"):\r\n                            connection_info[field_name] = \"Connected (Data)\"\r\n                        elif isinstance(value, (str, int, float, bool, list, dict)):\r\n                            connection_info[field_name] = \"Manual input\"\r\n                        else:\r\n                            connection_info[field_name] = \"Connected (Object)\"\r\n\r\n                    except Exception:\r\n                        # Fallback to string representation if all else fails\r\n                        dynamic_values[field_name] = str(value)\r\n                        connection_info[field_name] = \"Error\"\r\n                else:\r\n                    # Use empty default value if nothing connected\r\n                    dynamic_values[field_name] = \"\"\r\n                    connection_info[field_name] = \"Empty default\"\r\n\r\n        # Store connection info for status output\r\n        self._connection_info = connection_info\r\n        return dynamic_values\r\n\r\n    def _extract_simple_value(self, value: Any) -> Any:\r\n        \"\"\"Extract the simplest, most useful value from any input type.\"\"\"\r\n        # Handle None\r\n        if value is None:\r\n            return None\r\n\r\n        # Handle simple types directly\r\n        if isinstance(value, (str, int, float, bool)):\r\n            return value\r\n\r\n        # Handle lists and tuples - keep simple\r\n        if isinstance(value, (list, tuple)):\r\n            return [self._extract_simple_value(item) for item in value]\r\n\r\n        # Handle dictionaries - keep simple\r\n        if isinstance(value, dict):\r\n            return {str(k): self._extract_simple_value(v) for k, v in value.items()}\r\n\r\n        # Handle Message objects - extract only the text\r\n        if hasattr(value, \"text\"):\r\n            return str(value.text) if value.text is not None else \"\"\r\n\r\n        # Handle Data objects - extract the data content\r\n        if hasattr(value, \"data\") and value.data is not None:\r\n            return self._extract_simple_value(value.data)\r\n\r\n        # For any other object, convert to string\r\n        return str(value)\r\n\r\n    def process_form(self) -> Data:\r\n        \"\"\"Process all dynamic form inputs and return clean data with just field values.\"\"\"\r\n        # Get all dynamic values (just the key:value pairs)\r\n        dynamic_values = self.get_dynamic_values()\r\n\r\n        # Update status with connection info\r\n        connected_fields = len([v for v in getattr(self, \"_connection_info\", {}).values() if \"Connected\" in v])\r\n        total_fields = len(dynamic_values)\r\n\r\n        self.status = f\"Form processed successfully. {connected_fields}/{total_fields} fields connected to components.\"\r\n\r\n        # Return clean Data object with just the field values\r\n        return Data(data=dynamic_values)\r\n\r\n    def get_message(self) -> Message:\r\n        \"\"\"Return form data as a formatted text message.\"\"\"\r\n        # Get all dynamic values\r\n        dynamic_values = self.get_dynamic_values()\r\n\r\n        if not dynamic_values:\r\n            return Message(text=\"No form data available\")\r\n\r\n        # Format as text message\r\n        message_lines = [\"📋 Form Data:\"]\r\n        message_lines.append(\"=\" * 40)\r\n\r\n        for field_name, value in dynamic_values.items():\r\n            # Use field_name as display_name\r\n            display_name = field_name\r\n\r\n            message_lines.append(f\"• {display_name}: {value}\")\r\n\r\n        message_lines.append(\"=\" * 40)\r\n        message_lines.append(f\"Total fields: {len(dynamic_values)}\")\r\n\r\n        message_text = \"\\n\".join(message_lines)\r\n        self.status = f\"Message formatted with {len(dynamic_values)} fields\"\r\n\r\n        return Message(text=message_text)"
-              },
-              "dynamic_connector_type": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "connector_type",
-                "dynamic": false,
-                "helper_text": null,
-                "info": " (Can connect to: Text, Message)",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "multiline": true,
-                "name": "dynamic_connector_type",
-                "override_skip": false,
-                "password": false,
-                "placeholder": "",
-                "real_time_refresh": null,
-                "refresh_button": null,
-                "refresh_button_text": null,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "dynamic_owner": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "owner",
-                "dynamic": false,
-                "helper_text": null,
-                "info": " (Can connect to: Text, Message)",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "multiline": true,
-                "name": "dynamic_owner",
-                "override_skip": false,
-                "password": false,
-                "placeholder": "",
-                "real_time_refresh": null,
-                "refresh_button": null,
-                "refresh_button_text": null,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "dynamic_owner_email": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "owner_email",
-                "dynamic": false,
-                "helper_text": null,
-                "info": " (Can connect to: Text, Message)",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "multiline": true,
-                "name": "dynamic_owner_email",
-                "override_skip": false,
-                "password": false,
-                "placeholder": "",
-                "real_time_refresh": null,
-                "refresh_button": null,
-                "refresh_button_text": null,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "dynamic_owner_name": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "owner_name",
-                "dynamic": false,
-                "helper_text": null,
-                "info": " (Can connect to: Text, Message)",
-                "input_types": [
-                  "Text",
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "multiline": true,
-                "name": "dynamic_owner_name",
-                "override_skip": false,
-                "password": false,
-                "placeholder": "",
-                "real_time_refresh": null,
-                "refresh_button": null,
-                "refresh_button_text": null,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "form_fields": {
-                "_input_type": "TableInput",
-                "advanced": false,
-                "display_name": "Input Configuration",
-                "dynamic": false,
-                "info": "Define the dynamic form fields. Each row creates a new input field that can connect to other components.",
-                "is_list": true,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "form_fields",
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "table_icon": "Table",
-                "table_schema": {
-                  "columns": [
-                    {
-                      "default": "None",
-                      "description": "Name for the field (used as both internal name and display label)",
-                      "disable_edit": false,
-                      "display_name": "Field Name",
-                      "edit_mode": "popover",
-                      "filterable": true,
-                      "formatter": "text",
-                      "hidden": false,
-                      "name": "field_name",
-                      "sortable": true,
-                      "type": "str"
-                    },
-                    {
-                      "default": "None",
-                      "description": "Type of input field to create",
-                      "disable_edit": false,
-                      "display_name": "Field Type",
-                      "edit_mode": "popover",
-                      "filterable": true,
-                      "formatter": "text",
-                      "hidden": false,
-                      "name": "field_type",
-                      "options": [
-                        "Text",
-                        "Data",
-                        "Number",
-                        "Handle",
-                        "Boolean"
-                      ],
-                      "sortable": true,
-                      "type": "str"
-                    }
-                  ]
-                },
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "trigger_icon": "Table",
-                "trigger_text": "Open table",
-                "type": "table",
-                "value": [
-                  {
-                    "field_name": "owner",
-                    "field_type": "Text"
-                  },
-                  {
-                    "field_name": "owner_name",
-                    "field_type": "Text"
-                  },
-                  {
-                    "field_name": "owner_email",
-                    "field_type": "Text"
-                  },
-                  {
-                    "field_name": "connector_type",
-                    "field_type": "Text"
-                  }
-                ]
-              },
-              "include_metadata": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Include Metadata",
-                "dynamic": false,
-                "info": "Include form configuration metadata in the output.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "include_metadata",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "is_refresh": false
-            },
-            "tool_mode": false
-          },
-          "selected_output": "form_data",
-          "showNode": true,
-          "type": "AdvancedDynamicFormBuilder"
-        },
-        "dragging": false,
-        "id": "AdvancedDynamicFormBuilder-ziCu4",
-        "measured": {
-          "height": 553,
-          "width": 320
-        },
-        "position": {
-          "x": 2344.490839041331,
-          "y": 830.665770502212
-        },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -5641,618 +5079,6 @@
       },
       {
         "data": {
-          "id": "TextInput-OPyEf",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "CONNECTOR_TYPE"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-OPyEf",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2046.1686011821303,
-          "y": 1025.3287669019733
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-G5CiZ",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OWNER"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-G5CiZ",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2047.7721855431944,
-          "y": 1107.9760140854928
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-Rm9YX",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OWNER_EMAIL"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-Rm9YX",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2046.9016349798983,
-          "y": 1190.6783175986243
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-tahMb",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OWNER_NAME"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-tahMb",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2046.9016349798978,
-          "y": 1271.6395199851643
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
           "_connectionMode": false,
           "description": "Generate embeddings using a specified provider.",
           "display_name": "Embedding Model",
@@ -6329,7 +5155,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -6408,7 +5234,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "https://us-south.ml.cloud.ibm.com"
+                "value": ""
               },
               "chunk_size": {
                 "_input_type": "IntInput",
@@ -6488,7 +5314,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -6597,96 +5423,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -6702,6 +5438,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -6776,7 +5513,7 @@
                 ],
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "project_id",
                 "override_skip": false,
                 "placeholder": "",
@@ -6788,7 +5525,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "WATSONX_PROJECT_ID"
+                "value": ""
               },
               "request_timeout": {
                 "_input_type": "FloatInput",
@@ -6947,7 +5684,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -7026,7 +5763,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "https://us-south.ml.cloud.ibm.com"
+                "value": ""
               },
               "chunk_size": {
                 "_input_type": "IntInput",
@@ -7106,7 +5843,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -7215,96 +5952,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -7320,6 +5967,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -7394,7 +6042,7 @@
                 ],
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "project_id",
                 "override_skip": false,
                 "placeholder": "",
@@ -7406,7 +6054,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "WATSONX_PROJECT_ID"
+                "value": ""
               },
               "request_timeout": {
                 "_input_type": "FloatInput",
@@ -7565,7 +6213,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
               },
               "_type": "Component",
               "api_base": {
@@ -7644,7 +6292,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "https://us-south.ml.cloud.ibm.com"
+                "value": ""
               },
               "chunk_size": {
                 "_input_type": "IntInput",
@@ -7724,7 +6372,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -7833,96 +6481,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -7938,6 +6496,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -8012,7 +6571,7 @@
                 ],
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "project_id",
                 "override_skip": false,
                 "placeholder": "",
@@ -8024,7 +6583,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "WATSONX_PROJECT_ID"
+                "value": ""
               },
               "request_timeout": {
                 "_input_type": "FloatInput",
@@ -8102,480 +6661,21 @@
           "x": 2183.7808538410127,
           "y": 2095.003494871439
         },
-        "selected": true,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-OpenRAGIngest-url",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_URL"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-OpenRAGIngest-url",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2009.318175939116,
-          "y": 1153.252846147518
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-OpenRAGIngest-token",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_TOKEN"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-OpenRAGIngest-token",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2009.318175939116,
-          "y": 1235.252846147518
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "id": "TextInput-OpenRAGIngest-run_id",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Get user text inputs.",
-            "display_name": "Text Input",
-            "documentation": "https://docs.langflow.org/text-input-and-output",
-            "edited": false,
-            "field_order": [
-              "input_value",
-              "use_global_variable"
-            ],
-            "frozen": false,
-            "icon": "type",
-            "last_updated": "2026-03-05T16:40:36.785Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "518f16485886",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "lfx.components.input_output.text.TextInputComponent"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Output Text",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "text_response",
-                "name": "text",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
-              },
-              "_frontend_node_folder_id": {
-                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
-              },
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
-              },
-              "input_value": {
-                "_input_type": "MultilineInput",
-                "advanced": false,
-                "ai_enabled": false,
-                "copy_field": false,
-                "display_name": "Text",
-                "dynamic": false,
-                "info": "Text to be passed as input.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "multiline": false,
-                "name": "input_value",
-                "override_skip": false,
-                "password": true,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "OPENRAG_INGEST_RUN_ID"
-              },
-              "is_refresh": false,
-              "use_global_variable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Use Global Variable",
-                "dynamic": false,
-                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_global_variable",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "TextInput"
-        },
-        "dragging": false,
-        "id": "TextInput-OpenRAGIngest-run_id",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 2009.318175939116,
-          "y": 1317.252846147518
-        },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -798.5646284783511,
-      "y": -1114.1894840221698,
-      "zoom": 0.7194800700371419
+      "x": -1539.087785115923,
+      "y": -1068.8202149715655,
+      "zoom": 0.7829687481507004
     }
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.6",
   "locked": true,
   "mcp_enabled": true,
   "name": "OpenSearch URL Ingestion Flow",
