@@ -106,12 +106,20 @@ OPENRAG_BACKEND_ROUTER_URL = (
 ).rstrip("/")
 
 # Upstream the router FORWARDS callbacks to. The router is co-located with the
-# backend (same process), so this is loopback to the backend's fixed listen port
-# (8000), NOT OPENRAG_BACKEND_INTERNAL_URL — that advertised service name need
-# not resolve from where the router runs (e.g. a host-run backend). Loopback is
-# correct in every mode: host dev, single container, and same k8s pod.
-OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = os.getenv(
-    "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", "http://127.0.0.1:8000"
+# backend (same process), so the HOST is always loopback — but the scheme/port
+# are sourced from OPENRAG_BACKEND_INTERNAL_URL so the upstream tracks the
+# backend's configured port automatically. We force 127.0.0.1 (not the advertised
+# service name) because that name need not resolve where the router runs (e.g. a
+# host-run backend). Loopback is correct in every mode: host dev, single
+# container, and same k8s pod.
+def _derive_router_upstream_url() -> str:
+    parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
+    port = parts.port or 8000
+    return urlunsplit((parts.scheme or "http", f"127.0.0.1:{port}", "", "", ""))
+
+
+OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = (
+    os.getenv("OPENRAG_BACKEND_ROUTER_UPSTREAM_URL") or _derive_router_upstream_url()
 ).rstrip("/")
 
 
