@@ -1,13 +1,12 @@
 """Router endpoints that automatically route based on configuration settings."""
 
 import json
-import os
 import tempfile
 
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from config.settings import DISABLE_INGEST_WITH_LANGFLOW
+from config.settings import get_openrag_config
 from dependencies import (
     get_current_user,
     get_document_service,
@@ -40,21 +39,22 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
+    disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
     logger.debug(
         "Router upload_ingest endpoint called",
-        disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+        disable_langflow_ingest=disable_ingest_with_langflow,
     )
 
-    if DISABLE_INGEST_WITH_LANGFLOW:
-        logger.debug("Routing to traditional OpenRAG upload")
-        # Route to traditional upload — just take the first file
-        from api.upload import upload as traditional_upload_fn
-
-        return await traditional_upload_fn(
-            file=file[0] if file else None,
-            document_service=document_service,
+    if disable_ingest_with_langflow:
+        logger.debug("Routing to traditional OpenRAG upload via task service")
+        return await _traditional_upload_ingest_task(
+            upload_files=file,
+            replace_duplicates=replace_duplicates.lower() == "true",
+            create_filter=create_filter.lower() == "true",
             session_manager=session_manager,
+            task_service=task_service,
             user=user,
+            settings_json=settings_json,
         )
 
     logger.debug("Routing to Langflow upload-ingest pipeline via task service")
@@ -70,6 +70,96 @@ async def upload_ingest_router(
         task_service=task_service,
         user=user,
     )
+
+
+async def _traditional_upload_ingest_task(
+    upload_files: list[UploadFile],
+    replace_duplicates: bool,
+    create_filter: bool,
+    session_manager,
+    task_service,
+    user: User,
+    settings_json: str | None = None,
+):
+    """Task-based traditional upload and ingest for single/multiple files"""
+    try:
+        if not upload_files:
+            return JSONResponse({"error": "Missing files"}, status_code=400)
+
+        settings = None
+        if settings_json:
+            try:
+                settings = json.loads(settings_json)
+            except json.JSONDecodeError as e:
+                return JSONResponse({"error": f"Invalid settings JSON: {e}"}, status_code=400)
+
+        user_id = user.user_id
+        user_name = user.name
+        user_email = user.email
+        jwt_token = user.jwt_token
+
+        temp_file_paths = []
+        original_filenames = []
+
+        try:
+            for upload_file in upload_files:
+                content = await upload_file.read()
+                original_filenames.append(upload_file.filename)
+                # Generate unique temp file to avoid collisions
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
+                temp_path = temp_file.name
+                temp_file.close()
+                with open(temp_path, "wb") as f:
+                    f.write(content)
+                temp_file_paths.append(temp_path)
+
+            file_path_to_original_filename = dict(
+                zip(temp_file_paths, original_filenames, strict=True)
+            )
+
+            # Ensure the search index exists before creating the upload task
+            from api.documents import _ensure_index_exists
+
+            await _ensure_index_exists(jwt_token)
+
+            task_id = await task_service.create_upload_task(
+                user_id=user_id,
+                file_paths=temp_file_paths,
+                jwt_token=jwt_token,
+                owner_name=user_name,
+                owner_email=user_email,
+                original_filenames=file_path_to_original_filename,
+                replace_duplicates=replace_duplicates,
+                settings=settings,
+            )
+
+            return JSONResponse(
+                {
+                    "task_id": task_id,
+                    "message": f"Upload task created for {len(upload_files)} file(s)",
+                    "file_count": len(upload_files),
+                    "create_filter": create_filter,
+                    "filename": original_filenames[0] if len(original_filenames) == 1 else None,
+                },
+                status_code=202,
+            )
+
+        except Exception:
+            from utils.file_utils import safe_unlink
+
+            for temp_path in temp_file_paths:
+                safe_unlink(temp_path)
+            raise
+
+    except Exception as e:
+        logger.error("Task-based traditional upload_ingest failed", error=str(e))
+        import traceback
+
+        logger.error("Full traceback", traceback=traceback.format_exc())
+        error_msg = str(e)
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        return JSONResponse({"error": "An internal error has occurred."}, status_code=500)
 
 
 async def _langflow_upload_ingest_task(
@@ -113,13 +203,13 @@ async def _langflow_upload_ingest_task(
         original_filenames = []
 
         try:
-            temp_dir = tempfile.gettempdir()
-
             for upload_file in upload_files:
                 content = await upload_file.read()
                 original_filenames.append(upload_file.filename)
-                safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
-                temp_path = os.path.join(temp_dir, safe_filename)
+                # Generate unique temp file to avoid collisions
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
+                temp_path = temp_file.name
+                temp_file.close()
                 with open(temp_path, "wb") as f:
                     f.write(content)
                 temp_file_paths.append(temp_path)

@@ -86,7 +86,7 @@ export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
   options?: Omit<
-    UseQueryOptions<SearchResult, Error, SearchResult, any[]>,
+    UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
 ) => {

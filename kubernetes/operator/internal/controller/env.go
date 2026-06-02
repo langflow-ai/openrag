@@ -31,7 +31,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_DATABASE_URL": "sqlite:////app/data/langflow.db",
 
 			// Variables to expose to Langflow components
-			"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,OPENRAG_QUERY_FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL",
+			"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,OPENRAG_QUERY_FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE",
 
 			// Authentication and user management
 			"LANGFLOW_SKIP_AUTH_AUTO_LOGIN": "true",
@@ -52,22 +52,35 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_KEY_RETRY_DELAY":       "2",
 
 			// Flow context defaults
-			"JWT":                      "None",
-			"OWNER":                    "None",
-			"OWNER_NAME":               "None",
-			"OWNER_EMAIL":              "None",
-			"DOCLING_TASK_ID":          "None",
-			"CONNECTOR_TYPE":           "system",
-			"CONNECTOR_TYPE_URL":       "url",
-			"DOCUMENT_ID":              "",
-			"SOURCE_URL":               "",
-			"ALLOWED_USERS":            "[]",
-			"ALLOWED_GROUPS":           "[]",
-			"OPENRAG_QUERY_FILTER":     "{}",
-			"FILENAME":                 "None",
-			"MIMETYPE":                 "None",
-			"FILESIZE":                 "0",
-			"SELECTED_EMBEDDING_MODEL": "",
+			"JWT":                       "None",
+			"OWNER":                     "None",
+			"OWNER_NAME":                "None",
+			"OWNER_EMAIL":               "None",
+			"DOCLING_TASK_ID":           "None",
+			"CONNECTOR_TYPE":            "system",
+			"CONNECTOR_TYPE_URL":        "url",
+			"DOCUMENT_ID":               "",
+			"SOURCE_URL":                "",
+			"ALLOWED_USERS":             "[]",
+			"ALLOWED_GROUPS":            "[]",
+			"ALLOWED_PRINCIPALS":        "[]",
+			"OPENRAG_QUERY_FILTER":      "{}",
+			"OPENRAG_INGEST_URL":        "OPENRAG_INGEST_URL",
+			"OPENRAG_INGEST_TOKEN":      "OPENRAG_INGEST_TOKEN",
+			"OPENRAG_INGEST_RUN_ID":     "OPENRAG_INGEST_RUN_ID",
+			"OPENRAG_INGEST_BATCH_SIZE": "100",
+			"FILENAME":                  "None",
+			"MIMETYPE":                  "None",
+			"FILESIZE":                  "0",
+			"SELECTED_EMBEDDING_MODEL":  "",
+
+			// OpenSearch defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
+			"OPENSEARCH_PASSWORD":   "None",
+			"OPENSEARCH_URL":        "None",
+			"OPENSEARCH_INDEX_NAME": "None",
+
+			// Docling defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
+			"DOCLING_SERVE_URL": "None",
 
 			// Provider API keys (defaults to None, overridden by CR spec)
 			"OPENAI_API_KEY":     "None",
@@ -81,13 +94,14 @@ func NewEnvVarManager() *EnvVarManager {
 		},
 		DefaultOpenRagBEEnvVars: map[string]string{
 			// Langflow connection
-			"LANGFLOW_URL":             "http://langflow:7860",
-			"LANGFLOW_TIMEOUT":         "2400",
-			"LANGFLOW_CONNECT_TIMEOUT": "30",
-			"LANGFLOW_AUTO_LOGIN":      "true",
-			"LANGFLOW_KEY_RETRIES":     "15",
-			"LANGFLOW_KEY_RETRY_DELAY": "2",
-			"LANGFLOW_KEY":             "",
+			"LANGFLOW_URL":                 "http://langflow:7860",
+			"OPENRAG_BACKEND_INTERNAL_URL": "http://openrag-be:8000",
+			"LANGFLOW_TIMEOUT":             "2400",
+			"LANGFLOW_CONNECT_TIMEOUT":     "30",
+			"LANGFLOW_AUTO_LOGIN":          "true",
+			"LANGFLOW_KEY_RETRIES":         "15",
+			"LANGFLOW_KEY_RETRY_DELAY":     "2",
+			"LANGFLOW_KEY":                 "",
 
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
@@ -214,6 +228,34 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// EnsureRequiredEnvVars ensures all variables listed in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT
+// exist in the envVars map with at least a "None" value. This is critical because Langflow components
+// expect these variables to be present in the environment, and the list can be customized via CR spec,
+// operator env vars (OPTLF_LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT), or defaults.
+func (m *EnvVarManager) EnsureRequiredEnvVars(envVars map[string]string) {
+	// Get the list of required variables
+	requiredVarsStr, exists := envVars["LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT"]
+	if !exists || requiredVarsStr == "" {
+		return
+	}
+
+	// Parse comma-separated list
+	requiredVars := strings.Split(requiredVarsStr, ",")
+
+	// Ensure each variable exists with at least "None" value
+	for _, varName := range requiredVars {
+		varName = strings.TrimSpace(varName)
+		if varName == "" {
+			continue
+		}
+
+		// Only add if not already present
+		if _, exists := envVars[varName]; !exists {
+			envVars[varName] = "None"
+		}
+	}
 }
 
 // Generates a base64-encoded string of exactly 32 bytes for Fernet

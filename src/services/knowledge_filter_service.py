@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 KNOWLEDGE_FILTERS_INDEX_NAME = "knowledge_filters"
 
@@ -7,15 +7,25 @@ class KnowledgeFilterService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
 
+    def _user_client(self, user_id: str = None, jwt_token: str = None):
+        return self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+
+    def _write_client(self, user_id: str = None, jwt_token: str = None):
+        # OpenSearch rejects write requests on indices protected by filter-level
+        # DLS. The app enforces ownership/visibility with the scoped client, then
+        # performs trusted writes with the admin client.
+        from config.settings import clients
+
+        if clients.opensearch is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
+        return clients.opensearch
+
     async def create_knowledge_filter(
-        self, filter_doc: Dict[str, Any], user_id: str = None, jwt_token: str = None
-    ) -> Dict[str, Any]:
+        self, filter_doc: dict[str, Any], user_id: str = None, jwt_token: str = None
+    ) -> dict[str, Any]:
         """Create a new knowledge filter"""
         try:
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._write_client(user_id, jwt_token)
 
             # Index the knowledge filter document
             result = await opensearch_client.index(
@@ -40,13 +50,10 @@ class KnowledgeFilterService:
 
     async def search_knowledge_filters(
         self, query: str, user_id: str = None, jwt_token: str = None, limit: int = 20
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for knowledge filters by name, description, or query content"""
         try:
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._user_client(user_id, jwt_token)
 
             if query.strip():
                 # Search across name, description, and query_data fields
@@ -109,17 +116,12 @@ class KnowledgeFilterService:
 
     async def get_knowledge_filter(
         self, filter_id: str, user_id: str = None, jwt_token: str = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get a specific knowledge filter by ID"""
         try:
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._user_client(user_id, jwt_token)
 
-            result = await opensearch_client.get(
-                index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id
-            )
+            result = await opensearch_client.get(index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id)
 
             if result.get("found"):
                 knowledge_filter = result["_source"]
@@ -133,16 +135,17 @@ class KnowledgeFilterService:
     async def update_knowledge_filter(
         self,
         filter_id: str,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
         user_id: str = None,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update an existing knowledge filter"""
         try:
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            existing = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
+            if not existing.get("success"):
+                return existing
+
+            opensearch_client = self._write_client(user_id, jwt_token)
 
             # Update the document
             result = await opensearch_client.update(
@@ -159,10 +162,10 @@ class KnowledgeFilterService:
                     await opensearch_client.indices.refresh(index=KNOWLEDGE_FILTERS_INDEX_NAME)
                 except Exception:
                     pass
-                updated_doc = await opensearch_client.get(
-                    index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id
-                )
-                return {"success": True, "filter": updated_doc["_source"]}
+                updated_doc = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
+                if updated_doc.get("success"):
+                    return updated_doc
+                return {"success": False, "error": "Failed to read updated knowledge filter"}
             else:
                 return {"success": False, "error": "Failed to update knowledge filter"}
 
@@ -171,13 +174,17 @@ class KnowledgeFilterService:
 
     async def delete_knowledge_filter(
         self, filter_id: str, user_id: str = None, jwt_token: str = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Delete a knowledge filter"""
         try:
-            # Get user's OpenSearch client with JWT for OIDC auth
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            existing = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
+            if not existing.get("success"):
+                return {
+                    "success": False,
+                    "error": "Knowledge filter not found or access denied",
+                }
+
+            opensearch_client = self._write_client(user_id, jwt_token)
 
             result = await opensearch_client.delete(
                 index=KNOWLEDGE_FILTERS_INDEX_NAME,
@@ -219,20 +226,14 @@ class KnowledgeFilterService:
     async def add_subscription(
         self,
         filter_id: str,
-        subscription_data: Dict[str, Any],
+        subscription_data: dict[str, Any],
         user_id: str = None,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Add a subscription to a knowledge filter"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
-
             # Get the current filter document
-            filter_result = await self.get_knowledge_filter(
-                filter_id, user_id, jwt_token
-            )
+            filter_result = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
             if not filter_result.get("success"):
                 return filter_result
 
@@ -246,12 +247,11 @@ class KnowledgeFilterService:
             update_body = {
                 "doc": {
                     "subscriptions": subscriptions,
-                    "updated_at": subscription_data[
-                        "created_at"
-                    ],  # Use the same timestamp
+                    "updated_at": subscription_data["created_at"],  # Use the same timestamp
                 }
             }
 
+            opensearch_client = self._write_client(user_id, jwt_token)
             result = await opensearch_client.update(
                 index=KNOWLEDGE_FILTERS_INDEX_NAME,
                 id=filter_id,
@@ -273,17 +273,11 @@ class KnowledgeFilterService:
         subscription_id: str,
         user_id: str = None,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Remove a subscription from a knowledge filter"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
-
             # Get the current filter document
-            filter_result = await self.get_knowledge_filter(
-                filter_id, user_id, jwt_token
-            )
+            filter_result = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
             if not filter_result.get("success"):
                 return filter_result
 
@@ -292,9 +286,7 @@ class KnowledgeFilterService:
             # Remove subscription from the subscriptions array
             subscriptions = filter_doc.get("subscriptions", [])
             updated_subscriptions = [
-                sub
-                for sub in subscriptions
-                if sub.get("subscription_id") != subscription_id
+                sub for sub in subscriptions if sub.get("subscription_id") != subscription_id
             ]
 
             if len(updated_subscriptions) == len(subscriptions):
@@ -310,6 +302,7 @@ class KnowledgeFilterService:
                 }
             }
 
+            opensearch_client = self._write_client(user_id, jwt_token)
             result = await opensearch_client.update(
                 index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id, body=update_body
             )
@@ -324,12 +317,10 @@ class KnowledgeFilterService:
 
     async def get_filter_subscriptions(
         self, filter_id: str, user_id: str = None, jwt_token: str = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get all subscriptions for a knowledge filter"""
         try:
-            filter_result = await self.get_knowledge_filter(
-                filter_id, user_id, jwt_token
-            )
+            filter_result = await self.get_knowledge_filter(filter_id, user_id, jwt_token)
             if not filter_result.get("success"):
                 return filter_result
 

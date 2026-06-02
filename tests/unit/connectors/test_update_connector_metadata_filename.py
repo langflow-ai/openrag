@@ -31,6 +31,10 @@ def _make_service():
 
     opensearch_client = AsyncMock()
     service.session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+    service.clients = MagicMock()
+    # Keep the same mock for visibility checks and trusted writes so these
+    # tests can focus on the update_by_query body.
+    service.clients.opensearch = opensearch_client
     return service, opensearch_client
 
 
@@ -79,8 +83,19 @@ async def test_update_includes_filename_in_script_and_params(monkeypatch):
         "the new name written through to indexed chunks"
     )
     assert params["filename"] == "Report-FY26.docx"
-    # Sanity: scope is by document_id (the stable connector ID).
-    assert body["query"] == {"term": {"document_id": "graph-item-id-stable"}}
+    # Scope matches the stable connector ID against BOTH document_id (Langflow
+    # chunks) and connector_file_id (non-Langflow chunks, whose document_id is
+    # the content hash). Without the connector_file_id clause, non-Langflow
+    # chunks never get source_url/filename/timestamps re-applied.
+    assert body["query"] == {
+        "bool": {
+            "should": [
+                {"term": {"document_id": "graph-item-id-stable"}},
+                {"term": {"connector_file_id": "graph-item-id-stable"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
 
 
 @pytest.mark.asyncio

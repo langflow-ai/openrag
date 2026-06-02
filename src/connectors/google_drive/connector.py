@@ -6,14 +6,23 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
+from utils.group_acl import acl_principal_label, unique_acl_principal_labels
 from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
+from ..google_drive_acl import (
+    GOOGLE_DRIVE_GROUP_PROVIDER,
+    get_current_user_google_group_roles,
+    get_current_user_google_principal_labels,
+    get_current_user_google_principals,
+    google_drive_group_role,
+    google_drive_user_principal,
+)
 from .oauth import GoogleDriveOAuth
 
 logger = get_logger(__name__)
@@ -90,6 +99,15 @@ class GoogleDriveConnector(BaseConnector):
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
     _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
 
+    @classmethod
+    def get_auth_user_principals(cls, user: Any) -> list[str]:
+        """Return Google Drive principals derivable from a Google-auth OpenRAG user."""
+        provider = str(getattr(user, "provider", "") or "").lower()
+        if not provider.startswith("google"):
+            return []
+        principal = google_drive_user_principal(getattr(user, "email", None))
+        return [principal] if principal else []
+
     def emit(self, doc: ConnectorDocument) -> None:
         """
         Emit a ConnectorDocument instance.
@@ -100,6 +118,8 @@ class GoogleDriveConnector(BaseConnector):
         logger.debug(f"Emitting document: {doc.id} ({doc.filename})")
 
     def __init__(self, config: dict[str, Any]) -> None:
+        super().__init__(config)
+
         # Read from config OR env (backend env, not NEXT_PUBLIC_*):
         env_client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
         env_client_secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
@@ -167,6 +187,10 @@ class GoogleDriveConnector(BaseConnector):
 
         # cache of resolved shortcutId -> target file metadata
         self._shortcut_cache: dict[str, dict[str, Any]] = {}
+
+        import threading
+
+        self._lock = threading.Lock()
 
         # Authentication state
         self._authenticated: bool = False
@@ -313,18 +337,19 @@ class GoogleDriveConnector(BaseConnector):
                 "Google Drive service is not initialized. Please authenticate first."
             )
         try:
-            meta = (
-                self.service.files()
-                .get(
-                    fileId=file_id,
-                    fields=(
-                        "id, name, mimeType, modifiedTime, createdTime, size, "
-                        "webViewLink, parents, shortcutDetails, driveId"
-                    ),
-                    **self._drives_get_flags,
+            with self._lock:
+                meta = (
+                    self.service.files()
+                    .get(
+                        fileId=file_id,
+                        fields=(
+                            "id, name, mimeType, modifiedTime, createdTime, size, "
+                            "webViewLink, parents, shortcutDetails, driveId, trashed"
+                        ),
+                        **self._drives_get_flags,
+                    )
+                    .execute()
                 )
-                .execute()
-            )
             return self._resolve_shortcut(meta)
         except HttpError:
             return None
@@ -490,53 +515,56 @@ class GoogleDriveConnector(BaseConnector):
             "application/vnd.google-apps.drawing",  # Google Drawings
         }
 
-        if mime_type in exportable_types:
-            # This is an exportable Google Workspace file - must use export_media
-            export_mime = self._pick_export_mime(mime_type)
-            if not export_mime:
-                # Default fallback for unsupported Google native types
-                export_mime = "application/pdf"
+        with self._lock:
+            if mime_type in exportable_types:
+                # This is an exportable Google Workspace file - must use export_media
+                export_mime = self._pick_export_mime(mime_type)
+                if not export_mime:
+                    # Default fallback for unsupported Google native types
+                    export_mime = "application/pdf"
 
-            logger.debug(
-                "[GoogleDrive] _download_file_bytes: using export_media (%s -> %s)",
-                mime_type,
-                export_mime,
-            )
-            # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
-            request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
-        else:
-            # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
-            # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
-            logger.debug("[GoogleDrive] _download_file_bytes: using get_media (%s)", mime_type)
-            # Binary download (get_media also doesn't accept the Drive flags)
-            request = self.service.files().get_media(fileId=file_id)
-
-        # Download the file with error handling for misclassified Google Docs
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
-        done = False
-
-        try:
-            while not done:
-                status, done = downloader.next_chunk()
-                # Optional: you can log progress via status.progress()
-        except HttpError as e:
-            # If download fails with "fileNotDownloadable", it's a Docs Editor file
-            # that wasn't properly detected. Retry with export_media.
-            if "fileNotDownloadable" in str(e) and mime_type not in exportable_types:
-                logger.warning(
-                    f"Download failed for {file_id} ({mime_type}) with fileNotDownloadable error. "
-                    f"Retrying with export_media (file might be a Google Doc)"
+                logger.debug(
+                    "[GoogleDrive] _download_file_bytes: using export_media (%s -> %s)",
+                    mime_type,
+                    export_mime,
                 )
-                export_mime = "application/pdf"
+                # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
                 request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
-                fh = io.BytesIO()
-                downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
-                done = False
+            else:
+                # This is a regular uploaded file (PDF, image, video, etc.) - use get_media
+                # Also handles non-exportable Google Apps files (Forms, Sites, Maps, etc.)
+                logger.debug("[GoogleDrive] _download_file_bytes: using get_media (%s)", mime_type)
+                # Binary download (get_media also doesn't accept the Drive flags)
+                request = self.service.files().get_media(fileId=file_id)
+
+            # Download the file with error handling for misclassified Google Docs
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
+            done = False
+
+            try:
                 while not done:
                     status, done = downloader.next_chunk()
-            else:
-                raise
+                    # Optional: you can log progress via status.progress()
+            except HttpError as e:
+                # If download fails with "fileNotDownloadable", it's a Docs Editor file
+                # that wasn't properly detected. Retry with export_media.
+                if "fileNotDownloadable" in str(e) and mime_type not in exportable_types:
+                    logger.warning(
+                        f"Download failed for {file_id} ({mime_type}) with fileNotDownloadable error. "
+                        f"Retrying with export_media (file might be a Google Doc)"
+                    )
+                    export_mime = "application/pdf"
+                    request = self.service.files().export_media(
+                        fileId=file_id, mimeType=export_mime
+                    )
+                    fh = io.BytesIO()
+                    downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                else:
+                    raise
 
         data = fh.getvalue()
         logger.debug("[GoogleDrive] _download_file_bytes: done, %d bytes", len(data))
@@ -565,11 +593,6 @@ class GoogleDriveConnector(BaseConnector):
             logger.debug("[GoogleDrive] authenticate: building Drive service")
             self.service = self.oauth.get_service()
 
-            logger.debug("[GoogleDrive] authenticate: running sanity check (files.get root)")
-            req = self.service.files().get(fileId="root", fields="id")
-            await asyncio.to_thread(req.execute)
-            logger.debug("[GoogleDrive] authenticate: sanity check passed")
-
             self._authenticated = True
             return True
 
@@ -577,6 +600,24 @@ class GoogleDriveConnector(BaseConnector):
             self._authenticated = False
             logger.error("[GoogleDrive] authenticate failed: %s", e)
             return False
+
+    async def get_current_user_group_roles(self) -> list[str]:
+        """Return canonical group ACL roles for the connected Google user."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_group_roles(self.service, self.creds)
+
+    async def get_current_user_principals(self) -> list[str]:
+        """Return canonical user ACL principals for the connected Google user."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_principals(self.service, self.creds)
+
+    async def get_current_user_principal_labels(self) -> list[dict[str, Any]]:
+        """Return display labels for current Google user/group ACL principals."""
+        if not self._authenticated and not await self.authenticate():
+            return []
+        return await get_current_user_google_principal_labels(self.service, self.creds)
 
     async def list_files(
         self,
@@ -634,17 +675,20 @@ class GoogleDriveConnector(BaseConnector):
         """
         try:
             # Fetch permissions (requires additional API call)
-            permissions_list = (
-                self.service.permissions()
-                .list(
-                    fileId=file_meta["id"],
-                    fields="permissions(emailAddress,role,type,deleted,displayName)",
+            with self._lock:
+                permissions_list = (
+                    self.service.permissions()
+                    .list(
+                        fileId=file_meta["id"],
+                        fields="permissions(emailAddress,role,type,deleted,displayName)",
+                    )
+                    .execute()
                 )
-                .execute()
-            )
 
             allowed_users = []
             allowed_groups = []
+            allowed_principals = []
+            allowed_principal_labels = []
             owner = None
 
             for perm in permissions_list.get("permissions", []):
@@ -662,19 +706,60 @@ class GoogleDriveConnector(BaseConnector):
                 # Add allowed users
                 if perm_type == "user" and email:
                     allowed_users.append(email)
+                    user_principal = google_drive_user_principal(email)
+                    if user_principal:
+                        allowed_principals.append(user_principal)
+                        label = acl_principal_label(
+                            user_principal,
+                            kind="user",
+                            provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                            display_name=perm.get("displayName") or email,
+                            email=email,
+                            external_id=email,
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
                 # Add allowed groups
                 elif perm_type == "group" and email:
-                    allowed_groups.append(email)
+                    group_role = google_drive_group_role(email)
+                    if group_role:
+                        allowed_groups.append(group_role)
+                        allowed_principals.append(group_role)
+                        label = acl_principal_label(
+                            group_role,
+                            kind="group",
+                            provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                            display_name=perm.get("displayName") or email,
+                            email=email,
+                            external_id=email,
+                        )
+                        if label:
+                            allowed_principal_labels.append(label)
 
             # Fallback to file owners if no owner found in permissions
             if not owner and file_meta.get("owners"):
                 owner = file_meta["owners"][0].get("emailAddress")
+                owner_principal = google_drive_user_principal(owner)
+                if owner_principal:
+                    allowed_principals.append(owner_principal)
+                    label = acl_principal_label(
+                        owner_principal,
+                        kind="user",
+                        provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                        display_name=owner,
+                        email=owner,
+                        external_id=owner,
+                    )
+                    if label:
+                        allowed_principal_labels.append(label)
 
             return DocumentACL(
                 owner=owner,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=unique_acl_principal_labels(allowed_principal_labels),
             )
 
         except Exception as e:
@@ -683,10 +768,21 @@ class GoogleDriveConnector(BaseConnector):
             owner = None
             if file_meta.get("owners"):
                 owner = file_meta["owners"][0].get("emailAddress")
+            owner_principal = google_drive_user_principal(owner)
+            owner_label = acl_principal_label(
+                owner_principal,
+                kind="user",
+                provider=GOOGLE_DRIVE_GROUP_PROVIDER,
+                display_name=owner,
+                email=owner,
+                external_id=owner,
+            )
             return DocumentACL(
                 owner=owner,
                 allowed_users=[owner] if owner else [],
                 allowed_groups=[],
+                allowed_principals=[owner_principal] if owner_principal else [],
+                allowed_principal_labels=[owner_label] if owner_label else [],
             )
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

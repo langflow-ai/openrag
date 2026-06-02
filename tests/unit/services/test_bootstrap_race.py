@@ -52,6 +52,7 @@ async def test_bootstrap_race_yields_single_admin(session_factory):
     request). The post-grant rollback must observe the second admin
     and demote whichever caller is not min(user_id).
     """
+
     async def signin(user_id: str) -> None:
         async with session_factory() as session:
             await ensure_user_row(
@@ -82,6 +83,7 @@ async def test_bootstrap_race_yields_single_admin(session_factory):
 async def test_bootstrap_loser_falls_through_to_default_role(session_factory):
     """The demoted bootstrap loser must still end up with the default
     role, not zero roles."""
+
     async def signin(user_id: str) -> None:
         async with session_factory() as session:
             await ensure_user_row(
@@ -124,9 +126,7 @@ async def test_no_race_single_signin_unchanged(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_signins_same_user_no_integrity_error(
-    session_factory, monkeypatch
-):
+async def test_concurrent_signins_same_user_no_integrity_error(session_factory, monkeypatch):
     """Five concurrent `_ensure_db_user` calls for the SAME anonymous
     user must not raise IntegrityError on email_lookup_hash. The
     previous bug: both callers observed an empty users table, both
@@ -141,9 +141,11 @@ async def test_concurrent_signins_same_user_no_integrity_error(
     # _ensure_db_user reads `db.engine.SessionLocal`, so wire it to
     # our test session_factory.
     import db.engine as _engine_mod
+
     monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
 
-    from dependencies import _ensure_db_user, _ENSURED_USER_IDS, _ENSURE_LOCKS
+    from dependencies import _ENSURE_LOCKS, _ENSURED_USER_IDS, _ensure_db_user
+
     _ENSURED_USER_IDS.clear()
     _ENSURE_LOCKS.clear()
 
@@ -165,14 +167,58 @@ async def test_concurrent_signins_same_user_no_integrity_error(
     # …and exactly one user row exists.
     async with session_factory() as session:
         from db.repositories import UserRepo
+
         rows = await UserRepo(session).list_all()
     assert len(rows) == 1, f"expected 1 anonymous user row, got {len(rows)}"
 
 
 @pytest.mark.asyncio
-async def test_cache_keys_are_per_provider_subject_pair(
-    session_factory, monkeypatch
-):
+async def test_same_email_different_provider_no_integrity_error(session_factory):
+    """Two *different* identities that share an email must not crash on the
+    email_lookup_hash UNIQUE constraint.
+
+    Previous bug: after the email collision, the IntegrityError handler
+    retried the INSERT with a fresh UUID id but the *same* email, which hit
+    the same UNIQUE constraint again and propagated an uncaught
+    `sqlite3.IntegrityError: UNIQUE constraint failed: users.email_lookup_hash`.
+
+    The second identity is now persisted without the email so the request
+    succeeds; the email stays attached to the first claimant.
+    """
+
+    async def signin(provider: str, subject: str) -> str:
+        async with session_factory() as session:
+            row = await ensure_user_row(
+                session,
+                User(
+                    user_id=subject,
+                    email="shared@example.com",
+                    name=subject,
+                    provider=provider,
+                ),
+            )
+            await session.commit()
+            return row.id
+
+    first_id = await signin("google", "g-sub")
+    # Same email, different provider/subject — must not raise.
+    second_id = await signin("github", "gh-sub")
+
+    assert first_id != second_id
+
+    async with session_factory() as session:
+        from db.repositories import UserRepo
+
+        repo = UserRepo(session)
+        rows = await repo.list_all()
+        # Exactly the email's first claimant keeps the lookup hash.
+        with_email = [r for r in rows if r.email_lookup_hash]
+    assert len(rows) == 2, f"expected 2 distinct user rows, got {len(rows)}"
+    assert len(with_email) == 1, "only the first identity should hold the email"
+
+
+@pytest.mark.asyncio
+async def test_cache_keys_are_per_provider_subject_pair(session_factory, monkeypatch):
     """Two users with the SAME oauth_subject string but DIFFERENT
     providers must NOT share a cache slot. Pre-fix the cache was keyed
     on user.user_id alone, so e.g. AnonymousUser (provider="none",
@@ -180,9 +226,11 @@ async def test_cache_keys_are_per_provider_subject_pair(
     issued the same subject string.
     """
     import db.engine as _engine_mod
+
     monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
 
-    from dependencies import _ensure_db_user, _ENSURED_USER_IDS, _ENSURE_LOCKS
+    from dependencies import _ENSURE_LOCKS, _ENSURED_USER_IDS, _ensure_db_user
+
     _ENSURED_USER_IDS.clear()
     _ENSURE_LOCKS.clear()
 
@@ -219,29 +267,25 @@ async def test_cache_keys_are_per_provider_subject_pair(
 
 
 @pytest.mark.asyncio
-async def test_invalidate_pops_only_target_identity(
-    session_factory, monkeypatch
-):
+async def test_invalidate_pops_only_target_identity(session_factory, monkeypatch):
     """invalidate_user_ensured_cache(provider, subject) must pop only
     the matching identity's cache + lock entries — not the whole cache."""
     import db.engine as _engine_mod
+
     monkeypatch.setattr(_engine_mod, "SessionLocal", session_factory, raising=False)
 
     from dependencies import (
-        _ensure_db_user,
-        _ENSURED_USER_IDS,
         _ENSURE_LOCKS,
+        _ENSURED_USER_IDS,
+        _ensure_db_user,
         invalidate_user_ensured_cache,
     )
+
     _ENSURED_USER_IDS.clear()
     _ENSURE_LOCKS.clear()
 
-    await _ensure_db_user(
-        User(user_id="alice-sub", email="a@x", name="A", provider="google")
-    )
-    await _ensure_db_user(
-        User(user_id="bob-sub", email="b@x", name="B", provider="ibm")
-    )
+    await _ensure_db_user(User(user_id="alice-sub", email="a@x", name="A", provider="google"))
+    await _ensure_db_user(User(user_id="bob-sub", email="b@x", name="B", provider="ibm"))
     assert {"google:alice-sub", "ibm:bob-sub"} <= set(_ENSURED_USER_IDS.keys())
 
     invalidate_user_ensured_cache("google", "alice-sub")

@@ -21,7 +21,6 @@ from config.settings import (
     DEFAULT_DOCS_CRAWL_DEPTH,
     DEFAULT_DOCS_INGEST_SOURCE,
     DEFAULT_DOCS_URL,
-    DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL_INGEST_FLOW_ID,
     config_manager,
     get_index_name,
@@ -67,7 +66,7 @@ async def ingest_openrag_docs_when_ready(
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
             )
-            if DISABLE_INGEST_WITH_LANGFLOW:
+            if get_openrag_config().knowledge.disable_ingest_with_langflow:
                 task_id = await _ingest_default_documents_url(
                     document_service=document_service,
                     models_service=models_service,
@@ -111,7 +110,7 @@ async def ingest_default_documents_when_ready(
     try:
         logger.info(
             "Ingesting default documents when ready",
-            disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+            disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
             ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
         )
         await TelemetryClient.send_event(
@@ -144,14 +143,14 @@ async def ingest_default_documents_when_ready(
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
-        if DISABLE_INGEST_WITH_LANGFLOW:
+        if get_openrag_config().knowledge.disable_ingest_with_langflow:
             new_task_id = await _ingest_default_documents_openrag(
                 document_service,
                 models_service,
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -162,7 +161,7 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -203,9 +202,7 @@ async def _ingest_default_documents_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -233,6 +230,7 @@ async def _ingest_default_documents_langflow(
         replace_duplicates=True,
         connector_type=connector_type,
         existing_task_id=existing_task_id,
+        temp_file_paths=[],
     )
 
     logger.info(
@@ -267,9 +265,7 @@ async def _ingest_default_documents_url_langflow(
     effective_jwt = jwt_token
 
     if not effective_jwt and session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
@@ -366,9 +362,15 @@ async def _ingest_default_documents_url(
             )
 
 
-async def _delete_existing_default_docs(session_manager, connector_type: str):
+async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
     """Delete previously ingested default OpenRAG docs before reingestion."""
+    from config.settings import clients
     from session_manager import AnonymousUser
+    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+    write_client = clients.opensearch
+    if write_client is None:
+        raise RuntimeError("Backend OpenSearch write client is unavailable")
 
     if session_manager is None:
         logger.warning(
@@ -377,11 +379,9 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
         return
 
     anonymous_user = AnonymousUser()
-    effective_jwt = None
-    if session_manager:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
+    effective_jwt = jwt_token
+    if not effective_jwt and session_manager:
+        effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     opensearch_client = session_manager.get_user_opensearch_client(
         anonymous_user.user_id, effective_jwt
@@ -405,14 +405,20 @@ async def _delete_existing_default_docs(session_manager, connector_type: str):
             }
         }
     }
-    result = await opensearch_client.delete_by_query(
-        index=get_index_name(),
-        body=delete_query,
-        conflicts="proceed",
+    index_name = get_index_name()
+    document_ids = await collect_visible_document_ids(
+        opensearch_client,
+        index=index_name,
+        query=delete_query["query"],
+    )
+    deleted_chunks = await delete_document_ids(
+        write_client,
+        index=index_name,
+        document_ids=document_ids,
     )
     logger.info(
         "Deleted existing default OpenRAG docs before reingestion",
-        deleted_chunks=result.get("deleted", 0),
+        deleted_chunks=deleted_chunks,
     )
 
 
@@ -422,6 +428,7 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     task_service,
     langflow_file_service,
     session_manager,
+    jwt_token=None,
 ):
     """Reingest default OpenRAG docs once when app version changes."""
     config = get_openrag_config()
@@ -444,13 +451,16 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         previous_version=previous_version,
         current_version=current_version,
     )
-    await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+    await _delete_existing_default_docs(
+        session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+    )
     await ingest_openrag_docs_when_ready(
         document_service,
         models_service,
         task_service,
         langflow_file_service,
         session_manager,
+        jwt_token=jwt_token,
     )
     config.onboarding.openrag_docs_ingested_version = current_version
     if _should_use_url_default_docs_ingest():
@@ -523,6 +533,7 @@ async def refresh_default_openrag_docs(
     session_manager,
     force: bool = False,
     reason: str = "startup",
+    jwt_token=None,
 ):
     """Refresh OpenRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
@@ -535,7 +546,7 @@ async def refresh_default_openrag_docs(
             logger.info(
                 "Skipping OpenRAG docs refresh: URL ingestion is not active",
                 ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
-                disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
+                disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
                 has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
                 has_docs_url=bool(DEFAULT_DOCS_URL),
             )
@@ -602,13 +613,16 @@ async def refresh_default_openrag_docs(
             previous_signature=previous_signature,
             new_signature=signature,
         )
-        await _delete_existing_default_docs(session_manager, connector_type="openrag_docs")
+        await _delete_existing_default_docs(
+            session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+        )
         await ingest_openrag_docs_when_ready(
             document_service,
             models_service,
             task_service,
             langflow_file_service,
             session_manager,
+            jwt_token=jwt_token,
         )
         config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
         # Keep docs version/signature metadata consistent after a refresh.

@@ -5,7 +5,7 @@ Aggregates document chunks by filename to produce file-level views,
 with support for pagination, filtering, sorting, and fuzzy search.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
@@ -27,11 +27,11 @@ class FileService:
         page_size: int = 25,
         sort_by: str = "filename",
         sort_order: str = "asc",
-        connector_type: Optional[str] = None,
-        mimetype: Optional[str] = None,
-        owner: Optional[str] = None,
-        search: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        connector_type: str | None = None,
+        mimetype: str | None = None,
+        owner: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
         """
         List ingested files with server-side pagination, filtering, and sorting.
 
@@ -74,10 +74,10 @@ class FileService:
         query: str = "",
         page: int = 1,
         page_size: int = 25,
-        connector_type: Optional[str] = None,
-        mimetype: Optional[str] = None,
-        owner: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        connector_type: str | None = None,
+        mimetype: str | None = None,
+        owner: str | None = None,
+    ) -> dict[str, Any]:
         """
         Search files by name with fuzzy/prefix matching.
 
@@ -100,11 +100,11 @@ class FileService:
     def _build_filter_query(
         self,
         user_id: str,
-        connector_type: Optional[str] = None,
-        mimetype: Optional[str] = None,
-        owner: Optional[str] = None,
-        search: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        connector_type: str | None = None,
+        mimetype: str | None = None,
+        owner: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
         """Build the bool query with optional filters + filename search."""
         must = []
         filter_clauses = []
@@ -130,13 +130,13 @@ class FileService:
                 }
             )
 
-        query = {"bool": {"filter": filter_clauses}}
+        query: dict[str, Any] = {"bool": {"filter": filter_clauses}}
         if must:
             query["bool"]["must"] = must
 
         return query
 
-    def _build_file_aggregation(self, query: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_file_aggregation(self, query: dict[str, Any]) -> dict[str, Any]:
         """Build the OpenSearch aggregation body for file-level grouping."""
         return {
             "size": 0,
@@ -166,6 +166,7 @@ class FileService:
                                     "indexed_time",
                                     "allowed_users",
                                     "allowed_groups",
+                                    "allowed_principal_labels",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
@@ -176,7 +177,7 @@ class FileService:
             },
         }
 
-    def _parse_aggregation_buckets(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _parse_aggregation_buckets(self, result: dict[str, Any]) -> list[dict[str, Any]]:
         """Parse OpenSearch aggregation buckets into file dicts."""
         buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
 
@@ -204,6 +205,7 @@ class FileService:
                     "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
+                    "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
 
@@ -211,10 +213,10 @@ class FileService:
 
     def _sort_files(
         self,
-        files: List[Dict[str, Any]],
+        files: list[dict[str, Any]],
         sort_by: str,
         sort_order: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Sort file list by the given field."""
         valid_sort_fields = {
             "filename",

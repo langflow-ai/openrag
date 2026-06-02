@@ -201,6 +201,7 @@ export class OneDriveHandler {
       clientId: this.clientId,
       action: "query",
       multiSelect: true,
+      viewType: "all",
       advanced: {
         endpointHint: endpointHint,
         accessToken: this.accessToken,

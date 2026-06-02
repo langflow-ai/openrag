@@ -21,6 +21,7 @@ class SettingsUpdateBody(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    disable_ingest_with_langflow: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: str | None = Field(None, min_length=1)
@@ -128,6 +129,7 @@ class KnowledgeConfig(BaseModel):
     ocr: bool | None
     picture_descriptions: bool | None
     index_name: str | None
+    disable_ingest_with_langflow: bool | None
 
 
 class AgentConfig(BaseModel):

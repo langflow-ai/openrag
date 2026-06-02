@@ -24,6 +24,20 @@ const config = {
     extend: {
       maxWidth: {
         content: "960px",
+        "task-dialog": "var(--task-dialog-width)",
+      },
+      height: {
+        "task-dialog": "var(--task-dialog-max-height)",
+      },
+      maxHeight: {
+        "task-dialog": "var(--task-dialog-max-height)",
+      },
+      width: {
+        "task-dialog": "var(--task-dialog-width)",
+        "task-dialog-file-type": "var(--task-dialog-file-type-width)",
+      },
+      zIndex: {
+        "task-dialog-menu": "var(--z-task-dialog-menu)",
       },
       screens: {
         xl: "1200px",
@@ -157,15 +171,24 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        canvas: "hsl(var(--canvas))",
         "layer-contextual": "hsl(var(--layer-contextual))",
+        "task-dialog-oss": "hsl(var(--task-dialog-oss-bg))",
+        "task-dialog-oss-selected": "hsl(var(--task-dialog-oss-selected))",
         "layer-contextual-foreground":
           "hsl(var(--layer-contextual-foreground))",
+        "border-subtle-contextual":
+          "hsl(var(--border-subtle-background-contextual))",
         "text-text-01": "hsl(var(--text-text-01))",
         "link-primary": "hsl(var(--link-primary))",
         "button-tertiary": "hsl(var(--button-tertiary))",
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
+        "function-call-header": {
+          DEFAULT: "var(--function-call-header)",
+          hover: "var(--function-call-header-hover)",
+        },
         badge: {
           DEFAULT: "hsl(var(--badge))",
           foreground: "hsl(var(--badge-foreground))",
@@ -192,12 +215,34 @@ const config = {
           message: "var(--failure-message)",
           scroll: "var(--failure-scroll)",
           muted: "var(--failure-muted)",
+          "component-cause": "hsl(var(--failure-component-cause))",
         },
+        "task-status": {
+          failed: {
+            DEFAULT: "hsl(var(--task-status-failed-bg))",
+            foreground: "hsl(var(--task-status-failed-fg))",
+          },
+          partial: {
+            DEFAULT: "hsl(var(--task-status-partial-bg))",
+            foreground: "hsl(var(--task-status-partial-fg))",
+          },
+          complete: {
+            DEFAULT: "hsl(var(--task-status-complete-bg))",
+            foreground: "hsl(var(--task-status-complete-fg))",
+          },
+        },
+      },
+      spacing: {
+        mmd: "13px",
+        "task-dialog-error-indent": "var(--task-dialog-error-indent)",
+        "task-dialog-error-indent-cloud":
+          "var(--task-dialog-error-indent-cloud)",
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        mmd: "var(--radius-mmd)",
       },
       fontFamily: {
         sans: ["var(--font-sans)", ...fontFamily.sans],

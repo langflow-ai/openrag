@@ -18,7 +18,12 @@ async def get_document_acl(
         body={
             "query": {"term": {"filename": filename}},
             "size": 1,
-            "_source": ["owner", "allowed_users", "allowed_groups"],
+            "_source": [
+                "owner",
+                "allowed_users",
+                "allowed_groups",
+                "allowed_principal_labels",
+            ],
         },
     )
     hits = response.get("hits", {}).get("hits", [])
@@ -34,5 +39,6 @@ async def get_document_acl(
             "owner": source.get("owner"),
             "allowed_users": source.get("allowed_users", []),
             "allowed_groups": source.get("allowed_groups", []),
+            "allowed_principal_labels": source.get("allowed_principal_labels", []),
         }
     )

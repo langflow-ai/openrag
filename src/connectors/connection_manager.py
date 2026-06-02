@@ -4,16 +4,17 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiofiles
 
 from utils.logging_config import get_logger
 
-logger = get_logger(__name__)
-
+from .aws_s3 import S3Connector
 from .base import BaseConnector
 from .registry import get_all_secret_keys, get_connector_class, get_connector_classes
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -222,7 +223,7 @@ class ConnectionManager:
                 )
 
         # Remove or deactivate duplicate connections
-        for connection_id, connection in connections_to_remove:
+        for connection_id, _connection in connections_to_remove:
             if remove_duplicates:
                 await self.delete_connection(connection_id)  # Handles token cleanup
             else:
@@ -367,7 +368,7 @@ class ConnectionManager:
             try:
                 if hasattr(connector, "webhook_channel_id") and connector.webhook_channel_id:
                     await connector.cleanup_subscription(connector.webhook_channel_id)
-            except:
+            except Exception:
                 pass  # Best effort cleanup
 
             del self.active_connectors[connection_id]
@@ -430,6 +431,22 @@ class ConnectionManager:
                 "available": cls.is_available(self, user_id),
             }
         return result
+
+    def get_auth_user_principals(self, user: Any) -> list[str]:
+        """Return connector ACL principals derivable from the OpenRAG auth user."""
+        from utils.group_acl import unique_acl_principals
+
+        principals: list[str] = []
+        for connector_cls in get_connector_classes():
+            try:
+                principals.extend(connector_cls.get_auth_user_principals(user) or [])
+            except Exception as e:
+                logger.debug(
+                    "Connector auth-user principal resolver failed",
+                    connector=connector_cls.__name__,
+                    error=str(e),
+                )
+        return unique_acl_principals(principals)
 
     def _has_saved_credentials_for_user(self, connector_type: str, user_id: str | None) -> bool:
         """Check if user has an active saved connection with usable credentials."""
@@ -530,8 +547,9 @@ class ConnectionManager:
             # Store the subscription and resource IDs in connection config
             connection_config.config["webhook_channel_id"] = subscription_id
             connection_config.config["subscription_id"] = subscription_id  # Alternative field
-            if getattr(connector, "webhook_resource_id", None):
-                connection_config.config["resource_id"] = connector.webhook_resource_id
+            resource_id = getattr(connector, "webhook_resource_id", None)
+            if resource_id:
+                connection_config.config["resource_id"] = resource_id
 
             # Save updated connection config
             await self.save_connections()
@@ -575,8 +593,9 @@ class ConnectionManager:
             # Store the subscription and resource IDs in connection config
             connection_config.config["webhook_channel_id"] = subscription_id
             connection_config.config["subscription_id"] = subscription_id
-            if getattr(connector, "webhook_resource_id", None):
-                connection_config.config["resource_id"] = connector.webhook_resource_id
+            resource_id = getattr(connector, "webhook_resource_id", None)
+            if resource_id:
+                connection_config.config["resource_id"] = resource_id
 
             # Save updated connection config
             await self.save_connections()

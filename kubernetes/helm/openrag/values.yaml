@@ -140,6 +140,11 @@ langflow:
     sourceUrl: ""
     allowedUsers: "[]"
     allowedGroups: "[]"
+    allowedPrincipals: "[]"
+    openragIngestUrl: "OPENRAG_INGEST_URL"
+    openragIngestToken: "OPENRAG_INGEST_TOKEN"
+    openragIngestRunId: "OPENRAG_INGEST_RUN_ID"
+    openragIngestBatchSize: "100"
     doclingTaskId: "None"
     filename: "None"
     mimetype: "None"
@@ -172,7 +177,7 @@ langflow:
     host: "https://cloud.langfuse.com"
 
   # Variables to expose to flows
-  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL"
+  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE"
 
   # Probes
   livenessProbe:
@@ -233,6 +238,29 @@ backend:
     limits:
       cpu: "4"
       memory: "16Gi"
+  # Init container resource limits
+  # Configure resource requests/limits for init containers that load default documents and flows
+  # Adjust ephemeral-storage based on the size of documents/flows being downloaded
+  initContainers:
+    loadDefaultDocuments:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default documents
+        limits:
+          ephemeral-storage: "500Mi"
+    loadDefaultFlows:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default flows
+        limits:
+          ephemeral-storage: "500Mi"
+    waitForLangflow:
+      resources:
+        requests:
+          ephemeral-storage: "10Mi"  # Minimal storage for busybox network check loop
+        limits:
+          ephemeral-storage: "10Mi"
+
 
   # Logging and Service
   logFormat: "json"                       # json or text
@@ -530,6 +558,8 @@ llmProviders:
     apiKey: ""                            # WatsonX API key (stored in secret)
     endpoint: "https://us-south.ml.cloud.ibm.com"
     projectId: ""                         # WatsonX project ID
+    maxRetries: ""                        # IBM SDK retry count on 429 (optional; blank = SDK default of 10)
+    delayTime: ""                         # IBM SDK backoff delay in seconds (optional; blank = SDK default of 0.5)
   ollama:
     enabled: false
     endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
@@ -559,6 +589,7 @@ serviceAccount:
   create: true
   name: ""
   annotations: {}
+  automount: false
 
 # ============================================================================
 # Pod Security
