@@ -12,7 +12,7 @@ overrides = [{ name = "python-dotenv", specifier = ">=1.1.0" }]
 
 [[package]]
 name = "agentd"
-version = "0.8.1"
+version = "0.8.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -23,9 +23,9 @@ dependencies = [
     { name = "openai-agents" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/7f/3f37443c23f86b7f184368b593f37ed82c686cef37ddde9d7a368d1cad36/agentd-0.8.1.tar.gz", hash = "sha256:e945605fdfa06af71176dbfc968d82643d2be11939015a4a6e634bab25701865", size = 44739183, upload-time = "2026-03-16T11:32:19.069Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/6e/f08e013f0d848f1eee85464d6f29d888233e47557a4bce1103beaaf97c21/agentd-0.8.7.tar.gz", hash = "sha256:1bd1241727b05cba814b2b302090cb8a03183ab5a6a4c2652c43ae70575bd168", size = 44742427, upload-time = "2026-04-28T12:20:52.556Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/5d/bd09e5f1624dd047df33ca2ead40d50677ddf0050a20c9fcfdc62c4d3a17/agentd-0.8.1-py3-none-any.whl", hash = "sha256:875f3240a1d597951653466e749957ec61a8b7fd805f249a012c25e3ea91bb01", size = 61917, upload-time = "2026-03-16T11:32:07.301Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/71/e16440a4d80d3769a8e05cfdea3ab43cd9adb5234312046d16b3b68d25a0/agentd-0.8.7-py3-none-any.whl", hash = "sha256:fcdc7a6d5cd35bd069d22ddd425305280ce88b470dcb999df77490c4bc3c79f4", size = 64780, upload-time = "2026-04-28T12:20:41.545Z" },
 ]
 
 [[package]]
@@ -2069,7 +2069,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentd", specifier = ">=0.8.1" },
+    { name = "agentd", specifier = ">=0.8.7" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiohttp", specifier = ">=3.13.4" },
     { name = "aiosqlite", specifier = ">=0.20.0" },

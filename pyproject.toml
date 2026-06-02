@@ -21,7 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "agentd>=0.8.1",
+    "agentd>=0.8.7",
     "aiofiles>=24.1.0",
     "aiohttp>=3.13.4",
     "authlib>=1.7.1",
