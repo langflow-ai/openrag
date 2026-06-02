@@ -105,6 +105,7 @@ OPENRAG_BACKEND_ROUTER_URL = (
     os.getenv("OPENRAG_BACKEND_ROUTER_URL") or _derive_router_url()
 ).rstrip("/")
 
+
 # Upstream the router FORWARDS callbacks to. The router is co-located with the
 # backend (same process), so the HOST is always loopback — but the scheme/port
 # are sourced from OPENRAG_BACKEND_INTERNAL_URL so the upstream tracks the
