@@ -38,3 +38,49 @@ def _get_openrag_version() -> str:
         return "unknown"
 
 OPENRAG_VERSION = _get_openrag_version()
+
+
+def _get_git_commit_sha() -> str:
+    """Return the current git commit SHA.
+
+    Resolution order:
+      1. OPENRAG_GIT_SHA env var (baked in at build time for containers).
+      2. `git rev-parse HEAD` in a local checkout (dev fallback).
+      3. "unknown" if neither is available.
+
+    The commit SHA is a non-sensitive build identifier, safe to log.
+    """
+    import os
+
+    env_sha = os.getenv("OPENRAG_GIT_SHA", "").strip()
+    if env_sha:
+        return env_sha
+
+    try:
+        import subprocess
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            sha = result.stdout.strip()
+            if sha:
+                return sha
+    except Exception:
+        pass
+
+    return "unknown"
+
+
+def get_git_commit_sha() -> str:
+    """Public accessor for the cached git commit SHA."""
+    return OPENRAG_GIT_SHA
+
+
+OPENRAG_GIT_SHA = _get_git_commit_sha()
