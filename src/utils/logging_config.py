@@ -3,10 +3,9 @@ import logging.config
 import os
 import re
 import sys
-from typing import Any, Dict
+from typing import Any
 
 import structlog
-from structlog import processors
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -38,13 +37,13 @@ _shared_processors: list = []
 # Standalone processors (module-level so they can be reused in stdlib bridge)
 # ---------------------------------------------------------------------------
 
-def drop_color_message_key(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def drop_color_message_key(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Remove uvicorn's duplicate color_message field when bridging via stdlib."""
     event_dict.pop("color_message", None)
     return event_dict
 
 
-def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def filter_health_and_metrics(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Drop log events for high-frequency health/metrics endpoints."""
     path = event_dict.get("path", "")
     if path in ("/health", "/metrics", "/healthz", "/docs", "/openapi.json"):
@@ -52,7 +51,7 @@ def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, An
     return event_dict
 
 
-def suppress_third_party_noise(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def suppress_third_party_noise(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Drop WARNING/INFO/DEBUG log lines that originate from installed packages.
 
     Third-party libraries (opensearch-py, httpx, boto3 …) log every HTTP
@@ -69,7 +68,7 @@ def suppress_third_party_noise(_, __, event_dict: Dict[str, Any]) -> Dict[str, A
     return event_dict
 
 
-def clean_log_location(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def clean_log_location(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Shorten pathname to a package-relative form for readability.
 
     Strips the leading venv/site-packages prefix so logs show
@@ -85,7 +84,7 @@ def clean_log_location(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 def add_global_fields_factory(service: str, env: str, version: str):
     """Return a processor that stamps every event with service metadata."""
-    def processor(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def processor(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
         event_dict.setdefault("service", service)
         event_dict.setdefault("env", env)
         event_dict.setdefault("version", version)
