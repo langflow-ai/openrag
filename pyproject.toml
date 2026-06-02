@@ -54,6 +54,7 @@ dependencies = [
     "pygments>=2.20.0",
     "pyasn1>=0.6.3",
     "requests>=2.33.0",
+    "urllib3>=2.7.0",
     "sqlmodel>=0.0.22",
     "sqlalchemy[asyncio]>=2.0.36",
     "aiosqlite>=0.20.0",
