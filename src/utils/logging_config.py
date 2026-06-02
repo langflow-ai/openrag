@@ -15,13 +15,13 @@ LOC_WIDTH_SHORT = 30
 LOC_WIDTH_LONG = 60
 
 LEVEL_COLORS = {
-    "DEBUG": "\033[36m",       # Cyan
-    "INFO": "\033[32m",        # Green
-    "WARNING": "\033[33m",     # Yellow
-    "ERROR": "\033[31m",       # Red
+    "DEBUG": "\033[36m",  # Cyan
+    "INFO": "\033[32m",  # Green
+    "WARNING": "\033[33m",  # Yellow
+    "ERROR": "\033[31m",  # Red
     "CRITICAL": "\033[1;31m",  # Bold red
 }
-DIM = "\033[38;5;244m"   # Medium grey
+DIM = "\033[38;5;244m"  # Medium grey
 RESET = "\033[0m"
 
 _SENSITIVE_HEADER_RE = re.compile(
@@ -60,10 +60,7 @@ def suppress_third_party_noise(_, __, event_dict: dict[str, Any]) -> dict[str, A
     """
     pathname = event_dict.get("pathname", "")
     level = event_dict.get("level", "info")
-    if (
-        (".venv" in pathname or "site-packages" in pathname)
-        and level not in ("error", "critical")
-    ):
+    if (".venv" in pathname or "site-packages" in pathname) and level not in ("error", "critical"):
         raise structlog.DropEvent()
     return event_dict
 
@@ -78,7 +75,7 @@ def clean_log_location(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     marker = "site-packages/"
     idx = pathname.find(marker)
     if idx != -1:
-        event_dict["pathname"] = pathname[idx + len(marker):]
+        event_dict["pathname"] = pathname[idx + len(marker) :]
     return event_dict
 
 
@@ -89,6 +86,7 @@ def add_global_fields_factory(service: str, env: str, version: str):
         event_dict.setdefault("env", env)
         event_dict.setdefault("version", version)
         return event_dict
+
     return processor
 
 
@@ -96,17 +94,16 @@ def add_global_fields_factory(service: str, env: str, version: str):
 # Security helper
 # ---------------------------------------------------------------------------
 
+
 def sanitize_headers(headers: dict) -> dict:
     """Return a copy of *headers* with values of sensitive keys masked."""
-    return {
-        k: "***" if _SENSITIVE_HEADER_RE.search(k) else v
-        for k, v in headers.items()
-    }
+    return {k: "***" if _SENSITIVE_HEADER_RE.search(k) else v for k, v in headers.items()}
 
 
 # ---------------------------------------------------------------------------
 # Main configuration
 # ---------------------------------------------------------------------------
+
 
 def configure_logging(
     log_level: str = "INFO",
@@ -136,9 +133,7 @@ def configure_logging(
     ]
 
     if include_timestamps:
-        base_processors.append(
-            structlog.processors.TimeStamper(fmt="iso", utc=True)
-        )
+        base_processors.append(structlog.processors.TimeStamper(fmt="iso", utc=True))
 
     base_processors.append(
         structlog.processors.CallsiteParameterAdder(
@@ -162,9 +157,7 @@ def configure_logging(
     else:
         # Development: human-readable with exception info as text
         use_colors = (
-            "NO_COLOR" not in os.environ
-            and hasattr(sys.stderr, "isatty")
-            and sys.stderr.isatty()
+            "NO_COLOR" not in os.environ and hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
         )
 
         def custom_formatter(logger, log_method, event_dict):

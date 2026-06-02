@@ -262,9 +262,7 @@ async def run_startup(app: FastAPI):
         finally:
             await opensearch_client.close()
     else:
-        logger.info(
-            "OpenSearch security bootstrap disabled - skipping (handled in startup_tasks)"
-        )
+        logger.info("OpenSearch security bootstrap disabled - skipping (handled in startup_tasks)")
 
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))
