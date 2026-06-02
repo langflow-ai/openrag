@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
@@ -11,6 +12,7 @@ import {
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
+import { OnboardingBlocked } from "@/app/onboarding/_components/onboarding-blocked";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
@@ -18,6 +20,7 @@ import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { page } from "@/lib/analytics";
 import {
   ANIMATION_DURATION,
@@ -38,6 +41,7 @@ export function ChatRenderer({
   const router = useRouter();
   const queryClient = useQueryClient(); // Move hook to component level
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { can, isLoading: isPermLoading, rbacEnforced } = usePermissions();
   const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
@@ -252,6 +256,23 @@ export function ChatRenderer({
   const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT / 2}px + 50vh)`;
   const translateY = showLayout ? "0px" : `-50vh`;
   const translateX = showLayout ? "0px" : `-50vw`;
+
+  // Onboarding is admin-only. When the workspace still needs onboarding
+  // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
+  // they get a "contact your administrator" screen instead. Wait for the
+  // permission set to resolve first so the wizard never flashes for them.
+  if (!showLayout && rbacEnforced && !isNoAuthMode) {
+    if (isPermLoading) {
+      return (
+        <div className="min-h-dvh flex items-center justify-center bg-background">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
+    if (!can("config:write")) {
+      return <OnboardingBlocked />;
+    }
+  }
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
