@@ -180,7 +180,7 @@ function TaskDialogContent({
           onClick={onClose}
           disabled={isRetrying}
         >
-          Cancel
+          {isCancelOnly ? "Close" : "Cancel"}
         </Button>
       </DialogFooter>
     </div>
