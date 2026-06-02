@@ -13,6 +13,7 @@ COPY internal/ internal/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
+# Using latest UBI 9 minimal image (currently 9.8 with security patches)
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 # Install necessary CA certificates for HTTPS connections
