@@ -45,6 +45,7 @@ dependencies = [
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
     "prometheus-fastapi-instrumentator>=7.1.0",
+    "protobuf>=7.35.0",
     "litellm==1.83.14",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
