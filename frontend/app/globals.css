@@ -260,8 +260,9 @@
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
     --border-border-interactive: #4589ff;
-    /* IBM dark grey action button (#393939); hover uses --secondary-hover */
-    --ibm-overwrite-button: 0 0% 22%; /* #393939 */
+    /* IBM dark grey action button (#393939 → #474747); not --badge (dark badge is #525252) */
+    --ibm-overwrite-button: 0 0% 22.4%; /* #393939 */
+    --ibm-overwrite-button-hover: 0 0% 28%; /* #474747 */
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
