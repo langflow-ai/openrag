@@ -166,8 +166,8 @@ export class DocumentsClient {
     }
 
     const body: Record<string, string> = {};
-    if (opts.filename) body.filename = opts.filename;
-    if (opts.filterId) body.filter_id = opts.filterId;
+    if (opts.filename) body["filename"] = opts.filename;
+    if (opts.filterId) body["filter_id"] = opts.filterId;
 
     try {
       const response = await this.client._request("DELETE", "/api/v1/documents", {
