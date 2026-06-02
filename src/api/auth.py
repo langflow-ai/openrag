@@ -109,6 +109,9 @@ async def auth_me(
     """Get current user information"""
     result = await auth_service.get_user_info(request)
     result["version"] = OPENRAG_VERSION
+    from utils.run_mode_utils import get_run_mode
+
+    result["run_mode"] = get_run_mode()
     return JSONResponse(result)
 
 
