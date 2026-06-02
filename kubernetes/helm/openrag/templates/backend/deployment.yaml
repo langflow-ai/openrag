@@ -209,6 +209,11 @@ spec:
             - name: http
               containerPort: 8000
               protocol: TCP
+            {{- if .Values.backend.ingestRouter.enabled }}
+            - name: ingest-router
+              containerPort: {{ .Values.backend.ingestRouter.port }}
+              protocol: TCP
+            {{- end }}
           volumeMounts:
             - name: openrag-dotenv
               mountPath: /app/.env

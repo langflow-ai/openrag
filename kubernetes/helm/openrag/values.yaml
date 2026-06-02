@@ -350,6 +350,14 @@ backend:
     type: ClusterIP
     port: 8000
 
+  # Ingestion-callback proxy router (OPENRAG_BACKEND_ROUTER_ENABLE). When
+  # enabled, the backend also serves a tiny proxy on `port` that forwards only
+  # the Langflow ingest callback; Langflow is pointed at it instead of the full
+  # backend internal API. Exposes the port on the backend Deployment + Service.
+  ingestRouter:
+    enabled: false
+    port: 8100
+
 # ============================================================================
 # OpenRAG Frontend Configuration
 # ============================================================================

@@ -52,6 +52,10 @@ stringData:
     # Langflow url
     LANGFLOW_URL={{ include "openrag.langflow.url" . | quote }}
     OPENRAG_BACKEND_INTERNAL_URL={{ include "openrag.backend.url" . | quote }}
+    {{- if .Values.backend.ingestRouter.enabled }}
+    OPENRAG_BACKEND_ROUTER_ENABLE=true
+    OPENRAG_BACKEND_ROUTER_PORT={{ .Values.backend.ingestRouter.port }}
+    {{- end }}
 
     # Flow IDs
     {{- if .Values.langflow.flows.chatFlowId }}
