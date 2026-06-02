@@ -14,16 +14,18 @@ The permission itself stays in the catalog (admin still owns it), so only the
 join rows for the two non-admin roles are removed.
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0006_revoke_provider_override_nonadmin"
-down_revision: Union[str, Sequence[str], None] = "0005_user_fk_ondelete"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0005_user_fk_ondelete"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _PERM_NAME = "providers:override:self"
 _ROLE_NAMES = ["developer", "user"]
@@ -62,9 +64,7 @@ def downgrade() -> None:
     existing = {
         row[0]
         for row in bind.execute(
-            sa.text(
-                "SELECT role_id FROM role_permissions WHERE permission_id = :perm_id"
-            ),
+            sa.text("SELECT role_id FROM role_permissions WHERE permission_id = :perm_id"),
             {"perm_id": perm_id},
         ).fetchall()
     }
@@ -73,10 +73,6 @@ def downgrade() -> None:
         sa.column("role_id", sa.String),
         sa.column("permission_id", sa.String),
     )
-    rows = [
-        {"role_id": rid, "permission_id": perm_id}
-        for rid in role_ids
-        if rid not in existing
-    ]
+    rows = [{"role_id": rid, "permission_id": perm_id} for rid in role_ids if rid not in existing]
     if rows:
         op.bulk_insert(rp_table, rows)

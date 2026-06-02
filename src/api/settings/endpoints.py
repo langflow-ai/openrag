@@ -211,7 +211,9 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-            ) if show_providers else None,
+            )
+            if show_providers
+            else None,
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
                 embedding_provider=knowledge_config.embedding_provider,
