@@ -50,12 +50,10 @@ async def ingest_endpoint(
     POST /v1/documents/ingest
     Request: multipart/form-data with "file" field
 
-    NOTE: `create_filter` is kept here for response-shape compatibility — the
-    non-v1 onboarding flow consumes the `create_filter` field echoed back in
-    the response. v1 SDK consumers do not currently have a workflow that uses
-    it, and the field is never forwarded to the actual ingest task. It should
-    be removed in a future major version of the v1 API once we are willing to
-    take the breaking change (response no longer contains `create_filter`).
+    NOTE: `create_filter` is kept for upload-router/onboarding compatibility.
+    The router echoes it in the upload response so onboarding can create a
+    saved knowledge filter after ingestion completes. It does not change the
+    ingest task itself, and the v1 SDK does not expose this option.
     """
     return await upload_ingest_router(
         file=file,
