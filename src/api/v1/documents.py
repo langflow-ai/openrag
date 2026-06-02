@@ -109,7 +109,7 @@ async def delete_document_endpoint(
             body.filter_id,
             knowledge_filter_service,
             user_id=user.user_id,
-            jwt_token=None,
+            jwt_token=user.jwt_token,
         )
         filenames = resolved["filters"].get("data_sources") or []
         if not filenames:
@@ -120,19 +120,21 @@ async def delete_document_endpoint(
 
         results = []
         total_deleted = 0
+        statuses = []
         for fname in filenames:
             payload, _status = await delete_documents_by_filename_core(
                 filename=fname,
                 session_manager=session_manager,
                 user_id=user.user_id,
-                jwt_token=None,
+                jwt_token=user.jwt_token,
             )
             results.append(payload)
+            statuses.append(_status)
             total_deleted += payload.get("deleted_chunks", 0) or 0
 
         return JSONResponse(
             {
-                "success": True,
+                "success": all(200 <= status < 300 for status in statuses),
                 "deleted_chunks": total_deleted,
                 "filenames": filenames,
                 "filter_id": body.filter_id,
@@ -144,6 +146,6 @@ async def delete_document_endpoint(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
-        jwt_token=None,
+        jwt_token=user.jwt_token,
     )
     return JSONResponse(payload, status_code=status_code)
