@@ -16,13 +16,13 @@ LOC_WIDTH_SHORT = 30
 LOC_WIDTH_LONG = 60
 
 LEVEL_COLORS = {
-    "DEBUG": "\033[36m",       # Cyan
-    "INFO": "\033[32m",        # Green
-    "WARNING": "\033[33m",     # Yellow
-    "ERROR": "\033[31m",       # Red
+    "DEBUG": "\033[36m",  # Cyan
+    "INFO": "\033[32m",  # Green
+    "WARNING": "\033[33m",  # Yellow
+    "ERROR": "\033[31m",  # Red
     "CRITICAL": "\033[1;31m",  # Bold red
 }
-DIM = "\033[38;5;244m"   # Medium grey
+DIM = "\033[38;5;244m"  # Medium grey
 RESET = "\033[0m"
 
 _SENSITIVE_HEADER_RE = re.compile(
@@ -38,13 +38,14 @@ _shared_processors: list = []
 # Standalone processors (module-level so they can be reused in stdlib bridge)
 # ---------------------------------------------------------------------------
 
-def drop_color_message_key(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+
+def drop_color_message_key(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Remove uvicorn's duplicate color_message field when bridging via stdlib."""
     event_dict.pop("color_message", None)
     return event_dict
 
 
-def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def filter_health_and_metrics(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Drop log events for high-frequency health/metrics endpoints."""
     path = event_dict.get("path", "")
     if path in ("/health", "/metrics", "/healthz", "/docs", "/openapi.json"):
@@ -52,7 +53,7 @@ def filter_health_and_metrics(_, __, event_dict: Dict[str, Any]) -> Dict[str, An
     return event_dict
 
 
-def suppress_third_party_noise(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def suppress_third_party_noise(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Drop WARNING/INFO/DEBUG log lines that originate from installed packages.
 
     Third-party libraries (opensearch-py, httpx, boto3 …) log every HTTP
@@ -61,15 +62,12 @@ def suppress_third_party_noise(_, __, event_dict: Dict[str, Any]) -> Dict[str, A
     """
     pathname = event_dict.get("pathname", "")
     level = event_dict.get("level", "info")
-    if (
-        (".venv" in pathname or "site-packages" in pathname)
-        and level not in ("error", "critical")
-    ):
+    if (".venv" in pathname or "site-packages" in pathname) and level not in ("error", "critical"):
         raise structlog.DropEvent()
     return event_dict
 
 
-def clean_log_location(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def clean_log_location(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Shorten pathname to a package-relative form for readability.
 
     Strips the leading venv/site-packages prefix so logs show
@@ -79,17 +77,19 @@ def clean_log_location(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
     marker = "site-packages/"
     idx = pathname.find(marker)
     if idx != -1:
-        event_dict["pathname"] = pathname[idx + len(marker):]
+        event_dict["pathname"] = pathname[idx + len(marker) :]
     return event_dict
 
 
 def add_global_fields_factory(service: str, env: str, version: str):
     """Return a processor that stamps every event with service metadata."""
-    def processor(_, __, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+
+    def processor(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
         event_dict.setdefault("service", service)
         event_dict.setdefault("env", env)
         event_dict.setdefault("version", version)
         return event_dict
+
     return processor
 
 
@@ -97,17 +97,16 @@ def add_global_fields_factory(service: str, env: str, version: str):
 # Security helper
 # ---------------------------------------------------------------------------
 
+
 def sanitize_headers(headers: dict) -> dict:
     """Return a copy of *headers* with values of sensitive keys masked."""
-    return {
-        k: "***" if _SENSITIVE_HEADER_RE.search(k) else v
-        for k, v in headers.items()
-    }
+    return {k: "***" if _SENSITIVE_HEADER_RE.search(k) else v for k, v in headers.items()}
 
 
 # ---------------------------------------------------------------------------
 # Main configuration
 # ---------------------------------------------------------------------------
+
 
 def configure_logging(
     log_level: str = "INFO",
@@ -137,9 +136,7 @@ def configure_logging(
     ]
 
     if include_timestamps:
-        base_processors.append(
-            structlog.processors.TimeStamper(fmt="iso", utc=True)
-        )
+        base_processors.append(structlog.processors.TimeStamper(fmt="iso", utc=True))
 
     base_processors.append(
         structlog.processors.CallsiteParameterAdder(
@@ -163,9 +160,7 @@ def configure_logging(
     else:
         # Development: human-readable with exception info as text
         use_colors = (
-            "NO_COLOR" not in os.environ
-            and hasattr(sys.stderr, "isatty")
-            and sys.stderr.isatty()
+            "NO_COLOR" not in os.environ and hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
         )
 
         def custom_formatter(logger, log_method, event_dict):
@@ -250,49 +245,51 @@ def configure_stdlib_logging(log_level: str = "INFO") -> None:
         structlog.processors.JSONRenderer(),
     ]
 
-    logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "handlers": {
-            "structlog": {
-                "class": "logging.StreamHandler",
-                "formatter": "structlog",
-                "stream": "ext://sys.stderr",
-            }
-        },
-        "formatters": {
-            "structlog": {
-                "()": structlog.stdlib.ProcessorFormatter,
-                "processors": [
-                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                    drop_color_message_key,
-                    structlog.processors.JSONRenderer(),
-                ],
-                "foreign_pre_chain": list(_shared_processors),
-            }
-        },
-        "root": {"handlers": ["structlog"], "level": log_level},
-        "loggers": {
-            # Third-party libs: pass through at ERROR+ only.
-            # suppress_third_party_noise processor drops WARNING/INFO/DEBUG from
-            # site-packages at the structlog layer, but setting the stdlib level
-            # to ERROR here prevents them from even entering the pipeline.
-            "httpcore":        {"level": "ERROR", "propagate": True},
-            "httpx":           {"level": "ERROR", "propagate": True},
-            "urllib3":         {"level": "ERROR", "propagate": True},
-            "boto3":           {"level": "ERROR", "propagate": True},
-            "botocore":        {"level": "ERROR", "propagate": True},
-            # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
-            # ERROR-only keeps the pipeline clean; true connection failures still surface.
-            "opensearch":      {"level": "ERROR", "propagate": True},
-            "opensearchpy":    {"level": "ERROR", "propagate": True},
-            "opensearchpy.trace": {"level": "CRITICAL", "propagate": False},
-            "elastic_transport": {"level": "ERROR", "propagate": True},
-            # uvicorn.access is replaced by RequestLoggingMiddleware
-            "uvicorn.access":  {"level": "CRITICAL", "propagate": False},
-            "uvicorn.error":   {"level": "WARNING",  "propagate": True},
-        },
-    })
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "structlog": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "structlog",
+                    "stream": "ext://sys.stderr",
+                }
+            },
+            "formatters": {
+                "structlog": {
+                    "()": structlog.stdlib.ProcessorFormatter,
+                    "processors": [
+                        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                        drop_color_message_key,
+                        structlog.processors.JSONRenderer(),
+                    ],
+                    "foreign_pre_chain": list(_shared_processors),
+                }
+            },
+            "root": {"handlers": ["structlog"], "level": log_level},
+            "loggers": {
+                # Third-party libs: pass through at ERROR+ only.
+                # suppress_third_party_noise processor drops WARNING/INFO/DEBUG from
+                # site-packages at the structlog layer, but setting the stdlib level
+                # to ERROR here prevents them from even entering the pipeline.
+                "httpcore": {"level": "ERROR", "propagate": True},
+                "httpx": {"level": "ERROR", "propagate": True},
+                "urllib3": {"level": "ERROR", "propagate": True},
+                "boto3": {"level": "ERROR", "propagate": True},
+                "botocore": {"level": "ERROR", "propagate": True},
+                # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
+                # ERROR-only keeps the pipeline clean; true connection failures still surface.
+                "opensearch": {"level": "ERROR", "propagate": True},
+                "opensearchpy": {"level": "ERROR", "propagate": True},
+                "opensearchpy.trace": {"level": "CRITICAL", "propagate": False},
+                "elastic_transport": {"level": "ERROR", "propagate": True},
+                # uvicorn.access is replaced by RequestLoggingMiddleware
+                "uvicorn.access": {"level": "CRITICAL", "propagate": False},
+                "uvicorn.error": {"level": "WARNING", "propagate": True},
+            },
+        }
+    )
 
 
 def get_logger(name: str = None) -> structlog.BoundLogger:
