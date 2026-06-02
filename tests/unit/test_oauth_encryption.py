@@ -92,6 +92,7 @@ async def test_google_drive_auth_allows_missing_optional_group_scopes(tmp_path, 
     assert g_oauth.creds is not None
     assert g_token_path.exists()
 
+
 @pytest.mark.asyncio
 async def test_msal_auth_upgrade(tmp_path, monkeypatch):
     """Test that MSAL credentials are encrypted on load if not already."""

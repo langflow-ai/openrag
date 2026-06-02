@@ -17,7 +17,7 @@ _REFRESH_TIMEOUT_SECONDS = 30
 
 class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
-    
+
     REQUIRED_SCOPES = [
         "https://www.googleapis.com/auth/drive.readonly",
         "https://www.googleapis.com/auth/drive.metadata.readonly",
