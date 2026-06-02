@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
@@ -147,7 +148,7 @@ class ChatService:
         score_threshold = get_score_threshold()
 
         # Build the complete filter expression like the search service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         if filters:
             filter_clauses = []
             # Map frontend filter names to backend field names
@@ -262,7 +263,7 @@ class ChatService:
         )
 
         # Build the complete filter expression like the chat service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         has_user_filters = False
         filter_clauses = []
 
