@@ -289,6 +289,8 @@ spec:
       size: 10Gi
   opensearch:
     host: opensearch-coordinating.opensearch.svc.cluster.local
+    numberOfShards: 1
+    numberOfReplicas: 0
     credentialsSecret: opensearch-credentials   # keys: username, password
   # docling:                        # optional
   #   host: docling-serve.docling.svc.cluster.local

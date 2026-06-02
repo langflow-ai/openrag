@@ -13276,6 +13276,20 @@ spec:
                     default: documents
                     description: IndexName used for document storage.
                     type: string
+                  numberOfReplicas:
+                    default: 0
+                    description: NumberOfReplicas configures replica shards for
+                      OpenRAG indices.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  numberOfShards:
+                    default: 1
+                    description: NumberOfShards configures primary shards for newly-created
+                      OpenRAG indices.
+                    format: int32
+                    minimum: 1
+                    type: integer
                   port:
                     default: 9200
                     format: int32

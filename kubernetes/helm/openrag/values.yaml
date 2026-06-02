@@ -28,6 +28,8 @@ global:
     username: "admin"                     # OpenSearch username
     password: ""                          # OpenSearch password (stored in secret)
     indexName: "documents"                # OpenSearch index name
+    numberOfShards: 1                     # Primary shards for newly-created OpenRAG indices
+    numberOfReplicas: 0                   # Replica shards for OpenRAG indices
 
   docling:
     host: docling-serve.docling.svc.cluster.local

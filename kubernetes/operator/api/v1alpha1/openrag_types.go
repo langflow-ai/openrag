@@ -319,6 +319,18 @@ type OpenSearchSpec struct {
 	// +kubebuilder:default="documents"
 	IndexName string `json:"indexName,omitempty"`
 
+	// NumberOfShards configures primary shards for newly-created OpenRAG indices.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	NumberOfShards int32 `json:"numberOfShards,omitempty"`
+
+	// NumberOfReplicas configures replica shards for OpenRAG indices.
+	// +optional
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
+	NumberOfReplicas int32 `json:"numberOfReplicas,omitempty"`
+
 	// CredentialsSecret is the name of a Secret with keys "username" and "password".
 	// +optional
 	CredentialsSecret string `json:"credentialsSecret,omitempty"`

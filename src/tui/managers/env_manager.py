@@ -37,6 +37,8 @@ class EnvConfig:
     opensearch_host: str = "opensearch"
     opensearch_port: str = "9200"
     opensearch_index_name: str = "documents"
+    opensearch_number_of_shards: str = "1"
+    opensearch_number_of_replicas: str = "0"
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
@@ -193,6 +195,8 @@ class EnvManager:
             "OPENSEARCH_HOST": "opensearch_host",
             "OPENSEARCH_PORT": "opensearch_port",
             "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
+            "OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS": "opensearch_number_of_shards",
+            "OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS": "opensearch_number_of_replicas",
             "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",  # pragma: allowlist secret
@@ -478,6 +482,14 @@ class EnvManager:
                 if self.config.opensearch_port and self.config.opensearch_port != "9200":
                     f.write(f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n")
                 f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
+                f.write(
+                    "OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS="
+                    f"{self._quote_env_value(self.config.opensearch_number_of_shards)}\n"
+                )
+                f.write(
+                    "OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS="
+                    f"{self._quote_env_value(self.config.opensearch_number_of_replicas)}\n"
+                )
 
                 # Expand $HOME in paths before writing to .env
                 # This ensures paths work with all compose implementations (docker, podman)

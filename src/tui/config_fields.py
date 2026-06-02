@@ -92,6 +92,16 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             placeholder="documents", default="documents",
             helper_text="Name of the index to use in OpenSearch",
         ),
+        ConfigField(
+            "opensearch_number_of_shards", "OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", "Primary Shards",
+            placeholder="1", default="1", advanced=True,
+            helper_text="Primary shard count for newly-created OpenRAG indices",
+        ),
+        ConfigField(
+            "opensearch_number_of_replicas", "OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", "Replica Shards",
+            placeholder="0", default="0", advanced=True,
+            helper_text="Replica shard count for OpenRAG indices",
+        ),
     ]),
 
     # ── Langflow ────────────────────────────────────────────────

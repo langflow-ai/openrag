@@ -1359,6 +1359,28 @@ func TestEnvHash_ChangesWhenEnvChanges(t *testing.T) {
 	assert.NotEqual(t, hash1, hash2, "Hash should change when env vars change")
 }
 
+func TestBuildEnv_IncludesOpenSearchIndexSettings(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.OpenSearch = &openragv1alpha1.OpenSearchSpec{
+		Host:             "opensearch.example.com",
+		NumberOfShards:   3,
+		NumberOfReplicas: 2,
+	}
+
+	r, _ := reconciler(s, cr)
+
+	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+	langflowEnvContent, err := r.buildLangflowEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+
+	for _, envContent := range []string{backendEnvContent, langflowEnvContent} {
+		assert.Equal(t, "3", parseEnvValue(envContent, "OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS"))
+		assert.Equal(t, "2", parseEnvValue(envContent, "OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS"))
+	}
+}
+
 func TestDeployment_ContainsEnvHashAnnotation(t *testing.T) {
 	// Test that backend deployment has env hash annotation
 	s := newScheme(t)

@@ -75,9 +75,11 @@ func NewEnvVarManager() *EnvVarManager {
 			"SELECTED_EMBEDDING_MODEL":  "",
 
 			// OpenSearch defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
-			"OPENSEARCH_PASSWORD":   "None",
-			"OPENSEARCH_URL":        "None",
-			"OPENSEARCH_INDEX_NAME": "None",
+			"OPENSEARCH_PASSWORD":                   "None",
+			"OPENSEARCH_URL":                        "None",
+			"OPENSEARCH_INDEX_NAME":                 "None",
+			"OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS":   "1",
+			"OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS": "0",
 
 			// Docling defaults (for variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT)
 			"DOCLING_SERVE_URL": "None",
@@ -114,7 +116,9 @@ func NewEnvVarManager() *EnvVarManager {
 			"OPENRAG_VERSION":           "latest",
 
 			// OpenSearch configuration
-			"OPENSEARCH_DATA_PATH": "",
+			"OPENSEARCH_DATA_PATH":                  "",
+			"OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS":   "1",
+			"OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS": "0",
 
 			// Logging configuration
 			"LOG_LEVEL":    "DEBUG",
