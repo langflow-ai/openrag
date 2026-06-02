@@ -25,7 +25,7 @@ RUN curl -L https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz | tar -xz
 
 # Install Langflow and dependencies
 RUN pip install --no-cache-dir \
-    langflow==1.9.0 \
+    langflow==1.9.6rc0 \
     uv
 
 # Create application directory and langflow data directory
