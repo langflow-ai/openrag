@@ -1,0 +1,7 @@
+{
+  "name": "sharp",
+  "version": "0.34.5",
+  "description": "Local no-op stub. Replaces Next.js's optional `sharp` dependency so the LGPL-3.0 libvips binaries (@img/sharp-libvips-*) are kept out of the dependency tree. Image optimization is disabled via images.unoptimized in next.config.ts.",
+  "license": "MIT",
+  "main": "index.js"
+}
