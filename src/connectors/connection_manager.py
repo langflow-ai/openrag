@@ -10,7 +10,6 @@ import aiofiles
 
 from utils.logging_config import get_logger
 
-from .aws_s3 import S3Connector
 from .base import BaseConnector
 from .registry import get_all_secret_keys, get_connector_class, get_connector_classes
 
