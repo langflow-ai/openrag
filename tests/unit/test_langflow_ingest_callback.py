@@ -383,3 +383,28 @@ def test_langflow_callback_global_vars_have_runtime_placeholders(config_path):
 
     for variable_name in CALLBACK_GLOBAL_VARS:
         assert f"{variable_name}=" in config_text or f'"{variable_name}":' in config_text
+
+
+def test_ingest_token_prefers_jwt_signing_key_over_session_secret(monkeypatch):
+    jwt_secret = "jwt-signing-secret-with-32-bytes!!"
+    session_secret = "session-secret-should-not-be-used"
+
+    monkeypatch.setattr("config.settings.JWT_SIGNING_KEY", jwt_secret)
+    monkeypatch.setattr("config.settings.SESSION_SECRET", session_secret)
+
+    token_service = LangflowIngestTokenService(ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="doc-jwt",
+        filename="source.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        owner="user-1",
+        ingest_run_id="run-jwt",
+    )
+    token = token_service.create_token(context)
+
+    token_service.validate_token(token)
+
+    session_service = LangflowIngestTokenService(secret=session_secret, ttl_seconds=60)
+    with pytest.raises(ValueError, match="Invalid Langflow ingest token"):
+        session_service.validate_token(token)

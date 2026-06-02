@@ -920,7 +920,7 @@ function ChatPage() {
                   ? (messages[index]?.content.match(FILES_REGEX)?.[0] ??
                       null) === null && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
@@ -956,7 +956,7 @@ function ChatPage() {
                       (messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
                         null) === null) && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"

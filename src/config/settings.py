@@ -37,6 +37,21 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+
+
+def get_opensearch_username() -> str:
+    """OpenSearch admin/basic-auth username, read per-call so runtime/test
+    overrides (e.g. credentials supplied during onboarding) take effect without
+    a restart. Falls back to the value captured at import time, then "admin"."""
+    return os.getenv("OPENSEARCH_USERNAME") or OPENSEARCH_USERNAME or "admin"
+
+
+def get_opensearch_password() -> str | None:
+    """OpenSearch basic-auth password, read per-call so runtime/test overrides
+    take effect without a restart. Falls back to the import-time value."""
+    return os.getenv("OPENSEARCH_PASSWORD") or OPENSEARCH_PASSWORD
+
+
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
@@ -77,6 +92,7 @@ OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
+
 
 # ── JWT roles claim ─────────────────────────────────────────────
 # These are exposed as functions (not module constants) so they are read
@@ -581,18 +597,47 @@ class AppClients:
         self._docling_service = None
 
     async def initialize(self):
-        os_auth = None if IBM_AUTH_ENABLED else (OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD)
-
-        self.opensearch = AsyncOpenSearch(
-            hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
-            connection_class=AIOHttpConnection,
-            scheme="https",
-            use_ssl=True,
-            verify_certs=False,
-            ssl_assert_fingerprint=None,
-            http_auth=os_auth,
-            http_compress=True,
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+            is_run_mode_saas,
         )
+
+        # Credentials for the global (backend-owned) writer client, by run mode:
+        #   saas    -> platform service token (JWT) when available, else unauthenticated
+        #   on_prem -> OpenSearch basic auth
+        #   oss     -> OpenSearch basic auth
+        service_token = get_openrag_service_token() if is_run_mode_saas() else None
+        if service_token:
+            logger.info(
+                "Initializing global OpenSearch writer client: saas mode, "
+                "using platform service token"
+            )
+            self.opensearch = self.create_opensearch_client_from_jwt(service_token)
+        else:
+            if is_run_mode_on_prem() or is_run_mode_oss():
+                os_auth = (get_opensearch_username(), get_opensearch_password())
+                logger.info(
+                    "Initializing global OpenSearch writer client: %s mode, "
+                    "using OpenSearch basic auth" % ("on_prem" if is_run_mode_on_prem() else "oss")
+                )
+            else:
+                os_auth = None
+                logger.info(
+                    "Initializing global OpenSearch writer client: saas mode without "
+                    "service token, using the unauthenticated client"
+                )
+
+            self.opensearch = AsyncOpenSearch(
+                hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
+                connection_class=AIOHttpConnection,
+                scheme="https",
+                use_ssl=True,
+                verify_certs=False,
+                ssl_assert_fingerprint=None,
+                http_auth=os_auth,
+                http_compress=True,
+            )
 
         # Initialize patched OpenAI client if API key is available
         # This allows the app to start even if OPENAI_API_KEY is not set yet
