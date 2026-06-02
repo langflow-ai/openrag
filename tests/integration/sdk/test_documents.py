@@ -190,7 +190,7 @@ class TestDeleteByFilterId:
 
     @pytest.mark.asyncio
     async def test_delete_by_filter_id_with_wildcard_rejects(self, client):
-        """A filter with `["*"]` data_sources must NOT be allowed to mass-delete."""
+        """A filter whose data_sources list contains `"*"` is rejected."""
         filter_id = None
         try:
             filter_id = await self._create_filter(client, ["*"])
