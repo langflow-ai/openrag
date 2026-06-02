@@ -27,7 +27,7 @@ __pycache__/
 # Build outputs
 build/
 dist/
-.next/
+**/.next/
 out/
 
 # Development files

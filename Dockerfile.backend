@@ -6,15 +6,16 @@
 # -----------------------------------------------------------------------------
 # Stage: base (system + uv)
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/python-312:9.5 AS base
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS base
 
-# Install system dependencies using dnf (UBI package manager)
+# Install system dependencies using microdnf (UBI minimal package manager)
 USER 0
-RUN dnf install -y --allowerasing \
-    curl \
+RUN microdnf install -y \
     ca-certificates \
     openssl \
-    && dnf clean all \
+    tar \
+    gzip \
+    && microdnf clean all \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
@@ -29,12 +30,12 @@ ENV PATH="/root/.local/bin:$PATH" \
 FROM base AS builder
 
 # Build-time deps only (not in final image)
-RUN dnf install -y --allowerasing \
+RUN microdnf install -y \
     git \
     gcc \
     gcc-c++ \
     make \
-    && dnf clean all
+    && microdnf clean all
 
 WORKDIR /app
 
@@ -59,30 +60,22 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/python-312:9.5 AS runtime
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime
 
 # Install runtime dependencies and apply security updates for CVE remediation
 USER 0
-RUN dnf install -y --allowerasing \
+RUN microdnf install -y \
     ca-certificates \
     openssl \
     shadow-utils \
-    && dnf update -y \
+    util-linux \
+    && microdnf update -y \
     glibc glibc-common glibc-minimal-langpack \
     openssl openssl-libs \
     krb5-libs \
-    perl perl-libs \
-    glib2 \
-    libcap \
-    p11-kit p11-kit-trust \
-    && dnf clean all \
+    && microdnf clean all \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1" \
-    && python3.11 -m pip install --no-cache-dir --upgrade "pip>=26.1" \
-    && rm -rf /usr/lib/python3.11/site-packages/pip-22.3.1.dist-info \
-    && python3.9 -m pip install --no-cache-dir --upgrade "idna>=3.15" "requests>=2.33.0" 2>/dev/null || true \
-    && rm -rf /usr/lib/python3.9/site-packages/idna-2.10-py3.9.egg-info \
-    && rm -rf /usr/lib/python3.9/site-packages/requests-2.25.1.dist-info
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and
@@ -92,10 +85,11 @@ RUN groupadd --gid 1000 appuser \
 
 WORKDIR /app
 
-COPY --from=builder /app /app
-COPY securityconfig/ ./securityconfig/
-COPY cloud_securityconfig/ ./cloud_securityconfig/
-COPY scripts/backend-entrypoint.sh /entrypoint.sh
+# Copy files directly with non-root ownership to avoid layer duplication via chown -R
+COPY --from=builder --chown=appuser:appuser /app /app
+COPY --chown=appuser:appuser securityconfig/ ./securityconfig/
+COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
+COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
@@ -112,13 +106,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 #   flows/backup/      - Langflow flow backups (flows/ itself is COPY'd from builder)
 #   openrag-documents/ - uploaded documents staging area
 RUN mkdir -p keys data config flows/backup openrag-documents \
-    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser keys data config flows/backup openrag-documents \
     && chmod +x /entrypoint.sh
 
-# entrypoint.sh runs as root, re-chowns volume-mounted directories to appuser
-# (belt-and-suspenders for Docker where :U is not supported), then execs the
-# application as appuser via runuser (UBI alternative to gosu).
-# Note: The entrypoint script may need to be updated to use 'runuser' instead of 'gosu'
 EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
