@@ -1,7 +1,9 @@
 "use client";
 
 import { Bell } from "lucide-react";
+import { useMemo } from "react";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -10,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
-  const { tasks, toggleMenu } = useTask();
+  const { tasks, toggleMenu, openTaskDialog } = useTask();
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
@@ -18,6 +20,10 @@ export function Header() {
       task.status === "pending" ||
       task.status === "running" ||
       task.status === "processing",
+  );
+  const primaryActiveTaskId = useMemo(
+    () => activeTasks[0]?.task_id ?? null,
+    [activeTasks],
   );
 
   return (
@@ -54,6 +60,18 @@ export function Header() {
               {/* Separator */}
               <div className="w-px h-6 bg-border mx-3" />
             </>
+          )}
+
+          {primaryActiveTaskId && (
+            <button
+              type="button"
+              onClick={() => openTaskDialog(primaryActiveTaskId)}
+              data-testid="active-task-dialog-toggle"
+              className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground"
+              aria-label="Open task details"
+            >
+              <IncidentReporterIcon className="size-4" />
+            </button>
           )}
 
           {/* Task Notification Bell */}
