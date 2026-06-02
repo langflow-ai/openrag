@@ -260,9 +260,8 @@
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
     --border-border-interactive: #4589ff;
-    /* Overwrite / dark grey button (#393939 → #474747 hover); defined once on [data-theme="ibm"] */
+    /* IBM dark grey action button (#393939); hover uses --secondary-hover */
     --ibm-overwrite-button: 0 0% 22%; /* #393939 */
-    --ibm-overwrite-button-hover: 0 0% 28%; /* #474747 */
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
@@ -298,7 +297,7 @@
     --primary-hover: 219 100% 45%; /* #0050e6 */
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 97%;
-    --secondary-hover: var(--ibm-overwrite-button-hover);
+    --secondary-hover: 0 0% 18%; /* IBM Gray 80 #393939 */
     --muted: 0 0% 18%; /* IBM Gray 80 */
     --muted-foreground: 0 0% 78%; /* IBM Gray 30 #C6C6C6 - Secondary text IBM dark */
     --accent: 0 0% 18%;

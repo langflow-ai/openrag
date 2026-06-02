@@ -114,7 +114,7 @@ export const DuplicateHandlingDialog: React.FC<
             className={cn(
               "flex items-center gap-2 whitespace-nowrap text-primary-foreground",
               isCloudBrand
-                ? "rounded-none !bg-[hsl(var(--ibm-overwrite-button))] hover:!bg-[hsl(var(--ibm-overwrite-button-hover))]"
+                ? "rounded-none !bg-[hsl(var(--ibm-overwrite-button))] hover:!bg-secondary-hover"
                 : "!bg-accent-amber-foreground hover:!bg-foreground",
             )}
           >
