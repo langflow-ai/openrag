@@ -1,14 +1,5 @@
-from typing import Optional
-
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-
-from utils.logging_config import get_logger
-from utils.telemetry import Category, MessageId, TelemetryClient
-from utils.version_utils import OPENRAG_VERSION
-
-logger = get_logger(__name__)
-
 from pydantic import BaseModel
 
 from dependencies import (
@@ -17,6 +8,11 @@ from dependencies import (
     get_optional_user,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
+from utils.version_utils import OPENRAG_VERSION
+
+logger = get_logger(__name__)
 
 
 class AuthInitBody(BaseModel):
