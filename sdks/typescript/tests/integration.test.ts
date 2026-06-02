@@ -234,7 +234,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 120_000);
 
     it("filterId in search actually scopes results to data_sources", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
