@@ -37,6 +37,7 @@ _shared_processors: list = []
 # Standalone processors (module-level so they can be reused in stdlib bridge)
 # ---------------------------------------------------------------------------
 
+
 def drop_color_message_key(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Remove uvicorn's duplicate color_message field when bridging via stdlib."""
     event_dict.pop("color_message", None)
@@ -81,6 +82,7 @@ def clean_log_location(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
 
 def add_global_fields_factory(service: str, env: str, version: str):
     """Return a processor that stamps every event with service metadata."""
+
     def processor(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
         event_dict.setdefault("service", service)
         event_dict.setdefault("env", env)
@@ -236,49 +238,51 @@ def configure_stdlib_logging(log_level: str = "INFO") -> None:
     Uvicorn access logs are suppressed here because the ASGI middleware handles
     request logging with richer context (request_id, duration_ms).
     """
-    logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "handlers": {
-            "structlog": {
-                "class": "logging.StreamHandler",
-                "formatter": "structlog",
-                "stream": "ext://sys.stderr",
-            }
-        },
-        "formatters": {
-            "structlog": {
-                "()": structlog.stdlib.ProcessorFormatter,
-                "processors": [
-                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                    drop_color_message_key,
-                    structlog.processors.JSONRenderer(),
-                ],
-                "foreign_pre_chain": list(_shared_processors),
-            }
-        },
-        "root": {"handlers": ["structlog"], "level": log_level},
-        "loggers": {
-            # Third-party libs: pass through at ERROR+ only.
-            # suppress_third_party_noise processor drops WARNING/INFO/DEBUG from
-            # site-packages at the structlog layer, but setting the stdlib level
-            # to ERROR here prevents them from even entering the pipeline.
-            "httpcore":        {"level": "ERROR", "propagate": True},
-            "httpx":           {"level": "ERROR", "propagate": True},
-            "urllib3":         {"level": "ERROR", "propagate": True},
-            "boto3":           {"level": "ERROR", "propagate": True},
-            "botocore":        {"level": "ERROR", "propagate": True},
-            # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
-            # ERROR-only keeps the pipeline clean; true connection failures still surface.
-            "opensearch":      {"level": "ERROR", "propagate": True},
-            "opensearchpy":    {"level": "ERROR", "propagate": True},
-            "opensearchpy.trace": {"level": "CRITICAL", "propagate": False},
-            "elastic_transport": {"level": "ERROR", "propagate": True},
-            # uvicorn.access is replaced by RequestLoggingMiddleware
-            "uvicorn.access":  {"level": "CRITICAL", "propagate": False},
-            "uvicorn.error":   {"level": "WARNING",  "propagate": True},
-        },
-    })
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "structlog": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "structlog",
+                    "stream": "ext://sys.stderr",
+                }
+            },
+            "formatters": {
+                "structlog": {
+                    "()": structlog.stdlib.ProcessorFormatter,
+                    "processors": [
+                        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                        drop_color_message_key,
+                        structlog.processors.JSONRenderer(),
+                    ],
+                    "foreign_pre_chain": list(_shared_processors),
+                }
+            },
+            "root": {"handlers": ["structlog"], "level": log_level},
+            "loggers": {
+                # Third-party libs: pass through at ERROR+ only.
+                # suppress_third_party_noise processor drops WARNING/INFO/DEBUG from
+                # site-packages at the structlog layer, but setting the stdlib level
+                # to ERROR here prevents them from even entering the pipeline.
+                "httpcore": {"level": "ERROR", "propagate": True},
+                "httpx": {"level": "ERROR", "propagate": True},
+                "urllib3": {"level": "ERROR", "propagate": True},
+                "boto3": {"level": "ERROR", "propagate": True},
+                "botocore": {"level": "ERROR", "propagate": True},
+                # opensearch-py logs every HTTP request (incl. 401 health checks) at WARNING.
+                # ERROR-only keeps the pipeline clean; true connection failures still surface.
+                "opensearch": {"level": "ERROR", "propagate": True},
+                "opensearchpy": {"level": "ERROR", "propagate": True},
+                "opensearchpy.trace": {"level": "CRITICAL", "propagate": False},
+                "elastic_transport": {"level": "ERROR", "propagate": True},
+                # uvicorn.access is replaced by RequestLoggingMiddleware
+                "uvicorn.access": {"level": "CRITICAL", "propagate": False},
+                "uvicorn.error": {"level": "WARNING", "propagate": True},
+            },
+        }
+    )
 
 
 def get_logger(name: str = None) -> structlog.BoundLogger:
