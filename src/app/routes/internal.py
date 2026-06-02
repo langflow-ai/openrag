@@ -31,8 +31,8 @@ from api import (
 )
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
-from connectors.registry import get_connector_classes
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
+from connectors.registry import get_connector_classes
 
 
 def register_internal_routes(app: FastAPI):
