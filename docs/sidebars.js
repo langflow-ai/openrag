@@ -77,7 +77,7 @@ const sidebars = {
     {
       type: "doc",
       id: "reference/api-sdk-overview",
-      label: "APIs and SDKs",
+      label: "SDK and MCP API references",
     },
     "support/contribute",
     "support/troubleshoot",

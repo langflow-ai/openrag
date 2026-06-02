@@ -152,6 +152,8 @@ Configure OpenSearch database authentication.
 | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. |
 | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. |
 | `OPENSEARCH_USERNAME` | `admin` | OpenSearch administrator username. |
+| `LANGFLOW_OPENSEARCH_HOST` | Not set | By default, OpenRAG passes the `OPENSEARCH_HOST` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_HOST` value. |
+| `LANGFLOW_OPENSEARCH_PORT` | Not set | By default, OpenRAG passes the `OPENSEARCH_PORT` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_PORT` value. |
 
 ## System settings
 

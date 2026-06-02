@@ -1,7 +1,7 @@
-import uuid
 import json
-from typing import Any, Dict, Optional, List
-from datetime import datetime
+import uuid
+from typing import Any
+
 from config.settings import clients
 from utils.logging_config import get_logger
 
@@ -13,23 +13,38 @@ class MonitorService:
         self.session_manager = session_manager
         self.webhook_base_url = webhook_base_url or "http://openrag-backend:8000"
 
+    def _trusted_opensearch_client(self):
+        if clients.opensearch is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
+        return clients.opensearch
+
+    @staticmethod
+    def _monitor_has_user_tag(monitor: dict[str, Any], user_id: str) -> bool:
+        user_tag = f"user:{user_id}"
+        inputs = monitor.get("_source", monitor).get("monitor", {}).get("inputs", [])
+        for monitor_input in inputs:
+            for query in monitor_input.get("doc_level_input", {}).get("queries", []):
+                if user_tag in (query.get("tags") or []):
+                    return True
+        return False
+
     async def create_knowledge_filter_monitor(
         self,
         filter_id: str,
         filter_name: str,
-        query_data: Dict[str, Any],
+        query_data: dict[str, Any],
         user_id: str,
         jwt_token: str,
-        notification_config: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
+        notification_config: dict[str, Any] = None,
+    ) -> dict[str, Any]:
         """Create a document-level monitor for a knowledge filter"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._trusted_opensearch_client()
 
             subscription_id = str(uuid.uuid4())
-            webhook_url = f"{self.webhook_base_url}/knowledge-filter/{filter_id}/webhook/{subscription_id}"
+            webhook_url = (
+                f"{self.webhook_base_url}/knowledge-filter/{filter_id}/webhook/{subscription_id}"
+            )
 
             # Convert knowledge filter query to monitor query format
             monitor_query = self._convert_kf_query_to_monitor_query(query_data)
@@ -70,9 +85,7 @@ class MonitorService:
                         "document_level_trigger": {
                             "name": f"KF Trigger: {filter_name}",
                             "severity": "1",
-                            "condition": {
-                                "script": {"source": "return true", "lang": "painless"}
-                            },
+                            "condition": {"script": {"source": "return true", "lang": "painless"}},
                             "actions": [
                                 {
                                     "name": f"KF Webhook Action: {filter_name}",
@@ -122,14 +135,15 @@ class MonitorService:
         except Exception as e:
             return {"success": False, "error": f"Monitor creation failed: {str(e)}"}
 
-    async def delete_monitor(
-        self, monitor_id: str, user_id: str, jwt_token: str
-    ) -> Dict[str, Any]:
+    async def delete_monitor(self, monitor_id: str, user_id: str, jwt_token: str) -> dict[str, Any]:
         """Delete a document-level monitor"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
+            opensearch_client = self._trusted_opensearch_client()
+            existing = await opensearch_client.transport.perform_request(
+                "GET", f"/_plugins/_alerting/monitors/{monitor_id}"
             )
+            if not self._monitor_has_user_tag(existing, user_id):
+                return {"success": False, "error": "Not authorized to delete this monitor"}
 
             response = await opensearch_client.transport.perform_request(
                 "DELETE", f"/_plugins/_alerting/monitors/{monitor_id}"
@@ -143,20 +157,18 @@ class MonitorService:
         except Exception as e:
             return {"success": False, "error": f"Monitor deletion failed: {str(e)}"}
 
-    async def get_monitor(
-        self, monitor_id: str, user_id: str, jwt_token: str
-    ) -> Dict[str, Any]:
+    async def get_monitor(self, monitor_id: str, user_id: str, jwt_token: str) -> dict[str, Any]:
         """Get monitor details"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._trusted_opensearch_client()
 
             response = await opensearch_client.transport.perform_request(
                 "GET", f"/_plugins/_alerting/monitors/{monitor_id}"
             )
 
             if response.get("_id"):
+                if not self._monitor_has_user_tag(response, user_id):
+                    return {"success": False, "error": "Monitor not found"}
                 return {"success": True, "monitor": response}
             else:
                 return {"success": False, "error": "Monitor not found"}
@@ -166,17 +178,25 @@ class MonitorService:
 
     async def list_user_monitors(
         self, user_id: str, jwt_token: str, limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all monitors for a specific user"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._trusted_opensearch_client()
 
-            # Search for all monitors (DLS will filter to user's monitors automatically)
+            # Search with an explicit user tag because the trusted backend
+            # client bypasses the user's OpenSearch DLS filter.
             search_body = {
                 "query": {
-                    "bool": {"must": [{"term": {"monitor.type": "doc_level_monitor"}}]}
+                    "bool": {
+                        "must": [
+                            {"term": {"monitor.type": "doc_level_monitor"}},
+                            {
+                                "term": {
+                                    "monitor.inputs.doc_level_input.queries.tags": f"user:{user_id}"
+                                }
+                            },
+                        ]
+                    }
                 },
                 "sort": [{"monitor.last_update_time": {"order": "desc"}}],
                 "size": limit,
@@ -195,19 +215,15 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error(
-                "Error listing monitors for user", user_id=user_id, error=str(e)
-            )
+            logger.error("Error listing monitors for user", user_id=user_id, error=str(e))
             return []
 
     async def list_monitors_for_filter(
         self, filter_id: str, user_id: str, jwt_token: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all monitors for a specific knowledge filter"""
         try:
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+            opensearch_client = self._trusted_opensearch_client()
 
             # Search for monitors with the knowledge filter tag
             search_body = {
@@ -218,6 +234,11 @@ class MonitorService:
                             {
                                 "term": {
                                     "monitor.inputs.doc_level_input.queries.tags": f"knowledge_filter:{filter_id}"
+                                }
+                            },
+                            {
+                                "term": {
+                                    "monitor.inputs.doc_level_input.queries.tags": f"user:{user_id}"
                                 }
                             },
                         ]
@@ -238,14 +259,10 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error(
-                "Error listing monitors for filter", filter_id=filter_id, error=str(e)
-            )
+            logger.error("Error listing monitors for filter", filter_id=filter_id, error=str(e))
             return []
 
-    async def _get_or_create_webhook_destination(
-        self, webhook_url: str, opensearch_client
-    ) -> str:
+    async def _get_or_create_webhook_destination(self, webhook_url: str, opensearch_client) -> str:
         """Get or create a webhook destination for notifications"""
         try:
             # Try to find existing webhook destination
@@ -257,10 +274,7 @@ class MonitorService:
 
             # Check if we already have a destination for this webhook URL
             for config in search_response.get("config_list", []):
-                if (
-                    config.get("config", {}).get("webhook", {}).get("url")
-                    == webhook_url
-                ):
+                if config.get("config", {}).get("webhook", {}).get("url") == webhook_url:
                     return config["config_id"]
 
             # Create new webhook destination
@@ -285,11 +299,9 @@ class MonitorService:
             return response.get("config_id")
 
         except Exception as e:
-            raise Exception(f"Failed to create webhook destination: {str(e)}")
+            raise RuntimeError(f"Failed to create webhook destination: {str(e)}") from e
 
-    def _convert_kf_query_to_monitor_query(
-        self, query_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _convert_kf_query_to_monitor_query(self, query_data: dict[str, Any]) -> dict[str, Any]:
         """Convert knowledge filter query format to OpenSearch monitor query format"""
         # This assumes the query_data contains an OpenSearch query structure
         # You may need to adjust this based on your actual knowledge filter query format

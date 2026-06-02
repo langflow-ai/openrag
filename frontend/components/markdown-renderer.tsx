@@ -1,9 +1,16 @@
+import dynamic from "next/dynamic";
 import Markdown from "react-markdown";
 import rehypeMathjax from "rehype-mathjax";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import CodeComponent from "./code-component";
+
+const CodeComponent = dynamic(() => import("./code-component"), {
+  ssr: false,
+  loading: () => (
+    <div className="mt-2 h-12 animate-pulse rounded-md bg-muted" />
+  ),
+});
 
 type MarkdownRendererProps = {
   chatMessage: string;

@@ -161,11 +161,6 @@ export class OneDriveV8Handler {
         commands: {
           pick: {
             action: "select",
-            select: {
-              urls: {
-                download: true, // Request download URLs - critical for ingestion!
-              },
-            },
           },
         },
       };

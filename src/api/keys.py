@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
 
-from dependencies import get_api_key_service, get_current_user
+from dependencies import get_api_key_service, get_current_user, require_permission
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -35,7 +35,7 @@ async def list_keys_endpoint(
 async def create_key_endpoint(
     body: CreateKeyBody,
     api_key_service=Depends(get_api_key_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("apikeys:create:self")),
 ):
     """
     Create a new API key for the authenticated user.
@@ -74,7 +74,7 @@ async def create_key_endpoint(
 async def revoke_key_endpoint(
     key_id: str,
     api_key_service=Depends(get_api_key_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("apikeys:revoke:self")),
 ):
     """
     Revoke an API key.
@@ -100,7 +100,7 @@ async def revoke_key_endpoint(
 async def delete_key_endpoint(
     key_id: str,
     api_key_service=Depends(get_api_key_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("apikeys:revoke:self")),
 ):
     """
     Permanently delete an API key.

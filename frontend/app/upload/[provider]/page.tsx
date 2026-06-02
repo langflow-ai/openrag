@@ -1,9 +1,15 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  FileSearch,
+  FolderOpen,
+  RefreshCw,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
@@ -13,6 +19,8 @@ import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
+import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -21,6 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { duplicateCheck } from "@/lib/upload-utils";
 
 // Connectors that sync entire buckets/repositories without a file picker
 const DIRECT_SYNC_PROVIDERS = ["ibm_cos", "aws_s3"];
@@ -58,6 +67,9 @@ function BucketView({
   );
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
+    null,
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -218,6 +230,18 @@ function BucketView({
                         </p>
                       )}
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBrowseDialogBucket(bucket.name);
+                      }}
+                    >
+                      <FileSearch size={14} className="mr-1.5" />
+                      Browse Files
+                    </Button>
                   </div>
                 </div>
               );
@@ -256,6 +280,18 @@ function BucketView({
           </Button>
         </div>
       </div>
+
+      {connector.connectionId && browseDialogBucket && (
+        <FileBrowserDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setBrowseDialogBucket(null);
+          }}
+          connectorType={connector.type}
+          connectionId={connector.connectionId}
+          buckets={[browseDialogBucket]}
+        />
+      )}
     </>
   );
 }
@@ -376,6 +412,15 @@ export default function UploadProviderPage() {
 
   const [selectedFiles, setSelectedFiles] = useState<CloudFile[]>([]);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [pendingSync, setPendingSync] = useState<{
+    connector: { connectionId?: string; type: string };
+    allFiles: CloudFile[];
+    nonDuplicateFiles: CloudFile[];
+    duplicateNames: string[];
+  } | null>(null);
+  const isOverwriteConfirmedRef = useRef(false);
 
   const accessToken = tokenData?.access_token || null;
   const isLoading =
@@ -393,28 +438,26 @@ export default function UploadProviderPage() {
     setSelectedFiles(files);
   };
 
-  const handleSync = (connector: { connectionId?: string; type: string }) => {
-    if (!connector.connectionId || selectedFiles.length === 0) return;
-
-    const chunkErr = getIngestChunkSettingsError(ingestSettings);
-    if (chunkErr) {
-      toast.error("Could not start ingest", { description: chunkErr });
-      return;
-    }
-
+  const submitSync = (
+    connector: { connectionId?: string; type: string },
+    files: CloudFile[],
+    replaceDuplicates: boolean,
+  ) => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
         body: {
           connection_id: connector.connectionId,
-          selected_files: selectedFiles.map((file) => ({
+          selected_files: files.map((file) => ({
             id: file.id,
             name: file.name,
             mimeType: file.mimeType,
             downloadUrl: file.downloadUrl,
             size: file.size,
+            isFolder: file.isFolder,
           })),
           settings: ingestSettings,
+          replace_duplicates: replaceDuplicates,
         },
       },
       {
@@ -430,6 +473,104 @@ export default function UploadProviderPage() {
         },
       },
     );
+  };
+
+  const handleSync = async (connector: {
+    connectionId?: string;
+    type: string;
+  }) => {
+    if (!connector.connectionId || selectedFiles.length === 0) return;
+
+    const chunkErr = getIngestChunkSettingsError(ingestSettings);
+    if (chunkErr) {
+      toast.error("Could not start ingest", { description: chunkErr });
+      return;
+    }
+
+    setIsCheckingDuplicates(true);
+    try {
+      const checkResponse = await fetch(
+        `/api/connectors/${connector.type}/check-duplicates`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            connection_id: connector.connectionId,
+            selected_files: selectedFiles.map((file) => ({
+              id: file.id,
+              name: file.name,
+              mimeType: file.mimeType,
+              downloadUrl: file.downloadUrl,
+              size: file.size,
+              isFolder: file.isFolder,
+            })),
+          }),
+        },
+      );
+
+      if (!checkResponse.ok) {
+        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
+      }
+
+      const checkData = await checkResponse.json();
+      const duplicateNames = checkData.duplicate_names || [];
+      const totalFiles = checkData.total_files || 0;
+
+      if (duplicateNames.length === 0) {
+        submitSync(connector, selectedFiles, false);
+        return;
+      }
+
+      // If all files are duplicates, we set nonDuplicateFiles to empty so it toasts "Nothing was synced" on skip
+      const isAllDuplicate = duplicateNames.length === totalFiles;
+      const nonDuplicateFiles = isAllDuplicate ? [] : selectedFiles;
+
+      setPendingSync({
+        connector,
+        allFiles: selectedFiles,
+        nonDuplicateFiles,
+        duplicateNames,
+      });
+      setDuplicateDialogOpen(true);
+    } catch (err) {
+      console.error("[Connector Sync] Duplicate check failed:", err);
+      // Fallback: proceed without overwrite
+      submitSync(connector, selectedFiles, false);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
+  const handleOverwriteDuplicates = () => {
+    if (!pendingSync) return;
+    isOverwriteConfirmedRef.current = true;
+    const { connector, allFiles } = pendingSync;
+    submitSync(connector, allFiles, true);
+    setPendingSync(null);
+  };
+
+  const handleDuplicateDialogOpenChange = (open: boolean) => {
+    if (!open && pendingSync) {
+      if (isOverwriteConfirmedRef.current) {
+        // Overwrite already submitted in handleOverwriteDuplicates; this close
+        // event fires immediately after and would otherwise re-enter the
+        // "skip duplicates" branch.
+        isOverwriteConfirmedRef.current = false;
+      } else {
+        const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
+        if (nonDuplicateFiles.length > 0) {
+          submitSync(connector, nonDuplicateFiles, false);
+        } else {
+          toast.info(
+            `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
+          );
+        }
+      }
+      setPendingSync(null);
+    }
+    setDuplicateDialogOpen(open);
   };
 
   const getProviderDisplayName = () => {
@@ -617,8 +758,10 @@ export default function UploadProviderPage() {
                 className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
                 variant={!hasSelectedFiles ? "secondary" : undefined}
                 onClick={() => handleSync(connector)}
-                loading={isIngesting}
-                disabled={!hasSelectedFiles || isIngesting}
+                loading={isIngesting || isCheckingDuplicates}
+                disabled={
+                  !hasSelectedFiles || isIngesting || isCheckingDuplicates
+                }
               >
                 {hasSelectedFiles ? (
                   <>
@@ -638,6 +781,14 @@ export default function UploadProviderPage() {
           </Tooltip>
         </div>
       </div>
+
+      <DuplicateHandlingDialog
+        open={duplicateDialogOpen}
+        onOpenChange={handleDuplicateDialogOpenChange}
+        onOverwrite={handleOverwriteDuplicates}
+        isLoading={isIngesting}
+        duplicateNames={pendingSync?.duplicateNames}
+      />
     </>
   );
 }

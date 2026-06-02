@@ -18,6 +18,7 @@ export interface KnowledgeSettings {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
 }
 
 export interface ProviderSettings {

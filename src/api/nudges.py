@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
@@ -9,6 +9,10 @@ from dependencies import get_chat_service, get_session_manager, get_current_user
 from session_manager import User
 
 logger = get_logger(__name__)
+
+
+def _openrag_user_id(user: User) -> str:
+    return getattr(user, "db_user_id", None) or user.user_id
 
 
 class NudgesBody(BaseModel):
@@ -25,6 +29,7 @@ async def nudges_from_kb_endpoint(
 ):
     """Get nudges for a user"""
     jwt_token = user.jwt_token
+    storage_user_id = _openrag_user_id(user)
 
     try:
         result = await chat_service.langflow_nudges_chat(
@@ -33,8 +38,11 @@ async def nudges_from_kb_endpoint(
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.score_threshold,
+            storage_user_id=storage_user_id,
         )
         return JSONResponse(result)
+    except HTTPException:
+        raise
     except Exception as e:
         return JSONResponse(
             {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
@@ -50,8 +58,11 @@ async def nudges_from_chat_id_endpoint(
 ):
     """Get nudges for a user based on a previous conversation"""
     jwt_token = user.jwt_token
+    storage_user_id = _openrag_user_id(user)
 
     try:
+        from api.chat import _assert_owns
+        await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.langflow_nudges_chat(
             user.user_id,
             jwt_token,
@@ -59,8 +70,11 @@ async def nudges_from_chat_id_endpoint(
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.score_threshold,
+            storage_user_id=storage_user_id,
         )
         return JSONResponse(result)
+    except HTTPException:
+        raise
     except Exception as e:
         return JSONResponse(
             {"error": f"Failed to get nudges: {str(e)}"}, status_code=500

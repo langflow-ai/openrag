@@ -1,14 +1,25 @@
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
+import dynamic from "next/dynamic";
 import DogIcon from "@/components/icons/dog-icon";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
+
+const MarkdownRenderer = dynamic(
+  () =>
+    import("@/components/markdown-renderer").then((m) => ({
+      default: m.MarkdownRenderer,
+    })),
+  { ssr: false },
+);
+
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
   TokenUsage as TokenUsageType,
 } from "../_types/types";
-import { FunctionCalls } from "./function-calls";
+import { FunctionCallsContainer } from "./function-calls";
 import { Message } from "./message";
+import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
 
 interface AssistantMessageProps {
@@ -26,6 +37,8 @@ interface AssistantMessageProps {
   delay?: number;
   isInitialGreeting?: boolean;
   usage?: TokenUsageType;
+  timestamp?: Date;
+  showFeedback?: boolean;
 }
 
 export function AssistantMessage({
@@ -43,7 +56,19 @@ export function AssistantMessage({
   delay = 0.2,
   isInitialGreeting = false,
   usage,
+  timestamp,
+  showFeedback = true,
 }: AssistantMessageProps) {
+  const trackFeedback = (feedback: "like" | "dislike") => {
+    trackButton({
+      action: feedback,
+      elementId: "message-feedback",
+      namespace: "chat",
+      CTA: feedback === "like" ? "Like Message" : "Dislike Message",
+      timestamp: timestamp?.getTime(),
+    });
+  };
+
   return (
     <motion.div
       initial={animate ? { opacity: 0, y: -20 } : { opacity: 1, y: 0 }}
@@ -99,11 +124,12 @@ export function AssistantMessage({
           ) : undefined
         }
       >
-        <FunctionCalls
+        <FunctionCallsContainer
           functionCalls={functionCalls}
           messageIndex={messageIndex}
           expandedFunctionCalls={expandedFunctionCalls}
           onToggle={onToggle}
+          isStreaming={isStreaming}
         />
         <div className="relative">
           {/* Slide animation for initial greeting */}
@@ -142,6 +168,9 @@ export function AssistantMessage({
               }
             />
             {usage && !isStreaming && <TokenUsage usage={usage} />}
+            {!isInitialGreeting && showFeedback && !isStreaming && (
+              <MessageActions trackFeedback={trackFeedback} />
+            )}
           </motion.div>
         </div>
       </Message>

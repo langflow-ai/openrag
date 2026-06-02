@@ -25,7 +25,10 @@ export interface NudgeQueryParams {
 
 export const useGetNudgesQuery = (
   params: NudgeQueryParams | null = {},
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<Nudge[], Error, Nudge[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const { chatId, filters, limit, scoreThreshold } = params ?? {};
   const queryClient = useQueryClient();

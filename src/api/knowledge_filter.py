@@ -7,7 +7,13 @@ import uuid
 import json
 from datetime import datetime
 from utils.logging_config import get_logger
-from dependencies import get_knowledge_filter_service, get_monitor_service, get_session_manager, get_current_user
+from dependencies import (
+    get_knowledge_filter_service,
+    get_monitor_service,
+    get_session_manager,
+    get_current_user,
+    require_permission,
+)
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -75,7 +81,7 @@ async def create_knowledge_filter(
     body: CreateFilterBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:create")),
 ):
     """Create a new knowledge filter"""
     if not body.name:
@@ -170,7 +176,7 @@ async def update_knowledge_filter(
     body: UpdateFilterBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:edit:own")),
 ):
     """Update an existing knowledge filter by delete + recreate"""
     jwt_token = user.jwt_token
@@ -226,7 +232,7 @@ async def delete_knowledge_filter(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:edit:own")),
 ):
     """Delete a knowledge filter"""
     jwt_token = user.jwt_token

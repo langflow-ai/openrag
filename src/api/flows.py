@@ -5,7 +5,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
 
-from dependencies import get_flows_service, get_current_user
+from dependencies import get_flows_service, get_current_user, require_permission
 from session_manager import User
 
 logger = get_logger(__name__)
@@ -16,7 +16,7 @@ FlowType = Literal["nudges", "retrieval", "ingest"]
 async def reset_flow_endpoint(
     flow_type: str,
     flows_service=Depends(get_flows_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("flows:edit")),
 ):
     """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
     if flow_type not in ["nudges", "retrieval", "ingest"]:

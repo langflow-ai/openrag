@@ -55,8 +55,7 @@ export default function ConnectorCards() {
   const connectors = queryConnectors
     .filter((c) => {
       if (c.type === "ibm_cos" || c.type === "aws_s3") return isIbmAuthMode;
-      if (isCloudBrand && (c.type === "google_drive" || c.type === "onedrive"))
-        return false;
+      if (isCloudBrand && c.type === "onedrive") return false;
       return true;
     })
     .map((c) => ({

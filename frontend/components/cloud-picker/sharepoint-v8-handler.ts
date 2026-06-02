@@ -204,11 +204,6 @@ export class SharePointV8Handler {
         commands: {
           pick: {
             action: "select",
-            select: {
-              urls: {
-                download: true, // Request download URLs
-              },
-            },
           },
         },
       };
@@ -518,8 +513,12 @@ export class SharePointV8Handler {
           mimeType = this.inferMimeType(item.name);
         }
 
+        const driveId = item.parentReference?.driveId;
+        const itemId = item.id;
+        const finalId = driveId ? `${driveId}!${itemId}` : itemId;
+
         return {
-          id: item.id,
+          id: finalId,
           name: item.name || "Unknown",
           mimeType: mimeType || "application/octet-stream",
           webUrl: item.webUrl || "",

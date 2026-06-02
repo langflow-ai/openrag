@@ -33,14 +33,8 @@ reviews:
       instructions: "Apply when the PR only changes docs, README, AGENTS.md, or CLAUDE.md."
     - label: "refactor"
       instructions: "Apply when the PR restructures existing code without changing behaviour."
-    - label: "performance"
-      instructions: "Apply when the PR improves runtime speed, memory usage, or resource efficiency."
-    - label: "test"
+    - label: "tests"
       instructions: "Apply when the PR only adds or updates tests."
-    - label: "chore"
-      instructions: "Apply for maintenance tasks: dependency bumps, config changes, tooling updates."
-    - label: "build"
-      instructions: "Apply when the PR changes the build system, Dockerfiles, CI workflows, or release process."
   path_filters: []
   path_instructions:
     - path: "src/**/*.py"
@@ -156,6 +150,19 @@ chat:
       usage: auto
     linear:
       usage: auto
+issue_enrichment:
+  auto_enrich:
+    enabled: true
+  planning:
+    enabled: true
+    auto_planning:
+      enabled: true
+      labels:
+        - "enhancement"
+        - "bug"
+        - "refactor"
+        - "!documentation"
+        - "!tests"
 knowledge_base:
   opt_out: false
   code_guidelines:

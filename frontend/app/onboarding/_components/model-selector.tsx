@@ -1,3 +1,5 @@
+"use client";
+
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
