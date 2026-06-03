@@ -7,7 +7,6 @@ openrag_user_role:
   hosts: []
   backend_roles:
     - "openrag_user"
-    - "all_access"
 
 all_access:
   users:

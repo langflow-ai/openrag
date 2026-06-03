@@ -13,9 +13,9 @@ config:
           challenge: false
           config:
             openid_connect_url: "http://openrag-backend:8000/.well-known/openid-configuration"
-            subject_key: "sub"
+            subject_key: "user_id"
             jwt_header: "Authorization"          # expects Bearer token
-            roles_key: "roles"
+            roles_key: "user_roles"
         authentication_backend:
           type: noop
 
