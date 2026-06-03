@@ -18,6 +18,10 @@ RUN cd /usr/lib/node_modules/nodemon 2>/dev/null && npm install debug@4.3.7 glob
     && rm -rf /usr/lib/node_modules/nodemon/node_modules/semver-3.0.1 2>/dev/null || true
 
 COPY frontend/package.json frontend/package-lock.json ./
+# Copy local stub packages referenced via file: in package.json (e.g. sharp stub
+# that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
+COPY frontend/stubs ./stubs
+
 RUN npm ci --prefer-offline --no-audit
 
 # -----------------------------------------------------------------------------
@@ -29,6 +33,7 @@ WORKDIR /opt/app-root/src
 USER 0
 
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
+COPY --from=deps /opt/app-root/src/stubs ./stubs
 COPY frontend/package*.json ./
 COPY frontend/ ./
 
@@ -54,6 +59,7 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=builder --chown=1001:0 /opt/app-root/src/package*.json ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/stubs ./stubs
 COPY --from=builder --chown=1001:0 /opt/app-root/src/.next ./.next
 COPY --from=builder --chown=1001:0 /opt/app-root/src/public ./public
 COPY --from=builder --chown=1001:0 /opt/app-root/src/node_modules ./node_modules

@@ -4,8 +4,9 @@ API consumers expect `filter_id` on /v1/chat, /v1/search, /v1/documents to "just
 without first GETting the filter, parsing its `query_data`, and resending the parts as
 inline `filters`. This helper performs that lookup + normalization server-side.
 
-Wildcard handling mirrors `frontend/lib/filter-normalization.ts::buildSearchPayloadFilters`:
-a dimension like `data_sources: ["*"]` collapses to `[]` (i.e. "no filter on this field").
+Wildcard handling mirrors `frontend/lib/filter-normalization.ts::buildSearchPayloadFilters`.
+Each filter dimension is a list; if that list contains the wildcard value `"*"`
+(for example, `data_sources: ["*"]`), the dimension is treated as unscoped.
 """
 
 import json
@@ -17,7 +18,7 @@ _FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_typ
 
 
 def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, list[str]]:
-    """Drop `["*"]` and empty lists from each filter dimension."""
+    """Keep only filter dimensions that contain concrete values."""
     if not filters:
         return {}
     cleaned: dict[str, list[str]] = {}
@@ -66,3 +67,34 @@ async def resolve_filter_id(
         "limit": query_data.get("limit", 10),
         "score_threshold": query_data.get("scoreThreshold", 0),
     }
+
+
+def merge_filter_overrides(
+    resolved: dict[str, Any],
+    request_body: Any,
+) -> tuple[dict[str, Any] | None, int, float]:
+    """Merge resolved filter values with explicitly provided request fields.
+
+    Inline request fields override saved filter values by field presence, not by
+    truthiness. This lets callers intentionally set values such as `limit=10`,
+    `score_threshold=0`, or `filters={}`.
+    """
+    provided_fields: set[str] = getattr(request_body, "model_fields_set", set())
+
+    filters: dict[str, Any] | None = resolved["filters"]
+    if "filters" in provided_fields:
+        inline_filters = request_body.filters
+        if inline_filters:
+            filters = {**resolved["filters"], **inline_filters}
+        else:
+            filters = inline_filters
+
+    limit = request_body.limit
+    if "limit" not in provided_fields:
+        limit = resolved["limit"]
+
+    score_threshold = request_body.score_threshold
+    if "score_threshold" not in provided_fields:
+        score_threshold = resolved["score_threshold"]
+
+    return filters, limit, score_threshold

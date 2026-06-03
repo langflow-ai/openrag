@@ -59,6 +59,9 @@ async def _create_filter_for(client, name: str, data_sources: list[str]) -> str:
         }
     )
     assert result.success is True, f"Failed to create filter: {result.error}"
+    assert isinstance(result.id, str) and result.id, (
+        f"Filter creation returned no id: {result.error}"
+    )
     return result.id
 
 
@@ -138,7 +141,7 @@ class TestFilterIdInChat:
 
     @pytest.mark.asyncio
     async def test_filter_id_in_chat_inline_overrides(self, client, tmp_path):
-        """Inline `filters` win over filter_id per the v1 override contract."""
+        """Inline filters override the resolved filter_id per field."""
         alpha, beta = await _ingest_pair(client, tmp_path)
         filter_id = await _create_filter_for(client, "SDK chat inline-override", [alpha.name])
 
@@ -215,7 +218,7 @@ class TestFilterIdInSearch:
 
     @pytest.mark.asyncio
     async def test_filter_id_in_search_inline_overrides(self, client, tmp_path):
-        """Inline filters override the resolved filter_id per-field."""
+        """Inline filters override the resolved filter_id per field."""
         alpha, beta = await _ingest_pair(client, tmp_path)
         filter_id = await _create_filter_for(client, "SDK search inline-override", [alpha.name])
 
