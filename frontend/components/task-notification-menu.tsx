@@ -10,6 +10,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
@@ -43,6 +44,7 @@ export function TaskNotificationMenu() {
     selectedTaskTrigger,
     cancelTask,
     closeMenu,
+    openTaskDialog,
   } = useTask();
   const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
@@ -361,8 +363,8 @@ export function TaskNotificationMenu() {
                     className="bg-card/50 border-0 shadow-none py-mmd px-4"
                   >
                     <CardHeader className="p-0 pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm flex items-center gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-sm flex min-w-0 flex-1 items-center gap-2">
                           {showTaskIcon &&
                             getTaskIcon(
                               task.status,
@@ -371,6 +373,14 @@ export function TaskNotificationMenu() {
                             )}
                           Task {task.task_id.substring(0, 8)}...
                         </CardTitle>
+                        <button
+                          type="button"
+                          aria-label="Open task details"
+                          className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                          onClick={() => openTaskDialog(task.task_id)}
+                        >
+                          <IncidentReporterIcon className="size-4" />
+                        </button>
                       </div>
                       <CardDescription className="text-xs">
                         Started {formatRelativeTime(task.created_at)}

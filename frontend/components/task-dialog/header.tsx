@@ -1,10 +1,12 @@
 "use client";
 
+import type { Task } from "@/app/api/queries/useGetTasksQuery";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   ALL_TASK_FILE_TYPES,
   formatTaskFileTypeLabel,
+  isTaskInProgressStatus,
   type TaskFileStatusCategory,
 } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
@@ -13,6 +15,7 @@ import { TaskDialogFilters } from "./filters";
 
 interface TaskDialogHeaderProps {
   taskId: string;
+  taskStatus?: Task["status"];
   search: string;
   onSearchChange: (value: string) => void;
   fileType: string;
@@ -27,6 +30,7 @@ interface TaskDialogHeaderProps {
 
 export function TaskDialogHeader({
   taskId,
+  taskStatus,
   search,
   onSearchChange,
   fileType,
@@ -44,6 +48,8 @@ export function TaskDialogHeader({
     fileType === ALL_TASK_FILE_TYPES
       ? allTypesLabel
       : formatTaskFileTypeLabel(fileType);
+  const titlePrefix =
+    taskStatus && isTaskInProgressStatus(taskStatus) ? "Active task" : "Task";
 
   return (
     <header
@@ -68,7 +74,7 @@ export function TaskDialogHeader({
             !isCloudBrand && "px-4",
           )}
         >
-          Task {taskId}
+          {titlePrefix} {taskId}
         </DialogTitle>
       </DialogHeader>
 
