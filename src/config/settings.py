@@ -222,6 +222,16 @@ def get_jwt_issuer_verify_tls() -> bool:
     )
 
 
+def get_jwt_verify_signature() -> bool:
+    """When true, verify forwarded JWTs via issuer JWKS; when false, decode
+    claims only (upstream auth must have authenticated the caller)."""
+    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")

@@ -513,9 +513,8 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         PLATFORM_PASSWORD,
         PLATFORM_USERNAME,
         get_jwt_auth_header,
-        get_jwt_issuer_verify_tls,
     )
-    from config.utils import verify_jwt_from_issuer
+    from config.utils import resolve_jwt_claims
 
     # ── Option -1: Environment variable override (local dev/calls) ───────
 
@@ -556,9 +555,10 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
             raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
         ) or None
 
-        claims = verify_jwt_from_issuer(ibm_token, verify_tls=get_jwt_issuer_verify_tls())
+        claims = resolve_jwt_claims(ibm_token)
     else:
         ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
+        claims = None
     user_id = None
     email = None
     name = None
@@ -566,10 +566,15 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # _stage_jwt_roles when a valid JWT subject is present.
     request.state.jwt_roles = None
     if ibm_token:
-        logger.debug("[AUTH] IBM JWT token found in request cookies")
-        claims = ibm_auth.decode_ibm_jwt(ibm_token)
+        if claims is None:
+            logger.debug("[AUTH] IBM JWT token found in request cookies")
+            claims = ibm_auth.decode_ibm_jwt(ibm_token)
         if claims is not None:
-            logger.debug("[AUTH] IBM JWT claims decoded successfully")
+            logger.debug(
+                "[AUTH] JWT claims resolved"
+                if jwt_roles_enabled()
+                else "[AUTH] IBM JWT claims decoded successfully"
+            )
             sub = claims.get("sub")
             if not sub:
                 logger.warning(
@@ -806,8 +811,8 @@ async def get_api_key_user_async(
     # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import get_jwt_auth_header, get_jwt_issuer_verify_tls
-    from config.utils import verify_jwt_from_issuer
+    from config.settings import get_jwt_auth_header
+    from config.utils import resolve_jwt_claims
 
     raw_jwt = request.headers.get(get_jwt_auth_header(), "")
     logger.debug(
@@ -817,7 +822,7 @@ async def get_api_key_user_async(
     )
     if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
-        claims = verify_jwt_from_issuer(token, verify_tls=get_jwt_issuer_verify_tls())
+        claims = resolve_jwt_claims(token)
         sub = claims.get("sub") if claims else None
         if sub:
             user = User(
