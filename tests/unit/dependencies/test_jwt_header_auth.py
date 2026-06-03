@@ -91,9 +91,7 @@ def _patch_attach(monkeypatch):
 
 
 def _patch_verify(monkeypatch, claims):
-    monkeypatch.setattr(
-        config_utils, "resolve_jwt_claims", lambda *a, **k: claims
-    )
+    monkeypatch.setattr(config_utils, "resolve_jwt_claims", lambda *a, **k: claims)
 
 
 @pytest.mark.asyncio
@@ -171,9 +169,7 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
 
     def _boom(*a, **k):  # must never be called when no header present
-        raise AssertionError(
-            "resolve_jwt_claims should not run without the header"
-        )
+        raise AssertionError("resolve_jwt_claims should not run without the header")
 
     monkeypatch.setattr(config_utils, "resolve_jwt_claims", _boom)
     req = _FakeRequest({})

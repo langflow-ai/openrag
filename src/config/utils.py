@@ -173,9 +173,7 @@ def resolve_jwt_claims(token: str | None) -> dict[str, Any] | None:
 
     if get_jwt_verify_signature():
         logger.debug("JWT claims: verifying signature")
-        return verify_jwt_from_issuer(
-            token, verify_tls=get_jwt_issuer_verify_tls()
-        )
+        return verify_jwt_from_issuer(token, verify_tls=get_jwt_issuer_verify_tls())
 
     from auth import ibm_auth
 
