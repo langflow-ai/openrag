@@ -9,6 +9,9 @@ USER node
 
 # Copy frontend dependencies
 COPY --chown=node:node frontend/package*.json ./
+# Copy local stub packages referenced via file: in package.json (e.g. sharp stub
+# that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
+COPY --chown=node:node frontend/stubs ./stubs
 RUN npm ci
 
 # Copy frontend source
