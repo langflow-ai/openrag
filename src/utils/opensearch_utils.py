@@ -71,6 +71,7 @@ async def wait_for_opensearch(
     Raises:
         OpenSearchNotReadyError: If OpenSearch fails to become ready within the retry limit.
     """
+    last_error: str | None = None
     for attempt in range(max_retries):
         display_attempt: int = attempt + 1
 
@@ -81,34 +82,34 @@ async def wait_for_opensearch(
         )
 
         try:
-            # Simple ping to check connection
-            if await opensearch_client.ping():
-                # Also check cluster health
-                health = await opensearch_client.cluster.health()
-                status = health.get("status")
-                if status in ["green", "yellow"]:
-                    logger.info(
-                        "Successfully verified that OpenSearch is ready.",
-                        attempt=display_attempt,
-                        status=status,
-                    )
-                    return
-                else:
-                    logger.warning(
-                        "OpenSearch is up but cluster health is red.",
-                        attempt=display_attempt,
-                        status=status,
-                    )
-            else:
-                logger.warning(
-                    "OpenSearch ping failed.",
+            # cluster.health() (GET /_cluster/health) raises on
+            # connection/auth/transport errors, unlike ping() (HEAD /), which
+            # swallows them and returns False — hiding the real cause (e.g. a
+            # rejected JWT, a 403, or a connection refusal).
+            health = await opensearch_client.cluster.health()
+            status = health.get("status")
+            if status in ["green", "yellow"]:
+                logger.info(
+                    "Successfully verified that OpenSearch is ready.",
                     attempt=display_attempt,
+                    status=status,
                 )
-        except Exception as e:
+                return
+            last_error = f"cluster health status={status}"
             logger.warning(
-                "OpenSearch is not ready.",
+                "OpenSearch is up but cluster health is red.",
                 attempt=display_attempt,
+                status=status,
+            )
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning(
+                "OpenSearch readiness check failed.",
+                attempt=display_attempt,
+                error_type=type(e).__name__,
+                status_code=getattr(e, "status_code", None),
                 error=str(e),
+                info=getattr(e, "info", None),
             )
 
         if attempt < max_retries - 1:
@@ -123,8 +124,8 @@ async def wait_for_opensearch(
 
             await asyncio.sleep(delay)
 
-    message: str = "Failed to verify whether OpenSearch is ready."
-    logger.error(message)
+    message: str = f"Failed to verify whether OpenSearch is ready. Last error: {last_error}"
+    logger.error(message, last_error=last_error)
     raise OpenSearchNotReadyError(message)
 
 
