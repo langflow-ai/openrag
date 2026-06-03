@@ -134,8 +134,7 @@ class GoogleDriveOAuth:
                 # should not force the user through re-authentication.
                 error_str = str(e).lower()
                 is_permanent = any(
-                    k in error_str
-                    for k in ("invalid_grant", "revoked", "unauthorized_client")
+                    k in error_str for k in ("invalid_grant", "revoked", "unauthorized_client")
                 )
                 if is_permanent:
                     self._remove_token_file()
