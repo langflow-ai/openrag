@@ -141,13 +141,14 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
         "JWT",
         "OPENAI_API_KEY",
         "OPENSEARCH_URL",
-        "OWNER",
-        "OWNER_EMAIL",
-        "OWNER_NAME",
         "SELECTED_EMBEDDING_MODEL",
         "WATSONX_APIKEY",
         "WATSONX_PROJECT_ID",
         "OPENSEARCH_INDEX_NAME",
         "CONNECTOR_TYPE",
+        "OPENRAG_INGEST_URL",
+        "OPENRAG_INGEST_TOKEN",
+        "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_BATCH_SIZE",
     ]:
         assert f"X-Langflow-Global-Var-{global_var_name}" in flow_text

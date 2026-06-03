@@ -214,7 +214,7 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
                 "query": {
                     "bool": {
                         "filter": [
-                            {"term": {"connector_type": "openrag_docs"}},
+                            {"term": {"connector_type": "local"}},
                             {"term": {"is_sample_data": "true"}},
                         ]
                     }
