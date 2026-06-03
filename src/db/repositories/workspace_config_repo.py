@@ -23,7 +23,7 @@ class WorkspaceConfigRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_section(self, section: str) -> Optional[dict[str, Any]]:
+    async def get_section(self, section: str) -> dict[str, Any] | None:
         row = await self.session.get(WorkspaceConfig, section)
         return None if row is None else (row.value or {})
 
@@ -35,7 +35,7 @@ class WorkspaceConfigRepo:
         self,
         section: str,
         value: dict[str, Any],
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> WorkspaceConfig:
         existing = await self.session.get(WorkspaceConfig, section)
         if existing is None:

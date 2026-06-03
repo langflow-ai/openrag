@@ -12,18 +12,19 @@ Idempotent: skips the permission row if it already exists and skips the
 in ``0002_seed_roles_permissions``.
 
 """
+
+import uuid
 from collections.abc import Sequence
 from typing import Union
-import uuid
 
 import sqlalchemy as sa
 
 from alembic import op
 
 revision: str = "0007_seed_connectors_manage_global"
-down_revision: Union[str, Sequence[str], None] = "0006_revoke_provider_override_nonadmin"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0006_revoke_provider_override_nonadmin"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _PERM_NAME = "connectors:manage:global"
 _PERM_RESOURCE = "connectors"
@@ -71,10 +72,7 @@ def upgrade() -> None:
         return
 
     already_granted = bind.execute(
-        sa.text(
-            "SELECT 1 FROM role_permissions "
-            "WHERE role_id = :rid AND permission_id = :pid"
-        ),
+        sa.text("SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid"),
         {"rid": role_id, "pid": perm_id},
     ).scalar()
     if already_granted is None:

@@ -37,9 +37,7 @@ def _connector_service(types=("google_drive", "sharepoint", "onedrive")):
     svc = MagicMock()
     cm = MagicMock()
     cm.get_available_connector_types = MagicMock(
-        return_value={
-            t: {"name": t, "description": "", "icon": t} for t in types
-        }
+        return_value={t: {"name": t, "description": "", "icon": t} for t in types}
     )
     svc.connection_manager = cm
     return svc
