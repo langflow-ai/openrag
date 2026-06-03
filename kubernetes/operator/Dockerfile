@@ -14,6 +14,8 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
 
+# Use Red Hat Universal Base Image 9 Minimal for security compliance
+# Expected: UBI 9.8+ with resolved CVEs
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 # Install necessary CA certificates for HTTPS connections
