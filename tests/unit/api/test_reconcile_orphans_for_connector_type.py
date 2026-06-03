@@ -30,6 +30,7 @@ def _make_connection(connection_id: str, is_active: bool = True):
 def _make_connector(remote_file_ids, *, authenticated=True, raise_on_list=False):
     connector = MagicMock()
     connector.is_authenticated = authenticated
+    connector.authenticate = AsyncMock(return_value=authenticated)
     if raise_on_list:
         connector.list_files = AsyncMock(side_effect=RuntimeError("graph 503"))
     else:
@@ -315,6 +316,7 @@ async def test_paginated_listing_aggregates_all_pages():
     conn = _make_connection("c1")
     connector = MagicMock()
     connector.is_authenticated = True
+    connector.authenticate = AsyncMock(return_value=True)
     pages = [
         {"files": [{"id": "a"}], "nextPageToken": "tok-1"},
         {"files": [{"id": "b"}, {"id": "c"}]},

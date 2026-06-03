@@ -193,6 +193,18 @@ async def compute_orphans_for_connector_type(
                 )
                 return None
 
+            # Re-authenticate to refresh any stale cached credentials before
+            # making API calls. get_connector() may return a cached connector
+            # whose access token has since expired (Google tokens last 1 hour).
+            # This mirrors the pattern used in connector_sync.
+            if not await connector.authenticate():
+                logger.info(
+                    "Skipping orphan compute — re-authentication failed",
+                    connector_type=connector_type,
+                    connection_id=conn.connection_id,
+                )
+                return None
+
             # Drive the per-id existence check via cfg.file_ids when the
             # connector supports it (SharePoint / OneDrive / Google Drive).
             # The flat default of list_files() only returns the *root* listing
@@ -235,6 +247,7 @@ async def compute_orphans_for_connector_type(
                 connector_type=connector_type,
                 connection_id=conn.connection_id,
                 error=str(e),
+                error_type=type(e).__name__,
             )
             return None
 
