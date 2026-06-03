@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useConnectConnectorMutation } from "@/app/api/mutations/useConnectConnectorMutation";
 import { useDisconnectConnectorMutation } from "@/app/api/mutations/useDisconnectConnectorMutation";
+import { useToggleConnectorMutation } from "@/app/api/mutations/useToggleConnectorMutation";
 import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
@@ -34,6 +35,7 @@ export default function ConnectorCards() {
 
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
+  const toggleEnabledMutation = useToggleConnectorMutation();
 
   const getConnectorIcon = useCallback((iconName: string) => {
     const iconMap: { [key: string]: React.ReactElement } = {
@@ -72,6 +74,13 @@ export default function ConnectorCards() {
 
   const handleDisconnect = async (connector: Connector) => {
     disconnectMutation.mutate(connector as unknown as QueryConnector);
+  };
+
+  const handleToggleEnabled = (connector: Connector, enabled: boolean) => {
+    toggleEnabledMutation.mutate({
+      connector: connector as unknown as QueryConnector,
+      enabled,
+    });
   };
 
   const navigateToKnowledgePage = (connector: Connector) => {
@@ -120,6 +129,12 @@ export default function ConnectorCards() {
               onDisconnect={handleDisconnect}
               onNavigateToKnowledge={navigateToKnowledgePage}
               onConfigure={getConfigureHandler(connector)}
+              onToggleEnabled={handleToggleEnabled}
+              isTogglingEnabled={
+                toggleEnabledMutation.isPending &&
+                toggleEnabledMutation.variables?.connector?.type ===
+                  connector.type
+              }
             />
           ))
         )}

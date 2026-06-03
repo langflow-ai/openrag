@@ -303,6 +303,12 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/connectors/{connector_type}/enabled",
+        connectors.set_connector_enabled,
+        methods=["PUT"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/connectors/{connector_type}/token",
         connectors.connector_token,
         methods=["GET"],

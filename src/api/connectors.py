@@ -1,22 +1,71 @@
 from typing import Any
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name
 from connectors.sharepoint.utils import is_valid_sharepoint_url
+from db.repositories.workspace_config_repo import WorkspaceConfigRepo
 from dependencies import (
     get_connector_service,
     get_current_user,
+    get_db_session,
+    get_rbac_service,
     get_session_manager,
     require_permission,
 )
+from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+# Workspace-config section holding the admin-managed per-connector enable/disable
+# state. Value shape: ``{"<connector_type>": bool}``. A connector absent from the
+# map is treated as enabled (default-enabled), preserving pre-toggle behavior.
+CONNECTORS_CONFIG_SECTION = "connectors"
+MANAGE_GLOBAL_PERMISSION = "connectors:manage:global"
+
+
+async def get_connector_enabled_map(session: AsyncSession) -> dict[str, bool]:
+    """Return the admin-set ``{connector_type: enabled}`` map from workspace config."""
+    repo = WorkspaceConfigRepo(session)
+    value = await repo.get_section(CONNECTORS_CONFIG_SECTION) or {}
+    return {str(k): bool(v) for k, v in value.items()}
+
+
+def is_connector_enabled(enabled_map: dict[str, bool], connector_type: str) -> bool:
+    """A connector is enabled unless an admin has explicitly disabled it."""
+    return enabled_map.get(connector_type, True)
+
+
+async def user_can_manage_connectors(user: User | None, rbac) -> bool:
+    """True when the user holds the admin-only ``connectors:manage:global`` perm."""
+    uid = getattr(user, "db_user_id", None) or (user.user_id if user else None)
+    if not uid:
+        return False
+    return await rbac.has_permission(uid, MANAGE_GLOBAL_PERMISSION)
+
+
+async def assert_connector_enabled(
+    connector_type: str, user: User | None, rbac, session: AsyncSession
+) -> None:
+    """Raise 403 if ``connector_type`` is globally disabled and the user is not an
+    admin who can manage connectors. No-op when RBAC enforcement is off."""
+    if not is_rbac_enforced():
+        return
+    enabled_map = await get_connector_enabled_map(session)
+    if is_connector_enabled(enabled_map, connector_type):
+        return
+    if await user_can_manage_connectors(user, rbac):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={"error": "connector_disabled", "connector_type": connector_type},
+    )
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -358,8 +407,11 @@ async def connector_check_duplicates(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Check if any of the selected files or folders contain files that already exist in the index"""
+    await assert_connector_enabled(connector_type, user, rbac, session)
     selected_files_raw = body.selected_files
     if not selected_files_raw:
         return JSONResponse({"duplicate_names": []})
@@ -500,16 +552,72 @@ async def connector_check_duplicates(
 async def list_connectors(
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
-    """List available connector types with metadata"""
+    """List available connector types with metadata.
+
+    Each connector carries an ``enabled`` flag reflecting the admin-managed
+    workspace toggle. Non-admin users never see globally-disabled connectors;
+    admins (``connectors:manage:global``) always see every connector so the
+    toggle can render its current state.
+    """
     try:
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
         )
-        return JSONResponse({"connectors": connector_types})
+        enabled_map = await get_connector_enabled_map(session)
+        is_admin = await user_can_manage_connectors(user, rbac)
+
+        result: dict[str, dict[str, Any]] = {}
+        for ctype, meta in connector_types.items():
+            enabled = is_connector_enabled(enabled_map, ctype)
+            if not enabled and not is_admin:
+                continue
+            result[ctype] = {**meta, "enabled": enabled}
+
+        return JSONResponse({"connectors": result})
     except Exception as e:
         logger.error("[CONNECTOR] Error listing connectors", error=str(e))
-        return JSONResponse({"connectors": []})
+        return JSONResponse({"connectors": {}})
+
+
+class SetConnectorEnabledBody(BaseModel):
+    enabled: bool
+
+
+async def set_connector_enabled(
+    connector_type: str,
+    body: SetConnectorEnabledBody,
+    connector_service=Depends(get_connector_service),
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(require_permission(MANAGE_GLOBAL_PERMISSION)),
+):
+    """Admin-only: enable or disable a connector workspace-wide.
+
+    Persists the state in the ``connectors`` workspace-config section.
+    """
+    known_types = set(connector_service.connection_manager.get_available_connector_types().keys())
+    if connector_type not in known_types:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_connector_type", "connector_type": connector_type},
+        )
+
+    repo = WorkspaceConfigRepo(session)
+    value = dict(await repo.get_section(CONNECTORS_CONFIG_SECTION) or {})
+    value[connector_type] = body.enabled
+    actor_user_id = user.db_user_id or user.user_id
+    await repo.upsert(CONNECTORS_CONFIG_SECTION, value, actor_user_id=actor_user_id)
+    await session.commit()
+
+    logger.info(
+        "[CONNECTOR] Connector global-enabled state updated",
+        connector_type=connector_type,
+        enabled=body.enabled,
+        actor=actor_user_id,
+    )
+    return JSONResponse({"connector_type": connector_type, "enabled": body.enabled})
 
 
 async def connector_sync(
@@ -518,8 +626,11 @@ async def connector_sync(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Sync files from all active connections of a connector type"""
+    await assert_connector_enabled(connector_type, user, rbac, session)
     max_files = body.max_files
     selected_files_raw = body.selected_files
     selected_files = None
@@ -1097,6 +1208,8 @@ async def sync_all_connectors(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Sync files from all active cloud connector connections.
@@ -1110,6 +1223,10 @@ async def sync_all_connectors(
         # Cloud connector types to sync
         cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
 
+        # Globally-disabled connectors are skipped for non-admins.
+        enabled_map = await get_connector_enabled_map(session)
+        is_admin = await user_can_manage_connectors(user, rbac)
+
         all_task_ids = []
         synced_connectors = []
         skipped_connectors = []
@@ -1117,6 +1234,17 @@ async def sync_all_connectors(
         errors = []
 
         for connector_type in cloud_connector_types:
+            if (
+                is_rbac_enforced()
+                and not is_admin
+                and not is_connector_enabled(enabled_map, connector_type)
+            ):
+                logger.debug(
+                    "Connector globally disabled, skipping in sync-all",
+                    connector_type=connector_type,
+                )
+                skipped_connectors.append(connector_type)
+                continue
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
                 (
@@ -1346,11 +1474,14 @@ async def connector_sync_preview(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Preview the impact of syncing a connector type without performing any
     deletion or ingest. Returns the list of orphan files (present in OpenSearch
     but no longer at the source) by filename, plus the total synced count.
     """
+    await assert_connector_enabled(connector_type, user, rbac, session)
     try:
         orphans, synced_count = await _preview_orphans_for_connector_type(
             connector_type=connector_type,
@@ -1377,6 +1508,8 @@ async def connectors_sync_all_preview(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Preview the impact of sync-all-connectors across every cloud connector
     type. Returns orphan filenames grouped by connector_type plus a per-type
@@ -1387,7 +1520,17 @@ async def connectors_sync_all_preview(
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
 
+        # Globally-disabled connectors are skipped for non-admins.
+        enabled_map = await get_connector_enabled_map(session)
+        is_admin = await user_can_manage_connectors(user, rbac)
+
         for connector_type in CLOUD_CONNECTOR_TYPES:
+            if (
+                is_rbac_enforced()
+                and not is_admin
+                and not is_connector_enabled(enabled_map, connector_type)
+            ):
+                continue
             try:
                 orphans, synced_count = await _preview_orphans_for_connector_type(
                     connector_type=connector_type,
@@ -1431,10 +1574,13 @@ async def connector_token(
     request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Get access token for connector API calls (e.g., Pickers)."""
     url_connector_type = connector_type
 
+    await assert_connector_enabled(connector_type, user, rbac, session)
     try:
         # 1) Load the connection and verify ownership
         connection = await connector_service.connection_manager.get_connection(connection_id)
@@ -1550,6 +1696,8 @@ async def browse_connection_files(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
     bucket: str | None = None,
     search: str | None = None,
     page_token: str | None = None,
@@ -1561,6 +1709,7 @@ async def browse_connection_files(
     Lists files from the remote source (e.g., S3 bucket) and marks each
     as ingested or not by cross-referencing with OpenSearch.
     """
+    await assert_connector_enabled(connector_type, user, rbac, session)
     try:
         connector = await connector_service.get_connector(connection_id)
         if not connector:

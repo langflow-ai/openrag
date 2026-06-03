@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,8 @@ export interface Connector {
   available?: boolean;
   status?: string;
   connectionId?: string;
+  /** Admin-managed workspace toggle. Absent is treated as enabled. */
+  enabled?: boolean;
 }
 
 interface ConnectorCardProps {
@@ -34,6 +37,9 @@ interface ConnectorCardProps {
   onNavigateToKnowledge: (connector: Connector) => void;
   /** Optional: open a connector-specific settings/edit dialog */
   onConfigure?: (connector: Connector) => void;
+  /** Admin-only: toggle the connector on/off workspace-wide */
+  onToggleEnabled?: (connector: Connector, enabled: boolean) => void;
+  isTogglingEnabled?: boolean;
 }
 
 export default function ConnectorCard({
@@ -44,6 +50,8 @@ export default function ConnectorCard({
   onDisconnect,
   onNavigateToKnowledge,
   onConfigure,
+  onToggleEnabled,
+  isTogglingEnabled,
 }: ConnectorCardProps) {
   const isCloudBrand = useIsCloudBrand();
   const { can, canAny } = usePermissions();
@@ -53,6 +61,8 @@ export default function ConnectorCard({
     "connectors:delete:any",
   ]);
   const canUpload = can("knowledge:upload");
+  const canManageGlobal = can("connectors:manage:global");
+  const isEnabled = connector.enabled !== false;
   const isConnected =
     connector.status === "connected" && connector.connectionId;
 
@@ -72,19 +82,36 @@ export default function ConnectorCard({
               <CardIcon isActive={!!isConnected} activeBgColor="bg-white">
                 {connector.icon}
               </CardIcon>
-              {isConnected ? (
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-                    isCloudBrand
-                      ? "bg-primary/10 text-primary dark:bg-white/10 dark:text-layer-contextual-foreground"
-                      : "bg-foreground text-muted",
-                  )}
-                >
-                  <span className="h-2 w-2 rounded-full bg-green-500" />
-                  Active
-                </div>
-              ) : null}
+              <div className="flex items-center gap-3">
+                {isConnected ? (
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      isCloudBrand
+                        ? "bg-primary/10 text-primary dark:bg-white/10 dark:text-layer-contextual-foreground"
+                        : "bg-foreground text-muted",
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    Active
+                  </div>
+                ) : null}
+                {canManageGlobal && onToggleEnabled ? (
+                  <Switch
+                    checked={isEnabled}
+                    disabled={isTogglingEnabled}
+                    onCheckedChange={(checked) =>
+                      onToggleEnabled(connector, checked)
+                    }
+                    aria-label={`${isEnabled ? "Disable" : "Enable"} ${connector.name} for the workspace`}
+                    title={
+                      isEnabled
+                        ? "Enabled for the workspace — toggle off to hide from all users"
+                        : "Disabled for the workspace — toggle on to make available to all users"
+                    }
+                  />
+                ) : null}
+              </div>
             </div>
             <div>
               <CardTitle
@@ -101,9 +128,11 @@ export default function ConnectorCard({
                   isCloudBrand && "!text-layer-contextual-foreground",
                 )}
               >
-                {isConnected || connector?.available
-                  ? `${connector.name} is configured.`
-                  : "Not configured."}
+                {canManageGlobal && !isEnabled
+                  ? `${connector.name} is disabled for the workspace.`
+                  : isConnected || connector?.available
+                    ? `${connector.name} is configured.`
+                    : "Not configured."}
               </CardDescription>
             </div>
           </div>

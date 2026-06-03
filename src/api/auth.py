@@ -8,10 +8,14 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from dependencies import (
     get_auth_service,
-    get_optional_user,
     get_current_user,
+    get_db_session,
+    get_optional_user,
+    get_rbac_service,
 )
 from pydantic import BaseModel
 from session_manager import User
@@ -41,8 +45,18 @@ async def auth_init(
     request: Request,
     auth_service=Depends(get_auth_service),
     user: Optional[User] = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Initialize OAuth flow for authentication or data source connection"""
+    # Block connecting a globally-disabled connector for non-admins. Done before
+    # the try/except so the 403 is not swallowed into a generic 500.
+    # App-login OAuth ("app_auth") is never a data-source connect, so skip it.
+    if body.purpose != "app_auth":
+        from api.connectors import assert_connector_enabled
+
+        await assert_connector_enabled(body.connector_type, user, rbac, session)
+
     try:
         connection_name = body.name or f"{body.connector_type}_{body.purpose}"
         user_id = user.user_id if user else None

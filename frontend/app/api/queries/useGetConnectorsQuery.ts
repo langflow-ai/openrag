@@ -32,6 +32,8 @@ export interface Connector {
   access_token?: string;
   selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
   available?: boolean;
+  /** Admin-managed workspace toggle. Absent is treated as enabled. */
+  enabled?: boolean;
 }
 
 interface Connection {
@@ -89,6 +91,7 @@ export const useGetConnectorsQuery = (
               clientId: activeConnection.client_id,
               baseUrl: activeConnection.base_url,
               available: connectorData.available,
+              enabled: connectorData.enabled,
             } as Connector;
           }
         }
@@ -102,6 +105,7 @@ export const useGetConnectorsQuery = (
           type,
           connectionId,
           available: connectorData.available,
+          enabled: connectorData.enabled,
         } as Connector;
       }),
     );

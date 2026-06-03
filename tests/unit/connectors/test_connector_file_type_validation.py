@@ -133,6 +133,12 @@ async def test_connector_check_duplicates():
     user.user_id = "user-id"
     user.jwt_token = "jwt-token"
 
+    # No 'connectors' workspace-config row → connector treated as enabled.
+    db_session = MagicMock()
+    db_session.get = AsyncMock(return_value=None)
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=False)
+
     body = ConnectorCheckDuplicatesBody(
         connection_id="conn-id",
         selected_files=[{"id": "folder-1", "name": "Folder 1", "isFolder": True}],
@@ -144,6 +150,8 @@ async def test_connector_check_duplicates():
         connector_service=connector_service,
         session_manager=session_manager,
         user=user,
+        session=db_session,
+        rbac=rbac,
     )
 
     assert isinstance(response, JSONResponse)

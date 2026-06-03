@@ -27,6 +27,19 @@ def _make_connection(connection_id: str, is_active: bool = True):
     return SimpleNamespace(connection_id=connection_id, is_active=is_active)
 
 
+def _enabled_session():
+    """DB session whose 'connectors' config row is absent → all enabled."""
+    session = MagicMock()
+    session.get = AsyncMock(return_value=None)
+    return session
+
+
+def _rbac(is_admin: bool = False):
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=is_admin)
+    return rbac
+
+
 def _make_connector(remote_file_ids, *, authenticated=True, raise_on_list=False):
     connector = MagicMock()
     connector.is_authenticated = authenticated
@@ -461,7 +474,9 @@ async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
         connectors_api.ConnectorSyncBody(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=_enabled_session(),
+        rbac=_rbac(),
     )
 
     assert response.status_code == 201
@@ -501,7 +516,9 @@ async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypa
         connectors_api.ConnectorSyncBody(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=_enabled_session(),
+        rbac=_rbac(),
     )
 
     assert response.status_code == 200
@@ -540,7 +557,9 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
     response = await connectors_api.sync_all_connectors(
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=_enabled_session(),
+        rbac=_rbac(),
     )
 
     body = _json(response)

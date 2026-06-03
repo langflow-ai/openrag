@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import WorkspaceConfig
 
 # Section names recognized by the migration / service.
-SECTIONS = ("providers", "knowledge", "agent", "onboarding", "meta")
+# 'connectors' holds the admin-managed per-connector enable/disable map and is
+# read/written directly by the connectors API (not mapped into OpenRAGConfig).
+SECTIONS = ("providers", "knowledge", "agent", "onboarding", "meta", "connectors")
 
 
 class WorkspaceConfigRepo:
