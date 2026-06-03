@@ -555,10 +555,8 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         ibm_token = (
             raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
         ) or None
-        
-        claims = verify_jwt_from_issuer(
-            ibm_token, verify_tls=get_jwt_issuer_verify_tls()
-        )
+
+        claims = verify_jwt_from_issuer(ibm_token, verify_tls=get_jwt_issuer_verify_tls())
     else:
         ibm_token = request.cookies.get(IBM_SESSION_COOKIE_NAME)
     user_id = None
@@ -819,9 +817,7 @@ async def get_api_key_user_async(
     )
     if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
-        claims = verify_jwt_from_issuer(
-            token, verify_tls=get_jwt_issuer_verify_tls()
-        )
+        claims = verify_jwt_from_issuer(token, verify_tls=get_jwt_issuer_verify_tls())
         sub = claims.get("sub") if claims else None
         if sub:
             user = User(
