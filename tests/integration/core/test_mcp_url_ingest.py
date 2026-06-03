@@ -137,7 +137,6 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
         "WATSONX_APIKEY",
         "WATSONX_PROJECT_ID",
         "OPENSEARCH_INDEX_NAME",
-        "CONNECTOR_TYPE",
         "OPENRAG_INGEST_URL",
         "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_RUN_ID",
