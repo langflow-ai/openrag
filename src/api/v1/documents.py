@@ -50,12 +50,10 @@ async def ingest_endpoint(
     POST /v1/documents/ingest
     Request: multipart/form-data with "file" field
 
-    NOTE: `create_filter` is kept here for response-shape compatibility — the
-    non-v1 onboarding flow consumes the `create_filter` field echoed back in
-    the response. v1 SDK consumers do not currently have a workflow that uses
-    it, and the field is never forwarded to the actual ingest task. It should
-    be removed in a future major version of the v1 API once we are willing to
-    take the breaking change (response no longer contains `create_filter`).
+    NOTE: `create_filter` is upload-router/onboarding metadata. The router
+    echoes it in the upload response so onboarding can create a saved knowledge
+    filter after ingestion completes. It does not affect task creation or
+    ingestion behavior, and the v1 SDK does not expose this option.
     """
     return await upload_ingest_router(
         file=file,
@@ -139,8 +137,8 @@ async def delete_document_endpoint(
     Provide exactly one of:
       - `filename`: delete all chunks for that filename.
       - `filter_id`: resolve the filter's `data_sources` and delete chunks for
-        each of those filenames. Wildcard (`["*"]`) or empty `data_sources`
-        is rejected to prevent mass deletion.
+        each concrete filename. Empty `data_sources` or a list containing the
+        wildcard value `"*"` is rejected to prevent mass deletion.
     """
     if bool(body.filename) == bool(body.filter_id):
         return JSONResponse(
@@ -153,7 +151,7 @@ async def delete_document_endpoint(
             body.filter_id,
             knowledge_filter_service,
             user_id=user.user_id,
-            jwt_token=None,
+            jwt_token=user.jwt_token,
         )
         filenames = resolved["filters"].get("data_sources") or []
         if not filenames:
@@ -164,19 +162,21 @@ async def delete_document_endpoint(
 
         results = []
         total_deleted = 0
+        statuses = []
         for fname in filenames:
             payload, _status = await delete_documents_by_filename_core(
                 filename=fname,
                 session_manager=session_manager,
                 user_id=user.user_id,
-                jwt_token=None,
+                jwt_token=user.jwt_token,
             )
             results.append(payload)
+            statuses.append(_status)
             total_deleted += payload.get("deleted_chunks", 0) or 0
 
         return JSONResponse(
             {
-                "success": True,
+                "success": all(200 <= status < 300 for status in statuses),
                 "deleted_chunks": total_deleted,
                 "filenames": filenames,
                 "filter_id": body.filter_id,
@@ -188,6 +188,6 @@ async def delete_document_endpoint(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
-        jwt_token=None,
+        jwt_token=user.jwt_token,
     )
     return JSONResponse(payload, status_code=status_code)

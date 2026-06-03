@@ -11,7 +11,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.v1._filter_resolution import resolve_filter_id
+from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context
 from dependencies import (
     get_knowledge_filter_service,
@@ -44,9 +44,8 @@ async def search_endpoint(
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
 
-    # API-key auth has no JWT; the gate inside search_service.search()
-    # skips set_auth_context() in that case, leaving search_tool() unable to
-    # resolve the user. Set it explicitly here, mirroring v1 chat.
+    # API-key requests can arrive without a JWT. Set the auth context before
+    # resolving filters so search_tool() can still identify the caller.
     set_auth_context(user.user_id, user.jwt_token)
 
     resolved_filters = body.filters
@@ -57,14 +56,11 @@ async def search_endpoint(
             body.filter_id,
             knowledge_filter_service,
             user_id=user.user_id,
-            jwt_token=None,
+            jwt_token=user.jwt_token,
         )
-        if not body.filters:
-            resolved_filters = resolved["filters"]
-        if body.limit == 10:
-            resolved_limit = resolved["limit"]
-        if body.score_threshold == 0:
-            resolved_score_threshold = resolved["score_threshold"]
+        resolved_filters, resolved_limit, resolved_score_threshold = merge_filter_overrides(
+            resolved, body
+        )
 
     logger.debug(
         "Public API search request",

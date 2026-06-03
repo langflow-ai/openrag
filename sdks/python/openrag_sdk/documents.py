@@ -163,7 +163,7 @@ class DocumentsClient:
         except NotFoundError as e:
             # Keep delete idempotent for SDK callers: a missing document is not
             # an exception.
-            # (Filter-not-found 404s do raise — that's a caller error, not idempotency.)
+            # Filter-not-found 404s still raise because the filter_id is caller input.
             if filename is not None and getattr(e, "status_code", None) == 404:
                 return DeleteDocumentResponse(
                     success=False,
