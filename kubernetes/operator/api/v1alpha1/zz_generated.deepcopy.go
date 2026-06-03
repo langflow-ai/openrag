@@ -165,6 +165,41 @@ func (in *ComponentSpec) DeepCopyInto(out *ComponentSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.ServiceLabels != nil {
+		in, out := &in.ServiceLabels, &out.ServiceLabels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.ServiceAccountLabels != nil {
+		in, out := &in.ServiceAccountLabels, &out.ServiceAccountLabels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.ServiceAccountAnnotations != nil {
+		in, out := &in.ServiceAccountAnnotations, &out.ServiceAccountAnnotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.SecretLabels != nil {
+		in, out := &in.SecretLabels, &out.SecretLabels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.SecretAnnotations != nil {
+		in, out := &in.SecretAnnotations, &out.SecretAnnotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.Command != nil {
 		in, out := &in.Command, &out.Command
 		*out = make([]string, len(*in))
@@ -725,6 +760,20 @@ func (in *OpenRAGSpec) DeepCopyInto(out *OpenRAGSpec) {
 		*out = make([]v1.LocalObjectReference, len(*in))
 		copy(*out, *in)
 	}
+	if in.CommonResourceLabels != nil {
+		in, out := &in.CommonResourceLabels, &out.CommonResourceLabels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.CommonResourceAnnotations != nil {
+		in, out := &in.CommonResourceAnnotations, &out.CommonResourceAnnotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	in.Frontend.DeepCopyInto(&out.Frontend)
 	in.Backend.DeepCopyInto(&out.Backend)
 	in.Langflow.DeepCopyInto(&out.Langflow)
@@ -821,6 +870,20 @@ func (in *PersistenceSpec) DeepCopyInto(out *PersistenceSpec) {
 		in, out := &in.AccessModes, &out.AccessModes
 		*out = make([]v1.PersistentVolumeAccessMode, len(*in))
 		copy(*out, *in)
+	}
+	if in.Labels != nil {
+		in, out := &in.Labels, &out.Labels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.Annotations != nil {
+		in, out := &in.Annotations, &out.Annotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
 }
 

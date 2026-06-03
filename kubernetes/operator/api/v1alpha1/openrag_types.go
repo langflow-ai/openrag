@@ -136,6 +136,41 @@ type ComponentSpec struct {
 	// +optional
 	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
 
+	// ServiceLabels are custom labels to add to the Service resource.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for service discovery, monitoring, and network policies.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceLabels map[string]string `json:"serviceLabels,omitempty"`
+
+	// ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for RBAC policies, auditing, and IAM integration.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceAccountLabels map[string]string `json:"serviceAccountLabels,omitempty"`
+
+	// ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceAccountAnnotations map[string]string `json:"serviceAccountAnnotations,omitempty"`
+
+	// SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for secret management tools, backup policies, and auditing.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	SecretLabels map[string]string `json:"secretLabels,omitempty"`
+
+	// SecretAnnotations are custom annotations to add to component-managed Secrets.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	SecretAnnotations map[string]string `json:"secretAnnotations,omitempty"`
+
 	// Command overrides the container's entrypoint.
 	// +optional
 	Command []string `json:"command,omitempty"`
@@ -297,6 +332,20 @@ type PersistenceSpec struct {
 	// ExistingClaim reuses a pre-existing PVC instead of creating one.
 	// +optional
 	ExistingClaim string `json:"existingClaim,omitempty"`
+
+	// Labels are custom labels to add to the PersistentVolumeClaim.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are custom annotations to add to the PersistentVolumeClaim.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for volume provisioning hints and backup policies.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // OpenSearchSpec points the operator at an external OpenSearch cluster.
@@ -639,6 +688,23 @@ type OpenRAGSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// CommonResourceLabels are labels applied to all managed infrastructure resources
+	// (PVCs, Secrets, Services, ServiceAccounts). These labels are merged with
+	// resource-specific labels, with resource-specific labels taking precedence.
+	// Operator-managed labels (e.g., app.kubernetes.io/managed-by) cannot be overridden.
+	// Useful for organization-wide policies, cost allocation, and resource grouping.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	CommonResourceLabels map[string]string `json:"commonResourceLabels,omitempty"`
+
+	// CommonResourceAnnotations are annotations applied to all managed infrastructure resources
+	// (PVCs, Secrets, Services, ServiceAccounts). These annotations are merged with
+	// resource-specific annotations, with resource-specific annotations taking precedence.
+	// Useful for backup policies, monitoring configuration, and GitOps metadata.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	CommonResourceAnnotations map[string]string `json:"commonResourceAnnotations,omitempty"`
 
 	// Frontend configures the OpenRAG Next.js frontend.
 	// +kubebuilder:validation:Required

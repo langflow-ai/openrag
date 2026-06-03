@@ -1624,6 +1624,24 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
+                    type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
                     properties:
@@ -1816,6 +1834,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -1828,6 +1864,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -1849,6 +1894,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Annotations are custom annotations to add to the PersistentVolumeClaim.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for volume provisioning hints and backup policies.
+                        maxProperties: 64
+                        type: object
                       enabled:
                         default: true
                         type: boolean
@@ -1856,6 +1910,15 @@ spec:
                         description: ExistingClaim reuses a pre-existing PVC instead
                           of creating one.
                         type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Labels are custom labels to add to the PersistentVolumeClaim.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                        maxProperties: 64
+                        type: object
                       size:
                         anyOf:
                         - type: integer
@@ -2084,6 +2147,27 @@ spec:
                     type: array
                 required:
                 - image
+                type: object
+              commonResourceAnnotations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  CommonResourceAnnotations are annotations applied to all managed infrastructure resources
+                  (PVCs, Secrets, Services, ServiceAccounts). These annotations are merged with
+                  resource-specific annotations, with resource-specific annotations taking precedence.
+                  Useful for backup policies, monitoring configuration, and GitOps metadata.
+                maxProperties: 64
+                type: object
+              commonResourceLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  CommonResourceLabels are labels applied to all managed infrastructure resources
+                  (PVCs, Secrets, Services, ServiceAccounts). These labels are merged with
+                  resource-specific labels, with resource-specific labels taking precedence.
+                  Operator-managed labels (e.g., app.kubernetes.io/managed-by) cannot be overridden.
+                  Useful for organization-wide policies, cost allocation, and resource grouping.
+                maxProperties: 64
                 type: object
               docling:
                 description: |-
@@ -4292,6 +4376,24 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
+                        type: object
                       securityContext:
                         description: SecurityContext holds container-level security
                           attributes.
@@ -4485,6 +4587,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -4497,6 +4617,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -4519,6 +4648,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -4526,6 +4664,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -6250,6 +6397,24 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
+                        type: object
                       securityContext:
                         description: SecurityContext holds container-level security
                           attributes.
@@ -6443,6 +6608,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -6455,6 +6638,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -6476,6 +6668,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -6483,6 +6684,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -8925,6 +9135,24 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
+                        type: object
                       securityContext:
                         description: SecurityContext holds container-level security
                           attributes.
@@ -9118,6 +9346,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -9130,6 +9376,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -9151,6 +9406,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -9158,6 +9422,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -10835,6 +11108,24 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
+                    type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
                     properties:
@@ -11027,6 +11318,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -11039,6 +11348,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -12756,6 +13074,15 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
                   secretKeySecret:
                     description: |-
                       SecretKeySecret references the Secret key for LANGFLOW_SECRET_KEY,
@@ -12784,6 +13111,15 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
+                    type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
                     properties:
@@ -12976,6 +13312,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -12988,6 +13342,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -13010,6 +13373,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Annotations are custom annotations to add to the PersistentVolumeClaim.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for volume provisioning hints and backup policies.
+                        maxProperties: 64
+                        type: object
                       enabled:
                         default: true
                         type: boolean
@@ -13017,6 +13389,15 @@ spec:
                         description: ExistingClaim reuses a pre-existing PVC instead
                           of creating one.
                         type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Labels are custom labels to add to the PersistentVolumeClaim.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                        maxProperties: 64
+                        type: object
                       size:
                         anyOf:
                         - type: integer

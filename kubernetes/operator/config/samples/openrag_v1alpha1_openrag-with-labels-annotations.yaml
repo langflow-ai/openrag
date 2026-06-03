@@ -1,0 +1,173 @@
+apiVersion: openr.ag/v1alpha1
+kind: OpenRAG
+metadata:
+  name: openrag-with-custom-labels
+  namespace: openrag-system
+spec:
+  # Global labels and annotations applied to all infrastructure resources
+  # (PVCs, Secrets, Services, ServiceAccounts)
+  commonResourceLabels:
+    environment: production
+    team: ai-platform
+    cost-center: "12345"
+    managed-by: platform-team
+  
+  commonResourceAnnotations:
+    backup.velero.io/backup-volumes: "true"
+    monitoring.prometheus.io/scrape: "true"
+    contact: "platform-team@example.com"
+
+  frontend:
+    image: quay.io/langflow-ai/openrag-frontend:latest
+    replicas: 2
+    
+    # ServiceAccount-specific labels and annotations
+    serviceAccountLabels:
+      app-tier: frontend
+    serviceAccountAnnotations:
+      description: "Frontend service account for OpenRAG UI"
+    
+    # Service-specific labels and annotations
+    serviceLabels:
+      service-type: web-ui
+      expose: "true"
+    serviceAnnotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    
+    # Secret-specific labels and annotations
+    secretLabels:
+      secret-type: env-config
+    secretAnnotations:
+      vault.hashicorp.com/agent-inject: "false"
+
+  backend:
+    image: quay.io/langflow-ai/openrag-backend:latest
+    replicas: 3
+    
+    # ServiceAccount with IAM role binding (AWS EKS example)
+    serviceAccountAnnotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/openrag-backend"
+    
+    # Service labels for monitoring and network policies
+    serviceLabels:
+      app-tier: backend
+      api: "true"
+    
+    # Secret labels for backup policies
+    secretLabels:
+      backup-priority: high
+      encryption: required
+    
+    storage:
+      enabled: true
+      size: 20Gi
+      storageClassName: fast-ssd
+      
+      # PVC-specific labels and annotations
+      labels:
+        storage-tier: ssd
+        backup-policy: daily
+        data-classification: confidential
+      annotations:
+        volume.beta.kubernetes.io/storage-provisioner: ebs.csi.aws.com
+        backup.velero.io/backup-volumes-excludes: "false"
+
+  langflow:
+    image: quay.io/langflow-ai/openrag-langflow:latest
+    replicas: 2
+    
+    # ServiceAccount with GCP Workload Identity (GKE example)
+    serviceAccountAnnotations:
+      iam.gke.io/gcp-service-account: "openrag-langflow@project-id.iam.gserviceaccount.com"
+    
+    serviceLabels:
+      app-tier: workflow-engine
+    
+    storage:
+      enabled: true
+      size: 30Gi
+      
+      # PVC labels for cost allocation and backup
+      labels:
+        storage-type: workflow-data
+        retention-policy: long-term
+      annotations:
+        snapshot.storage.kubernetes.io/is-default-class: "true"
+
+  # Optional: Docling components with custom labels/annotations
+  doclingComponents:
+    enabled: true
+    
+    serve:
+      image: quay.io/langflow-ai/docling-serve:latest
+      replicas: 2
+      
+      serviceAccountLabels:
+        component: docling-serve
+      
+      serviceLabels:
+        api-type: document-processing
+      
+      storage:
+        enabled: true
+        size: 50Gi
+        labels:
+          storage-purpose: model-cache
+          performance-tier: high
+    
+    worker:
+      image: quay.io/langflow-ai/docling-worker:latest
+      replicas: 3
+      
+      serviceAccountLabels:
+        component: docling-worker
+      
+      storage:
+        enabled: true
+        size: 100Gi
+        labels:
+          storage-purpose: processing-workspace
+          io-intensive: "true"
+    
+    valkey:
+      image: valkey/valkey:7.2-alpine
+      
+      serviceAccountLabels:
+        component: valkey-queue
+      
+      serviceLabels:
+        database-type: redis-compatible
+      
+      secretLabels:
+        secret-type: database-credentials
+      
+      storage:
+        enabled: true
+        size: 10Gi
+        labels:
+          storage-purpose: queue-persistence
+          backup-frequency: hourly
+
+  opensearch:
+    host: opensearch.opensearch-system.svc.cluster.local
+    port: 9200
+    scheme: https
+    indexName: documents
+    credentialsSecret: opensearch-credentials
+
+  llm:
+    provider: watsonx
+    model: ibm/granite-13b-chat-v2
+
+  embedding:
+    provider: watsonx
+    model: ibm/slate-125m-english-rtrvr
+
+  watsonx:
+    endpoint: https://us-south.ml.cloud.ibm.com
+    projectId: your-project-id
+    apiKeySecret:
+      name: watsonx-credentials
+      key: apikey
+
+# Made with Bob
