@@ -15,7 +15,6 @@ in ``0002_seed_roles_permissions``.
 
 import uuid
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 

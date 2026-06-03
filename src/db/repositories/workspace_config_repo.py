@@ -6,7 +6,7 @@ to/from ``OpenRAGConfig`` is the service's job.
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
