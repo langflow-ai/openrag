@@ -57,6 +57,11 @@ def extract_jwt_role_names(claims: dict | None) -> list[str]:
     claim_name = get_jwt_roles_claim()
     raw = claims.get(claim_name)
     if raw is None:
+        logger.debug(
+            "JWT roles claim absent",
+            claim_name=claim_name,
+            available_claim_keys=list(claims.keys()),
+        )
         return []
 
     if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
@@ -79,6 +84,12 @@ def extract_jwt_role_names(claims: dict | None) -> list[str]:
             if role not in seen:
                 seen.add(role)
                 result.append(role)
+    logger.debug(
+        "JWT roles resolved",
+        claim_name=claim_name,
+        resolved_roles=result,
+        mapping_keys=list(mapping.keys()),
+    )
     return result
 
 
