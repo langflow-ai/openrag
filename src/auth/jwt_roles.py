@@ -87,7 +87,6 @@ def extract_jwt_role_names(claims: dict | None) -> list[str]:
     logger.debug(
         "JWT roles resolved",
         claim_name=claim_name,
-        raw_claim_values=raw,
         resolved_roles=result,
         mapping_keys=list(mapping.keys()),
     )

@@ -295,8 +295,7 @@ def get_logger(name: str = None) -> structlog.BoundLogger:
 def log_opensearch_env(logger, stage: str) -> None:
     """Log effective OpenSearch-related env values for a given stage.
 
-    Logs both the parsed booleans (as resolved in config.settings) and the
-    raw os.getenv strings so whitespace/casing mismatches surface clearly.
+    Logs the parsed booleans as resolved in config.settings for a given stage.
     """
     from config.settings import (
         OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
@@ -310,9 +309,6 @@ def log_opensearch_env(logger, stage: str) -> None:
         run_mode=get_run_mode(),
         bootstrap_os_security_on_startup=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
         skip_os_security_setup=OPENRAG_SKIP_OS_SECURITY_SETUP,
-        raw_run_mode=repr(os.getenv("OPENRAG_RUN_MODE")),
-        raw_bootstrap=repr(os.getenv("OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP")),
-        raw_skip=repr(os.getenv("OPENRAG_SKIP_OS_SECURITY_SETUP")),
     )
 
 
