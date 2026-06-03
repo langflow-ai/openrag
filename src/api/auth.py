@@ -1,29 +1,25 @@
-from typing import Optional
-
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from utils.telemetry import TelemetryClient, Category, MessageId
-from utils.version_utils import OPENRAG_VERSION
-from utils.logging_config import get_logger
-
-logger = get_logger(__name__)
+from pydantic import BaseModel
 
 from dependencies import (
     get_auth_service,
-    get_optional_user,
     get_current_user,
+    get_optional_user,
 )
-from pydantic import BaseModel
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
+from utils.version_utils import OPENRAG_VERSION
+
+logger = get_logger(__name__)
 
 
 class AuthInitBody(BaseModel):
     connector_type: str
     purpose: str = "data_source"
-    name: Optional[str] = None
-    redirect_uri: Optional[str] = None
-
-
+    name: str | None = None
+    redirect_uri: str | None = None
 
 
 class AuthCallbackBody(BaseModel):
@@ -40,7 +36,7 @@ async def auth_init(
     body: AuthInitBody,
     request: Request,
     auth_service=Depends(get_auth_service),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Initialize OAuth flow for authentication or data source connection"""
     try:
@@ -54,9 +50,7 @@ async def auth_init(
 
     except Exception as e:
         logger.exception("[AUTH] OAuth init failed")
-        return JSONResponse(
-            {"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500)
 
 
 async def auth_callback(
@@ -75,14 +69,12 @@ async def auth_callback(
         # If this is app auth, set JWT cookie
         if result.get("purpose") == "app_auth" and result.get("jwt_token"):
             await TelemetryClient.send_event(Category.AUTHENTICATION, MessageId.ORB_AUTH_SUCCESS)
-            response = JSONResponse(
-                {k: v for k, v in result.items() if k != "jwt_token"}
-            )
+            response = JSONResponse({k: v for k, v in result.items() if k != "jwt_token"})
             # Store only the raw JWT (without "Bearer " prefix) in the cookie.
             # The prefix is added by the OpenSearch client when building the Authorization header.
             jwt_value = result["jwt_token"]
             if jwt_value.startswith("Bearer "):
-                jwt_value = jwt_value[len("Bearer "):]
+                jwt_value = jwt_value[len("Bearer ") :]
             response.set_cookie(
                 key="auth_token",
                 value=jwt_value,
@@ -104,11 +96,14 @@ async def auth_callback(
 async def auth_me(
     request: Request,
     auth_service=Depends(get_auth_service),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
     result["version"] = OPENRAG_VERSION
+    from utils.run_mode_utils import get_run_mode
+
+    result["run_mode"] = get_run_mode()
     return JSONResponse(result)
 
 
@@ -138,14 +133,10 @@ async def auth_logout(
         response.delete_cookie(key="ibm-auth-basic", httponly=True, samesite="lax")
         return response
 
-    response = JSONResponse(
-        {"status": "logged_out", "message": "Successfully logged out"}
-    )
+    response = JSONResponse({"status": "logged_out", "message": "Successfully logged out"})
 
     # Clear the auth cookie
-    response.delete_cookie(
-        key="auth_token", httponly=True, secure=False, samesite="lax"
-    )
+    response.delete_cookie(key="auth_token", httponly=True, secure=False, samesite="lax")
 
     return response
 
