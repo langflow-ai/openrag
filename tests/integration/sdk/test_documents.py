@@ -155,40 +155,50 @@ class TestDeleteByFilterId:
             }
         )
         assert result.success is True, f"Failed to create filter: {result.error}"
+        assert isinstance(result.id, str) and result.id, (
+            f"Filter creation returned no id: {result.error}"
+        )
         return result.id
 
     @pytest.mark.asyncio
     async def test_delete_documents_by_filter_id(self, client, tmp_path):
         """Deleting by filter_id removes only the filenames in the filter's data_sources."""
         alpha, beta = await self._ingest_two(client, tmp_path)
-        filter_id = await self._create_filter(client, [alpha.name])
+        filter_id = None
 
         try:
+            filter_id = await self._create_filter(client, [alpha.name])
             result = await client.documents.delete(filter_id=filter_id)
             assert result.success is True
             assert result.filter_id == filter_id
             assert alpha.name in (result.filenames or [])
             assert beta.name not in (result.filenames or [])
-            # Beta still searchable
-            still_there = await client.search.query("tigers")
+            # Beta still exists; scope the verification to beta's filename so
+            # the assertion does not depend on semantic ranking.
+            still_there = await client.search.query(
+                "*", filters={"data_sources": [beta.name]}, limit=5
+            )
             assert any(r.filename == beta.name for r in still_there.results), (
                 "Beta should still be present after filter-id delete of alpha"
             )
         finally:
-            await client.knowledge_filters.delete(filter_id)
+            if filter_id is not None:
+                await client.knowledge_filters.delete(filter_id)
             # Best-effort cleanup
             await client.documents.delete(alpha.name)
             await client.documents.delete(beta.name)
 
     @pytest.mark.asyncio
     async def test_delete_by_filter_id_with_wildcard_rejects(self, client):
-        """A filter with `["*"]` data_sources must NOT be allowed to mass-delete."""
-        filter_id = await self._create_filter(client, ["*"])
+        """A filter whose data_sources list contains `"*"` is rejected."""
+        filter_id = None
         try:
+            filter_id = await self._create_filter(client, ["*"])
             with pytest.raises(OpenRAGError):
                 await client.documents.delete(filter_id=filter_id)
         finally:
-            await client.knowledge_filters.delete(filter_id)
+            if filter_id is not None:
+                await client.knowledge_filters.delete(filter_id)
 
     @pytest.mark.asyncio
     async def test_delete_with_both_filename_and_filter_id_rejects(self, client):

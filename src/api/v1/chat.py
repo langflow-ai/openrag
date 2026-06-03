@@ -13,7 +13,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from api.v1._filter_resolution import resolve_filter_id
+from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from dependencies import (
     get_chat_service,
@@ -147,13 +147,9 @@ async def chat_create_endpoint(
             user_id=user.user_id,
             jwt_token=jwt_token,
         )
-        # Inline values override per-field; defaults (10 / 0) fall back to the filter.
-        if not body.filters:
-            resolved_filters = resolved["filters"]
-        if body.limit == 10:
-            resolved_limit = resolved["limit"]
-        if body.score_threshold == 0:
-            resolved_score_threshold = resolved["score_threshold"]
+        resolved_filters, resolved_limit, resolved_score_threshold = merge_filter_overrides(
+            resolved, body
+        )
 
     if resolved_filters:
         set_search_filters(resolved_filters)
