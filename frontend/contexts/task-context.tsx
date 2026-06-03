@@ -20,6 +20,7 @@ import {
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import type { ListFilesResponse } from "@/app/api/queries/useListFiles";
+import TaskDialog from "@/components/task-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
@@ -74,6 +75,10 @@ interface TaskContextType {
   setSelectedTaskId: (taskId: string | null) => void;
   selectedTaskTrigger: number;
   selectTask: (taskId: string | null) => void;
+  isTaskDialogOpen: boolean;
+  taskDialogTaskId: string | null;
+  openTaskDialog: (taskId: string) => void;
+  closeTaskDialog: () => void;
   // React Query states
   isLoading: boolean;
   error: Error | null;
@@ -87,7 +92,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskTrigger, setSelectedTaskTrigger] = useState(0);
+  const [taskDialogTaskId, setTaskDialogTaskId] = useState<string | null>(null);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
+  const openTaskDialog = useCallback((taskId: string) => {
+    setTaskDialogTaskId(taskId);
+    setIsTaskDialogOpen(true);
+  }, []);
+  const closeTaskDialog = useCallback(() => {
+    setIsTaskDialogOpen(false);
+    setTaskDialogTaskId(null);
+  }, []);
   const selectTask = useCallback((taskId: string | null) => {
     setSelectedTaskId(taskId);
     if (taskId) {
@@ -636,11 +651,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setSelectedTaskId,
     selectedTaskTrigger,
     selectTask,
+    isTaskDialogOpen,
+    taskDialogTaskId,
+    openTaskDialog,
+    closeTaskDialog,
     isLoading,
     error,
   };
 
-  return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
+  return (
+    <TaskContext.Provider value={value}>
+      {children}
+      {taskDialogTaskId ? (
+        <TaskDialog
+          open={isTaskDialogOpen}
+          onOpenChange={(open) => {
+            setIsTaskDialogOpen(open);
+            if (!open) {
+              setTaskDialogTaskId(null);
+            }
+          }}
+          task_id={taskDialogTaskId}
+          onClose={closeTaskDialog}
+        />
+      ) : null}
+    </TaskContext.Provider>
+  );
 }
 
 export function useTask() {
