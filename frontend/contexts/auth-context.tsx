@@ -27,6 +27,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
+  runMode: string | null;
   version: string | null;
   permissions: Set<string>;
   roles: string[];
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isNoAuthMode, setIsNoAuthMode] = useState(false);
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [runMode, setRunMode] = useState<string | null>(null);
 
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
@@ -88,6 +90,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
       console.log("[checkAuth] /api/auth/me response:", data);
       if (data.version) setVersion(data.version);
+      if (data.run_mode) setRunMode(data.run_mode);
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -341,6 +344,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!user,
     isNoAuthMode,
     isIbmAuthMode,
+    runMode,
     version,
     permissions,
     roles,

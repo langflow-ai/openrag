@@ -26,7 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
-import { deriveCloudLangflowUrl } from "@/lib/url-utils";
+import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
@@ -35,7 +35,7 @@ import { LangflowIcon } from "./langflow-icon";
 
 export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
@@ -213,25 +213,14 @@ export function IngestSettingsSection() {
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
-    const cloudLangflowUrl =
-      isIbmAuthMode && typeof window !== "undefined"
-        ? deriveCloudLangflowUrl(window.location.origin)
-        : null;
-    const derivedFromWindow =
-      typeof window !== "undefined"
-        ? `${window.location.protocol}//${window.location.hostname}:7860`
-        : "";
-    const base = (
-      cloudLangflowUrl ||
-      settings.langflow_public_url ||
-      derivedFromWindow ||
-      "http://localhost:7860"
-    ).replace(/\/$/, "");
-    const computed = settings.ingest_flow_id
-      ? `${base}/flow/${settings.ingest_flow_id}`
-      : base;
     window.open(
-      settings.langflow_ingest_edit_url || computed,
+      resolveLangflowEditUrl({
+        flowId: settings.ingest_flow_id,
+        editUrlOverride: settings.langflow_ingest_edit_url,
+        publicUrl: settings.langflow_public_url,
+        isIbmAuthMode,
+        runMode,
+      }),
       "_blank",
       "noopener,noreferrer",
     );
