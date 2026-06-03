@@ -84,7 +84,7 @@ from services.docling_service import DoclingConfig, get_docling_preset_configs
 from session_manager import User
 from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
-from utils.logging_config import get_logger
+from utils.logging_config import get_logger, log_opensearch_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
@@ -778,6 +778,8 @@ async def onboarding(
     """Handle onboarding configuration setup"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
+
+        log_opensearch_env(logger, "onboarding")
 
         # Get current configuration
         current_config = get_openrag_config()

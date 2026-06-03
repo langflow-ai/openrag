@@ -544,7 +544,13 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # configured header; use it as the source of identity and roles. When RBAC is
     # off, preserve the existing ibm-openrag-session cookie flow.
     if jwt_roles_enabled():
-        raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+        header_name = get_jwt_auth_header()
+        raw_jwt = request.headers.get(header_name, "")
+        logger.debug(
+            "[AUTH] JWT-role header lookup",
+            header_name=header_name,
+            jwt_present=bool(raw_jwt and raw_jwt.strip()),
+        )
         ibm_token = (
             raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
         ) or None
@@ -802,6 +808,11 @@ async def get_api_key_user_async(
     from config.utils import verify_jwt_from_issuer
 
     raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+    logger.debug(
+        "[AUTH] API-key path JWT header lookup",
+        header_name=get_jwt_auth_header(),
+        jwt_present=bool(raw_jwt and raw_jwt.strip()),
+    )
     if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
         claims = verify_jwt_from_issuer(token, verify_tls=True)
