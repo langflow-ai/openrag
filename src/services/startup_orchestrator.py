@@ -38,11 +38,39 @@ async def _update_mcp_server_urls(langflow_mcp_service):
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
+async def _maybe_sync_default_roles(services) -> None:
+    from config.settings import is_default_role_sync_enabled
+    from db.engine import SessionLocal
+    from services.default_role_sync import sync_default_roles_if_changed
+
+    if not is_default_role_sync_enabled():
+        return
+
+    if SessionLocal is None:
+        logger.warning("Default role sync skipped — DB session factory unavailable")
+        return
+
+    async with SessionLocal() as session:
+        result = await sync_default_roles_if_changed(session)
+        await session.commit()
+
+    if result.updated_users:
+        rbac = services.get("rbac_service")
+        if rbac is not None:
+            rbac.invalidate_all()
+        from dependencies import invalidate_user_ensured_cache
+
+        invalidate_user_ensured_cache()
+
+    logger.info("Default role sync at startup", **result.as_log_kwargs())
+
+
 async def startup_tasks(services):
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
 
     logger.info("Starting startup tasks")
+    await _maybe_sync_default_roles(services)
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT)
 
     # Update model registry to allow further search calls to be instant
