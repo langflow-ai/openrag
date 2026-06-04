@@ -283,7 +283,11 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 
 func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
-	envVars := r.EnvVarManager.GetBackendEnvVars(o.Spec.Backend.Env)
+	// This now resolves ALL env vars (including secrets/configmaps) for inclusion in .env file
+	envVars, err := r.EnvVarManager.GetBackendEnvVars(ctx, r.Client, targetNS, o.Spec.Backend.Env)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge backend env vars: %w", err)
+	}
 
 	// Get or generate encryption key (AES-256)
 	// Priority: 1) User-provided secret in CR, 2) Existing value in .env, 3) Generate new
@@ -469,7 +473,11 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 
 func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
-	envVars := r.EnvVarManager.GetLangflowEnvVars(o.Spec.Langflow.Env)
+	// This now resolves ALL env vars (including secrets/configmaps) for inclusion in .env file
+	envVars, err := r.EnvVarManager.GetLangflowEnvVars(ctx, r.Client, targetNS, o.Spec.Langflow.Env)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge langflow env vars: %w", err)
+	}
 
 	// Get or generate Langflow secret key (Fernet key - base64, shared with backend)
 	langflowSecretKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Langflow.SecretKeySecret, "LANGFLOW_SECRET_KEY", resourceName("lf-env"), generateBase64SecretKey)
@@ -775,9 +783,10 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 		mounts = append(mounts, corev1.VolumeMount{Name: "backend-data", MountPath: "/app/backend-data"})
 	}
 
-	// All sensitive values are now consolidated in the .env file
-	// Only use additional env vars from the CR spec
-	envVars := spec.Env
+	// ALL env vars (including spec.Env) are now in the .env file
+	// Container Env should be empty to prevent values from showing in 'env' command
+	// The .env file is mounted and sourced by the application
+	var envVars []corev1.EnvVar // Empty - all vars are in .env file
 
 	baseLabels := componentLabels(o.Name, "be")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
@@ -897,9 +906,10 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		initContainers = nil
 	}
 
-	// All sensitive values are now consolidated in the .env file
-	// Only use additional env vars from the CR spec
-	envVars := spec.Env
+	// ALL env vars (including spec.Env) are now in the .env file
+	// Container Env should be empty to prevent values from showing in 'env' command
+	// The .env file is mounted and sourced by the application
+	var envVars []corev1.EnvVar // Empty - all vars are in .env file
 
 	baseLabels := componentLabels(o.Name, "lf")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
