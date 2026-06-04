@@ -259,20 +259,19 @@ export function ChatRenderer({
 
   // Onboarding is admin-only. When the workspace still needs onboarding
   // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
-  // they get a "contact your administrator" screen instead. Wait for the
-  // permission set to resolve first so the wizard never flashes for them.
-  if (!showLayout && rbacEnforced && !isNoAuthMode) {
-    if (isPermLoading) {
-      return (
-        <div className="min-h-dvh flex items-center justify-center bg-background">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      );
-    }
-    if (!can("config:write")) {
-      return <OnboardingBlocked />;
-    }
+  // they get a "contact your administrator" screen instead. It renders inside
+  // the same card shell as the wizard (below), so it shares the wizard's
+  // container sizing and entrance animation. Wait for the permission set to
+  // resolve first so the wizard never flashes for them.
+  const needsOnboardingGate = !showLayout && rbacEnforced && !isNoAuthMode;
+  if (needsOnboardingGate && isPermLoading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
+  const isOnboardingBlocked = needsOnboardingGate && !can("config:write");
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
@@ -357,28 +356,33 @@ export function ChatRenderer({
                   {children}
                 </div>
               )}
-              {!showLayout && (
-                <OnboardingContent
-                  handleStepComplete={handleStepComplete}
-                  handleStepBack={handleStepBack}
-                  currentStep={currentStep}
-                />
-              )}
+              {!showLayout &&
+                (isOnboardingBlocked ? (
+                  <OnboardingBlocked />
+                ) : (
+                  <OnboardingContent
+                    handleStepComplete={handleStepComplete}
+                    handleStepBack={handleStepBack}
+                    currentStep={currentStep}
+                  />
+                ))}
             </motion.div>
           </div>
         </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
-          transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
-          className={cn("absolute bottom-6 left-0 right-0")}
-        >
-          <ProgressBar
-            currentStep={currentStep}
-            totalSteps={TOTAL_ONBOARDING_STEPS}
-            onSkip={handleSkipOnboarding}
-          />
-        </motion.div>
+        {!isOnboardingBlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
+            transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
+            className={cn("absolute bottom-6 left-0 right-0")}
+          >
+            <ProgressBar
+              currentStep={currentStep}
+              totalSteps={TOTAL_ONBOARDING_STEPS}
+              onSkip={handleSkipOnboarding}
+            />
+          </motion.div>
+        )}
       </main>
     </>
   );
