@@ -12,6 +12,7 @@ from config.settings import (
     LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
+    OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
 )
@@ -196,6 +197,13 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
+            logger.warning(
+                "[LF] Backend-owned ingest delegation DISABLED: no ingest_token_service "
+                "wired. No OPENRAG_INGEST_* globals will be sent, so the Langflow "
+                "OpenSearch component will fall back to a direct write.",
+                document_id=document_id,
+                backend_router_enabled=OPENRAG_BACKEND_ROUTER_ENABLE,
+            )
             return None, None
 
         from config.settings import get_index_name
@@ -237,9 +245,24 @@ class LangflowFileService:
         ingest_run_id: str | None,
     ) -> dict[str, str]:
         if not ingest_token or not ingest_run_id:
+            logger.warning(
+                "[LF] Ingest callback globals NOT attached to Langflow run "
+                "(missing token or run_id) — OpenSearch component will resolve "
+                "OPENRAG_INGEST_* to their placeholders and fall back to a direct "
+                "write instead of delegating to the backend.",
+                has_token=bool(ingest_token),
+                has_run_id=bool(ingest_run_id),
+            )
             return {}
+        callback_url = get_ingest_callback_url()
+        logger.info(
+            "[LF] Ingest callback globals attached — delegating writes to backend",
+            ingest_run_id=ingest_run_id,
+            callback_url=callback_url,
+            batch_size=LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+        )
         return {
-            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": get_ingest_callback_url(),
+            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": callback_url,
             "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN": ingest_token,
             "X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID": ingest_run_id,
             "X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE": str(
