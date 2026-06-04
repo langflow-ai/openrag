@@ -16,7 +16,6 @@ join rows for the two non-admin roles are removed.
 """
 
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 

@@ -4,14 +4,13 @@ import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { AlertCircle, ChevronDown, Flag, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
-import TaskDialog from "@/components/task-dialog";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
 } from "@/components/ui/accordion";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { type Task } from "@/contexts/task-context";
+import { type Task, useTask } from "@/contexts/task-context";
 import {
   formatApiComponent,
   resolveTaskFileError,
@@ -43,10 +42,10 @@ export function TaskErrorContent({
   defaultExpanded = false,
 }: TaskErrorContentProps) {
   const isCloudBrand = useIsCloudBrand();
+  const { openTaskDialog } = useTask();
   const [accordionValue, setAccordionValue] = useState(
     defaultExpanded ? "failed-files" : "",
   );
-  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const isExpanded = accordionValue === "failed-files";
 
   const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
@@ -90,7 +89,7 @@ export function TaskErrorContent({
       type="button"
       aria-label="Open task details"
       className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-      onClick={() => setIsTaskDialogOpen(true)}
+      onClick={() => openTaskDialog(task.task_id)}
     >
       <IncidentReporterIcon className="size-4" />
     </button>
@@ -237,13 +236,6 @@ export function TaskErrorContent({
           </AccordionItem>
         </Accordion>
       </div>
-
-      <TaskDialog
-        open={isTaskDialogOpen}
-        onOpenChange={setIsTaskDialogOpen}
-        task_id={task.task_id}
-        onClose={() => setIsTaskDialogOpen(false)}
-      />
     </div>
   );
 }
