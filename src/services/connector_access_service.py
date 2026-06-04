@@ -24,7 +24,9 @@ def _actor_db_id(user: User) -> str:
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:
     stored = await WorkspaceConfigRepo(session).get_section(CONNECTOR_ACCESS_SECTION) or {}
-    return {connector_type: bool(stored.get(connector_type, True)) for connector_type in CONNECTOR_TYPES}
+    return {
+        connector_type: bool(stored.get(connector_type, True)) for connector_type in CONNECTOR_TYPES
+    }
 
 
 async def set_connector_access_bulk(
