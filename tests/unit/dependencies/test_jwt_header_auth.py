@@ -3,9 +3,9 @@
 Covers the shared role-staging helper ``_stage_jwt_roles`` and the JWT-header
 branch of ``get_api_key_user_async`` in ``src/dependencies.py``.
 
-The branch verifies a gateway-forwarded JWT (config.utils.verify_jwt_from_issuer)
+The branch resolves a forwarded JWT (config.utils.resolve_jwt_claims)
 and, when valid, makes the JWT the source of identity; under RBAC it also
-supplies/enforces roles. We monkeypatch ``verify_jwt_from_issuer`` (no real keys
+supplies/enforces roles. We monkeypatch ``resolve_jwt_claims`` (no real keys
 needed) and ``_attach_db_user_id`` (no DB needed) to isolate the dependency
 logic, and drive RBAC on/off via ``OPENRAG_RBAC_ENFORCE``.
 """
@@ -91,7 +91,7 @@ def _patch_attach(monkeypatch):
 
 
 def _patch_verify(monkeypatch, claims):
-    monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", lambda *a, **k: claims)
+    monkeypatch.setattr(config_utils, "resolve_jwt_claims", lambda *a, **k: claims)
 
 
 @pytest.mark.asyncio
@@ -169,9 +169,9 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
 
     def _boom(*a, **k):  # must never be called when no header present
-        raise AssertionError("verify_jwt_from_issuer should not run without the header")
+        raise AssertionError("resolve_jwt_claims should not run without the header")
 
-    monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", _boom)
+    monkeypatch.setattr(config_utils, "resolve_jwt_claims", _boom)
     req = _FakeRequest({})
 
     with pytest.raises(HTTPException) as exc:

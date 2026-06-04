@@ -210,6 +210,28 @@ def get_jwt_auth_header() -> str:
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
 
 
+def get_jwt_issuer_verify_tls() -> bool:
+    """Whether to verify TLS when fetching JWT signing keys from the token's
+    ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
+    issuers with cluster/self-signed certs; set true when the issuer uses a
+    public or pod-trusted CA."""
+    return os.getenv("OPENRAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
+def get_jwt_verify_signature() -> bool:
+    """When true, verify forwarded JWTs via issuer JWKS; when false, decode
+    claims only (upstream auth must have authenticated the caller)."""
+    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")

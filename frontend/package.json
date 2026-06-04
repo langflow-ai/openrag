@@ -77,13 +77,15 @@
     "husky": "^9.0.0",
     "knip": "^5.73.1",
     "lint-staged": "^15.0.0",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
   "overrides": {
-    "brace-expansion": "5.0.5",
+    "brace-expansion": "^5.0.6",
     "picomatch": "4.0.4",
+    "js-cookie": "^3.0.6",
+    "postcss": "$postcss",
     "sharp": "file:./stubs/sharp-0.34.5.tgz"
   },
   "lint-staged": {
