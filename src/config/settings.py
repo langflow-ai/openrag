@@ -197,6 +197,15 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def is_dev_role_toggle_enabled() -> bool:
+    """Allow POST /users/me/dev-role for local SaaS UI testing.
+
+    Requires ``OPENRAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
+    """
+    raw = os.getenv("OPENRAG_DEV_ROLE_TOGGLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim

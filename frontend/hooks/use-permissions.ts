@@ -12,7 +12,7 @@ export interface UsePermissionsResult {
   /** True if the user has all of the listed permissions. */
   canAll: (perms: string[]) => boolean;
   /** Force a refetch from /api/users/me/permissions. */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
   /** True while the auth context is still resolving. */
   isLoading: boolean;
   /**

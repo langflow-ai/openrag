@@ -48,7 +48,9 @@ interface AuthContextType {
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
-  refreshPermissions: () => Promise<void>;
+  refreshPermissions: () => Promise<boolean>;
+  /** Optimistic role update after dev toggle (local SaaS testing only). */
+  applyDevRoles: (roles: string[]) => void;
   refreshOnboardingStatus: () => Promise<void>;
 }
 
@@ -255,13 +257,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
 
-  const fetchPermissions = useCallback(async () => {
+  const fetchPermissions = useCallback(async (): Promise<boolean> => {
     try {
       const r = await fetch("/api/users/me");
       if (!r.ok) {
-        setPermissions(new Set());
-        setRoles([]);
-        return;
+        // Session gone — clear. Transient errors keep existing state so a
+        // successful dev-role toggle is not wiped by a follow-up fetch failure.
+        if (r.status === 401) {
+          setPermissions(new Set());
+          setRoles([]);
+        }
+        return false;
       }
       const data = await r.json();
       const perms: string[] = Array.isArray(data?.permissions)
@@ -274,15 +280,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setRbacEnforced(
         typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
       );
+      return true;
     } catch {
-      setPermissions(new Set());
-      setRoles([]);
+      return false;
     }
   }, []);
 
   const refreshPermissions = useCallback(async () => {
-    await fetchPermissions();
+    return fetchPermissions();
   }, [fetchPermissions]);
+
+  const applyDevRoles = useCallback((userRoles: string[]) => {
+    setRoles(userRoles);
+  }, []);
 
   // Public onboarding-status — fetched once on mount, no auth required.
   // The frontend uses this to decide between the wizard and the login flow.
@@ -353,6 +363,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     refreshAuth,
     refreshPermissions,
+    applyDevRoles,
     refreshOnboardingStatus,
   };
 

@@ -5,6 +5,11 @@ import { useAuth } from "@/contexts/auth-context";
 
 export type Brand = "oss" | "ibm";
 
+/** Local SaaS UI testing — must stay aligned with server `isCloudBrandServer`. */
+export const IBM_THEME_DEV =
+  typeof process !== "undefined" &&
+  process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
+
 interface BrandContextValue {
   brand: Brand;
   setBrand: (brand: Brand) => void;
@@ -32,7 +37,9 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       applyBrand("ibm");
       setBrandState("ibm");
     } else {
-      const stored = (localStorage.getItem("brand") as Brand) ?? "oss";
+      const stored =
+        (localStorage.getItem("brand") as Brand) ??
+        (IBM_THEME_DEV ? "ibm" : "oss");
       applyBrand(stored);
       setBrandState(stored);
     }
@@ -53,4 +60,8 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
 
 export const useBrand = () => useContext(BrandContext);
 
-export const useIsCloudBrand = () => useContext(BrandContext).brand === "ibm";
+export const useIsCloudBrand = () => {
+  const { brand } = useContext(BrandContext);
+  const { isIbmAuthMode } = useAuth();
+  return isIbmAuthMode || IBM_THEME_DEV || brand === "ibm";
+};

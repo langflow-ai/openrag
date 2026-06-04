@@ -15,15 +15,38 @@ from dependencies import (
     require_permission,
 )
 from services.connector_access_service import (
+    CONNECTOR_TYPES,
     _actor_db_id,
+    filter_connectors_for_user,
+    get_access_map,
+    is_connector_allowed,
     list_access_for_admin,
     set_connector_access_bulk,
+    user_is_admin,
 )
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+async def _connector_access_denied(
+    session: AsyncSession,
+    user: User,
+    connector_type: str,
+) -> JSONResponse | None:
+    """Return 403 when a non-admin user is blocked from this connector type."""
+    if connector_type not in CONNECTOR_TYPES:
+        return None
+    if await user_is_admin(session, user):
+        return None
+    if await is_connector_allowed(session, connector_type):
+        return None
+    return JSONResponse(
+        {"error": f"Connector not available: {connector_type}"},
+        status_code=403,
+    )
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -365,8 +388,12 @@ async def connector_check_duplicates(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Check if any of the selected files or folders contain files that already exist in the index"""
+    if denied := await _connector_access_denied(session, user, connector_type):
+        return denied
+
     selected_files_raw = body.selected_files
     if not selected_files_raw:
         return JSONResponse({"duplicate_names": []})
@@ -507,11 +534,19 @@ async def connector_check_duplicates(
 async def list_connectors(
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """List available connector types with metadata"""
     try:
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
+        )
+        is_admin = await user_is_admin(session, user)
+        access_map = await get_access_map(session)
+        connector_types = filter_connectors_for_user(
+            connector_types,
+            access_map,
+            is_admin=is_admin,
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
@@ -566,8 +601,12 @@ async def connector_sync(
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Sync files from all active connections of a connector type"""
+    if denied := await _connector_access_denied(session, user, connector_type):
+        return denied
+
     max_files = body.max_files
     selected_files_raw = body.selected_files
     selected_files = None
@@ -814,8 +853,11 @@ async def connector_status(
     connector_type: str,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get connector status for authenticated user"""
+    if denied := await _connector_access_denied(session, user, connector_type):
+        return denied
 
     # Get connections for this connector type and user
     connections = await connector_service.connection_manager.list_connections(

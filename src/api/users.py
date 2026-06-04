@@ -4,12 +4,22 @@ GET /api/users/me              -> profile of the current user
 GET /api/users/me/permissions  -> list of permission strings
 """
 
-from fastapi import APIRouter, Depends
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.settings import is_dev_role_toggle_enabled
 from db.repositories import PermissionRepo, RoleRepo, UserRepo
-from dependencies import get_current_user, get_db_session, get_rbac_service
+from dependencies import (
+    get_current_user,
+    get_db_session,
+    get_rbac_service,
+    invalidate_user_ensured_cache,
+)
+from services.dev_role_toggle import set_dev_role
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
 
@@ -96,3 +106,28 @@ async def get_my_permissions(
 
     perms = await _effective_permissions(rbac, db_id, session)
     return PermissionsResponse(permissions=sorted(perms))
+
+
+class DevRoleBody(BaseModel):
+    role: Literal["admin", "user"]
+
+
+@router.post("/me/dev-role")
+async def set_my_dev_role(
+    body: DevRoleBody,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
+):
+    """Swap the current user between admin and user (local dev only)."""
+    if not is_dev_role_toggle_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    try:
+        roles = await set_dev_role(session, user, body.role, rbac)
+        await session.commit()
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    invalidate_user_ensured_cache(user.provider, user.user_id)
+    return JSONResponse({"roles": roles, "role": body.role})

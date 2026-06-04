@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.telemetry import TelemetryClient, Category, MessageId
 from utils.version_utils import OPENRAG_VERSION
 from utils.logging_config import get_logger
@@ -10,10 +11,16 @@ logger = get_logger(__name__)
 
 from dependencies import (
     get_auth_service,
+    get_db_session,
     get_optional_user,
     get_current_user,
 )
 from pydantic import BaseModel
+from services.connector_access_service import (
+    CONNECTOR_TYPES,
+    is_connector_allowed,
+    user_is_admin,
+)
 from session_manager import User
 
 
@@ -41,9 +48,22 @@ async def auth_init(
     request: Request,
     auth_service=Depends(get_auth_service),
     user: Optional[User] = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Initialize OAuth flow for authentication or data source connection"""
     try:
+        if (
+            body.purpose == "data_source"
+            and body.connector_type in CONNECTOR_TYPES
+            and user is not None
+            and not await user_is_admin(session, user)
+            and not await is_connector_allowed(session, body.connector_type)
+        ):
+            return JSONResponse(
+                {"error": f"Connector not available: {body.connector_type}"},
+                status_code=403,
+            )
+
         connection_name = body.name or f"{body.connector_type}_{body.purpose}"
         user_id = user.user_id if user else None
 

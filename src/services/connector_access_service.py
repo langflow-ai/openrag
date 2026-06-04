@@ -44,6 +44,39 @@ async def set_connector_access_bulk(
     return current
 
 
+async def user_is_admin(session: AsyncSession, user: User) -> bool:
+    from db.repositories import RoleRepo, UserRepo
+
+    user_repo = UserRepo(session)
+    db_user = await user_repo.get_by_oauth(user.provider or "unknown", user.user_id)
+    if db_user is None:
+        db_user = await user_repo.get_by_id(user.user_id)
+    if db_user is None:
+        return False
+    roles = await RoleRepo(session).list_user_roles(db_user.id)
+    return any(role.name == "admin" for role in roles)
+
+
+async def is_connector_allowed(session: AsyncSession, connector_type: str) -> bool:
+    access = await get_access_map(session)
+    return access.get(connector_type, True)
+
+
+def filter_connectors_for_user(
+    connector_metadata: dict[str, dict],
+    access_map: dict[str, bool],
+    *,
+    is_admin: bool,
+) -> dict[str, dict]:
+    if is_admin:
+        return connector_metadata
+    return {
+        connector_type: meta
+        for connector_type, meta in connector_metadata.items()
+        if access_map.get(connector_type, True)
+    }
+
+
 async def list_access_for_admin(
     session: AsyncSession,
     connector_metadata: dict[str, dict],

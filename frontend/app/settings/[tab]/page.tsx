@@ -34,6 +34,8 @@ async function getTabAuthContext() {
       ? await meRes.value.json()
       : {};
 
+  const roles = Array.isArray(meData.roles) ? meData.roles : [];
+
   return {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
@@ -41,7 +43,14 @@ async function getTabAuthContext() {
     permissions: new Set<string>(
       Array.isArray(meData.permissions) ? meData.permissions : [],
     ),
+    roles,
+    isAdmin: roles.includes("admin"),
   };
+}
+
+/** Mirrors client `useIsCloudBrand()` / `IBM_THEME_DEV` in brand-context. */
+function isCloudBrandServer(isIbmAuthMode: boolean): boolean {
+  return isIbmAuthMode || process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
 }
 
 export default async function SettingsTabPage({
@@ -55,7 +64,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
 
-  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
+  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions, isAdmin } =
     await getTabAuthContext();
 
   if (
@@ -69,6 +78,9 @@ export default async function SettingsTabPage({
     !isNoAuthMode &&
     !permissions.has("providers:write")
   ) {
+    redirect("/settings/connectors");
+  }
+  if (tab === "roles" && (!isCloudBrandServer(isIbmAuthMode) || !isAdmin)) {
     redirect("/settings/connectors");
   }
 
