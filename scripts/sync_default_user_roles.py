@@ -54,12 +54,12 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
+    import db.engine as db_engine
     from config.settings import (
         get_default_user_role,
         get_noauth_user_role,
         is_default_role_sync_enabled,
     )
-    import db.engine as db_engine
     from services.default_role_sync import sync_default_roles_if_changed
 
     if not is_default_role_sync_enabled():

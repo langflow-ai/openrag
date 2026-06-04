@@ -200,9 +200,7 @@ async def sync_default_roles_if_changed(
     result.default_role_changed = old_default != new_default
     result.noauth_role_changed = old_noauth != new_noauth
     if not result.default_role_changed and not result.noauth_role_changed:
-        result.stale_users = await _count_stale_default_users(
-            session, expected_role=new_default
-        )
+        result.stale_users = await _count_stale_default_users(session, expected_role=new_default)
         if stored_default is None or stored_noauth is None:
             await _write_sync_state(
                 config_repo,
