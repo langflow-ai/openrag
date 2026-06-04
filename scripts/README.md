@@ -70,3 +70,37 @@ curl -b "auth_token=..." http://localhost:8000/users/me
   the stored baseline.
 - If the script reports stale users but updates none, use `--from-role` with
   the role those users currently have.
+
+## Reset onboarding (`reset_onboarding.py`)
+
+Re-triggers the onboarding wizard by resetting workspace config in the DB
+(`OPENRAG_STORAGE_MODE=db` by default):
+
+```bash
+uv run python scripts/reset_onboarding.py
+```
+
+What it does:
+
+- Sets `workspace_config.meta.edited` to `false` (`GET /api/onboarding-status` → `onboarded: false`)
+- Clears `workspace_config.onboarding` (including `current_step` → `0`)
+- In `hybrid` / `files` mode, also updates `config.yaml`
+
+Optional flags:
+
+| Flag | Purpose |
+| --- | --- |
+| `--dry-run` | Preview without writing |
+| `--reset-models` | Also clear selected LLM and embedding models |
+
+Example — full wizard reset including model picks:
+
+```bash
+uv run python scripts/reset_onboarding.py --reset-models
+```
+
+After running, **restart the backend** and reload the app.
+
+This script does **not** delete ingested documents, knowledge filters, Langflow
+flows, or conversations. For a full teardown, use the authenticated API endpoint
+`POST /settings/rollback-onboarding` instead.
