@@ -49,9 +49,7 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse(
-            {"error": f"Failed to retrieve OpenAI models: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": "Failed to retrieve OpenAI models"}, status_code=500)
 
 
 async def get_anthropic_models(
@@ -81,9 +79,7 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse(
-            {"error": f"Failed to retrieve Anthropic models: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": "Failed to retrieve Anthropic models"}, status_code=500)
 
 
 async def get_ollama_models(
@@ -110,9 +106,7 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse(
-            {"error": f"Failed to retrieve Ollama models: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": "Failed to retrieve Ollama models"}, status_code=500)
 
 
 async def get_ibm_models(
@@ -169,4 +163,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve IBM models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve IBM models"}, status_code=500)
