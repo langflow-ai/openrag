@@ -2,6 +2,7 @@
 
 This guide explains how to add custom labels and annotations to infrastructure resources (PVCs, Secrets, Services, ServiceAccounts) managed by the OpenRAG operator.
 
+
 ## Overview
 
 The OpenRAG operator now supports adding custom labels and annotations to all infrastructure resources it creates. This enables integration with:
