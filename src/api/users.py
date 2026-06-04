@@ -22,6 +22,9 @@ from dependencies import (
 from services.dev_role_toggle import set_dev_role
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set[str]:
@@ -112,6 +115,18 @@ class DevRoleBody(BaseModel):
     role: Literal["admin", "user"]
 
 
+def _dev_role_client_error(exc: ValueError) -> str:
+    """Safe client message for set_dev_role validation failures."""
+    detail = str(exc)
+    if detail == "User not found in database":
+        return "User account not found"
+    if detail.startswith("Role not found:"):
+        return "Role not available"
+    if detail.startswith("Unsupported dev role:"):
+        return "Invalid role"
+    return "Invalid request"
+
+
 @router.post("/me/dev-role")
 async def set_my_dev_role(
     body: DevRoleBody,
@@ -127,7 +142,14 @@ async def set_my_dev_role(
         roles = await set_dev_role(session, user, body.role, rbac)
         await session.commit()
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        logger.error(
+            "[USERS] Invalid dev role update",
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": _dev_role_client_error(e)},
+            status_code=400,
+        )
 
     invalidate_user_ensured_cache(user.provider, user.user_id)
     return JSONResponse({"roles": roles, "role": body.role})

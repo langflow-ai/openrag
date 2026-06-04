@@ -13,14 +13,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export function ConnectorAccessSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { roles } = useAuth();
+  const { can } = usePermissions();
 
-  if (!isCloudBrand || !roles.includes("admin")) {
+  if (!isCloudBrand || !can("config:write")) {
     return null;
   }
 
@@ -36,17 +36,32 @@ function ConnectorAccessForm() {
     refetch,
   } = useGetConnectorAccessQuery();
   const updateAccess = useUpdateConnectorAccessMutation();
-  const [draft, setDraft] = useState<Record<string, boolean>>({});
+  /** Non-null only after the user edits; server data stays the source of truth until then. */
+  const [userDraft, setUserDraft] = useState<Record<string, boolean> | null>(
+    null,
+  );
+
+  const serverSnapshot = useMemo(
+    () => connectors.map((c) => `${c.type}:${c.enabled}`).join("|"),
+    [connectors],
+  );
 
   useEffect(() => {
-    if (connectors.length > 0) {
-      setDraft(Object.fromEntries(connectors.map((c) => [c.type, c.enabled])));
-    }
-  }, [connectors]);
+    setUserDraft(null);
+  }, [serverSnapshot]);
+
+  const accessForSave = useMemo(
+    () =>
+      Object.fromEntries(
+        connectors.map((c) => [c.type, userDraft?.[c.type] ?? c.enabled]),
+      ),
+    [connectors, userDraft],
+  );
 
   const isDirty = useMemo(() => {
-    return connectors.some((c) => draft[c.type] !== c.enabled);
-  }, [connectors, draft]);
+    if (!userDraft) return false;
+    return connectors.some((c) => userDraft[c.type] !== c.enabled);
+  }, [connectors, userDraft]);
 
   return (
     <Card>
@@ -85,7 +100,8 @@ function ConnectorAccessForm() {
           <>
             <ul className="space-y-4">
               {connectors.map((connector) => {
-                const enabled = draft[connector.type] ?? connector.enabled;
+                const enabled =
+                  userDraft?.[connector.type] ?? connector.enabled;
 
                 return (
                   <li
@@ -105,10 +121,14 @@ function ConnectorAccessForm() {
                       disabled={updateAccess.isPending}
                       aria-label={`${enabled ? "Disable" : "Enable"} ${connector.name} for users`}
                       onCheckedChange={(checked) => {
-                        setDraft((prev) => ({
-                          ...prev,
-                          [connector.type]: checked,
-                        }));
+                        setUserDraft((prev) => {
+                          const base =
+                            prev ??
+                            Object.fromEntries(
+                              connectors.map((c) => [c.type, c.enabled]),
+                            );
+                          return { ...base, [connector.type]: checked };
+                        });
                       }}
                     />
                   </li>
@@ -117,7 +137,7 @@ function ConnectorAccessForm() {
             </ul>
             <div className="flex justify-end pt-6">
               <Button
-                onClick={() => updateAccess.mutate(draft)}
+                onClick={() => updateAccess.mutate(accessForSave)}
                 disabled={updateAccess.isPending || !isDirty}
                 className="min-w-[120px]"
                 size="sm"

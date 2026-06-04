@@ -558,6 +558,14 @@ class UpdateConnectorAccessBody(BaseModel):
     access: dict[str, bool]
 
 
+def _connector_access_client_error(exc: ValueError) -> str:
+    """Safe client message for set_connector_access_bulk validation failures."""
+    detail = str(exc)
+    if detail.startswith("Unknown connector type:"):
+        return "Unknown connector type"
+    return "Invalid request data"
+
+
 async def get_connector_user_access(
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("config:write")),
@@ -586,7 +594,14 @@ async def update_connector_user_access(
         )
         await session.commit()
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        logger.error(
+            "[CONNECTOR] Invalid connector access update",
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": _connector_access_client_error(e)},
+            status_code=400,
+        )
 
     metadata = connector_service.connection_manager.get_available_connector_types(
         user_id=user.user_id

@@ -36,17 +36,15 @@ async function getTabAuthContext() {
       ? await meRes.value.json()
       : {};
 
-  const roles = Array.isArray(meData.roles) ? meData.roles : [];
+  const permissions = new Set<string>(
+    Array.isArray(meData.permissions) ? meData.permissions : [],
+  );
 
   return {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
     isAuthenticated: Boolean(authData.authenticated),
-    permissions: new Set<string>(
-      Array.isArray(meData.permissions) ? meData.permissions : [],
-    ),
-    roles,
-    isAdmin: roles.includes("admin"),
+    permissions,
   };
 }
 
@@ -61,7 +59,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
 
-  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions, isAdmin } =
+  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
     await getTabAuthContext();
 
   const brandCookie = (await cookies()).get(BRAND_COOKIE)?.value as
@@ -85,7 +83,10 @@ export default async function SettingsTabPage({
   ) {
     redirect("/settings/connectors");
   }
-  if (tab === "roles" && (!isCloudBrandServer || !isAdmin)) {
+  if (
+    tab === "roles" &&
+    (!isCloudBrandServer || !permissions.has("config:write"))
+  ) {
     redirect("/settings/connectors");
   }
 
