@@ -136,10 +136,7 @@ async def main() -> int:
         verb = "Would update" if args.dry_run else "Updated"
         print(f"{verb} {result.updated_users} user(s):")
         for change in result.changes:
-            print(
-                f"  - user {change['user_id']}: "
-                f"{change['from_role']} -> {change['to_role']}"
-            )
+            print(f"  - user {change['user_id']}: {change['from_role']} -> {change['to_role']}")
     if result.skipped_users:
         print(f"Skipped {result.skipped_users} user(s) (multi-role or non-default role).")
 
