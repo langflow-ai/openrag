@@ -25,7 +25,7 @@ from config.settings import (
     get_opensearch_username,
 )
 from services.startup_orchestrator import startup_tasks
-from utils.logging_config import get_logger, log_opensearch_env
+from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
@@ -203,7 +203,7 @@ async def run_startup(app: FastAPI):
         await mcp_lifespan_ctx.__aenter__()
         logger.info("FastMCP lifespan started")
 
-    log_opensearch_env(logger, "startup")
+    log_bootstrap_env(logger, "startup")
 
     # One-shot OpenSearch security bootstrap driven by the platform's
     # service JWT. Runs synchronously (before startup_tasks) so the

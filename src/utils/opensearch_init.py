@@ -186,6 +186,9 @@ async def _ensure_opensearch_index():
 async def init_index(opensearch_client=None, admin_username: str = None):
     """Initialize OpenSearch index and security roles"""
     os_client = opensearch_client or clients.opensearch
+    # Tracks the most recent OpenSearch operation so the except block can name
+    # the failing step (TransportError stringifies to just "TransportError(500, '')").
+    step = "wait_for_opensearch"
     try:
         await wait_for_opensearch(opensearch_client)
 
@@ -202,14 +205,17 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         else:
             from utils.opensearch_utils import setup_opensearch_security
 
+            step = "setup_opensearch_security"
             await setup_opensearch_security(os_client, admin_username=admin_username)
 
+        step = "build_index_body"
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
 
         index_body = await create_index_body()
 
         index_name = get_index_name()
+        step = f"documents_index:{index_name}"
         if not await os_client.indices.exists(index=index_name):
             await os_client.indices.create(index=index_name, body=index_body)
             logger.info(
@@ -281,6 +287,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             },
         }
 
+        step = f"knowledge_filters_index:{knowledge_filter_index_name}"
         if not await os_client.indices.exists(index=knowledge_filter_index_name):
             await os_client.indices.create(
                 index=knowledge_filter_index_name, body=knowledge_filter_index_body
@@ -326,6 +333,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                         error=str(e),
                     )
 
+        step = f"api_keys_index:{API_KEYS_INDEX_NAME}"
         if not await os_client.indices.exists(index=API_KEYS_INDEX_NAME):
             await os_client.indices.create(index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY)
             logger.info("Created API keys index", index_name=API_KEYS_INDEX_NAME)
@@ -335,6 +343,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 index_name=API_KEYS_INDEX_NAME,
             )
 
+        step = f"dls_principal_index:{DLS_PRINCIPAL_INDEX_NAME}"
         if not await os_client.indices.exists(index=DLS_PRINCIPAL_INDEX_NAME):
             await os_client.indices.create(
                 index=DLS_PRINCIPAL_INDEX_NAME,
@@ -357,10 +366,24 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                 {"principal_labels": ACL_PRINCIPAL_LABELS_MAPPING},
             )
 
+        step = "configure_alerting_security"
         await configure_alerting_security()
 
     except Exception as e:
         from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error
+
+        # TransportError stringifies to just "TransportError(500, '')" — surface
+        # the failing step plus the OpenSearch status/error/body it carries.
+        err_fields = {
+            "failed_step": step,
+            "error": str(e),
+            "error_repr": repr(e),
+        }
+        if hasattr(e, "status_code"):
+            err_fields["os_status_code"] = getattr(e, "status_code", None)
+            err_fields["os_error"] = getattr(e, "error", None)
+            err_fields["os_info"] = getattr(e, "info", None)
+        logger.error("init_index failed", **err_fields)
 
         if is_disk_space_error(e):
             logger.error("OpenSearch disk space exceeded watermark. Index creation failed.")

@@ -35,6 +35,32 @@
     "baseline-browser-mapping": "^2.9.19",
     "typescript": "~5.9.3"
   },
+  "overrides": {
+    "lodash": ">=4.17.24",
+    "lodash-es": ">=4.17.24",
+    "ajv": "^8.18.0",
+    "file-loader": { "ajv": "^6.14.0" },
+    "null-loader": { "ajv": "^6.14.0" },
+    "url-loader": { "ajv": "^6.14.0" },
+    "uuid": "^11.1.1",
+    "node-forge": "^1.4.0",
+    "express": { "path-to-regexp": "0.1.13" },
+    "fast-uri": "^3.1.2",
+    "@babel/plugin-transform-modules-systemjs": "^7.29.4",
+    "serialize-javascript": "^7.0.5",
+    "webpackbar": "^7.0.0",
+    "webpack-dev-server": { ".": "^5.2.4", "ws": "^8.20.1" },
+    "postcss": "^8.5.10",
+    "qs": "^6.15.2",
+    "minimatch": "^3.1.4",
+    "picomatch": "^2.3.2",
+    "brace-expansion": "^1.1.13",
+    "follow-redirects": "^1.16.0",
+    "svgo": "^3.3.3",
+    "dompurify": "^3.4.0",
+    "mermaid": "^11.15.0",
+    "@docsearch/react": "^4.6.3"
+  },
   "browserslist": {
     "production": [
       ">0.5%",
