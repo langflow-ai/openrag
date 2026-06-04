@@ -36,9 +36,11 @@ jobs:
 
       - name: Resolve image tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "value=${INPUT_TAG}" >> $GITHUB_OUTPUT
           else
             # Strip the "operator/" prefix from the git tag
             echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
@@ -78,9 +80,11 @@ jobs:
 
       - name: Resolve image tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "value=${INPUT_TAG}" >> $GITHUB_OUTPUT
           else
             echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
           fi
