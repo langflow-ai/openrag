@@ -208,7 +208,15 @@ def get_noauth_user_role() -> str:
 
 
 def is_default_role_sync_enabled() -> bool:
-    """When true, sync eligible existing users if default-role env vars change."""
+    """When true, sync eligible existing users if default-role env vars change.
+
+    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    via JWT sync; env-driven bulk migration is an OSS dev workflow.
+    """
+    from utils.run_mode_utils import is_run_mode_oss
+
+    if not is_run_mode_oss():
+        return False
     raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 

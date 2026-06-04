@@ -42,8 +42,26 @@ def _user(uid: str) -> User:
 
 
 @pytest.mark.asyncio
+async def test_sync_skipped_outside_oss(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    user_row = await ensure_user_row(session, _user("u1"))
+    await session.commit()
+
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    result = await sync_default_roles_if_changed(session)
+    roles = await RoleRepo(session).list_user_roles(user_row.id)
+
+    assert result.enabled is False
+    assert result.updated_users == 0
+    assert [r.name for r in roles] == ["user"]
+
+
+@pytest.mark.asyncio
 async def test_sync_disabled_is_noop(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "false")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
@@ -55,7 +73,26 @@ async def test_sync_disabled_is_noop(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_first_run_records_baseline_without_updates(session, monkeypatch):
+async def test_first_run_with_unchanged_env_records_baseline(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    user_row = await ensure_user_row(session, _user("u1"))
+    await session.commit()
+
+    result = await sync_default_roles_if_changed(session, enabled=True)
+    await session.commit()
+
+    roles = await RoleRepo(session).list_user_roles(user_row.id)
+    meta = await WorkspaceConfigRepo(session).get_section("meta")
+
+    assert result.baseline_recorded is True
+    assert result.updated_users == 0
+    assert [r.name for r in roles] == ["user"]
+    assert meta["rbac_default_role_sync"]["default_role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_first_run_migrates_from_implicit_user_default(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
     monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
@@ -68,10 +105,34 @@ async def test_first_run_records_baseline_without_updates(session, monkeypatch):
     roles = await RoleRepo(session).list_user_roles(user_row.id)
     meta = await WorkspaceConfigRepo(session).get_section("meta")
 
-    assert result.baseline_recorded is True
-    assert result.updated_users == 0
-    assert [r.name for r in roles] == ["user"]
+    assert result.updated_users == 1
+    assert [r.name for r in roles] == ["admin"]
     assert meta["rbac_default_role_sync"]["default_role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_from_role_overrides_wrong_baseline(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    user_row = await ensure_user_row(session, _user("u1"))
+    await session.commit()
+
+    meta_repo = WorkspaceConfigRepo(session)
+    await meta_repo.upsert(
+        "meta",
+        {"rbac_default_role_sync": {"default_role": "admin", "noauth_role": "admin"}},
+    )
+    await session.commit()
+
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    result = await sync_default_roles_if_changed(
+        session, enabled=True, from_role="user"
+    )
+    await session.commit()
+
+    roles = await RoleRepo(session).list_user_roles(user_row.id)
+    assert result.updated_users == 1
+    assert [r.name for r in roles] == ["admin"]
 
 
 @pytest.mark.asyncio
@@ -130,4 +191,4 @@ async def test_dry_run_does_not_write(session, monkeypatch):
 
     assert result.updated_users == 1
     assert [r.name for r in roles] == ["user"]
-    assert meta["rbac_default_role_sync"]["default_role"] == "user"
+    assert meta is None or meta.get("rbac_default_role_sync", {}).get("default_role") == "user"

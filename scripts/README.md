@@ -1,0 +1,72 @@
+# OpenRAG scripts
+
+## Sync default user roles (`sync_default_user_roles.py`)
+
+Dev-only helper for RBAC in **OSS run mode** (`OPENRAG_RUN_MODE=oss`): updates
+existing users in the SQL DB when `OPENRAG_DEFAULT_ROLE` changes. Requires:
+
+```env
+OPENRAG_RUN_MODE=oss
+OPENRAG_SYNC_DEFAULT_ROLE=true
+OPENRAG_DEFAULT_ROLE=admin   # target role: admin | developer | user | viewer
+```
+
+Ignored in `saas` and `on_prem` — those modes assign roles from JWT claims.
+
+Uses the default SQLite DB at `data/openrag.db` unless `DATABASE_URL` is set.
+
+### Promote all `user` roles to `OPENRAG_DEFAULT_ROLE`
+
+Use this when users still have the `user` role but you want them on whatever
+role is set in `OPENRAG_DEFAULT_ROLE` (for example `admin`):
+
+```bash
+OPENRAG_SYNC_DEFAULT_ROLE=true \
+OPENRAG_DEFAULT_ROLE=admin \
+uv run python scripts/sync_default_user_roles.py --from-role user
+```
+
+What it does:
+
+- Finds every user whose **only** role is `user`
+- Assigns them the role from `OPENRAG_DEFAULT_ROLE` (here: `admin`)
+- Skips users with multiple roles or a different single role
+- Updates the stored baseline in `workspace_config.meta`
+
+Preview without writing:
+
+```bash
+OPENRAG_SYNC_DEFAULT_ROLE=true \
+OPENRAG_DEFAULT_ROLE=admin \
+uv run python scripts/sync_default_user_roles.py --from-role user --dry-run
+```
+
+Replace `user` with any source role, and set `OPENRAG_DEFAULT_ROLE` to the
+target role you want.
+
+### Other commands
+
+| Command | Purpose |
+| --- | --- |
+| `uv run python scripts/sync_default_user_roles.py` | Sync when env default changed since last recorded baseline |
+| `--dry-run` | Show changes without writing to the DB |
+| `--record-baseline` | Save current env defaults; do not change any user |
+| `--from-noauth-role ROLE` | Same as `--from-role` but for the anonymous no-auth user |
+
+### After running
+
+Restart the backend (or wait for `OPENRAG_PERM_CACHE_TTL`, default 60s) so
+permission checks pick up the new roles. Verify with:
+
+```bash
+curl -b "auth_token=..." http://localhost:8000/users/me
+```
+
+### Notes
+
+- Intended for local OSS dev workflows, not production role management.
+- With `OPENRAG_SYNC_DEFAULT_ROLE=true` and `OPENRAG_RUN_MODE=oss`, the
+  backend also runs this sync at startup when the env default changes from
+  the stored baseline.
+- If the script reports stale users but updates none, use `--from-role` with
+  the role those users currently have.
