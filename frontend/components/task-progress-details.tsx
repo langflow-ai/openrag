@@ -51,8 +51,8 @@ export function TaskProgressDetails({
           className={cn(
             "flex w-full shrink-0 flex-col items-start gap-3 pt-0.5 pr-1.5 pb-0.5 pl-1 text-xs",
             isCloudBrand
-              ? "col-span-1 row-span-1 justify-center self-stretch justify-self-stretch rounded-none bg-[hsl(var(--ibm-overwrite-button))]"
-              : "min-h-[var(--header-height)] rounded-md bg-muted",
+              ? "col-span-1 row-span-1 justify-center self-stretch justify-self-stretch rounded-none bg-border"
+              : "min-h-header rounded-md bg-muted",
           )}
         >
           <span
@@ -67,9 +67,7 @@ export function TaskProgressDetails({
             <Circle className={cn("size-2 fill-current", colorClass)} />
             <span
               className={
-                isCloudBrand
-                  ? "text-[hsl(var(--placeholder))]"
-                  : "text-muted-foreground"
+                isCloudBrand ? "text-placeholder" : "text-muted-foreground"
               }
             >
               {label}

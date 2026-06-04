@@ -29,6 +29,9 @@ const config = {
       height: {
         "task-dialog": "var(--task-dialog-max-height)",
       },
+      minHeight: {
+        header: "var(--header-height)",
+      },
       maxHeight: {
         "task-dialog": "var(--task-dialog-max-height)",
       },
@@ -185,6 +188,7 @@ const config = {
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
+        placeholder: "hsl(var(--placeholder))",
         "function-call-header": {
           DEFAULT: "var(--function-call-header)",
           hover: "var(--function-call-header-hover)",

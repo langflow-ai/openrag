@@ -334,7 +334,7 @@ export function TaskNotificationMenu() {
   const cancelTaskButtonClass = cn(
     "h-10 w-full shrink-0 shadow-none",
     isCloudBrand
-      ? "justify-start rounded-none bg-[hsl(var(--ibm-overwrite-button))] px-4 text-left text-muted-foreground hover:bg-accent hover:text-muted-foreground"
+      ? "justify-start rounded-none bg-border px-4 text-left text-muted-foreground hover:bg-accent hover:text-muted-foreground"
       : "justify-center rounded-lg border border-muted-foreground bg-task-dialog-oss-selected py-2.5 px-3 text-foreground hover:!bg-accent hover:text-foreground",
   );
 
