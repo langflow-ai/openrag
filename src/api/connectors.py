@@ -3,14 +3,21 @@ from typing import Any
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
     get_current_user,
+    get_db_session,
     get_session_manager,
     require_permission,
+)
+from services.connector_access_service import (
+    _actor_db_id,
+    list_access_for_admin,
+    set_connector_access_bulk,
 )
 from session_manager import User
 from utils.logging_config import get_logger
@@ -510,6 +517,47 @@ async def list_connectors(
     except Exception as e:
         logger.error("[CONNECTOR] Error listing connectors", error=str(e))
         return JSONResponse({"connectors": []})
+
+
+class UpdateConnectorAccessBody(BaseModel):
+    access: dict[str, bool]
+
+
+async def get_connector_user_access(
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(require_permission("config:write")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List connector types and whether non-admin users may use them."""
+    metadata = connector_service.connection_manager.get_available_connector_types(
+        user_id=user.user_id
+    )
+    connectors = await list_access_for_admin(session, metadata)
+    return JSONResponse({"connectors": connectors})
+
+
+async def update_connector_user_access(
+    body: UpdateConnectorAccessBody,
+    user: User = Depends(require_permission("config:write")),
+    session: AsyncSession = Depends(get_db_session),
+    connector_service=Depends(get_connector_service),
+):
+    """Save connector access policy for non-admin users."""
+    try:
+        await set_connector_access_bulk(
+            session,
+            body.access,
+            _actor_db_id(user),
+        )
+        await session.commit()
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    metadata = connector_service.connection_manager.get_available_connector_types(
+        user_id=user.user_id
+    )
+    connectors = await list_access_for_admin(session, metadata)
+    return JSONResponse({"connectors": connectors})
 
 
 async def connector_sync(

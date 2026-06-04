@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -12,14 +13,16 @@ const TABS = [
   { value: "providers", label: "Providers", perm: "providers:write" },
   { value: "langflow", label: "Langflow" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
+  { value: "roles", label: "Roles & Permissions", rolesTab: true },
 ] as const;
 
 export function SettingsNav() {
   const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, roles } = useAuth();
   const { can } = usePermissions();
+  const isAdmin = roles.includes("admin");
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
@@ -27,8 +30,15 @@ export function SettingsNav() {
     if ("perm" in tab) return can(tab.perm);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
+    if ("rolesTab" in tab) return isCloudBrand && isAdmin;
     return true;
   });
+
+  useEffect(() => {
+    if (currentTab === "roles" && !(isCloudBrand && isAdmin)) {
+      router.replace("/settings/connectors");
+    }
+  }, [currentTab, isCloudBrand, isAdmin, router]);
 
   return (
     <Tabs value={currentTab}>

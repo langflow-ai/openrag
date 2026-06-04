@@ -4,11 +4,18 @@ import { getQueryClient } from "@/app/api/get-query-client";
 import { fetchFromBackend } from "@/lib/fetch-server";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
+import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import ModelProviders from "../_components/model-providers";
 
-const VALID_TABS = ["connectors", "providers", "langflow", "api-keys"] as const;
+const VALID_TABS = [
+  "connectors",
+  "providers",
+  "langflow",
+  "api-keys",
+  "roles",
+] as const;
 
 type Tab = (typeof VALID_TABS)[number];
 
@@ -51,7 +58,6 @@ export default async function SettingsTabPage({
   const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
     await getTabAuthContext();
 
-  // Mirror the visibility logic from settings-nav.tsx
   if (
     tab === "api-keys" &&
     (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
@@ -106,6 +112,7 @@ export default async function SettingsTabPage({
         </div>
       )}
       {tab === "api-keys" && <ApiKeysSection />}
+      {tab === "roles" && <ConnectorAccessSection />}
     </HydrationBoundary>
   );
 }
