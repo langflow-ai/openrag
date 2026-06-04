@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Sync existing user roles when OPENRAG_DEFAULT_ROLE env values change.
 
-Requires ``OPENRAG_SYNC_DEFAULT_ROLE=true`` (same flag used at backend
-startup). Only users whose sole role matches the previously recorded env
-default are updated.
+Requires ``OPENRAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
+(``OPENRAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
 
 Usage:
     OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py

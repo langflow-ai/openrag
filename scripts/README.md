@@ -65,9 +65,6 @@ curl -b "auth_token=..." http://localhost:8000/users/me
 ### Notes
 
 - Intended for local OSS dev workflows, not production role management.
-- With `OPENRAG_SYNC_DEFAULT_ROLE=true` and `OPENRAG_RUN_MODE=oss`, the
-  backend also runs this sync at startup when the env default changes from
-  the stored baseline.
 - If the script reports stale users but updates none, use `--from-role` with
   the role those users currently have.
 

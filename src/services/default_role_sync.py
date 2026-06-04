@@ -1,8 +1,7 @@
 """Sync DB user roles when OPENRAG_DEFAULT_ROLE / OPENRAG_NOAUTH_ROLE change.
 
 Opt-in via ``OPENRAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
-(``OPENRAG_RUN_MODE=oss``). Intended for local/dev workflows — production
-should assign roles via JWT sync or admin APIs.
+(``OPENRAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
 
 Only users with *exactly one* role matching the previously recorded env
 default are updated. Users with multiple roles or a manually changed
