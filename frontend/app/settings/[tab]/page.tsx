@@ -1,6 +1,8 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
+import { BRAND_COOKIE, type Brand, isCloudBrand } from "@/lib/brand";
 import { fetchFromBackend } from "@/lib/fetch-server";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
@@ -48,11 +50,6 @@ async function getTabAuthContext() {
   };
 }
 
-/** Mirrors client `useIsCloudBrand()` / `IBM_THEME_DEV` in brand-context. */
-function isCloudBrandServer(isIbmAuthMode: boolean): boolean {
-  return isIbmAuthMode || process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
-}
-
 export default async function SettingsTabPage({
   params,
 }: {
@@ -67,6 +64,14 @@ export default async function SettingsTabPage({
   const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions, isAdmin } =
     await getTabAuthContext();
 
+  const brandCookie = (await cookies()).get(BRAND_COOKIE)?.value as
+    | Brand
+    | undefined;
+  const isCloudBrandServer = isCloudBrand({
+    isIbmAuthMode,
+    brand: brandCookie,
+  });
+
   if (
     tab === "api-keys" &&
     (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
@@ -80,7 +85,7 @@ export default async function SettingsTabPage({
   ) {
     redirect("/settings/connectors");
   }
-  if (tab === "roles" && (!isCloudBrandServer(isIbmAuthMode) || !isAdmin)) {
+  if (tab === "roles" && (!isCloudBrandServer || !isAdmin)) {
     redirect("/settings/connectors");
   }
 

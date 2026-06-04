@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-
-const DEV_THEME =
-  typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
+import { IBM_THEME_DEV } from "@/lib/brand";
 
 function parseApiError(
   result: Record<string, unknown>,
@@ -85,7 +82,7 @@ export function DevRoleToggle() {
     },
   });
 
-  if (!DEV_THEME || !isCloudBrand || (!isAuthenticated && !isNoAuthMode)) {
+  if (!IBM_THEME_DEV || !isCloudBrand || (!isAuthenticated && !isNoAuthMode)) {
     return null;
   }
 

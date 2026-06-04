@@ -2,13 +2,22 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  BRAND_COOKIE,
+  type Brand,
+  IBM_THEME_DEV,
+  isCloudBrand,
+} from "@/lib/brand";
 
-export type Brand = "oss" | "ibm";
+export type { Brand } from "@/lib/brand";
+export { IBM_THEME_DEV } from "@/lib/brand";
 
-/** Local SaaS UI testing — must stay aligned with server `isCloudBrandServer`. */
-export const IBM_THEME_DEV =
-  typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
+const BRAND_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function persistBrandPreference(brand: Brand) {
+  localStorage.setItem("brand", brand);
+  document.cookie = `${BRAND_COOKIE}=${brand}; path=/; max-age=${BRAND_COOKIE_MAX_AGE}; SameSite=Lax`;
+}
 
 interface BrandContextValue {
   brand: Brand;
@@ -40,13 +49,14 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       const stored =
         (localStorage.getItem("brand") as Brand) ??
         (IBM_THEME_DEV ? "ibm" : "oss");
+      persistBrandPreference(stored);
       applyBrand(stored);
       setBrandState(stored);
     }
   }, [isIbmAuthMode]);
 
   function setBrand(newBrand: Brand) {
-    localStorage.setItem("brand", newBrand);
+    persistBrandPreference(newBrand);
     applyBrand(newBrand);
     setBrandState(newBrand);
   }
@@ -63,5 +73,5 @@ export const useBrand = () => useContext(BrandContext);
 export const useIsCloudBrand = () => {
   const { brand } = useContext(BrandContext);
   const { isIbmAuthMode } = useAuth();
-  return isIbmAuthMode || IBM_THEME_DEV || brand === "ibm";
+  return isCloudBrand({ isIbmAuthMode, brand });
 };
