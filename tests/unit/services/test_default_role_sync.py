@@ -125,9 +125,7 @@ async def test_from_role_overrides_wrong_baseline(session, monkeypatch):
     await session.commit()
 
     monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
-    result = await sync_default_roles_if_changed(
-        session, enabled=True, from_role="user"
-    )
+    result = await sync_default_roles_if_changed(session, enabled=True, from_role="user")
     await session.commit()
 
     roles = await RoleRepo(session).list_user_roles(user_row.id)
