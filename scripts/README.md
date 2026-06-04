@@ -26,6 +26,19 @@ OPENRAG_DEFAULT_ROLE=admin \
 uv run python scripts/sync_default_user_roles.py --from-role user
 ```
 
+### Explicit from → to (ignores env target)
+
+When both roles are on the CLI, the target comes from `--to-role`, not
+`OPENRAG_DEFAULT_ROLE`:
+
+```bash
+OPENRAG_SYNC_DEFAULT_ROLE=true \
+uv run python scripts/sync_default_user_roles.py --from-role admin --to-role user
+```
+
+Migrates every user whose **only** role is `admin` to `user`, regardless of
+what `OPENRAG_DEFAULT_ROLE` is set to.
+
 What it does:
 
 - Finds every user whose **only** role is `user`
@@ -50,8 +63,11 @@ target role you want.
 | --- | --- |
 | `uv run python scripts/sync_default_user_roles.py` | Sync when env default changed since last recorded baseline |
 | `--dry-run` | Show changes without writing to the DB |
+| `--from-role ROLE` | Source role for this run (overrides stored baseline) |
+| `--to-role ROLE` | Target role (overrides `OPENRAG_DEFAULT_ROLE`; requires `--from-role`) |
+| `--from-noauth-role ROLE` | Source role for the anonymous user |
+| `--to-noauth-role ROLE` | Target role for anonymous user (overrides `OPENRAG_NOAUTH_ROLE`) |
 | `--record-baseline` | Save current env defaults; do not change any user |
-| `--from-noauth-role ROLE` | Same as `--from-role` but for the anonymous no-auth user |
 
 ### After running
 

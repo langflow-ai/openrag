@@ -129,6 +129,8 @@ async def sync_default_roles_if_changed(
     force_baseline: bool = False,
     from_role: str | None = None,
     from_noauth_role: str | None = None,
+    to_role: str | None = None,
+    to_noauth_role: str | None = None,
     enabled: bool | None = None,
 ) -> DefaultRoleSyncResult:
     """Apply env default-role changes to eligible existing users.
@@ -139,10 +141,13 @@ async def sync_default_roles_if_changed(
     ``from_role`` / ``from_noauth_role`` override the stored baseline for one
     run — use when the baseline was recorded before users were migrated
     (e.g. baseline and env are both ``admin`` but users still have ``user``).
+
+    ``to_role`` / ``to_noauth_role`` override ``OPENRAG_DEFAULT_ROLE`` /
+    ``OPENRAG_NOAUTH_ROLE`` for this run when set explicitly on the CLI.
     """
     flag_enabled = is_default_role_sync_enabled() if enabled is None else enabled
-    new_default = get_default_user_role()
-    new_noauth = get_noauth_user_role()
+    new_default = to_role if to_role is not None else get_default_user_role()
+    new_noauth = to_noauth_role if to_noauth_role is not None else get_noauth_user_role()
 
     result = DefaultRoleSyncResult(
         enabled=flag_enabled,

@@ -9,6 +9,7 @@ Usage:
     OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --dry-run
     OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --record-baseline
     OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role user
+    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role admin --to-role user
 """
 
 from __future__ import annotations
@@ -51,14 +52,27 @@ async def main() -> int:
         metavar="ROLE",
         help="Like --from-role but for the anonymous/no-auth user",
     )
+    parser.add_argument(
+        "--to-role",
+        metavar="ROLE",
+        help="Target role for regular users (overrides OPENRAG_DEFAULT_ROLE for this run)",
+    )
+    parser.add_argument(
+        "--to-noauth-role",
+        metavar="ROLE",
+        help="Target role for the anonymous user (overrides OPENRAG_NOAUTH_ROLE for this run)",
+    )
     args = parser.parse_args()
 
+    if args.to_role is not None and args.from_role is None and not args.record_baseline:
+        print(
+            "--to-role requires --from-role so the script knows which users to migrate.",
+            file=sys.stderr,
+        )
+        return 1
+
     import db.engine as db_engine
-    from config.settings import (
-        get_default_user_role,
-        get_noauth_user_role,
-        is_default_role_sync_enabled,
-    )
+    from config.settings import is_default_role_sync_enabled
     from services.default_role_sync import sync_default_roles_if_changed
 
     if not is_default_role_sync_enabled():
@@ -81,13 +95,16 @@ async def main() -> int:
     db_engine.init_engine()
     SessionLocal = db_engine.SessionLocal
     if SessionLocal is None:
-        print("Database engine is not configured (check DATABASE_URL).", file=sys.stderr)
+        print("Database engine is not configured.", file=sys.stderr)
         return 1
 
-    print(
-        f"Target defaults: OPENRAG_DEFAULT_ROLE={get_default_user_role()!r}, "
-        f"OPENRAG_NOAUTH_ROLE={get_noauth_user_role()!r}"
-    )
+    if args.from_role or args.to_role:
+        print(
+            "Role migration:",
+            f"{args.from_role or '(from baseline/env)'} -> {args.to_role or '(from env)'}",
+        )
+    else:
+        print("Using OPENRAG_DEFAULT_ROLE and OPENRAG_NOAUTH_ROLE from the environment.")
     if args.dry_run:
         print("Dry run — no writes.")
 
@@ -98,6 +115,8 @@ async def main() -> int:
             force_baseline=args.record_baseline,
             from_role=args.from_role,
             from_noauth_role=args.from_noauth_role,
+            to_role=args.to_role,
+            to_noauth_role=args.to_noauth_role,
         )
         if not args.dry_run:
             await session.commit()
@@ -109,16 +128,16 @@ async def main() -> int:
         if result.stale_users:
             print(
                 f"Found {result.stale_users} user(s) whose sole role differs from "
-                f"OPENRAG_DEFAULT_ROLE={get_default_user_role()!r} but the stored "
-                "baseline already matches env. Re-run with:\n"
-                f"  --from-role user   # or whichever role they currently have"
+                "OPENRAG_DEFAULT_ROLE but the stored baseline already matches env. "
+                "Re-run with:\n"
+                "  --from-role user   # or whichever role they currently have"
             )
     else:
         verb = "Would update" if args.dry_run else "Updated"
         print(f"{verb} {result.updated_users} user(s):")
         for change in result.changes:
             print(
-                f"  - {change['user_id']} ({change['oauth_provider']}:{change['oauth_subject']}): "
+                f"  - user {change['user_id']}: "
                 f"{change['from_role']} -> {change['to_role']}"
             )
     if result.skipped_users:

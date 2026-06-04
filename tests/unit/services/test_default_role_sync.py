@@ -174,6 +174,32 @@ async def test_skips_multi_role_users(session, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_explicit_to_role_overrides_env(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    user_row = await ensure_user_row(session, _user("u1"))
+    role_repo = RoleRepo(session)
+    user_role = await role_repo.get_by_name("user")
+    admin_role = await role_repo.get_by_name("admin")
+    await role_repo.revoke_role(user_row.id, user_role.id)
+    await role_repo.assign_role(user_row.id, admin_role.id)
+    await WorkspaceConfigRepo(session).upsert(
+        "meta",
+        {"rbac_default_role_sync": {"default_role": "admin", "noauth_role": "admin"}},
+    )
+    await session.commit()
+
+    result = await sync_default_roles_if_changed(
+        session, enabled=True, from_role="admin", to_role="user"
+    )
+    await session.commit()
+
+    roles = await RoleRepo(session).list_user_roles(user_row.id)
+    assert result.updated_users == 1
+    assert [r.name for r in roles] == ["user"]
+
+
+@pytest.mark.asyncio
 async def test_dry_run_does_not_write(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
     monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
