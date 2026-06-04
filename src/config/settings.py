@@ -197,6 +197,30 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def get_default_user_role() -> str:
+    """Built-in role assigned to new users when JWT role sync is off."""
+    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+
+
+def get_noauth_user_role() -> str:
+    """Built-in role for the synthetic anonymous user in no-auth mode."""
+    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+
+
+def is_default_role_sync_enabled() -> bool:
+    """When true, sync eligible existing users if default-role env vars change.
+
+    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    via JWT sync; env-driven bulk migration is an OSS dev workflow.
+    """
+    from utils.run_mode_utils import is_run_mode_oss
+
+    if not is_run_mode_oss():
+        return False
+    raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
