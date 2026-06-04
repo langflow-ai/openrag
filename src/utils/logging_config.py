@@ -292,14 +292,16 @@ def get_logger(name: str = None) -> structlog.BoundLogger:
     return structlog.get_logger()
 
 
-def log_opensearch_env(logger, stage: str) -> None:
-    """Log effective OpenSearch-related env values for a given stage.
+def log_bootstrap_env(logger, stage: str) -> None:
+    """Log effective bootstrap / run-mode env values for a given stage.
 
-    Logs the parsed booleans as resolved in config.settings for a given stage.
+    Logs parsed booleans from config.settings (OpenSearch bootstrap, JWT auth, run mode).
     """
     from config.settings import (
         OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
         OPENRAG_SKIP_OS_SECURITY_SETUP,
+        get_jwt_issuer_verify_tls,
+        get_jwt_verify_signature,
     )
     from utils.run_mode_utils import get_run_mode
 
@@ -309,6 +311,8 @@ def log_opensearch_env(logger, stage: str) -> None:
         run_mode=get_run_mode(),
         bootstrap_os_security_on_startup=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
         skip_os_security_setup=OPENRAG_SKIP_OS_SECURITY_SETUP,
+        jwt_verify_signature=get_jwt_verify_signature(),
+        jwt_issuer_verify_tls=get_jwt_issuer_verify_tls(),
     )
 
 
