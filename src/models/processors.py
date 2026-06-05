@@ -742,7 +742,6 @@ class ConnectorFileProcessor(TaskProcessor):
                 await self.delete_document_by_filename(
                     document.filename,
                     opensearch_client,
-                    owner_user_id=self.user_id,
                 )
 
             # Create temporary file from document content
