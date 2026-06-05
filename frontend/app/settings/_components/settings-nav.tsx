@@ -4,12 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
-import {
-  canAccessConnectorAccessTab,
-  canShowRbacGatedSettingsTab,
-} from "@/lib/settings-tab-access";
+import { useSettingsTabAccess } from "@/hooks/use-settings-tab-access";
+import { canAccessConnectorAccessTab } from "@/lib/settings-tab-access";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -22,39 +18,25 @@ const TABS = [
     value: "connector-access",
     label: "Connectors Permission",
     perm: "connectors:manage:access",
-    connectorAccessTab: true,
   },
 ] as const;
 
 export function SettingsNav() {
-  const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const {
-    permissions,
-    rbacEnforced,
-    isLoading: permissionsLoading,
-  } = usePermissions();
-
-  const tabAccess = {
+    tabAccess,
     isCloudBrand,
-    isNoAuthMode,
-    rbacEnforced,
-    permissions,
-  };
-
-  /** RBAC-gated settings tabs apply in SaaS (cloud brand) only; OSS shows all tabs. */
-  const canShowPermTab = (perm: string) => {
-    if (permissionsLoading) return true;
-    return canShowRbacGatedSettingsTab(perm, tabAccess);
-  };
+    permissionsLoading,
+    canShowPermTab,
+    canShowConnectorAccessTab,
+  } = useSettingsTabAccess();
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
-    if ("connectorAccessTab" in tab)
-      return isCloudBrand && canShowPermTab(tab.perm);
+    if (tab.value === "connector-access") return canShowConnectorAccessTab();
     if ("perm" in tab) return canShowPermTab(tab.perm);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
@@ -69,15 +51,7 @@ export function SettingsNav() {
     ) {
       router.replace("/settings/connectors");
     }
-  }, [
-    currentTab,
-    permissionsLoading,
-    isCloudBrand,
-    isNoAuthMode,
-    rbacEnforced,
-    permissions,
-    router,
-  ]);
+  }, [currentTab, permissionsLoading, tabAccess, router]);
 
   return (
     <Tabs value={currentTab}>

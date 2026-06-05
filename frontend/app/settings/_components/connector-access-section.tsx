@@ -13,24 +13,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
-import { canAccessConnectorAccessTab } from "@/lib/settings-tab-access";
+import { useSettingsTabAccess } from "@/hooks/use-settings-tab-access";
 
 export function ConnectorAccessSection() {
-  const isCloudBrand = useIsCloudBrand();
-  const { isNoAuthMode } = useAuth();
-  const { permissions, rbacEnforced } = usePermissions();
+  const { canShowConnectorAccessTab } = useSettingsTabAccess();
 
-  if (
-    !canAccessConnectorAccessTab({
-      isCloudBrand,
-      isNoAuthMode,
-      rbacEnforced,
-      permissions,
-    })
-  ) {
+  if (!canShowConnectorAccessTab()) {
     return null;
   }
 

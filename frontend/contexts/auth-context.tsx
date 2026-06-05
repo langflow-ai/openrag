@@ -8,6 +8,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { hasRbacPermission } from "@/lib/settings-tab-access";
 import { encodeBase64 } from "@/lib/utils";
 
 interface User {
@@ -349,10 +350,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [checkAuth]);
 
   const can = useCallback(
-    (perm: string): boolean => {
-      if (isNoAuthMode || !rbacEnforced) return true;
-      return permissions.has(perm);
-    },
+    (perm: string): boolean =>
+      hasRbacPermission(perm, { isNoAuthMode, rbacEnforced, permissions }),
     [permissions, isNoAuthMode, rbacEnforced],
   );
 

@@ -14,16 +14,16 @@ import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
 import OneDriveIcon from "@/components/icons/one-drive-logo";
 import SharePointIcon from "@/components/icons/share-point-logo";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import { isConnectorVisibleInSettings } from "@/lib/settings-tab-access";
+import { useConnectorSettingsVisibility } from "@/hooks/use-settings-tab-access";
+import { filterConnectorsVisibleInSettings } from "@/lib/settings-tab-access";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
 import IBMCOSSettingsDialog from "./ibm-cos-settings-dialog";
 import S3SettingsDialog from "./s3-settings-dialog";
 
 export default function ConnectorCards() {
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const isCloudBrand = useIsCloudBrand();
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+  const connectorVisibility = useConnectorSettingsVisibility();
   const router = useRouter();
   const [ibmCOSDialogOpen, setIBMCOSDialogOpen] = useState(false);
   const [s3DialogOpen, setS3DialogOpen] = useState(false);
@@ -53,14 +53,13 @@ export default function ConnectorCards() {
     );
   }, []);
 
-  const connectors = queryConnectors
-    .filter((c) =>
-      isConnectorVisibleInSettings(c.type, { isCloudBrand, isIbmAuthMode }),
-    )
-    .map((c) => ({
-      ...c,
-      icon: getConnectorIcon(c.icon),
-    })) as Connector[];
+  const connectors = filterConnectorsVisibleInSettings(
+    queryConnectors,
+    connectorVisibility,
+  ).map((c) => ({
+    ...c,
+    icon: getConnectorIcon(c.icon),
+  })) as Connector[];
 
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({

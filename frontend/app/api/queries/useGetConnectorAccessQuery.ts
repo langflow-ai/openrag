@@ -1,8 +1,7 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import { isConnectorVisibleInSettings } from "@/lib/settings-tab-access";
+import { useConnectorSettingsVisibility } from "@/hooks/use-settings-tab-access";
+import { filterConnectorsVisibleInSettings } from "@/lib/settings-tab-access";
 
 export interface ConnectorAccessItem {
   type: string;
@@ -36,15 +35,11 @@ export const useGetConnectorAccessQuery = (
 
 /** Same list as the Connectors tab (hides IBM-only / cloud-excluded types). */
 export const useVisibleConnectorAccessQuery = () => {
-  const isCloudBrand = useIsCloudBrand();
-  const { isIbmAuthMode } = useAuth();
+  const visibility = useConnectorSettingsVisibility();
   const query = useGetConnectorAccessQuery();
   const connectors = useMemo(
-    () =>
-      (query.data ?? []).filter((c) =>
-        isConnectorVisibleInSettings(c.type, { isCloudBrand, isIbmAuthMode }),
-      ),
-    [query.data, isCloudBrand, isIbmAuthMode],
+    () => filterConnectorsVisibleInSettings(query.data ?? [], visibility),
+    [query.data, visibility],
   );
   return { ...query, connectors };
 };

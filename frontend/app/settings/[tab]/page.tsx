@@ -2,12 +2,12 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
-import { BRAND_COOKIE, type Brand, isCloudBrand } from "@/lib/brand";
+import { BRAND_COOKIE, type Brand } from "@/lib/brand";
 import { fetchFromBackend } from "@/lib/fetch-server";
 import {
+  buildSettingsTabAccess,
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
-  type SettingsTabAccessContext,
 } from "@/lib/settings-tab-access";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
@@ -78,17 +78,13 @@ export default async function SettingsTabPage({
   const brandCookie = (await cookies()).get(BRAND_COOKIE)?.value as
     | Brand
     | undefined;
-  const isCloudBrandServer = isCloudBrand({
+  const tabAccess = buildSettingsTabAccess({
     isIbmAuthMode,
     brand: brandCookie,
-  });
-
-  const tabAccess: SettingsTabAccessContext = {
-    isCloudBrand: isCloudBrandServer,
     isNoAuthMode,
     rbacEnforced,
     permissions,
-  };
+  });
 
   if (
     tab === "api-keys" &&

@@ -40,6 +40,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useConnectorSettingsVisibility } from "@/hooks/use-settings-tab-access";
+import { isConnectorVisibleInSettings } from "@/lib/settings-tab-access";
 import {
   duplicateCheck,
   uploadFiles,
@@ -122,6 +124,7 @@ export function KnowledgeDropdown() {
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
+  const connectorVisibility = useConnectorSettingsVisibility();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
@@ -623,11 +626,11 @@ export function KnowledgeDropdown() {
   };
 
   const cloudConnectorItems = Object.entries(cloudConnectors)
-    .filter(([type, info]) => {
-      if (!info.available) return false;
-      if (isCloudBrand && type === "onedrive") return false;
-      return true;
-    })
+    .filter(
+      ([type, info]) =>
+        info.available &&
+        isConnectorVisibleInSettings(type, connectorVisibility),
+    )
     .map(([type, info]) => ({
       label: info.name,
       icon: connectorIconMap[type as keyof typeof connectorIconMap] || PlugZap,
