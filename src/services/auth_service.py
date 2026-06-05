@@ -8,19 +8,21 @@ import httpx
 from fastapi import HTTPException
 
 from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
-from connectors.google_drive import GoogleDriveConnector
-from connectors.google_drive.oauth import GoogleDriveOAuth
-from connectors.onedrive import OneDriveConnector
-from connectors.onedrive.oauth import OneDriveOAuth
-from connectors.sharepoint import SharePointConnector
-from connectors.sharepoint.oauth import SharePointOAuth
+from connectors.registry import get_connector_class, get_connector_classes
 from services.langflow_mcp_service import LangflowMCPService
 from session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
-# Connectors that authenticate directly (no OAuth redirect required)
-_DIRECT_AUTH_CONNECTORS = {"ibm_cos"}
+
+def _direct_auth_connector_types() -> set:
+    """Bucket-kind connectors authenticate directly (no OAuth redirect)."""
+    return {cls.CONNECTOR_TYPE for cls in get_connector_classes() if cls.CONNECTOR_KIND == "bucket"}
+
+
+def _data_source_connector_types() -> set:
+    """All connector types that can be configured as data sources."""
+    return {cls.CONNECTOR_TYPE for cls in get_connector_classes()}
 
 
 class AuthService:
@@ -69,12 +71,7 @@ class AuthService:
         # Validate connector_type based on purpose
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
-        elif purpose == "data_source" and connector_type not in [
-            "google_drive",
-            "onedrive",
-            "sharepoint",
-            "ibm_cos",
-        ]:
+        elif purpose == "data_source" and connector_type not in _data_source_connector_types():
             raise ValueError(f"Unsupported connector type: {connector_type}")
         elif purpose not in ["app_auth", "data_source"]:
             raise ValueError(f"Unsupported purpose: {purpose}")
@@ -109,19 +106,16 @@ class AuthService:
         )
 
         # Direct-auth connectors (HMAC/API-key based, no OAuth redirect)
-        if connector_type in _DIRECT_AUTH_CONNECTORS:
+        if connector_type in _direct_auth_connector_types():
             return await self._init_direct_connection(connector_type, connection_id)
 
-        # Get OAuth configuration from connector and OAuth classes
-
-        # Map connector types to their connector and OAuth classes
-        connector_class_map = {
-            "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
-            "onedrive": (OneDriveConnector, OneDriveOAuth),
-            "sharepoint": (SharePointConnector, SharePointOAuth),
-        }
-
-        connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
+        # Look up connector + OAuth class pair via the registry.
+        connector_class = get_connector_class(connector_type)
+        oauth_class = (
+            connector_class.get_oauth_class()
+            if connector_class and hasattr(connector_class, "get_oauth_class")
+            else None
+        )
         if not connector_class or not oauth_class:
             raise ValueError(f"No classes found for connector type: {connector_type}")
 
@@ -254,13 +248,12 @@ class AuthService:
 
             # Get token endpoint from connector type
             connector_type = connection_config.connector_type
-            connector_class_map = {
-                "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
-                "onedrive": (OneDriveConnector, OneDriveOAuth),
-                "sharepoint": (SharePointConnector, SharePointOAuth),
-            }
-
-            connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
+            connector_class = get_connector_class(connector_type)
+            oauth_class = (
+                connector_class.get_oauth_class()
+                if connector_class and hasattr(connector_class, "get_oauth_class")
+                else None
+            )
             if not connector_class or not oauth_class:
                 raise ValueError(f"No classes found for connector type: {connector_type}")
 

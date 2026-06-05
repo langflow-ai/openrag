@@ -1,7 +1,9 @@
 import json
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
-from agent import async_chat, async_langflow, async_chat_stream
+from typing import Any
+
+from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
+from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -75,24 +77,65 @@ class ChatService:
             )
 
         # Prepare extra headers for JWT authentication and embedding model
-        extra_headers = {
-            "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
-        }
+        extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
-        
+
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        
+
+        # Configure ingest callback credentials/vars like ingestion does
+        import uuid
+
+        from config.settings import (
+            LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+            get_index_name,
+            get_ingest_callback_url,
+        )
+        from services.document_index_writer import DocumentIndexContext
+        from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+        doc_id = str(uuid.uuid4())
+        ingest_run_id = f"{doc_id}-{uuid.uuid4().hex}"
+        context = DocumentIndexContext(
+            document_id=doc_id,
+            filename="",
+            mimetype="",
+            embedding_model=embedding_model,
+            owner=None,
+            owner_name=None,
+            owner_email=None,
+            file_size=0,
+            connector_type="url",
+            source_url=None,
+            allowed_users=[],
+            allowed_groups=[],
+            allowed_principals=[],
+            allowed_principal_labels=[],
+            ingest_run_id=ingest_run_id,
+            is_sample_data=False,
+            index_name=get_index_name(),
+        )
+        token_service = LangflowIngestTokenService()
+        ingest_token = token_service.create_token(context)
+
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+            LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
+        )
+        extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
+
         # Add provider credentials to headers
-        await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
+        await add_provider_credentials_to_headers(
+            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+        )
         # Get context variables for filters, limit, and threshold
         from auth_context import (
             get_score_threshold,
@@ -105,7 +148,7 @@ class ChatService:
         score_threshold = get_score_threshold()
 
         # Build the complete filter expression like the search service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         if filters:
             filter_clauses = []
             # Map frontend filter names to backend field names
@@ -143,17 +186,16 @@ class ChatService:
             "Sending OpenRAG query filter to Langflow",
             filter_expression=filter_expression,
         )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
-            filter_expression
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(filter_expression)
+        logger.info(
+            "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
         )
-        logger.info("[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression))
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()
         if not langflow_client:
             raise ValueError(
                 "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
             )
-
 
         if stream:
             from agent import async_langflow_chat_stream
@@ -200,9 +242,7 @@ class ChatService:
         conversation_user_id = storage_user_id or user_id
 
         if not LANGFLOW_URL or not NUDGES_FLOW_ID:
-            raise ValueError(
-                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
-            )
+            raise ValueError("LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required")
 
         # Prepare extra headers for JWT authentication and embedding model
         extra_headers = {}
@@ -212,16 +252,18 @@ class ChatService:
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
-        
+
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        
+
         # Add provider credentials to headers
-        await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
+        await add_provider_credentials_to_headers(
+            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+        )
 
         # Build the complete filter expression like the chat service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         has_user_filters = False
         filter_clauses = []
 
@@ -252,13 +294,7 @@ class ChatService:
         # If no user filters are active, exclude sample data from nudges
         if not has_user_filters:
             # Add a bool query with must_not to exclude sample data
-            filter_clauses.append({
-                "bool": {
-                    "must_not": [
-                        {"term": {"is_sample_data": "true"}}
-                    ]
-                }
-            })
+            filter_clauses.append({"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}})
             logger.info("Excluding sample data from nudges (no user filters active)")
 
         # Set the filter clauses if we have any
@@ -273,9 +309,7 @@ class ChatService:
             filter_expression["score_threshold"] = score_threshold
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
-            filter_expression
-        )
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(filter_expression)
         logger.info("[CHAT] Nudges request", filters_applied=bool(filter_expression))
 
         # Ensure the Langflow client exists; try lazy init if needed
@@ -302,7 +336,6 @@ class ChatService:
                 prompt = f"{conversation_history}"
 
         from agent import async_langflow_chat
-
 
         response_text, response_id, _sources = await async_langflow_chat(
             langflow_client,
@@ -336,25 +369,66 @@ class ChatService:
 
         if endpoint == "langflow":
             # Prepare extra headers for JWT authentication and embedding model
-            extra_headers = {
-                "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
-                "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
-                "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
-            }
+            extra_headers = {}
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
             # Pass the selected embedding model as a global variable
             from config.settings import get_openrag_config
             from utils.langflow_headers import add_provider_credentials_to_headers
-            
+
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-            
+
+            # Configure ingest callback credentials/vars like ingestion does
+            import uuid
+
+            from config.settings import (
+                LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+                get_index_name,
+                get_ingest_callback_url,
+            )
+            from services.document_index_writer import DocumentIndexContext
+            from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+            doc_id = str(uuid.uuid4())
+            ingest_run_id = f"{doc_id}-{uuid.uuid4().hex}"
+            context = DocumentIndexContext(
+                document_id=doc_id,
+                filename="",
+                mimetype="",
+                embedding_model=embedding_model,
+                owner=None,
+                owner_name=None,
+                owner_email=None,
+                file_size=0,
+                connector_type="url",
+                source_url=None,
+                allowed_users=[],
+                allowed_groups=[],
+                allowed_principals=[],
+                allowed_principal_labels=[],
+                ingest_run_id=ingest_run_id,
+                is_sample_data=False,
+                index_name=get_index_name(),
+            )
+            token_service = LangflowIngestTokenService()
+            ingest_token = token_service.create_token(context)
+
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+                LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
+            )
+            extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
+
             # Add provider credentials to headers
-            await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
-            
+            await add_provider_credentials_to_headers(
+                extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            )
+
             # Ensure the Langflow client exists; try lazy init if needed
             langflow_client = await clients.ensure_langflow_client()
             if not langflow_client:
@@ -431,9 +505,7 @@ class ChatService:
 
             if messages:  # Only include conversations with actual messages
                 # Generate title from first user message
-                first_user_msg = next(
-                    (msg for msg in messages if msg["role"] == "user"), None
-                )
+                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
                 title = (
                     first_user_msg["content"][:50] + "..."
                     if first_user_msg and len(first_user_msg["content"]) > 50
@@ -451,14 +523,10 @@ class ChatService:
                         "created_at": conversation_state.get("created_at").isoformat()
                         if conversation_state.get("created_at")
                         else None,
-                        "last_activity": conversation_state.get(
-                            "last_activity"
-                        ).isoformat()
+                        "last_activity": conversation_state.get("last_activity").isoformat()
                         if conversation_state.get("last_activity")
                         else None,
-                        "previous_response_id": conversation_state.get(
-                            "previous_response_id"
-                        ),
+                        "previous_response_id": conversation_state.get("previous_response_id"),
                         "filter_id": conversation_state.get("filter_id"),
                         "total_messages": len(messages),
                         "source": "in_memory",
@@ -515,10 +583,8 @@ class ChatService:
 
             # 2. Get actual conversations from Langflow database (source of truth for messages)
             logger.debug(f"Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = (
-                await langflow_history_service.get_user_conversation_history(
-                    user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
-                )
+            langflow_history = await langflow_history_service.get_user_conversation_history(
+                user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
             )
 
             if langflow_history.get("conversations"):
@@ -561,8 +627,7 @@ class ChatService:
                             )
                             title = (
                                 first_user_msg["content"][:50] + "..."
-                                if first_user_msg
-                                and len(first_user_msg["content"]) > 50
+                                if first_user_msg and len(first_user_msg["content"]) > 50
                                 else first_user_msg["content"]
                                 if first_user_msg
                                 else "Langflow chat"
@@ -624,6 +689,7 @@ class ChatService:
         try:
             # Delete from local conversation storage
             from agent import delete_user_conversation
+
             local_deleted = await delete_user_conversation(user_id, session_id)
 
             if not local_deleted:
@@ -645,17 +711,13 @@ class ChatService:
 
         except Exception as e:
             logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     async def _delete_langflow_session(self, session_id: str):
         """Delete a session from Langflow using the monitor API"""
         try:
             response = await clients.langflow_request(
-                "DELETE",
-                f"/api/v1/monitor/messages/session/{session_id}"
+                "DELETE", f"/api/v1/monitor/messages/session/{session_id}"
             )
 
             if response.status_code == 200 or response.status_code == 204:
@@ -678,14 +740,14 @@ class ChatService:
 
         conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
-        
+
         results = []
         for session_id in session_ids:
             result = await self.delete_session(user_id, session_id)
             results.append(result)
-            
+
         return {
             "success": True,
             "deleted_count": len([r for r in results if r.get("success")]),
-            "total_count": len(session_ids)
+            "total_count": len(session_ids),
         }

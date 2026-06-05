@@ -32,18 +32,7 @@ from api import (
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
-from connectors.aws_s3.api import (
-    s3_bucket_status,
-    s3_configure,
-    s3_defaults,
-    s3_list_buckets,
-)
-from connectors.ibm_cos.api import (
-    ibm_cos_bucket_status,
-    ibm_cos_configure,
-    ibm_cos_defaults,
-    ibm_cos_list_buckets,
-)
+from connectors.registry import get_connector_classes
 
 
 def register_internal_routes(app: FastAPI):
@@ -219,53 +208,10 @@ def register_internal_routes(app: FastAPI):
 
     # Connector endpoints
     app.add_api_route("/connectors", connectors.list_connectors, methods=["GET"], tags=["internal"])
-    # IBM COS-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
-    app.add_api_route(
-        "/connectors/ibm_cos/defaults",
-        ibm_cos_defaults,
-        methods=["GET"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/ibm_cos/configure",
-        ibm_cos_configure,
-        methods=["POST"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/ibm_cos/{connection_id}/buckets",
-        ibm_cos_list_buckets,
-        methods=["GET"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/ibm_cos/{connection_id}/bucket-status",
-        ibm_cos_bucket_status,
-        methods=["GET"],
-        tags=["internal"],
-    )
-    # AWS S3-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
-    app.add_api_route(
-        "/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"]
-    )
-    app.add_api_route(
-        "/connectors/aws_s3/configure",
-        s3_configure,
-        methods=["POST"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/aws_s3/{connection_id}/buckets",
-        s3_list_buckets,
-        methods=["GET"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/aws_s3/{connection_id}/bucket-status",
-        s3_bucket_status,
-        methods=["GET"],
-        tags=["internal"],
-    )
+    # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before
+    # the generic /{connector_type}/... routes to avoid path shadowing.
+    for cls in get_connector_classes():
+        cls.register_routes(app)
     app.add_api_route(
         "/connectors/{connector_type}/sync",
         connectors.connector_sync,

@@ -2,10 +2,11 @@
 
 import mimetypes
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from posixpath import basename
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -44,12 +45,44 @@ class S3Connector(BaseConnector):
         connection_id (str): Connection identifier used for logging.
     """
 
+    CONNECTOR_TYPE = "aws_s3"
+    CONNECTOR_KIND = "bucket"
     CONNECTOR_NAME = "Amazon S3"
     CONNECTOR_DESCRIPTION = "Add knowledge from Amazon S3 or any S3-compatible storage"
     CONNECTOR_ICON = "aws-s3"
+    SECRET_CONFIG_KEYS = ("aws_secret_access_key",)
 
     CLIENT_ID_ENV_VAR = "AWS_ACCESS_KEY_ID"
     CLIENT_SECRET_ENV_VAR = "AWS_SECRET_ACCESS_KEY"
+
+    @classmethod
+    def is_available(cls, manager, user_id=None) -> bool:
+        # Gated by feature flag in OSS; SaaS / enterprise can flip it on.
+        return IBM_AUTH_ENABLED
+
+    @classmethod
+    def register_routes(cls, app) -> None:
+        from .api import s3_bucket_status, s3_configure, s3_defaults, s3_list_buckets
+
+        # Registered before generic /{connector_type}/... to avoid shadowing.
+        app.add_api_route(
+            "/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/aws_s3/configure", s3_configure, methods=["POST"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/aws_s3/{connection_id}/buckets",
+            s3_list_buckets,
+            methods=["GET"],
+            tags=["internal"],
+        )
+        app.add_api_route(
+            "/connectors/aws_s3/{connection_id}/bucket-status",
+            s3_bucket_status,
+            methods=["GET"],
+            tags=["internal"],
+        )
 
     def get_client_id(self) -> str:
         """Return access key from config dict, or AWS_ACCESS_KEY_ID env var as fallback."""
@@ -71,12 +104,12 @@ class S3Connector(BaseConnector):
             "or set the AWS_SECRET_ACCESS_KEY environment variable."
         )
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         if config is None:
             config = {}
         super().__init__(config)
 
-        self.bucket_names: List[str] = config.get("bucket_names") or []
+        self.bucket_names: list[str] = config.get("bucket_names") or []
         self.prefix: str = config.get("prefix", "")
         self.connection_id: str = config.get("connection_id", "default")
 
@@ -110,7 +143,7 @@ class S3Connector(BaseConnector):
             self._authenticated = False
             return False
 
-    def _resolve_bucket_names(self) -> List[str]:
+    def _resolve_bucket_names(self) -> list[str]:
         """Return configured bucket names, or auto-discover all accessible buckets."""
         if self.bucket_names:
             return self.bucket_names
@@ -125,10 +158,10 @@ class S3Connector(BaseConnector):
 
     async def list_files(
         self,
-        page_token: Optional[str] = None,
-        max_files: Optional[int] = None,
+        page_token: str | None = None,
+        max_files: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List objects across all configured (or auto-discovered) buckets.
 
         Uses the boto3 resource API: Bucket.objects.all() handles pagination
@@ -140,7 +173,7 @@ class S3Connector(BaseConnector):
                 "next_page_token": always None (SDK handles pagination internally)
         """
         resource = self._get_resource()
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         bucket_names = self._resolve_bucket_names()
 
         for bucket_name in bucket_names:
@@ -189,7 +222,7 @@ class S3Connector(BaseConnector):
         response = resource.Object(bucket_name, key).get()
         content: bytes = response["Body"].read()
 
-        last_modified: datetime = response.get("LastModified") or datetime.now(timezone.utc)
+        last_modified: datetime = response.get("LastModified") or datetime.now(UTC)
         size: int = response.get("ContentLength", len(content))
 
         # Prefer filename extension over generic S3 content-type (often application/octet-stream)
@@ -233,7 +266,7 @@ class S3Connector(BaseConnector):
                 or ""
             )
 
-            allowed_users: List[str] = []
+            allowed_users: list[str] = []
             for grant in acl_response.get("Grants", []):
                 grantee = grant.get("Grantee", {})
                 permission = grant.get("Permission", "")
@@ -263,13 +296,13 @@ class S3Connector(BaseConnector):
         """No-op: S3 event notifications are out of scope for this connector."""
         return ""
 
-    async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
+    async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
         """No-op: webhooks are not supported in this connector version."""
         return []
 
     def extract_webhook_channel_id(
-        self, payload: Dict[str, Any], headers: Dict[str, str]
-    ) -> Optional[str]:
+        self, payload: dict[str, Any], headers: dict[str, str]
+    ) -> str | None:
         return None
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:

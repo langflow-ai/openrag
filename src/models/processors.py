@@ -741,12 +741,21 @@ class ConnectorFileProcessor(TaskProcessor):
             )
             if await self.check_filename_exists(document.filename, opensearch_client):
                 if not self.replace_duplicates:
-                    file_task.status = TaskStatus.FAILED
-                    file_task.error = f"File with name '{document.filename}' already exists"
+                    file_task.status = TaskStatus.SKIPPED
+                    file_task.error = None
+                    file_task.result = {
+                        "status": "skipped",
+                        "reason": "duplicate_filename",
+                        "warning": "A file with this name already exists.",
+                    }
                     file_task.updated_at = time.time()
-                    upload_task.failed_files += 1
+                    upload_task.successful_files += 1
                     return
-                await self.delete_document_by_filename(document.filename, opensearch_client)
+                await self.delete_document_by_filename(
+                    document.filename,
+                    opensearch_client,
+                    owner_user_id=self.user_id,
+                )
 
             # Create temporary file from document content
             suffix = os.path.splitext(document.filename)[1]

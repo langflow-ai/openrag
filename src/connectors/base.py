@@ -52,6 +52,14 @@ class BaseConnector(ABC):
     CLIENT_ID_ENV_VAR: str = None
     CLIENT_SECRET_ENV_VAR: str = None
 
+    # Stable identifier used in connections.json and on the wire (e.g. "google_drive").
+    CONNECTOR_TYPE: str = None
+    # "oauth" connectors authenticate per-user via OAuth env-var credentials.
+    # "bucket" connectors authenticate via per-connection config dict (HMAC, API key, etc).
+    CONNECTOR_KIND: str = "oauth"
+    # Connector-specific keys in the config dict that must be encrypted at rest.
+    SECRET_CONFIG_KEYS: tuple = ()
+
     # Connector metadata for UI
     CONNECTOR_NAME: str = None
     CONNECTOR_DESCRIPTION: str = None
@@ -60,6 +68,31 @@ class BaseConnector(ABC):
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self._authenticated = False
+
+    @classmethod
+    def register_routes(cls, app) -> None:
+        """Register connector-specific FastAPI routes on the given app.
+
+        Default: no-op. Connectors with extra endpoints (bucket listing,
+        credential configuration, etc.) should override this and add their
+        own `app.add_api_route(...)` calls.
+        """
+        return None
+
+    @classmethod
+    def is_available(cls, manager, user_id: str | None = None) -> bool:
+        """Whether this connector should be offered to the given user.
+
+        Default (oauth-kind): env credentials present OR user has a saved connection.
+        Bucket-kind connectors should override to gate on their own feature flag.
+        """
+        try:
+            instance = cls({})
+            instance.get_client_id()
+            instance.get_client_secret()
+            return True
+        except (ValueError, NotImplementedError, RuntimeError):
+            return manager._has_saved_credentials_for_user(cls.CONNECTOR_TYPE, user_id)
 
     def get_client_id(self) -> str:
         """Get the OAuth client ID from environment variable"""

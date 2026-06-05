@@ -96,7 +96,7 @@ def _wire_connector_processor(
 
 
 @pytest.mark.asyncio
-async def test_connector_processor_fails_when_filename_exists_and_replace_false(monkeypatch):
+async def test_connector_processor_skips_when_filename_exists_and_replace_false(monkeypatch):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
     processor = _build_connector_processor(replace_duplicates=False)
     document = _make_document()
@@ -108,10 +108,15 @@ async def test_connector_processor_fails_when_filename_exists_and_replace_false(
     with patch.object(processor, "process_document_standard", new=AsyncMock()) as mock_process:
         await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.FAILED
-    assert "already exists" in (file_task.error or "")
-    assert upload_task.failed_files == 1
-    assert upload_task.successful_files == 0
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.error is None
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": "A file with this name already exists.",
+    }
+    assert upload_task.failed_files == 0
+    assert upload_task.successful_files == 1
     mock_process.assert_not_called()
     opensearch_client.delete_by_query.assert_not_called()
 
@@ -271,7 +276,7 @@ def _wire_langflow_processor(
 
 
 @pytest.mark.asyncio
-async def test_langflow_connector_processor_fails_on_filename_collision(monkeypatch):
+async def test_langflow_connector_processor_skips_on_filename_collision(monkeypatch):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
     processor = _build_langflow_processor(replace_duplicates=False)
     document = _make_document()
@@ -282,9 +287,15 @@ async def test_langflow_connector_processor_fails_on_filename_collision(monkeypa
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.FAILED
-    assert "already exists" in (file_task.error or "")
-    assert upload_task.failed_files == 1
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.error is None
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": "A file with this name already exists.",
+    }
+    assert upload_task.failed_files == 0
+    assert upload_task.successful_files == 1
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
     opensearch_client.delete_by_query.assert_not_called()
 

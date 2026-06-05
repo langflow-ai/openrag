@@ -2,6 +2,8 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import type { IngestSettings } from "@/components/cloud-picker/types";
+
 // Response types
 interface SyncResponse {
   task_ids?: string[];
@@ -68,10 +70,10 @@ const syncConnector = async ({
       downloadUrl?: string;
       size?: number;
     }>;
-    settings?: any;
+    settings?: IngestSettings;
     /** When true, ingest all files from the connector (bypasses the re-sync gate). */
     sync_all?: boolean;
-    /** Restrict ingest to these bucket names (IBM COS). */
+    /** Restrict ingest to these bucket names (bucket connectors). */
     bucket_filter?: string[];
     /** When true, replace any indexed document with the same filename. */
     replace_duplicates?: boolean;

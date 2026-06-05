@@ -17,10 +17,12 @@ import {
 } from "@/lib/task-error-display";
 import {
   getFailedFileCount,
-  getFailedFileEntries,
   getSuccessfulFileCount,
   getTaskFileName,
+  getTaskIssueFileEntries,
+  getWarningFileEntries,
   isCompletedTotalFailure,
+  isTaskFileWarning,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
 import { formatTaskTimestamp, parseTimestamp } from "@/lib/time-utils";
@@ -48,15 +50,21 @@ export function TaskErrorContent({
   );
   const isExpanded = accordionValue === "failed-files";
 
-  const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
+  const issueEntries = useMemo(() => getTaskIssueFileEntries(task), [task]);
 
   const failedCount = getFailedFileCount(task);
+  const warningCount = getWarningFileEntries(task).length;
   const successCount = getSuccessfulFileCount(task);
+  const ingestedSuccessCount = Math.max(0, successCount - warningCount);
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
   const isFailedStatus =
     isTerminalFailedTask(task) || isCompletedTotalFailure(task);
-  const statusLabel = isFailedStatus ? "Failed" : "Complete";
+  const statusLabel = isFailedStatus
+    ? "Failed"
+    : warningCount > 0
+      ? "Warning"
+      : "Complete";
   // Pill colors: failed (red) vs partial success (amber/orange), each with IBM tokens or OSS borders.
   const statusPillClassName = cn(
     "shrink-0 rounded-full px-2 py-1 text-xs",
@@ -69,7 +77,7 @@ export function TaskErrorContent({
         : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
   );
 
-  if (failedCount <= 0 && failedEntries.length === 0) {
+  if (failedCount <= 0 && issueEntries.length === 0) {
     return null;
   }
 
@@ -78,7 +86,9 @@ export function TaskErrorContent({
   const accordionSummary = (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <span className="text-xs">
-        {successCount} success · {failedCount} failed
+        {ingestedSuccessCount} success
+        {warningCount > 0 ? ` · ${warningCount} warning` : ""}
+        {failedCount > 0 ? ` · ${failedCount} failed` : ""}
       </span>
       <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
     </div>
@@ -174,10 +184,11 @@ export function TaskErrorContent({
             {accordionHeader}
             <AccordionContent className="w-full p-0 pt-2">
               <div className="flex w-full flex-col gap-2">
-                {failedEntries.map(([filePath, fileInfo], index) => {
+                {issueEntries.map(([filePath, fileInfo], index) => {
                   const fileName = getTaskFileName(filePath, fileInfo);
                   const line = resolveTaskFileError(fileInfo, task.error);
                   const componentCause = formatApiComponent(fileInfo.component);
+                  const isWarning = isTaskFileWarning(fileInfo);
 
                   return (
                     <div
@@ -185,8 +196,18 @@ export function TaskErrorContent({
                       className={cn(
                         "task-failed-file-card min-w-0",
                         isCloudBrand
-                          ? "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] border-l-destructive bg-border p-2"
-                          : "flex flex-col gap-1 rounded border-destructive/20 bg-failure-soft py-mmd px-4",
+                          ? cn(
+                              "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] bg-border p-2",
+                              isWarning
+                                ? "border-l-brand-amber"
+                                : "border-l-destructive",
+                            )
+                          : cn(
+                              "flex flex-col gap-1 rounded py-mmd px-4",
+                              isWarning
+                                ? "border border-brand-amber-30 bg-brand-amber-10"
+                                : "border-destructive/20 bg-failure-soft",
+                            ),
                       )}
                     >
                       <p

@@ -69,6 +69,17 @@ def _is_non_retryable_file_error(error: str) -> bool:
     return any(marker in lowered for marker in _NON_RETRYABLE_FILE_ERROR_MARKERS)
 
 
+_TASK_CANCELLATION_ERROR_MARKERS = (
+    "task cancelled by user",
+    "file processing task cancelled",
+)
+
+
+def _is_task_cancellation_error(error: str) -> bool:
+    lowered = error.lower()
+    return any(marker in lowered for marker in _TASK_CANCELLATION_ERROR_MARKERS)
+
+
 def _is_transient_connectivity_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
@@ -926,6 +937,13 @@ class TaskService:
         docling_status = file_task.docling_status
         phase = file_task.phase
         error = file_task.error or ""
+
+        if _is_task_cancellation_error(error):
+            return {
+                "failure_phase": "cancelled",
+                "user_facing_message": "Ingestion was cancelled.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
 
         if docling_status == DoclingPhaseStatus.EXPIRED:
             return {

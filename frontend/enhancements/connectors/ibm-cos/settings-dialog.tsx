@@ -4,9 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { useIBMCOSConfigureMutation } from "@/app/api/mutations/useIBMCOSConfigureMutation";
-import { useIBMCOSDefaultsQuery } from "@/app/api/queries/useIBMCOSDefaultsQuery";
-import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,10 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  type IBMCOSFormData,
-  IBMCOSSettingsForm,
-} from "./ibm-cos-settings-form";
+import IBMCOSIcon from "./icon";
+import { type IBMCOSFormData, IBMCOSSettingsForm } from "./settings-form";
+import { useIBMCOSConfigureMutation } from "./useIBMCOSConfigureMutation";
+import { useIBMCOSDefaultsQuery } from "./useIBMCOSDefaultsQuery";
 
 interface IBMCOSSettingsDialogProps {
   open: boolean;

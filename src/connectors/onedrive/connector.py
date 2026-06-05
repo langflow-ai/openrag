@@ -32,9 +32,17 @@ class OneDriveConnector(BaseConnector):
     CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
 
     # Connector metadata
+    CONNECTOR_TYPE = "onedrive"
+    CONNECTOR_KIND = "oauth"
     CONNECTOR_NAME = "OneDrive"
     CONNECTOR_DESCRIPTION = "Add knowledge from OneDrive"
     CONNECTOR_ICON = "onedrive"
+
+    @classmethod
+    def get_oauth_class(cls):
+        from .oauth import OneDriveOAuth
+
+        return OneDriveOAuth
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

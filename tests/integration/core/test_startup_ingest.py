@@ -91,8 +91,12 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
 
     app = await create_app()
     startup_complete = False
+    lifespan_ctx = None
     try:
-        await app.router.startup()
+        # Starlette 1.x removed Router.startup()/shutdown(); drive the app's
+        # lifespan context manager directly, like an ASGI server would.
+        lifespan_ctx = app.router.lifespan_context(app)
+        await lifespan_ctx.__aenter__()
         startup_complete = True
 
         # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
@@ -139,9 +143,9 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
             assert newest["total_files"] > 0
             assert newest.get("files")
     finally:
-        if startup_complete:
+        if startup_complete and lifespan_ctx is not None:
             try:
-                await app.router.shutdown()
+                await lifespan_ctx.__aexit__(None, None, None)
             except Exception:
                 pass
         # Explicitly close global clients to avoid aiohttp warnings

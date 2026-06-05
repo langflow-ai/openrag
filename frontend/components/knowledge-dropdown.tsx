@@ -15,11 +15,6 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
-import AwsIcon from "@/components/icons/aws-logo";
-import GoogleDriveIcon from "@/components/icons/google-drive-logo";
-import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
-import OneDriveIcon from "@/components/icons/one-drive-logo";
-import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,6 +35,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  getConnectorDescriptor,
+  getConnectorDescriptors,
+} from "@/lib/connectors/registry";
 import {
   duplicateCheck,
   uploadFiles,
@@ -135,8 +134,9 @@ export function KnowledgeDropdown() {
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
-  const [ibmCosConfigured, setIbmCosConfigured] = useState(false);
-  const [s3Configured, setS3Configured] = useState(false);
+  const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
+    Record<string, boolean>
+  >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
@@ -167,11 +167,16 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     const checkAvailability = async () => {
       try {
+        const bucketDescriptors = getConnectorDescriptors().filter(
+          (d) => d.kind === "bucket",
+        );
+
         // Check upload batch size and bucket connector availability in parallel
-        const [uploadOptionsRes, ibmCosRes, s3Res] = await Promise.all([
+        const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
           fetch("/api/upload_options"),
-          fetch("/api/connectors/ibm_cos/defaults"),
-          fetch("/api/connectors/aws_s3/defaults"),
+          ...bucketDescriptors.map((d) =>
+            fetch(`/api/connectors/${d.connectorType}/defaults`),
+          ),
         ]);
 
         if (uploadOptionsRes.ok) {
@@ -184,23 +189,22 @@ export function KnowledgeDropdown() {
           }
         }
 
-        if (ibmCosRes.ok) {
-          const ibmCosData = await ibmCosRes.json();
-          setIbmCosConfigured(
-            Boolean(
-              ibmCosData.connection_id ||
-                ibmCosData.api_key_set ||
-                ibmCosData.hmac_access_key_set,
-            ),
-          );
-        }
-
-        if (s3Res.ok) {
-          const s3Data = await s3Res.json();
-          setS3Configured(
-            Boolean(s3Data.connection_id || s3Data.access_key_set),
-          );
-        }
+        const configured: Record<string, boolean> = {};
+        await Promise.all(
+          bucketResponses.map(async (res, i) => {
+            const descriptor = bucketDescriptors[i];
+            if (!res.ok) return;
+            const data = await res.json();
+            // Generic predicate: connection_id set OR any *_set boolean is true.
+            const anySetFlag = Object.entries(data).some(
+              ([k, v]) => k.endsWith("_set") && v === true,
+            );
+            configured[descriptor.connectorType] = Boolean(
+              data.connection_id || anySetFlag,
+            );
+          }),
+        );
+        setBucketConnectorConfigured(configured);
 
         // Check cloud connectors
         const connectorsRes = await fetch("/api/connectors");
@@ -615,38 +619,48 @@ export function KnowledgeDropdown() {
     }
   };
 
-  // Icon mapping for cloud connectors
-  const connectorIconMap = {
-    google_drive: GoogleDriveIcon,
-    onedrive: OneDriveIcon,
-    sharepoint: SharePointIcon,
-  };
-
   const cloudConnectorItems = Object.entries(cloudConnectors)
     .filter(([type, info]) => {
       if (!info.available) return false;
       if (isCloudBrand && type === "onedrive") return false;
       return true;
     })
-    .map(([type, info]) => ({
-      label: info.name,
-      icon: connectorIconMap[type as keyof typeof connectorIconMap] || PlugZap,
-      onClick: async () => {
-        if (info.connected && info.hasToken) {
-          setIsNavigatingToCloud(true);
-          try {
-            router.push(`/upload/${type}`);
-            // Keep loading state for a short time to show feedback
-            setTimeout(() => setIsNavigatingToCloud(false), 1000);
-          } catch {
-            setIsNavigatingToCloud(false);
+    .map(([type, info]) => {
+      const descriptor = getConnectorDescriptor(type);
+      return {
+        label: info.name,
+        icon: descriptor?.Icon ?? PlugZap,
+        onClick: async () => {
+          if (info.connected && info.hasToken) {
+            setIsNavigatingToCloud(true);
+            try {
+              router.push(`/upload/${type}`);
+              setTimeout(() => setIsNavigatingToCloud(false), 1000);
+            } catch {
+              setIsNavigatingToCloud(false);
+            }
+          } else {
+            router.push("/settings");
           }
-        } else {
-          router.push("/settings");
-        }
-      },
-      disabled: !info.connected || !info.hasToken,
-    }));
+        },
+        disabled: !info.connected || !info.hasToken,
+      };
+    });
+
+  const bucketConnectorItems = isIbmAuthMode
+    ? getConnectorDescriptors()
+        .filter(
+          (d) =>
+            d.kind === "bucket" &&
+            d.menuItem &&
+            bucketConnectorConfigured[d.connectorType],
+        )
+        .map((d) => ({
+          label: d.menuItem!.label,
+          icon: d.Icon,
+          onClick: () => router.push(d.menuItem!.route),
+        }))
+    : [];
 
   const menuItems = [
     {
@@ -659,24 +673,7 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
-    ...(isIbmAuthMode && s3Configured
-      ? [
-          {
-            label: "Amazon S3",
-            icon: AwsIcon,
-            onClick: () => router.push("/upload/aws_s3"),
-          },
-        ]
-      : []),
-    ...(isIbmAuthMode && ibmCosConfigured
-      ? [
-          {
-            label: "IBM Cloud Object Storage",
-            icon: IBMCOSIcon,
-            onClick: () => router.push("/upload/ibm_cos"),
-          },
-        ]
-      : []),
+    ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
 
