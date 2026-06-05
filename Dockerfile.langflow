@@ -18,12 +18,15 @@ RUN microdnf install -y \
     && microdnf clean all
 
 # Install SQLite >= 3.35.0 (UBI9 has 3.34.1) from source
-RUN curl -L https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz | tar -xz \
+RUN curl -L -o sqlite-autoconf-3460000.tar.gz https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz \
+    && echo "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc  sqlite-autoconf-3460000.tar.gz" > sqlite-autoconf-3460000.tar.gz.sha3 \
+    && openssl dgst -sha3-256 sqlite-autoconf-3460000.tar.gz | grep -q "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc" \
+    && tar -xzf sqlite-autoconf-3460000.tar.gz \
     && cd sqlite-autoconf-3460000 \
     && ./configure --prefix=/usr --libdir=/usr/lib64 \
     && make -j$(nproc) install \
     && cd .. \
-    && rm -rf sqlite-autoconf-3460000
+    && rm -rf sqlite-autoconf-3460000 sqlite-autoconf-3460000.tar.gz sqlite-autoconf-3460000.tar.gz.sha3
 
 # Stage 2: Runtime image
 FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime

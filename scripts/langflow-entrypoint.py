@@ -9,19 +9,34 @@ host-side chmod into the container, so permissions must be fixed from
 inside the container after the mount is established.
 """
 
+import grp
 import os
 import pathlib
 import pwd
 import shutil
 import sys
 
-# Ensure data directory is writable by the langflow user
-data_dir = pathlib.Path("/app/data")
+is_root = os.geteuid() == 0
+
+# Check if target uid/gid 1000 exist in the system
+target_exists = False
 try:
-    data_dir.chmod(0o777)
-    shutil.chown(data_dir, user=1000, group=1000)
-except (OSError, PermissionError):
+    pwd.getpwuid(1000)
+    grp.getgrgid(1000)
+    target_exists = True
+except KeyError:
     pass
+
+# Ensure data directory is writable by the langflow user
+data_dir_path = os.environ.get("APP_DATA_DIR", "/app/data")
+data_dir = pathlib.Path(data_dir_path)
+
+if is_root and target_exists:
+    try:
+        data_dir.chmod(0o777)
+        shutil.chown(data_dir, user=1000, group=1000)
+    except (OSError, PermissionError):
+        pass
 
 # Look up uid 1000's passwd entry so we can restore HOME and USER correctly
 # after dropping privileges.  Running as root (USER root in Dockerfile) sets
@@ -40,20 +55,23 @@ home_path = pathlib.Path(home)
 if not home_path.exists():
     try:
         home_path.mkdir(parents=True, exist_ok=True)
-        home_path.chmod(0o755)
-        shutil.chown(home, user=1000, group=1000)
+        if is_root and target_exists:
+            home_path.chmod(0o755)
+            shutil.chown(home, user=1000, group=1000)
     except (OSError, PermissionError):
         pass
 
 # Drop from root to langflow (uid=1000, gid=1000) only when we have the
 # privilege to do so. Under OpenShift the container already runs as an
 # arbitrary non-root UID, in which case there is nothing to drop.
-if os.getuid() == 0:
-    os.setgid(1000)
-    os.setuid(1000)
-
-# Restore environment variables to reflect the unprivileged user.
-os.environ["HOME"] = home
-os.environ["USER"] = user
+if is_root and target_exists:
+    try:
+        os.setgid(1000)
+        os.setuid(1000)
+        # Restore environment variables to reflect the unprivileged user.
+        os.environ["HOME"] = home
+        os.environ["USER"] = user
+    except OSError:
+        pass
 
 os.execvp(sys.argv[1], sys.argv[1:])
