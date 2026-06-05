@@ -9,6 +9,7 @@ from dependencies import get_document_index_writer, get_langflow_ingest_token_se
 from services.document_index_writer import DocumentIndexChunk, DocumentIndexWriter
 from services.langflow_ingest_token_service import LangflowIngestTokenService
 from utils.logging_config import get_logger
+from utils.opensearch_utils import opensearch_error_fields, opensearch_error_reason
 
 logger = get_logger(__name__)
 
@@ -57,29 +58,14 @@ def _describe_ingest_error(error: Exception) -> tuple[dict[str, Any], str]:
     returns ``(log_fields, detail)`` so the log line and the 500 detail both name
     the actual cause instead of just the exception class.
     """
-    log_fields: dict[str, Any] = {"error_type": type(error).__name__, "error": str(error)}
+    error_str = str(error)
+    log_fields: dict[str, Any] = {"error_type": type(error).__name__, "error": error_str}
+    log_fields.update(opensearch_error_fields(error))
 
-    status = getattr(error, "status_code", None)
-    if status is not None:
-        log_fields["opensearch_status"] = status
-
-    info = getattr(error, "info", None)
-    if info is not None:
-        log_fields["opensearch_info"] = info
-
-    reason: str | None = None
-    if isinstance(info, dict):
-        err = info.get("error")
-        if isinstance(err, dict):
-            reason = err.get("reason")
-            root_cause = err.get("root_cause")
-            if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
-                log_fields["opensearch_root_cause"] = root_cause[0]
-                reason = root_cause[0].get("reason") or reason
-
-    detail = str(error)
+    detail = error_str
+    reason = opensearch_error_reason(error)
     if reason:
-        detail = f"{detail} | opensearch: {reason}"
+        detail = f"{error_str} | opensearch: {reason}"
     return log_fields, detail
 
 

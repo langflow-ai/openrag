@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+from typing import Any
 
 import yaml
 from opensearchpy import AsyncOpenSearch
@@ -52,6 +53,54 @@ def is_disk_space_error(error: Exception) -> bool:
     """
     error_str = str(error).lower()
     return any(indicator in error_str for indicator in _DISK_SPACE_INDICATORS)
+
+
+def opensearch_error_reason(error: Exception) -> str | None:
+    """Return the most specific OpenSearch failure reason carried by an exception.
+
+    OpenSearch transport errors stringify to just ``TransportError(500, '')``; the
+    real cause (and, on mapping/parse failures, the offending field) lives in the
+    ``info`` body under ``error.root_cause[0].reason`` or ``error.reason``. Returns
+    ``None`` when the exception carries no such structured reason.
+    """
+    info = getattr(error, "info", None)
+    if not isinstance(info, dict):
+        return None
+    err = info.get("error")
+    if not isinstance(err, dict):
+        return None
+    root_cause = err.get("root_cause")
+    if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+        if root_cause[0].get("reason"):
+            return root_cause[0]["reason"]
+    return err.get("reason")
+
+
+def opensearch_error_fields(error: Exception) -> dict[str, Any]:
+    """Extract structured OpenSearch context from an exception for logging.
+
+    Surfaces ``opensearch_status``/``opensearch_error``/``opensearch_info`` (and
+    ``opensearch_root_cause`` when present) so every OpenSearch-touching call site
+    logs the same schema instead of an opaque ``str(e)``. Non-OpenSearch
+    exceptions yield an empty dict.
+    """
+    fields: dict[str, Any] = {}
+    status = getattr(error, "status_code", None)
+    if status is not None:
+        fields["opensearch_status"] = status
+    os_error = getattr(error, "error", None)
+    if os_error is not None:
+        fields["opensearch_error"] = os_error
+    info = getattr(error, "info", None)
+    if info is not None:
+        fields["opensearch_info"] = info
+        if isinstance(info, dict):
+            err = info.get("error")
+            if isinstance(err, dict):
+                root_cause = err.get("root_cause")
+                if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+                    fields["opensearch_root_cause"] = root_cause[0]
+    return fields
 
 
 async def wait_for_opensearch(
