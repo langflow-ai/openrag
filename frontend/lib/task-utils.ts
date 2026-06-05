@@ -257,6 +257,9 @@ export function hasFailedFileEntries(task: Task): boolean {
 }
 
 export function hasIssueFileEntries(task: Task): boolean {
+  if ((task.failed_files ?? 0) > 0) {
+    return true;
+  }
   return getTaskIssueFileEntries(task).length > 0;
 }
 
