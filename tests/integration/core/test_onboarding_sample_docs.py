@@ -195,6 +195,7 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         assert payload["openrag_docs_filter_id"]
 
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
+        print(f"\nDEBUG: task_status returned from _wait_for_task: {task_status}")
         assert task_status["status"] == "completed"
         assert task_status["successful_files"] == len(
             isolated_onboarding_docs_workspace["expected_filenames"]
@@ -208,12 +209,37 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         await clients.opensearch.indices.refresh(
             index=isolated_onboarding_docs_workspace["index_name"]
         )
+        
+        # DEBUG: Print everything in index to see what's actually there
+        import json
+        try:
+            all_docs = await clients.opensearch.search(
+                index=isolated_onboarding_docs_workspace["index_name"],
+                body={"query": {"match_all": {}}, "size": 5}
+            )
+            print(f"\nDEBUG: Sample 5 docs in index: {json.dumps(all_docs, indent=2)}")
+            
+            agg_query = await clients.opensearch.search(
+                index=isolated_onboarding_docs_workspace["index_name"],
+                body={
+                    "size": 0,
+                    "aggs": {
+                        "by_connector": {"terms": {"field": "connector_type"}},
+                        "by_sample_data": {"terms": {"field": "is_sample_data"}}
+                    }
+                }
+            )
+            print(f"DEBUG: Aggs in index (connector_type/is_sample_data): {json.dumps(agg_query, indent=2)}")
+        except Exception as e:
+            print(f"DEBUG: Error querying all docs: {e}")
+
         search_response = await clients.opensearch.search(
             index=isolated_onboarding_docs_workspace["index_name"],
             body={
                 "query": {
                     "bool": {
                         "filter": [
+                            {"term": {"connector_type": "openrag_docs"}},
                             {"term": {"is_sample_data": "true"}},
                         ]
                     }
@@ -224,7 +250,11 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         )
         total = search_response.get("hits", {}).get("total", {})
         total_value = total.get("value", 0) if isinstance(total, dict) else total
-        assert total_value > 0, "Expected onboarding sample document chunks to be indexed"
+        if total_value <= 0:
+            print(f"\nDEBUG: Search response for test query when total_value <= 0: {json.dumps(search_response, indent=2)}")
+            print(f"DEBUG: payload from onboarding: {json.dumps(payload, indent=2)}")
+            
+        assert total_value > 0, f"Expected URL-ingested OpenRAG docs chunks to be indexed, got {total_value}. search_response: {search_response}"
 
         filename_buckets = (
             search_response.get("aggregations", {}).get("filenames", {}).get("buckets", [])
