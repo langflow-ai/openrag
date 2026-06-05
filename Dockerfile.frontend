@@ -45,7 +45,7 @@ RUN microdnf update -y \
     openssl openssl-libs \
     krb5-libs \
     && microdnf clean all \
-    && npm install -g npm
+    && npm install -g npm --prefix=/usr
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
