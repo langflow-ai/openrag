@@ -73,6 +73,7 @@ RUN microdnf install -y \
     glibc glibc-common glibc-minimal-langpack \
     openssl openssl-libs \
     krb5-libs \
+    expat \
     && microdnf clean all \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"

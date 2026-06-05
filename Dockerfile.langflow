@@ -42,6 +42,11 @@ COPY --from=builder /usr/include/sqlite3* /usr/include/
 RUN microdnf install -y \
     ca-certificates \
     shadow-utils \
+    && microdnf update -y \
+    glibc glibc-common glibc-minimal-langpack \
+    openssl openssl-libs \
+    krb5-libs \
+    expat \
     && microdnf clean all
 
 # Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling

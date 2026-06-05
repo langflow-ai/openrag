@@ -39,7 +39,8 @@ RUN microdnf update -y \
     glibc glibc-common glibc-minimal-langpack \
     openssl openssl-libs \
     krb5-libs \
-    && microdnf clean all
+    && microdnf clean all \
+    && npm install -g npm
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
