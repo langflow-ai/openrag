@@ -29,6 +29,7 @@ export const useGetConnectorAccessQuery = (
   return useQuery({
     queryKey: ["connector-user-access"],
     queryFn: fetchConnectorAccess,
+    refetchOnWindowFocus: false,
     ...options,
   });
 };

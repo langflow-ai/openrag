@@ -1,8 +1,9 @@
-"""One-shot runtime migrations from JSON state to the SQL DB.
+"""Runtime migrations from legacy JSON state and the RBAC catalog.
 
-These run on application startup AFTER Alembic upgrade. Idempotency is
-recorded in the `migration_status` table so the migration only ever
-inserts once per install.
+These run on application startup AFTER Alembic upgrade. Legacy JSON
+migrations are one-shot; idempotency is recorded in `migration_status`.
+RBAC catalog sync (`db.seed.seed_roles_and_permissions`) runs every boot
+and is additive-only.
 
 Phase 1 only migrates *user identity* — connections.json, conversations.json,
 and config.yaml are left in place. The legacy users get a placeholder row
@@ -322,6 +323,14 @@ async def run(session: AsyncSession) -> None:
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
         logger.info("chat_history_json_to_db_v1 completed", **stats)
+
+    try:
+        from db.seed import seed_roles_and_permissions
+
+        await seed_roles_and_permissions(session)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("RBAC catalog sync failed; aborting startup", error=str(exc))
+        raise RuntimeMigrationError("rbac_catalog_sync failed") from exc
 
 
 # ---------------------------------------------------------------------------

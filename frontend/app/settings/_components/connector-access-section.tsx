@@ -39,9 +39,16 @@ function ConnectorAccessForm() {
     [connectors],
   );
 
+  // Reset draft when server data catches up; keep unsaved edits on refetch/focus.
   useEffect(() => {
-    setUserDraft(null);
-  }, [serverSnapshot]);
+    setUserDraft((draft) => {
+      if (!draft) return null;
+      const hasUnsavedEdits = connectors.some(
+        (c) => draft[c.type] !== c.enabled,
+      );
+      return hasUnsavedEdits ? draft : null;
+    });
+  }, [serverSnapshot, connectors]);
 
   const accessForSave = useMemo(
     () =>
@@ -130,7 +137,11 @@ function ConnectorAccessForm() {
             </ul>
             <div className="flex justify-end pt-6">
               <Button
-                onClick={() => updateAccess.mutate(accessForSave)}
+                onClick={() =>
+                  updateAccess.mutate(accessForSave, {
+                    onSuccess: () => setUserDraft(null),
+                  })
+                }
                 disabled={updateAccess.isPending || !isDirty}
                 className="min-w-[120px]"
                 size="sm"
