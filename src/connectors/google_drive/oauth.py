@@ -19,12 +19,18 @@ _REFRESH_TIMEOUT_SECONDS = 30
 class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
 
+    REQUIRED_SCOPES = [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+    ]
+
     SCOPES = [
         "openid",
         "email",
         "profile",
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        *REQUIRED_SCOPES,
+        "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+        "https://www.googleapis.com/auth/admin.directory.group.readonly",
     ]
 
     AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -47,7 +53,18 @@ class GoogleDriveOAuth:
         session.timeout = _REFRESH_TIMEOUT_SECONDS
         return Request(session=session)
 
-    async def load_credentials(self) -> Optional[Credentials]:
+    def _missing_required_scopes(self, scopes: list[str] | None) -> list[str]:
+        current_scopes = set(scopes or [])
+        return [scope for scope in self.REQUIRED_SCOPES if scope not in current_scopes]
+
+    def _remove_token_file(self) -> None:
+        if os.path.exists(self.token_file):
+            try:
+                os.remove(self.token_file)
+            except Exception:
+                logger.debug("[GoogleDrive] load_credentials: failed to remove token file")
+
+    async def load_credentials(self) -> Credentials | None:
         """Load existing credentials from token file"""
         from utils.encryption import read_encrypted_file
 
