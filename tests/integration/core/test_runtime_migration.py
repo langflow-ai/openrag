@@ -187,7 +187,11 @@ async def _build_and_start_app():
     config_manager._config = None
     await run_alembic_upgrade_async("head")
     app = await create_app()
-    await app.router.startup()
+    # Starlette 1.x removed Router.startup()/shutdown(); drive the app's
+    # lifespan context manager directly, the same way an ASGI server boots it.
+    lifespan_ctx = app.router.lifespan_context(app)
+    await lifespan_ctx.__aenter__()
+    app.state.lifespan_ctx = lifespan_ctx
     return app
 
 
@@ -199,7 +203,7 @@ async def _shutdown_app(app) -> None:
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-    await app.router.shutdown()
+    await app.state.lifespan_ctx.__aexit__(None, None, None)
     await dispose_engine()
 
 
@@ -210,12 +214,8 @@ async def _db_snapshot() -> dict[str, int]:
     assert SessionLocal is not None
     async with SessionLocal() as session:
         users = await session.scalar(select(func.count()).select_from(User))
-        conversations = await session.scalar(
-            select(func.count()).select_from(Conversation)
-        )
-        ownership = await session.scalar(
-            select(func.count()).select_from(SessionOwnership)
-        )
+        conversations = await session.scalar(select(func.count()).select_from(Conversation))
+        ownership = await session.scalar(select(func.count()).select_from(SessionOwnership))
         statuses = await session.scalar(select(func.count()).select_from(MigrationStatus))
     return {
         "users": int(users or 0),
@@ -287,9 +287,7 @@ async def test_legacy_file_state_migrates_on_backend_startup_and_is_idempotent()
         first_snapshot = await _db_snapshot()
 
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             onboarding = await client.get("/onboarding-status")
             assert onboarding.status_code == 200, onboarding.text
             assert onboarding.json() == {"onboarded": True, "current_step": 4}
@@ -297,8 +295,7 @@ async def test_legacy_file_state_migrates_on_backend_startup_and_is_idempotent()
             history = await client.get("/chat/history")
             assert history.status_code == 200, history.text
             conversations = {
-                item["response_id"]: item
-                for item in history.json().get("conversations", [])
+                item["response_id"]: item for item in history.json().get("conversations", [])
             }
             assert conversations["legacy-session"]["title"] == "Migrated chat"
             assert conversations["legacy-session"]["total_messages"] == 3
@@ -310,9 +307,7 @@ async def test_legacy_file_state_migrates_on_backend_startup_and_is_idempotent()
     try:
         assert await _db_snapshot() == first_snapshot
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             onboarding = await client.get("/onboarding-status")
             assert onboarding.status_code == 200, onboarding.text
             assert onboarding.json()["onboarded"] is True
