@@ -45,7 +45,8 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
-    flowsRef: main   # branch name or commit SHA
+    # flowsRef: main   # branch name or commit SHA; when unset, the
+    #                  # download-flows init container is not created
     # flowsInitImage: python:3-alpine
     # Run langflow as a non-root user. When runAsUser is set without fsGroup,
     # the operator defaults fsGroup to the same value (with
