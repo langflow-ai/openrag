@@ -67,11 +67,11 @@ function ConnectorAccessForm() {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg ibm-settings-section-title">
-          Connector access
+          Connectors Permission
         </CardTitle>
         <CardDescription className="text-sm">
-          Choose which connectors other users in this workspace can connect and
-          use. You always have access to all connectors.
+          Control which connectors other users in this workspace are allowed to
+          connect and use. Admins always have access to all connectors.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,7 +85,7 @@ function ConnectorAccessForm() {
             <p className="text-destructive">
               {error instanceof Error
                 ? error.message
-                : "Failed to load connector access"}
+                : "Failed to load connectors permission"}
             </p>
             <Button
               type="button"

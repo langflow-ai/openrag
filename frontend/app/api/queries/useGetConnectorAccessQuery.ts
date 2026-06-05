@@ -15,7 +15,9 @@ export const useGetConnectorAccessQuery = (
   async function fetchConnectorAccess(): Promise<ConnectorAccessItem[]> {
     const response = await fetch("/api/connectors/user-access");
     if (!response.ok) {
-      throw new Error(`Failed to fetch connector access (${response.status})`);
+      throw new Error(
+        `Failed to fetch connectors permission (${response.status})`,
+      );
     }
     const data = await response.json();
     return Array.isArray(data.connectors) ? data.connectors : [];

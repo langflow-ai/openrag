@@ -16,7 +16,9 @@ export const useUpdateConnectorAccessMutation = () => {
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || "Failed to update connector access");
+        throw new Error(
+          result.error || "Failed to update connectors permission",
+        );
       }
       const data = await response.json();
       return Array.isArray(data.connectors) ? data.connectors : [];
@@ -24,7 +26,7 @@ export const useUpdateConnectorAccessMutation = () => {
     onSuccess: (connectors) => {
       queryClient.setQueryData(["connector-user-access"], connectors);
       queryClient.invalidateQueries({ queryKey: ["connectors"] });
-      toast.success("Connector access saved");
+      toast.success("Connectors permission saved");
     },
     onError: (error: Error) => {
       toast.error(error.message);
