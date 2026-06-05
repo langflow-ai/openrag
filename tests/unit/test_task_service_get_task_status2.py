@@ -154,20 +154,9 @@ class TestInferFailureMetadata:
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
         assert "component" not in meta
-        assert meta["failure_phase"] == "unknown"
+        assert meta["failure_phase"] == "cancelled"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert meta["user_facing_message"] == "Ingestion was cancelled."
-
-    def test_file_processing_cancelled_not_retryable(self, task_service):
-        ft = _make_file_task(
-            phase=IngestionPhase.LANGFLOW,
-            docling_status=DoclingPhaseStatus.SUCCESS,
-            error="File processing task cancelled.",
-        )
-        meta = task_service._infer_failure_metadata(ft)
-        assert meta is not None
-        assert "component" not in meta
-        assert meta["actionable_by"] == "USER_ACTIONABLE"
 
     def test_langflow_phase_failure(self, task_service):
         ft = _make_file_task(

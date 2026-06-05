@@ -18,6 +18,7 @@ export type TaskFailurePhase =
   | "embedding"
   | "indexing"
   | "file_validation"
+  | "cancelled"
   | "unknown";
 
 /** Who can resolve the failure (enhanced API). */

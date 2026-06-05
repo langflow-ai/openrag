@@ -18,6 +18,7 @@ export type TaskPipelineStepId =
   | "embedding"
   | "indexing"
   | "file_validation"
+  | "cancelled"
   | "unknown";
 
 export interface IngestionPipelineStep {
@@ -50,6 +51,7 @@ const PIPELINE_STEP_LABELS: Record<TaskPipelineStepId, string> = {
   embedding: "Embedding",
   indexing: "Indexing",
   file_validation: "File validation",
+  cancelled: "Cancelled",
   unknown: "Ingestion",
 };
 
@@ -93,6 +95,9 @@ export function normalizeFailurePhase(
 }
 
 export function buildRowStatusLabel(failedStep: TaskPipelineStepId): string {
+  if (failedStep === "cancelled") {
+    return "Cancelled";
+  }
   if (failedStep === "file_validation") {
     return "File validation issue";
   }
@@ -103,13 +108,20 @@ export function buildRowStatusLabel(failedStep: TaskPipelineStepId): string {
 }
 
 export function buildFailureSummary(failedStep: TaskPipelineStepId): string {
+  if (failedStep === "cancelled") {
+    return "Cancelled";
+  }
   return `Failed at ${PIPELINE_STEP_LABELS[failedStep].toLowerCase()}`;
 }
 
 export function buildPipelineStepsFromFailurePhase(
   failurePhase: TaskPipelineStepId,
 ): IngestionPipelineStep[] {
-  if (failurePhase === "file_validation" || failurePhase === "unknown") {
+  if (
+    failurePhase === "file_validation" ||
+    failurePhase === "cancelled" ||
+    failurePhase === "unknown"
+  ) {
     return [
       {
         id: failurePhase,

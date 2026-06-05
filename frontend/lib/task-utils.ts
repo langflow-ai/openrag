@@ -26,34 +26,11 @@ export function isTaskFileFailed(fileInfo: TaskFileEntry): boolean {
   return fileInfo.status === "failed" || fileInfo.status === "error";
 }
 
-const TASK_CANCELLATION_USER_MESSAGE = "ingestion was cancelled.";
-
-/** Mirrors backend `_TASK_CANCELLATION_ERROR_MARKERS` for unclassified failures. */
-const TASK_CANCELLATION_ERROR_MARKERS = [
-  "task cancelled by user",
-  "file processing task cancelled",
-] as const;
-
-function isTaskFileCancellation(fileInfo: TaskFileEntry): boolean {
-  const userMessage = fileInfo.user_facing_message?.trim().toLowerCase();
-  if (userMessage) {
-    return userMessage === TASK_CANCELLATION_USER_MESSAGE;
-  }
-
-  const rawError = fileInfo.error?.trim().toLowerCase() ?? "";
-  return TASK_CANCELLATION_ERROR_MARKERS.some((marker) =>
-    rawError.includes(marker),
-  );
-}
-
 export function getTaskFileDialogStatusLabel(
   fileInfo: TaskFileEntry,
   taskError?: string,
 ): string {
   if (isTaskFileFailed(fileInfo)) {
-    if (isTaskFileCancellation(fileInfo)) {
-      return "Cancelled";
-    }
     const failurePhase = normalizeFailurePhase(fileInfo.failure_phase);
     if (failurePhase) {
       return buildRowStatusLabel(failurePhase);
