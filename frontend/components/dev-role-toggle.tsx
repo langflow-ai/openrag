@@ -26,6 +26,15 @@ function parseApiError(
   return `Failed to set role (${status})`;
 }
 
+// Built-in roles, highest-privilege first. Drives the dev-only role switcher;
+// order also sets which role is highlighted when a user holds several.
+const DEV_ROLES = [
+  { value: "admin", label: "Admin" },
+  { value: "developer", label: "Developer" },
+  { value: "user", label: "User" },
+  { value: "viewer", label: "Viewer" },
+] as const;
+
 export function DevRoleToggle() {
   const isCloudBrand = useIsCloudBrand();
   const router = useRouter();
@@ -37,11 +46,11 @@ export function DevRoleToggle() {
     refreshPermissions,
     applyDevRoles,
   } = useAuth();
-  const isAdmin = roles.includes("admin");
-  const currentRole = isAdmin ? "admin" : "user";
+  const currentRole =
+    DEV_ROLES.find((r) => roles.includes(r.value))?.value ?? "user";
 
   const mutation = useMutation({
-    mutationFn: async (role: "admin" | "user") => {
+    mutationFn: async (role: string) => {
       const response = await fetch("/api/users/me/dev-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,9 +79,9 @@ export function DevRoleToggle() {
         queryKey: ["connector-user-access"],
       });
       router.refresh();
-      toast.success(
-        data.role === "admin" ? "Switched to admin" : "Switched to user",
-      );
+      const label =
+        DEV_ROLES.find((r) => r.value === data.role)?.label ?? data.role;
+      toast.success(`Switched to ${label}`);
       if (!refreshed) {
         toast.warning("Role updated; permissions refresh failed — retry later");
       }
@@ -91,32 +100,22 @@ export function DevRoleToggle() {
       className="flex items-center border border-border rounded-full"
       title="Dev only: switch RBAC role for SaaS UI testing"
     >
-      <button
-        type="button"
-        disabled={mutation.isPending}
-        className={`px-3 h-6 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-          currentRole === "user"
-            ? "bg-foreground text-background"
-            : "text-foreground hover:bg-muted"
-        }`}
-        onClick={() => mutation.mutate("user")}
-        data-testid="dev-role-user"
-      >
-        User
-      </button>
-      <button
-        type="button"
-        disabled={mutation.isPending}
-        className={`px-3 h-6 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-          currentRole === "admin"
-            ? "bg-blue-600 text-white"
-            : "text-foreground hover:bg-blue-600 hover:text-white"
-        }`}
-        onClick={() => mutation.mutate("admin")}
-        data-testid="dev-role-admin"
-      >
-        Admin
-      </button>
+      {DEV_ROLES.map((role) => (
+        <button
+          key={role.value}
+          type="button"
+          disabled={mutation.isPending}
+          className={`px-3 h-6 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+            currentRole === role.value
+              ? "bg-blue-600 text-white"
+              : "text-foreground hover:bg-blue-600 hover:text-white"
+          }`}
+          onClick={() => mutation.mutate(role.value)}
+          data-testid={`dev-role-${role.value}`}
+        >
+          {role.label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -16,7 +16,7 @@ const VALID_TABS = [
   "providers",
   "langflow",
   "api-keys",
-  "roles",
+  "connector-access",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
@@ -84,8 +84,8 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    tab === "roles" &&
-    (!isCloudBrandServer || !permissions.has("config:write"))
+    tab === "connector-access" &&
+    (!isCloudBrandServer || !permissions.has("connectors:manage:access"))
   ) {
     redirect("/settings/connectors");
   }
@@ -134,7 +134,7 @@ export default async function SettingsTabPage({
         </div>
       )}
       {tab === "api-keys" && <ApiKeysSection />}
-      {tab === "roles" && <ConnectorAccessSection />}
+      {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>
   );
 }

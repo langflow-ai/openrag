@@ -15,10 +15,10 @@ const TABS = [
   { value: "langflow", label: "Langflow", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
-    value: "roles",
-    label: "Roles & Permissions",
-    perm: "config:write",
-    rolesTab: true,
+    value: "connector-access",
+    label: "Connector access",
+    perm: "connectors:manage:access",
+    connectorAccessTab: true,
   },
 ] as const;
 
@@ -28,12 +28,13 @@ export function SettingsNav() {
   const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const { can } = usePermissions();
-  const canManageConnectorAccess = can("config:write");
+  const canManageConnectorAccess = can("connectors:manage:access");
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
-    if ("rolesTab" in tab) return isCloudBrand && canManageConnectorAccess;
+    if ("connectorAccessTab" in tab)
+      return isCloudBrand && canManageConnectorAccess;
     if ("perm" in tab) return can(tab.perm);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
@@ -41,7 +42,10 @@ export function SettingsNav() {
   });
 
   useEffect(() => {
-    if (currentTab === "roles" && !(isCloudBrand && canManageConnectorAccess)) {
+    if (
+      currentTab === "connector-access" &&
+      !(isCloudBrand && canManageConnectorAccess)
+    ) {
       router.replace("/settings/connectors");
     }
   }, [currentTab, isCloudBrand, canManageConnectorAccess, router]);

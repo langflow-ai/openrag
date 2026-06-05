@@ -20,7 +20,7 @@ export function ConnectorAccessSection() {
   const isCloudBrand = useIsCloudBrand();
   const { can } = usePermissions();
 
-  if (!isCloudBrand || !can("config:write")) {
+  if (!isCloudBrand || !can("connectors:manage:access")) {
     return null;
   }
 

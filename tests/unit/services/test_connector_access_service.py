@@ -16,9 +16,11 @@ if str(SRC) not in sys.path:
 import db.models  # noqa: E402,F401
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
 from services.connector_access_service import (  # noqa: E402
+    CONNECTOR_TYPES,
     filter_connectors_for_user,
     get_access_map,
     is_connector_allowed,
+    set_connector_access_bulk,
 )
 
 
@@ -79,3 +81,30 @@ async def test_is_connector_allowed_reads_workspace_config(session):
     assert access["google_drive"] is False
     assert await is_connector_allowed(session, "sharepoint") is True
     assert await is_connector_allowed(session, "google_drive") is False
+
+
+@pytest.mark.asyncio
+async def test_connector_types_derived_from_registry(session):
+    # Single source of truth: the policy module mirrors the connector registry.
+    from connectors.connection_manager import CONNECTOR_TYPE_KEYS
+
+    assert CONNECTOR_TYPES == CONNECTOR_TYPE_KEYS
+    assert "google_drive" in CONNECTOR_TYPES
+
+
+@pytest.mark.asyncio
+async def test_set_connector_access_bulk_persists(session):
+    await set_connector_access_bulk(session, {"google_drive": False}, actor_user_id="u1")
+    await session.commit()
+
+    assert await is_connector_allowed(session, "google_drive") is False
+    # Untouched types stay enabled by default.
+    assert await is_connector_allowed(session, "sharepoint") is True
+
+
+@pytest.mark.asyncio
+async def test_set_connector_access_bulk_rejects_unknown_type(session):
+    with pytest.raises(ValueError, match="Unknown connector type"):
+        await set_connector_access_bulk(
+            session, {"not_a_connector": True}, actor_user_id="u1"
+        )

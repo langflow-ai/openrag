@@ -16,7 +16,6 @@ from dependencies import (
 )
 from services.connector_access_service import (
     CONNECTOR_TYPES,
-    _actor_db_id,
     filter_connectors_for_user,
     get_access_map,
     is_connector_allowed,
@@ -568,7 +567,7 @@ def _connector_access_client_error(exc: ValueError) -> str:
 
 async def get_connector_user_access(
     connector_service=Depends(get_connector_service),
-    user: User = Depends(require_permission("config:write")),
+    user: User = Depends(require_permission("connectors:manage:access")),
     session: AsyncSession = Depends(get_db_session),
 ):
     """List connector types and whether non-admin users may use them."""
@@ -581,7 +580,7 @@ async def get_connector_user_access(
 
 async def update_connector_user_access(
     body: UpdateConnectorAccessBody,
-    user: User = Depends(require_permission("config:write")),
+    user: User = Depends(require_permission("connectors:manage:access")),
     session: AsyncSession = Depends(get_db_session),
     connector_service=Depends(get_connector_service),
 ):
@@ -590,7 +589,7 @@ async def update_connector_user_access(
         await set_connector_access_bulk(
             session,
             body.access,
-            _actor_db_id(user),
+            user.db_user_id or user.user_id,
         )
         await session.commit()
     except ValueError as e:
@@ -1397,7 +1396,8 @@ async def sync_all_connectors(
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
-CLOUD_CONNECTOR_TYPES = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
+# Derived from the connector registry (single source of truth).
+CLOUD_CONNECTOR_TYPES = list(CONNECTOR_TYPES)
 
 
 async def _preview_orphans_for_connector_type(
