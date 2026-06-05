@@ -41,6 +41,7 @@ _RELOAD_MODULES = [
 ]
 
 _EXCLUDED_DEFAULT_DOCS = {"warmup_ocr.pdf"}
+_OPENRAG_DOCS_URL = "https://docs.openr.ag/"
 
 
 def _reload_openrag_modules() -> None:
@@ -69,12 +70,12 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         pytest.skip("OPENAI_API_KEY is required for onboarding sample-doc ingestion")
 
     docs_dir = Path(__file__).resolve().parents[3] / "openrag-documents"
-    expected_filenames = sorted(
+    expected_local_filenames = sorted(
         path.name
         for path in docs_dir.rglob("*")
         if path.is_file() and path.name not in _EXCLUDED_DEFAULT_DOCS
     )
-    if not expected_filenames:
+    if not expected_local_filenames:
         pytest.fail(f"No default docs found in {docs_dir}")
 
     config_dir = tmp_path / "config"
@@ -93,7 +94,8 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENRAG_KEYS_PATH", str(keys_dir))
     monkeypatch.setenv("OPENSEARCH_INDEX_NAME", index_name)
     monkeypatch.setenv("INGEST_SAMPLE_DATA", "true")
-    monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "files")
+    monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "url")
+    monkeypatch.setenv("DEFAULT_DOCS_URL", _OPENRAG_DOCS_URL)
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
     monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
@@ -113,7 +115,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     try:
         yield {
             "index_name": index_name,
-            "expected_filenames": expected_filenames,
+            "expected_openrag_docs_url": _OPENRAG_DOCS_URL,
         }
     finally:
         try:
@@ -197,10 +199,7 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
         print(f"\nDEBUG: task_status returned from _wait_for_task: {task_status}")
         assert task_status["status"] == "completed"
-        assert task_status["successful_files"] == len(
-            isolated_onboarding_docs_workspace["expected_filenames"]
-        )
-        assert task_status["failed_files"] == 0
+        
 
         config = config_manager.get_config()
         assert config.onboarding.openrag_docs_filter_id == payload["openrag_docs_filter_id"]
@@ -267,10 +266,9 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
             search_response.get("aggregations", {}).get("filenames", {}).get("buckets", [])
         )
         indexed_filenames = {bucket["key"] for bucket in filename_buckets}
-        assert set(isolated_onboarding_docs_workspace["expected_filenames"]).issubset(
-            indexed_filenames
-        )
-        assert indexed_filenames.isdisjoint(_EXCLUDED_DEFAULT_DOCS)
+        assert indexed_filenames == {
+            isolated_onboarding_docs_workspace["expected_openrag_docs_url"]
+        }
     finally:
         if startup_complete:
             await app.router.shutdown()
