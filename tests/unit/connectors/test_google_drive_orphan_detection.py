@@ -29,7 +29,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-def _make_connector(file_ids: list[str]):
+def _make_connector(file_ids: list[str] | None = None, folder_ids: list[str] | None = None):
     """Build a minimal GoogleDriveConnector via __new__, bypassing __init__.
 
     Only the attributes read by `_iter_selected_items` and `authenticate` are
@@ -43,7 +43,7 @@ def _make_connector(file_ids: list[str]):
         client_secret="fake-client-secret",
         token_file="/tmp/fake-token.json",
         file_ids=file_ids,
-        folder_ids=None,
+        folder_ids=folder_ids,
         include_mime_types=None,
         exclude_mime_types=None,
     )
@@ -102,6 +102,74 @@ def test_missing_file_id_not_in_iter_selected_items():
     connector = _make_connector(file_ids=["gone-file-id"])
 
     with patch.object(connector, "_get_file_meta_by_id", return_value=None):
+        result = connector._iter_selected_items()
+
+    assert result == []
+
+
+def test_resolve_shortcut_requests_target_trashed_field():
+    """Shortcut targets must carry `trashed` so deleted targets are excluded."""
+    connector = _make_connector(file_ids=["shortcut-id"])
+
+    connector.service.files.return_value.get.return_value.execute.return_value = {
+        "id": "target-id",
+        "mimeType": "application/pdf",
+        "trashed": False,
+    }
+
+    result = connector._resolve_shortcut(
+        {
+            "id": "shortcut-id",
+            "mimeType": "application/vnd.google-apps.shortcut",
+            "shortcutDetails": {"targetId": "target-id"},
+        }
+    )
+
+    assert result["id"] == "target-id"
+    _, kwargs = connector.service.files.return_value.get.call_args
+    assert "trashed" in kwargs["fields"]
+
+
+def test_trashed_shortcut_target_not_in_get_file_meta_by_id():
+    """A selected shortcut whose target is in trash must behave as missing."""
+    connector = _make_connector(file_ids=["shortcut-id"])
+    connector.service.files.return_value.get.return_value.execute.side_effect = [
+        {
+            "id": "shortcut-id",
+            "mimeType": "application/vnd.google-apps.shortcut",
+            "shortcutDetails": {"targetId": "target-id"},
+            "trashed": False,
+        },
+        {
+            "id": "target-id",
+            "mimeType": "application/pdf",
+            "trashed": True,
+        },
+    ]
+
+    assert connector._get_file_meta_by_id("shortcut-id") is None
+
+
+def test_trashed_shortcut_target_not_in_expanded_folder_items():
+    """Folder expansion must also exclude shortcuts whose targets are trashed."""
+    connector = _make_connector(folder_ids=["folder-id"])
+    connector.service.files.return_value.get.return_value.execute.return_value = {
+        "id": "target-id",
+        "mimeType": "application/pdf",
+        "trashed": True,
+    }
+
+    with patch.object(
+        connector,
+        "_bfs_expand_folders",
+        return_value=[
+            {
+                "id": "shortcut-id",
+                "mimeType": "application/vnd.google-apps.shortcut",
+                "shortcutDetails": {"targetId": "target-id"},
+            }
+        ],
+    ):
         result = connector._iter_selected_items()
 
     assert result == []
