@@ -105,6 +105,4 @@ async def test_set_connector_access_bulk_persists(session):
 @pytest.mark.asyncio
 async def test_set_connector_access_bulk_rejects_unknown_type(session):
     with pytest.raises(ValueError, match="Unknown connector type"):
-        await set_connector_access_bulk(
-            session, {"not_a_connector": True}, actor_user_id="u1"
-        )
+        await set_connector_access_bulk(session, {"not_a_connector": True}, actor_user_id="u1")

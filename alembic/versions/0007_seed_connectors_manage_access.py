@@ -9,19 +9,20 @@ missing. The catalog lives in db.seed so fresh installs/tests pick this up via
 seed_roles_and_permissions; this migration backfills existing databases.
 
 """
-from typing import Sequence, Union
-import uuid
 
-from alembic import op
+import uuid
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
 
+from alembic import op
 from db.seed import permission_name
 
-
 revision: str = "0007_seed_connectors_manage_access"
-down_revision: Union[str, Sequence[str], None] = "0006_revoke_provider_override_nonadmin"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0006_revoke_provider_override_nonadmin"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _RESOURCE = "connectors"
 _ACTION = "manage:access"
@@ -72,8 +73,7 @@ def upgrade() -> None:
 
     already_granted = bind.execute(
         sa.text(
-            "SELECT 1 FROM role_permissions "
-            "WHERE role_id = :role_id AND permission_id = :perm_id"
+            "SELECT 1 FROM role_permissions WHERE role_id = :role_id AND permission_id = :perm_id"
         ).bindparams(
             sa.bindparam("role_id", admin_role_id),
             sa.bindparam("perm_id", perm_id),
