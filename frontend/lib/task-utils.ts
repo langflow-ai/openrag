@@ -7,7 +7,11 @@ import {
 export const ALL_TASK_FILE_TYPES = "__all__";
 export const ALL_TASK_STATUS_CATEGORIES = "__all__";
 
-export type TaskFileStatusCategory = "completed" | "system_error" | "indexing";
+export type TaskFileStatusCategory =
+  | "completed"
+  | "warning"
+  | "system_error"
+  | "indexing";
 
 export type TaskFileNameSort = "asc" | "desc";
 
@@ -26,6 +30,10 @@ export function isTaskFileFailed(fileInfo: TaskFileEntry): boolean {
   return fileInfo.status === "failed" || fileInfo.status === "error";
 }
 
+export function isTaskFileWarning(fileInfo: TaskFileEntry): boolean {
+  return fileInfo.status === "skipped";
+}
+
 export function getTaskFileDialogStatusLabel(
   fileInfo: TaskFileEntry,
   taskError?: string,
@@ -39,6 +47,9 @@ export function getTaskFileDialogStatusLabel(
       return "Failed";
     }
     return buildRowStatusLabel("unknown");
+  }
+  if (isTaskFileWarning(fileInfo)) {
+    return "Warning";
   }
   if (isTaskFileCompleted(fileInfo)) {
     return "Complete";
@@ -126,6 +137,9 @@ export function getTaskFileStatusCategory(
   if (isTaskFileFailed(fileInfo)) {
     return "system_error";
   }
+  if (isTaskFileWarning(fileInfo)) {
+    return "warning";
+  }
 
   const status = fileInfo.status ?? "pending";
   if (status === "pending" || status === "running" || status === "processing") {
@@ -144,6 +158,7 @@ export function countTaskFileEntriesByCategory(
 ): Record<TaskFileStatusCategory, number> {
   const counts: Record<TaskFileStatusCategory, number> = {
     completed: 0,
+    warning: 0,
     system_error: 0,
     indexing: 0,
   };
@@ -218,11 +233,34 @@ export function getFailedFileEntries(
   );
 }
 
+export function getWarningFileEntries(
+  task: Task,
+): Array<[string, TaskFileEntry]> {
+  return Object.entries(task.files || {}).filter(([, fileInfo]) =>
+    isTaskFileWarning(fileInfo),
+  );
+}
+
+export function getTaskIssueFileEntries(
+  task: Task,
+): Array<[string, TaskFileEntry]> {
+  return Object.entries(task.files || {}).filter(
+    ([, fileInfo]) => isTaskFileFailed(fileInfo) || isTaskFileWarning(fileInfo),
+  );
+}
+
 export function hasFailedFileEntries(task: Task): boolean {
   if ((task.failed_files ?? 0) > 0) {
     return true;
   }
   return getFailedFileEntries(task).length > 0;
+}
+
+export function hasIssueFileEntries(task: Task): boolean {
+  if ((task.failed_files ?? 0) > 0) {
+    return true;
+  }
+  return getTaskIssueFileEntries(task).length > 0;
 }
 
 export function isTerminalFailedTask(task: Task): boolean {

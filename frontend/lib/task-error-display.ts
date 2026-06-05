@@ -137,6 +137,15 @@ export function resolveTaskFileError(
   fileInfo: TaskFileEntry,
   taskError?: string,
 ): string {
+  if (
+    fileInfo.result &&
+    typeof fileInfo.result === "object" &&
+    "warning" in fileInfo.result &&
+    typeof fileInfo.result.warning === "string" &&
+    fileInfo.result.warning.trim()
+  ) {
+    return fileInfo.result.warning.trim();
+  }
   if (typeof fileInfo.user_facing_message === "string") {
     const message = fileInfo.user_facing_message.trim();
     if (message) {
