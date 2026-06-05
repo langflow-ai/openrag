@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-from typing import Optional
 
 import requests as req_lib
 from google.auth.transport.requests import Request

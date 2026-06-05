@@ -445,7 +445,7 @@ async def test_document_id_field_used_by_default():
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
     assert search_body["query"] == {"terms": {"document_id": ["lf-id-b"]}}
-    write_client.delete.assert_awaited_once()
+    opensearch_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio
