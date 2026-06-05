@@ -45,7 +45,11 @@ RUN microdnf update -y \
     openssl openssl-libs \
     krb5-libs \
     && microdnf clean all \
-    && npm install -g npm --prefix=/usr
+    && mkdir -p /tmp/patch \
+    && cd /tmp/patch \
+    && npm install ip-address@10.1.1 --no-audit \
+    && cp -rf node_modules/ip-address /usr/lib/node_modules/npm/node_modules/ \
+    && rm -rf /tmp/patch
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1

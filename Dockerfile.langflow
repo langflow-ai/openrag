@@ -60,7 +60,7 @@ RUN pip install --no-cache-dir \
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
 
-# Create application directory and langflow data directory
+# Create application directory and Langflow data directory
 WORKDIR /app
 RUN mkdir -p /app/data
 
@@ -70,12 +70,14 @@ COPY --chown=root:0 flows/ /app/flows/
 # Copy the entrypoint script
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 
-# Pre-create all writable dirs with OpenShift-safe permissions
+# Pre-create all writable dirs with permissions compatible with the Helm
+# deployment's uid/gid 1000 and OpenShift-style root-group writes.
 RUN mkdir -p /app/data/.mem0 \
              /app/data/.cache \
              /app/data/.gunicorn \
+    && chown -R 1000:1000 /app/data \
     && chgrp -R 0 /app/data \
-    && chmod -R g=u /app/data
+    && chmod -R u+rwX,g+rwX /app/data
 
 # Bake env vars into image — covers cases where entrypoint is bypassed
 ENV HOME=/app/data
@@ -91,7 +93,7 @@ RUN if ! getent group 1000 >/dev/null; then \
         groupadd --gid 1000 langflow; \
     fi \
     && if ! getent passwd 1000 >/dev/null; then \
-        useradd --uid 1000 --gid 1000 --no-create-home langflow; \
+        useradd --uid 1000 --gid 1000 --home-dir /app/data --no-create-home langflow; \
     fi \
     && chgrp -R 0 /app \
     && chmod -R g+rwX /app
