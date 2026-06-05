@@ -52,13 +52,13 @@ spec:
 
           env:
             - name: HOME
-              value: /app/data
+              value: {{ .Values.langflow.persistence.mountPath | quote }}
             - name: XDG_CACHE_HOME
-              value: /app/data/.cache
+              value: {{ printf "%s/.cache" .Values.langflow.persistence.mountPath | quote }}
             - name: MEM0_DIR
-              value: /app/data/.mem0
+              value: {{ printf "%s/.mem0" .Values.langflow.persistence.mountPath | quote }}
             - name: LANGFLOW_CONFIG_DIR
-              value: /app/data
+              value: {{ .Values.langflow.persistence.mountPath | quote }}
             - name: LANGFLOW_WORKERS
               value: "1"
 
