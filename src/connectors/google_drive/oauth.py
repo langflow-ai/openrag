@@ -20,7 +20,7 @@ class _TimeoutSession(req_lib.Session):
         super().__init__()
         self._timeout = timeout
 
-    def request(self, method, url, **kwargs):  # type: ignore[override]
+    def request(self, method, url, **kwargs):
         kwargs.setdefault("timeout", self._timeout)
         return super().request(method, url, **kwargs)
 
