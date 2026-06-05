@@ -60,10 +60,34 @@ RUN pip install --no-cache-dir \
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
 
+# Create application directory and pre-create LANGFLOW_CONFIG_DIR
+WORKDIR /app
+RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /app/langflow
+
+# Copy flows with proper ownership from the start to prevent chown duplication
+COPY --chown=root:0 flows/ /app/flows/
+
 # Copy the entrypoint script
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 
-USER root
+# Bake env vars into image — covers cases where entrypoint is bypassed
+ENV HOME=/tmp
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV MEM0_DIR=/tmp/.mem0
+ENV LANGFLOW_CONFIG_DIR=/app/langflow
+ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
+ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
+
+# Set proper ownership for the app directory with OpenShift compatibility
+# Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
+RUN if ! getent passwd 1000 >/dev/null; then \
+        useradd --uid 1000 --gid 0 --home-dir /tmp --no-create-home langflow; \
+    fi \
+    && chgrp -R 0 /app \
+    && chmod -R g+rwX /app
+
+# NOTE: Container runs as root initially so entrypoint can fix permissions
+# The entrypoint script drops to UID 1000 before executing the main process
 
 EXPOSE 7860
 
