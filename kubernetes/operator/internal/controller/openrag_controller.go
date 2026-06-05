@@ -930,7 +930,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					NodeSelector:       spec.NodeSelector,
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
+					SecurityContext:    defaultedPodSecurityContext(spec.PodSecurityContext, spec.SecurityContext),
 					InitContainers:     initContainers,
 					Volumes:            volumes,
 					Containers: []corev1.Container{
@@ -2573,6 +2573,38 @@ func replicasOrDefault(r *int32) int32 {
 		return *r
 	}
 	return 1
+}
+
+// defaultedPodSecurityContext injects fsGroup when the CR requests a non-root
+// user without one, so PVCs are group-chowned by the kubelet and stay
+// writable. The image entrypoint is bypassed (Command override), so fsGroup
+// is the only mechanism that makes a fresh PVC writable for a non-root user.
+// CRs that set neither runAsUser nor fsGroup are returned unchanged so
+// OpenShift SCCs keep auto-assigning both.
+// NOTE: currently used for langflow only; other stateful components (backend,
+// docling, valkey) could adopt it as a follow-up.
+func defaultedPodSecurityContext(podSC *corev1.PodSecurityContext, ctrSC *corev1.SecurityContext) *corev1.PodSecurityContext {
+	var runAsUser *int64
+	if ctrSC != nil && ctrSC.RunAsUser != nil {
+		runAsUser = ctrSC.RunAsUser
+	} else if podSC != nil && podSC.RunAsUser != nil {
+		runAsUser = podSC.RunAsUser
+	}
+	if runAsUser == nil || *runAsUser == 0 {
+		return podSC
+	}
+	if podSC != nil && podSC.FSGroup != nil {
+		return podSC
+	}
+	out := &corev1.PodSecurityContext{}
+	if podSC != nil {
+		out = podSC.DeepCopy()
+	}
+	out.FSGroup = ptr.To(*runAsUser)
+	if out.FSGroupChangePolicy == nil {
+		out.FSGroupChangePolicy = ptr.To(corev1.FSGroupChangeOnRootMismatch)
+	}
+	return out
 }
 
 func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {

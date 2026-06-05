@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -1463,4 +1464,86 @@ func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
 
 	// Hash should be identical (no unnecessary pod restart)
 	assert.Equal(t, hash1, hash2, "Hash should remain same when env unchanged (avoids unnecessary restarts)")
+}
+
+// ---------------------------------------------------------------------------
+// defaultedPodSecurityContext — fsGroup defaulting for non-root CRs
+// ---------------------------------------------------------------------------
+
+func TestDefaultedPodSecurityContext_NilWhenNoRunAsUser(t *testing.T) {
+	// No securityContext at all — keep nil so OpenShift SCCs assign defaults.
+	assert.Nil(t, defaultedPodSecurityContext(nil, nil))
+}
+
+func TestDefaultedPodSecurityContext_InjectsFSGroupFromPodRunAsUser(t *testing.T) {
+	in := &corev1.PodSecurityContext{RunAsUser: ptr.To(int64(1500))}
+	out := defaultedPodSecurityContext(in, nil)
+
+	require.NotNil(t, out)
+	require.NotNil(t, out.FSGroup)
+	assert.Equal(t, int64(1500), *out.FSGroup)
+	require.NotNil(t, out.FSGroupChangePolicy)
+	assert.Equal(t, corev1.FSGroupChangeOnRootMismatch, *out.FSGroupChangePolicy)
+	// Input must not be mutated.
+	assert.Nil(t, in.FSGroup)
+}
+
+func TestDefaultedPodSecurityContext_InjectsFSGroupFromContainerRunAsUser(t *testing.T) {
+	ctr := &corev1.SecurityContext{RunAsUser: ptr.To(int64(1500))}
+	out := defaultedPodSecurityContext(nil, ctr)
+
+	require.NotNil(t, out)
+	require.NotNil(t, out.FSGroup)
+	assert.Equal(t, int64(1500), *out.FSGroup)
+}
+
+func TestDefaultedPodSecurityContext_ContainerRunAsUserWins(t *testing.T) {
+	pod := &corev1.PodSecurityContext{RunAsUser: ptr.To(int64(1000))}
+	ctr := &corev1.SecurityContext{RunAsUser: ptr.To(int64(1500))}
+	out := defaultedPodSecurityContext(pod, ctr)
+
+	require.NotNil(t, out)
+	require.NotNil(t, out.FSGroup)
+	assert.Equal(t, int64(1500), *out.FSGroup)
+}
+
+func TestDefaultedPodSecurityContext_RespectsExplicitFSGroup(t *testing.T) {
+	in := &corev1.PodSecurityContext{
+		RunAsUser: ptr.To(int64(1500)),
+		FSGroup:   ptr.To(int64(2000)),
+	}
+	out := defaultedPodSecurityContext(in, nil)
+
+	assert.Same(t, in, out, "explicit fsGroup must be returned unchanged")
+	assert.Equal(t, int64(2000), *out.FSGroup)
+	assert.Nil(t, out.FSGroupChangePolicy)
+}
+
+func TestDefaultedPodSecurityContext_RootUserUntouched(t *testing.T) {
+	in := &corev1.PodSecurityContext{RunAsUser: ptr.To(int64(0))}
+	out := defaultedPodSecurityContext(in, nil)
+
+	assert.Same(t, in, out)
+	assert.Nil(t, out.FSGroup)
+}
+
+func TestReconcile_LangflowDeploymentGetsDefaultedFSGroup(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Langflow.PodSecurityContext = &corev1.PodSecurityContext{
+		RunAsUser: ptr.To(int64(1500)),
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: resourceName("lf"), Namespace: "my-ns"}, d))
+	sc := d.Spec.Template.Spec.SecurityContext
+	require.NotNil(t, sc)
+	require.NotNil(t, sc.FSGroup)
+	assert.Equal(t, int64(1500), *sc.FSGroup)
+	require.NotNil(t, sc.FSGroupChangePolicy)
+	assert.Equal(t, corev1.FSGroupChangeOnRootMismatch, *sc.FSGroupChangePolicy)
 }

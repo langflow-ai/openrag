@@ -60,9 +60,13 @@ RUN pip install --no-cache-dir \
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
 
-# Create application directory and pre-create LANGFLOW_CONFIG_DIR
+# Create application directory and pre-create LANGFLOW_CONFIG_DIR plus the
+# data mount points (/app/data for Kubernetes, /app/langflow-data for compose)
+# so non-mounted/emptyDir runs are writable at uid 1000 or any gid-0 user.
 WORKDIR /app
-RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /app/langflow
+RUN mkdir -p /app/langflow /app/data /app/langflow-data \
+    && chown -R 1000:0 /app/langflow /app/data /app/langflow-data \
+    && chmod -R u+rwX,g+rwX /app/langflow /app/data /app/langflow-data
 
 # Copy flows with proper ownership from the start to prevent chown duplication
 COPY --chown=root:0 flows/ /app/flows/
@@ -86,8 +90,11 @@ RUN if ! getent passwd 1000 >/dev/null; then \
     && chgrp -R 0 /app \
     && chmod -R g+rwX /app
 
-# NOTE: Container runs as root initially so entrypoint can fix permissions
-# The entrypoint script drops to UID 1000 before executing the main process
+# NOTE: The image default user is root so the entrypoint can fix data-dir
+# permissions on bind mounts/PVCs, then drop to UID 1000 before exec-ing the
+# main process. When the container is started as a non-root user (Helm
+# runAsUser, OpenShift arbitrary UIDs), the entrypoint skips all privilege
+# operations and relies on fsGroup / group-0 g+rwX permissions instead.
 
 EXPOSE 7860
 
