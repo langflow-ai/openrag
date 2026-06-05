@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
 import { BRAND_COOKIE, type Brand, isCloudBrand } from "@/lib/brand";
 import { fetchFromBackend } from "@/lib/fetch-server";
+import {
+  canAccessConnectorAccessTab,
+  canShowRbacGatedSettingsTab,
+  type SettingsTabAccessContext,
+} from "@/lib/settings-tab-access";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
@@ -20,16 +25,6 @@ const VALID_TABS = [
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
-
-/** Mirror auth-context `can()` for server-side tab guards. */
-function canAccess(
-  permissions: Set<string>,
-  isNoAuthMode: boolean,
-  perm: string,
-): boolean {
-  if (isNoAuthMode) return true;
-  return permissions.has(perm);
-}
 
 async function getTabAuthContext() {
   const [authRes, meRes] = await Promise.allSettled([
@@ -49,12 +44,15 @@ async function getTabAuthContext() {
   const permissions = new Set<string>(
     Array.isArray(meData.permissions) ? meData.permissions : [],
   );
+  const rbacEnforced =
+    typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true;
 
   return {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
     isAuthenticated: Boolean(authData.authenticated),
     permissions,
+    rbacEnforced,
   };
 }
 
@@ -69,8 +67,13 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
 
-  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
-    await getTabAuthContext();
+  const {
+    isNoAuthMode,
+    isIbmAuthMode,
+    isAuthenticated,
+    permissions,
+    rbacEnforced,
+  } = await getTabAuthContext();
 
   const brandCookie = (await cookies()).get(BRAND_COOKIE)?.value as
     | Brand
@@ -80,6 +83,13 @@ export default async function SettingsTabPage({
     brand: brandCookie,
   });
 
+  const tabAccess: SettingsTabAccessContext = {
+    isCloudBrand: isCloudBrandServer,
+    isNoAuthMode,
+    rbacEnforced,
+    permissions,
+  };
+
   if (
     tab === "api-keys" &&
     (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
@@ -88,20 +98,17 @@ export default async function SettingsTabPage({
   }
   if (
     tab === "providers" &&
-    !isNoAuthMode &&
-    !permissions.has("providers:write")
+    !canShowRbacGatedSettingsTab("providers:write", tabAccess)
   ) {
+    redirect("/settings/connectors");
+  }
+  if (tab === "connector-access" && !canAccessConnectorAccessTab(tabAccess)) {
     redirect("/settings/connectors");
   }
   if (
-    tab === "connector-access" &&
-    (!isCloudBrandServer ||
-      !canAccess(permissions, isNoAuthMode, "connectors:manage:access"))
+    tab === "langflow" &&
+    !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
-    redirect("/settings/connectors");
-  }
-  // Langflow tab edits agent + ingest settings (workspace config) — admin-only.
-  if (tab === "langflow" && !isNoAuthMode && !permissions.has("config:write")) {
     redirect("/settings/connectors");
   }
 

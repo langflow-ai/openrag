@@ -43,6 +43,7 @@ export function DevRoleToggle() {
     isNoAuthMode,
     refreshPermissions,
     applyDevRoles,
+    applyDevPermissions,
   } = useAuth();
   const currentRole = DEV_ROLES.find((r) => roles.includes(r.value))?.value;
 
@@ -61,11 +62,18 @@ export function DevRoleToggle() {
         >;
         throw new Error(parseApiError(result, response.status));
       }
-      return response.json() as Promise<{ roles?: string[]; role?: string }>;
+      return response.json() as Promise<{
+        roles?: string[];
+        role?: string;
+        permissions?: string[];
+      }>;
     },
     onSuccess: async (data) => {
       if (Array.isArray(data.roles)) {
         applyDevRoles(data.roles);
+      }
+      if (Array.isArray(data.permissions)) {
+        applyDevPermissions(data.permissions);
       }
       const refreshed = await refreshPermissions();
       if (!refreshed && Array.isArray(data.roles)) {

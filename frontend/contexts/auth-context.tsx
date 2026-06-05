@@ -53,6 +53,8 @@ interface AuthContextType {
   refreshPermissions: () => Promise<boolean>;
   /** Optimistic role update after dev toggle (local SaaS testing only). */
   applyDevRoles: (roles: string[]) => void;
+  /** Optimistic permission update after dev toggle (local SaaS testing only). */
+  applyDevPermissions: (permissions: string[]) => void;
   refreshOnboardingStatus: () => Promise<void>;
 }
 
@@ -297,6 +299,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setRoles(userRoles);
   }, []);
 
+  const applyDevPermissions = useCallback((perms: string[]) => {
+    setPermissions(new Set(perms));
+  }, []);
+
   // Public onboarding-status — fetched once on mount, no auth required.
   // The frontend uses this to decide between the wizard and the login flow.
   const [isOnboarded, setIsOnboarded] = useState<boolean | null>(null);
@@ -344,10 +350,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const can = useCallback(
     (perm: string): boolean => {
-      if (isNoAuthMode) return true;
+      if (isNoAuthMode || !rbacEnforced) return true;
       return permissions.has(perm);
     },
-    [permissions, isNoAuthMode],
+    [permissions, isNoAuthMode, rbacEnforced],
   );
 
   const value: AuthContextType = {
@@ -370,6 +376,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     refreshAuth,
     refreshPermissions,
     applyDevRoles,
+    applyDevPermissions,
     refreshOnboardingStatus,
   };
 

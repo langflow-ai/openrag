@@ -15,6 +15,7 @@ import OneDriveIcon from "@/components/icons/one-drive-logo";
 import SharePointIcon from "@/components/icons/share-point-logo";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { isConnectorVisibleInSettings } from "@/lib/settings-tab-access";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
 import IBMCOSSettingsDialog from "./ibm-cos-settings-dialog";
@@ -53,11 +54,9 @@ export default function ConnectorCards() {
   }, []);
 
   const connectors = queryConnectors
-    .filter((c) => {
-      if (c.type === "ibm_cos" || c.type === "aws_s3") return isIbmAuthMode;
-      if (isCloudBrand && c.type === "onedrive") return false;
-      return true;
-    })
+    .filter((c) =>
+      isConnectorVisibleInSettings(c.type, { isCloudBrand, isIbmAuthMode }),
+    )
     .map((c) => ({
       ...c,
       icon: getConnectorIcon(c.icon),

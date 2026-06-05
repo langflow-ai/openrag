@@ -151,4 +151,17 @@ async def set_my_dev_role(
         )
 
     invalidate_user_ensured_cache(user.provider, user.user_id)
-    return JSONResponse({"roles": roles, "role": body.role})
+
+    db_user = await UserRepo(session).get_by_oauth(user.provider or "unknown", user.user_id)
+    if db_user is None:
+        db_user = await UserRepo(session).get_by_id(user.user_id)
+    db_id = db_user.id if db_user else user.user_id
+    perms = await _effective_permissions(rbac, db_id, session)
+
+    return JSONResponse(
+        {
+            "roles": roles,
+            "role": body.role,
+            "permissions": sorted(perms),
+        }
+    )

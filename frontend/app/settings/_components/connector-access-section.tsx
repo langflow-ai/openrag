@@ -3,7 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useUpdateConnectorAccessMutation } from "@/app/api/mutations/useUpdateConnectorAccessMutation";
-import { useGetConnectorAccessQuery } from "@/app/api/queries/useGetConnectorAccessQuery";
+import { useVisibleConnectorAccessQuery } from "@/app/api/queries/useGetConnectorAccessQuery";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,14 +13,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { canAccessConnectorAccessTab } from "@/lib/settings-tab-access";
 
 export function ConnectorAccessSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { can } = usePermissions();
+  const { isNoAuthMode } = useAuth();
+  const { permissions, rbacEnforced } = usePermissions();
 
-  if (!isCloudBrand || !can("connectors:manage:access")) {
+  if (
+    !canAccessConnectorAccessTab({
+      isCloudBrand,
+      isNoAuthMode,
+      rbacEnforced,
+      permissions,
+    })
+  ) {
     return null;
   }
 
@@ -28,13 +38,8 @@ export function ConnectorAccessSection() {
 }
 
 function ConnectorAccessForm() {
-  const {
-    data: connectors = [],
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useGetConnectorAccessQuery();
+  const { connectors, isLoading, isError, error, refetch } =
+    useVisibleConnectorAccessQuery();
   const updateAccess = useUpdateConnectorAccessMutation();
   /** Non-null only after the user edits; server data stays the source of truth until then. */
   const [userDraft, setUserDraft] = useState<Record<string, boolean> | null>(

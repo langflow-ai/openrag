@@ -6,6 +6,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  canAccessConnectorAccessTab,
+  canShowRbacGatedSettingsTab,
+} from "@/lib/settings-tab-access";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -27,28 +31,53 @@ export function SettingsNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const { can } = usePermissions();
-  const canManageConnectorAccess = can("connectors:manage:access");
+  const {
+    permissions,
+    rbacEnforced,
+    isLoading: permissionsLoading,
+  } = usePermissions();
+
+  const tabAccess = {
+    isCloudBrand,
+    isNoAuthMode,
+    rbacEnforced,
+    permissions,
+  };
+
+  /** RBAC-gated settings tabs apply in SaaS (cloud brand) only; OSS shows all tabs. */
+  const canShowPermTab = (perm: string) => {
+    if (permissionsLoading) return true;
+    return canShowRbacGatedSettingsTab(perm, tabAccess);
+  };
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
     if ("connectorAccessTab" in tab)
-      return isCloudBrand && canManageConnectorAccess;
-    if ("perm" in tab) return can(tab.perm);
+      return isCloudBrand && canShowPermTab(tab.perm);
+    if ("perm" in tab) return canShowPermTab(tab.perm);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
     return true;
   });
 
   useEffect(() => {
+    if (permissionsLoading) return;
     if (
       currentTab === "connector-access" &&
-      !(isCloudBrand && canManageConnectorAccess)
+      !canAccessConnectorAccessTab(tabAccess)
     ) {
       router.replace("/settings/connectors");
     }
-  }, [currentTab, isCloudBrand, canManageConnectorAccess, router]);
+  }, [
+    currentTab,
+    permissionsLoading,
+    isCloudBrand,
+    isNoAuthMode,
+    rbacEnforced,
+    permissions,
+    router,
+  ]);
 
   return (
     <Tabs value={currentTab}>
