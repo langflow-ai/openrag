@@ -18,12 +18,16 @@ _REFRESH_TIMEOUT_SECONDS = 30
 class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
 
+    REQUIRED_SCOPES = [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+    ]
+
     SCOPES = [
         "openid",
         "email",
         "profile",
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        *REQUIRED_SCOPES,
         "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
         "https://www.googleapis.com/auth/admin.directory.group.readonly",
     ]
@@ -50,7 +54,7 @@ class GoogleDriveOAuth:
 
     def _missing_required_scopes(self, scopes: list[str] | None) -> list[str]:
         current_scopes = set(scopes or [])
-        return [scope for scope in self.SCOPES if scope not in current_scopes]
+        return [scope for scope in self.REQUIRED_SCOPES if scope not in current_scopes]
 
     def _remove_token_file(self) -> None:
         if os.path.exists(self.token_file):

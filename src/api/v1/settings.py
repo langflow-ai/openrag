@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from api.settings import SettingsUpdateBody
 from config.settings import get_openrag_config
 from dependencies import (
-    get_api_key_user_async,
     get_models_service,
+    get_rbac_service,
     get_session_manager,
     require_api_key_permission,
 )
@@ -45,7 +45,7 @@ class SettingsResponse(BaseModel):
 
 
 async def get_settings_endpoint(
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("providers:read")),
 ) -> SettingsResponse:
     """Get current OpenRAG configuration (read-only). GET /v1/settings"""
     try:
@@ -76,10 +76,15 @@ async def update_settings_endpoint(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("config:write")),
     models_service=Depends(get_models_service),
+    rbac=Depends(get_rbac_service),
 ):
     """Update OpenRAG configuration settings. POST /v1/settings"""
     from api.settings import update_settings
 
     return await update_settings(
-        body=body, session_manager=session_manager, user=user, models_service=models_service
+        body=body,
+        session_manager=session_manager,
+        user=user,
+        models_service=models_service,
+        rbac=rbac,
     )

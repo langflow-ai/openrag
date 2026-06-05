@@ -157,3 +157,25 @@ def verify_jwt_from_issuer(
             iss=issuer,
         )
         return None
+
+
+def resolve_jwt_claims(token: str | None) -> dict[str, Any] | None:
+    """Resolve claims from a forwarded JWT (header or session token).
+
+    When ``OPENRAG_JWT_VERIFY_SIGNATURE`` is true, verifies the signature via
+    the token's ``iss`` JWKS URL. Otherwise decodes without verification,
+    trusting that upstream auth already validated the caller.
+    """
+    if not token or not str(token).strip():
+        return None
+
+    from config.settings import get_jwt_issuer_verify_tls, get_jwt_verify_signature
+
+    if get_jwt_verify_signature():
+        logger.debug("JWT claims: verifying signature")
+        return verify_jwt_from_issuer(token, verify_tls=get_jwt_issuer_verify_tls())
+
+    from auth import ibm_auth
+
+    logger.debug("JWT claims: decode only (signature verification disabled)")
+    return ibm_auth.decode_ibm_jwt(token)

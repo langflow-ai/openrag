@@ -152,7 +152,8 @@ class SettingsResponse(BaseModel):
     langflow_public_url: str | None
     edited: bool
     onboarding: OnboardingStateConfig
-    providers: ProvidersConfig
+    # None when the caller lacks `providers:read` (RBAC redaction for non-admins).
+    providers: ProvidersConfig | None = None
     knowledge: KnowledgeConfig
     agent: AgentConfig
     localhost_url: str

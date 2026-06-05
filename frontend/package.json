@@ -90,7 +90,7 @@
     "minimatch": "10.2.3",
     "semver": "7.5.4",
     "debug": "4.3.7",
-    "postcss": "8.5.10",
+    "postcss": "$postcss",
     "uuid": "13.0.1",
     "lodash": "4.18.0",
     "lodash-es": "4.18.0",

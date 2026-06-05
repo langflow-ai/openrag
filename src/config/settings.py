@@ -197,6 +197,30 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def get_default_user_role() -> str:
+    """Built-in role assigned to new users when JWT role sync is off."""
+    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+
+
+def get_noauth_user_role() -> str:
+    """Built-in role for the synthetic anonymous user in no-auth mode."""
+    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+
+
+def is_default_role_sync_enabled() -> bool:
+    """When true, sync eligible existing users if default-role env vars change.
+
+    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    via JWT sync; env-driven bulk migration is an OSS dev workflow.
+    """
+    from utils.run_mode_utils import is_run_mode_oss
+
+    if not is_run_mode_oss():
+        return False
+    raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
@@ -208,6 +232,28 @@ def get_jwt_auth_header() -> str:
     """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
     callers. Read per-call so tests can override via monkeypatch.setenv."""
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+
+
+def get_jwt_issuer_verify_tls() -> bool:
+    """Whether to verify TLS when fetching JWT signing keys from the token's
+    ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
+    issuers with cluster/self-signed certs; set true when the issuer uses a
+    public or pod-trusted CA."""
+    return os.getenv("OPENRAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
+def get_jwt_verify_signature() -> bool:
+    """When true, verify forwarded JWTs via issuer JWKS; when false, decode
+    claims only (upstream auth must have authenticated the caller)."""
+    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")

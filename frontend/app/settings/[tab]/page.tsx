@@ -65,6 +65,10 @@ export default async function SettingsTabPage({
   ) {
     redirect("/settings/connectors");
   }
+  // Langflow tab edits agent + ingest settings (workspace config) — admin-only.
+  if (tab === "langflow" && !isNoAuthMode && !permissions.has("config:write")) {
+    redirect("/settings/connectors");
+  }
 
   const queryClient = getQueryClient();
   try {
