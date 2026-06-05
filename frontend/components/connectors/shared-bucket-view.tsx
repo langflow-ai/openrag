@@ -166,8 +166,18 @@ export function SharedBucketView({
               return (
                 <div
                   key={bucket.name}
+                  role="checkbox"
+                  aria-checked={isSelected}
+                  aria-label={bucket.name}
+                  tabIndex={0}
                   className="flex items-center gap-[18px] px-4 py-3 cursor-pointer"
                   onClick={() => toggleBucket(bucket.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleBucket(bucket.name);
+                    }
+                  }}
                 >
                   <div
                     className={`shrink-0 size-5 rounded-[6px] border-2 flex items-center justify-center transition-colors ${

@@ -2,9 +2,9 @@
 
 import mimetypes
 import os
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from posixpath import basename
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
