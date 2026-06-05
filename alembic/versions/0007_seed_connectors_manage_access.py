@@ -12,7 +12,6 @@ seed_roles_and_permissions; this migration backfills existing databases.
 
 import uuid
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 
