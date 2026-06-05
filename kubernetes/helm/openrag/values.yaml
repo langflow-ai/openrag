@@ -73,9 +73,11 @@ langflow:
     requests:
       cpu: "500m"
       memory: "1Gi"
+      ephemeral-storage: "1Gi"
     limits:
       cpu: "4"
       memory: "8Gi"
+      ephemeral-storage: "2Gi"
 
   # Persistence for SQLite DB and flows
   persistence:
@@ -235,9 +237,11 @@ backend:
     requests:
       cpu: "500m"
       memory: "2Gi"
+      ephemeral-storage: "1Gi"
     limits:
       cpu: "4"
       memory: "16Gi"
+      ephemeral-storage: "2Gi"
   # Init container resource limits
   # Configure resource requests/limits for init containers that load default documents and flows
   # Adjust ephemeral-storage based on the size of documents/flows being downloaded
