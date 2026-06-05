@@ -35,6 +35,7 @@ RUN microdnf install -y \
     gcc \
     gcc-c++ \
     make \
+    python3.12-devel \
     && microdnf clean all
 
 WORKDIR /app

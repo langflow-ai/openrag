@@ -50,19 +50,7 @@ spec:
               containerPort: 7860
               protocol: TCP
 
-          env:
-            - name: HOME
-              value: {{ .Values.langflow.persistence.mountPath | quote }}
-            - name: XDG_CACHE_HOME
-              value: {{ printf "%s/.cache" .Values.langflow.persistence.mountPath | quote }}
-            - name: MEM0_DIR
-              value: {{ printf "%s/.mem0" .Values.langflow.persistence.mountPath | quote }}
-            - name: LANGFLOW_CONFIG_DIR
-              value: {{ .Values.langflow.persistence.mountPath | quote }}
-            - name: LANGFLOW_WORKERS
-              value: "1"
-
-          args: ["python", "-m", "langflow", "run", "--env-file", "/app/.env"]
+          command: ["langflow", "run", "--env-file", "/app/.env"]
 
           volumeMounts:
             - name: openrag-langflow-dotenv
