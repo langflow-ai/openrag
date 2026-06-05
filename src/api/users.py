@@ -4,8 +4,6 @@ GET /api/users/me              -> profile of the current user
 GET /api/users/me/permissions  -> list of permission strings
 """
 
-from typing import Literal
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -112,7 +110,8 @@ async def get_my_permissions(
 
 
 class DevRoleBody(BaseModel):
-    role: Literal["admin", "user"]
+    # Any built-in role name; validated against the seed catalog in set_dev_role.
+    role: str
 
 
 def _dev_role_client_error(exc: ValueError) -> str:
@@ -134,7 +133,7 @@ async def set_my_dev_role(
     session: AsyncSession = Depends(get_db_session),
     rbac=Depends(get_rbac_service),
 ):
-    """Swap the current user between admin and user (local dev only)."""
+    """Swap the current user to any built-in role (local dev only)."""
     if not is_dev_role_toggle_enabled():
         raise HTTPException(status_code=404, detail="Not found")
 

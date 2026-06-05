@@ -4,22 +4,15 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from connectors.connection_manager import CONNECTOR_TYPE_KEYS
 from db.repositories import WorkspaceConfigRepo
 from session_manager import User
 
 CONNECTOR_ACCESS_SECTION = "connector_access"
 
-CONNECTOR_TYPES: tuple[str, ...] = (
-    "google_drive",
-    "sharepoint",
-    "onedrive",
-    "ibm_cos",
-    "aws_s3",
-)
-
-
-def _actor_db_id(user: User) -> str:
-    return getattr(user, "db_user_id", None) or user.user_id
+# Derived from the connector registry so new connector types are governable
+# without touching this module.
+CONNECTOR_TYPES: tuple[str, ...] = CONNECTOR_TYPE_KEYS
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:

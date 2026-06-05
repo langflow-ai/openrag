@@ -19,6 +19,20 @@ from .sharepoint import SharePointConnector
 
 logger = get_logger(__name__)
 
+# Single source of truth for the supported connector types. ``uses_ibm_auth``
+# flags connectors whose availability is gated by IBM_AUTH_ENABLED rather than
+# per-user saved-credential checks. Anything that needs the canonical key list
+# (e.g. connector-access policy) should derive it from ``CONNECTOR_TYPE_KEYS``.
+_CONNECTOR_SPECS: tuple[tuple[str, type[BaseConnector], bool], ...] = (
+    ("google_drive", GoogleDriveConnector, False),
+    ("sharepoint", SharePointConnector, False),
+    ("onedrive", OneDriveConnector, False),
+    ("ibm_cos", IBMCOSConnector, True),
+    ("aws_s3", S3Connector, True),
+)
+
+CONNECTOR_TYPE_KEYS: tuple[str, ...] = tuple(key for key, _, _ in _CONNECTOR_SPECS)
+
 
 @dataclass
 class ConnectionConfig:
@@ -452,37 +466,21 @@ class ConnectionManager:
         1) its required env credentials are present, or
         2) the user has an active saved connection with usable credentials.
         """
+        ibm_auth_enabled = os.environ.get("IBM_AUTH_ENABLED", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         return {
-            "google_drive": {
-                "name": GoogleDriveConnector.CONNECTOR_NAME,
-                "description": GoogleDriveConnector.CONNECTOR_DESCRIPTION,
-                "icon": GoogleDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("google_drive", user_id),
-            },
-            "sharepoint": {
-                "name": SharePointConnector.CONNECTOR_NAME,
-                "description": SharePointConnector.CONNECTOR_DESCRIPTION,
-                "icon": SharePointConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("sharepoint", user_id),
-            },
-            "onedrive": {
-                "name": OneDriveConnector.CONNECTOR_NAME,
-                "description": OneDriveConnector.CONNECTOR_DESCRIPTION,
-                "icon": OneDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("onedrive", user_id),
-            },
-            "ibm_cos": {
-                "name": IBMCOSConnector.CONNECTOR_NAME,
-                "description": IBMCOSConnector.CONNECTOR_DESCRIPTION,
-                "icon": IBMCOSConnector.CONNECTOR_ICON,
-                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
-            },
-            "aws_s3": {
-                "name": S3Connector.CONNECTOR_NAME,
-                "description": S3Connector.CONNECTOR_DESCRIPTION,
-                "icon": S3Connector.CONNECTOR_ICON,
-                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
-            },
+            key: {
+                "name": cls.CONNECTOR_NAME,
+                "description": cls.CONNECTOR_DESCRIPTION,
+                "icon": cls.CONNECTOR_ICON,
+                "available": ibm_auth_enabled
+                if uses_ibm_auth
+                else self._is_connector_available(key, user_id),
+            }
+            for key, cls, uses_ibm_auth in _CONNECTOR_SPECS
         }
 
     def get_auth_user_principals(self, user: Any) -> list[str]:

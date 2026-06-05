@@ -1,14 +1,17 @@
-"""Dev-only helper to swap the current user between admin and user roles."""
+"""Dev-only helper to swap the current user between built-in roles."""
 
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import RoleRepo, UserRepo
+from db.seed import BUILTIN_ROLES
 from services.rbac_service import RBACService
 from session_manager import User
 
-_DEV_ROLES = frozenset({"admin", "user"})
+# Generic over every built-in role (admin, developer, user, viewer) so the
+# SaaS UI test toggle can preview any role. Strictly testing-gated upstream.
+_DEV_ROLES = frozenset(name for _id, name, _desc in BUILTIN_ROLES)
 
 
 async def _resolve_db_user_id(session: AsyncSession, user: User) -> str | None:
@@ -25,7 +28,7 @@ async def set_dev_role(
     role_name: str,
     rbac: RBACService,
 ) -> list[str]:
-    """Replace admin/user membership with a single built-in role. Returns new role names."""
+    """Replace built-in role membership with a single built-in role. Returns new role names."""
     if role_name not in _DEV_ROLES:
         raise ValueError(f"Unsupported dev role: {role_name}")
 
