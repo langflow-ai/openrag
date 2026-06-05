@@ -17,9 +17,7 @@ OPENRAG_BRAND_HEADER = "X-OpenRAG-Brand"
 
 # Derived from the connector registry so new connector types are governable
 # without touching this module.
-CONNECTOR_TYPES: tuple[str, ...] = tuple(
-    cls.CONNECTOR_TYPE for cls in get_connector_classes()
-)
+CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_connector_classes())
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:

@@ -12,13 +12,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import pytest_asyncio  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+from sqlmodel import SQLModel  # noqa: E402
+
 import db.models  # noqa: E402,F401
 from api.auth import AuthInitBody, auth_init  # noqa: E402
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
 from services.connector_access_service import OPENRAG_BRAND_HEADER  # noqa: E402
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
-from sqlmodel import SQLModel  # noqa: E402
-import pytest_asyncio  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -68,9 +69,7 @@ async def test_auth_init_blocks_disabled_connector_without_user(session, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_auth_init_allows_disabled_connector_when_policy_not_enforced(
-    session, monkeypatch
-):
+async def test_auth_init_allows_disabled_connector_when_policy_not_enforced(session, monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
 

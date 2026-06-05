@@ -18,14 +18,15 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.paths import get_data_file
-from db.models import MigrationStatus, User as UserRow
+from db.models import MigrationStatus
+from db.models import User as UserRow
 from db.repositories._helpers import email_lookup_hash
 from utils.encryption import read_encrypted_file
 from utils.logging_config import get_logger
@@ -53,9 +54,7 @@ async def _already_done(session: AsyncSession, name: str) -> bool:
 
 
 async def _mark_done(session: AsyncSession, name: str, notes: str = "") -> None:
-    session.add(
-        MigrationStatus(name=name, completed_at=datetime.utcnow(), notes=notes)
-    )
+    session.add(MigrationStatus(name=name, completed_at=datetime.utcnow(), notes=notes))
     await session.flush()
 
 
@@ -159,6 +158,7 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
     fill up the first time an admin completes onboarding.
     """
     from sqlalchemy.ext.asyncio import async_sessionmaker
+
     from db.repositories import WorkspaceConfigRepo
     from utils.encryption import encrypt_secret
 
@@ -166,6 +166,7 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
     # ConfigManager does (decrypts api_keys, applies env overrides, etc.).
     try:
         from config.config_manager import config_manager
+
         config = config_manager.load_config()
     except Exception as exc:  # noqa: BLE001
         logger.warning("config_yaml_to_db_v1: load_config() failed; skipping", error=str(exc))
@@ -218,9 +219,7 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                 continue
             try:
                 created = (
-                    datetime.fromisoformat(data["created_at"])
-                    if data.get("created_at")
-                    else None
+                    datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
                 )
             except Exception:  # noqa: BLE001
                 created = None
@@ -303,9 +302,7 @@ async def run(session: AsyncSession) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.error("config_yaml_to_db_v1 failed; aborting startup", error=str(exc))
             raise RuntimeMigrationError(f"{CONFIG_YAML_TO_DB_V1} failed") from exc
-        await _mark_done(
-            session, CONFIG_YAML_TO_DB_V1, notes=f"sections_written={written}"
-        )
+        await _mark_done(session, CONFIG_YAML_TO_DB_V1, notes=f"sections_written={written}")
         logger.info("config_yaml_to_db_v1 completed", sections_written=written)
 
     if not await _already_done(session, CHAT_HISTORY_JSON_TO_DB_V1):
@@ -318,8 +315,7 @@ async def run(session: AsyncSession) -> None:
             )
             raise RuntimeMigrationError(f"{CHAT_HISTORY_JSON_TO_DB_V1} failed") from exc
         notes = (
-            f"sessions={stats['sessions_inserted']},"
-            f"conversations={stats['conversations_inserted']}"
+            f"sessions={stats['sessions_inserted']},conversations={stats['conversations_inserted']}"
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
         logger.info("chat_history_json_to_db_v1 completed", **stats)
@@ -337,6 +333,7 @@ async def run(session: AsyncSession) -> None:
 # Alembic upgrade — programmatic invocation
 # ---------------------------------------------------------------------------
 
+
 def run_alembic_upgrade(target: str = "head") -> None:
     """Run `alembic upgrade <target>` programmatically.
 
@@ -344,9 +341,11 @@ def run_alembic_upgrade(target: str = "head") -> None:
     function MUST NOT be invoked from inside an already-running event
     loop. Async callers should use `run_alembic_upgrade_async` instead.
     """
-    from alembic import command
-    from alembic.config import Config
     from pathlib import Path
+
+    from alembic.config import Config
+
+    from alembic import command
 
     root = Path(__file__).resolve().parent.parent.parent
     cfg_path = root / "alembic.ini"

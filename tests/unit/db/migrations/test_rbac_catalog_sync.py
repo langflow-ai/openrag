@@ -54,13 +54,9 @@ async def _skip_legacy_runtime_migrations(session) -> None:
 
 async def _remove_manage_access(session) -> None:
     perm = (
-        await session.execute(
-            select(Permission).where(Permission.name == _MANAGE_ACCESS)
-        )
+        await session.execute(select(Permission).where(Permission.name == _MANAGE_ACCESS))
     ).scalar_one()
-    await session.execute(
-        delete(RolePermission).where(RolePermission.permission_id == perm.id)
-    )
+    await session.execute(delete(RolePermission).where(RolePermission.permission_id == perm.id))
     await session.execute(delete(Permission).where(Permission.id == perm.id))
     await session.flush()
 
@@ -72,9 +68,7 @@ async def test_run_backfills_missing_manage_access_permission(session):
     await session.commit()
 
     assert (
-        await session.execute(
-            select(Permission).where(Permission.name == _MANAGE_ACCESS)
-        )
+        await session.execute(select(Permission).where(Permission.name == _MANAGE_ACCESS))
     ).scalar_one_or_none() is None
 
     await _skip_legacy_runtime_migrations(session)
@@ -82,13 +76,9 @@ async def test_run_backfills_missing_manage_access_permission(session):
     await session.commit()
 
     perm = (
-        await session.execute(
-            select(Permission).where(Permission.name == _MANAGE_ACCESS)
-        )
+        await session.execute(select(Permission).where(Permission.name == _MANAGE_ACCESS))
     ).scalar_one()
-    admin = (
-        await session.execute(select(Role).where(Role.name == "admin"))
-    ).scalar_one()
+    admin = (await session.execute(select(Role).where(Role.name == "admin"))).scalar_one()
     grant = (
         await session.execute(
             select(RolePermission).where(
@@ -115,9 +105,5 @@ async def test_run_rbac_catalog_sync_is_idempotent(session):
     await run(session)
     await session.commit()
 
-    assert (
-        len((await session.execute(select(Permission))).scalars().all()) == perm_count + 1
-    )
-    assert (
-        len((await session.execute(select(RolePermission))).scalars().all()) == rp_count + 1
-    )
+    assert len((await session.execute(select(Permission))).scalars().all()) == perm_count + 1
+    assert len((await session.execute(select(RolePermission))).scalars().all()) == rp_count + 1

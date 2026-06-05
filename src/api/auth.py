@@ -2,20 +2,22 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from utils.telemetry import TelemetryClient, Category, MessageId
-from utils.version_utils import OPENRAG_VERSION
+
 from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
+from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
-from dependencies import (
-    get_auth_service,
-    get_optional_user,
-    get_current_user,
-    get_db_session,
-)
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from dependencies import (
+    get_auth_service,
+    get_current_user,
+    get_db_session,
+    get_optional_user,
+)
 from services.connector_access_service import (
     CONNECTOR_TYPES,
     is_connector_access_policy_enforced,
@@ -27,8 +29,8 @@ from session_manager import User
 class AuthInitBody(BaseModel):
     connector_type: str
     purpose: str = "data_source"
-    name: Optional[str] = None
-    redirect_uri: Optional[str] = None
+    name: str | None = None
+    redirect_uri: str | None = None
 
 
 class AuthCallbackBody(BaseModel):
@@ -45,7 +47,7 @@ async def auth_init(
     body: AuthInitBody,
     request: Request,
     auth_service=Depends(get_auth_service),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Initialize OAuth flow for authentication or data source connection"""
@@ -54,9 +56,7 @@ async def auth_init(
             body.purpose == "data_source"
             and body.connector_type in CONNECTOR_TYPES
             and is_connector_access_policy_enforced(request)
-            and not await is_connector_allowed_for_request(
-                session, body.connector_type, request
-            )
+            and not await is_connector_allowed_for_request(session, body.connector_type, request)
         ):
             return JSONResponse(
                 {"error": f"Connector not available: {body.connector_type}"},
@@ -73,9 +73,7 @@ async def auth_init(
 
     except Exception as e:
         logger.exception("[AUTH] OAuth init failed")
-        return JSONResponse(
-            {"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500)
 
 
 async def auth_callback(
@@ -94,14 +92,12 @@ async def auth_callback(
         # If this is app auth, set JWT cookie
         if result.get("purpose") == "app_auth" and result.get("jwt_token"):
             await TelemetryClient.send_event(Category.AUTHENTICATION, MessageId.ORB_AUTH_SUCCESS)
-            response = JSONResponse(
-                {k: v for k, v in result.items() if k != "jwt_token"}
-            )
+            response = JSONResponse({k: v for k, v in result.items() if k != "jwt_token"})
             # Store only the raw JWT (without "Bearer " prefix) in the cookie.
             # The prefix is added by the OpenSearch client when building the Authorization header.
             jwt_value = result["jwt_token"]
             if jwt_value.startswith("Bearer "):
-                jwt_value = jwt_value[len("Bearer "):]
+                jwt_value = jwt_value[len("Bearer ") :]
             response.set_cookie(
                 key="auth_token",
                 value=jwt_value,
@@ -123,7 +119,7 @@ async def auth_callback(
 async def auth_me(
     request: Request,
     auth_service=Depends(get_auth_service),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
@@ -157,14 +153,10 @@ async def auth_logout(
         response.delete_cookie(key="ibm-auth-basic", httponly=True, samesite="lax")
         return response
 
-    response = JSONResponse(
-        {"status": "logged_out", "message": "Successfully logged out"}
-    )
+    response = JSONResponse({"status": "logged_out", "message": "Successfully logged out"})
 
     # Clear the auth cookie
-    response.delete_cookie(
-        key="auth_token", httponly=True, secure=False, samesite="lax"
-    )
+    response.delete_cookie(key="auth_token", httponly=True, secure=False, samesite="lax")
 
     return response
 
