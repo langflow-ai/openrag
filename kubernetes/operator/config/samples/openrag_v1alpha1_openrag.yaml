@@ -41,20 +41,20 @@ spec:
         memory: "1Gi"
       limits:
         cpu: "1"
-        memory: "2Gi"
+        memory: "4Gi"
     storage:
       enabled: true
       size: "1Gi"
-    flowsRef: release-saas-0.1   # branch name or commit SHA
+    flowsRef: main   # branch name or commit SHA
     # flowsInitImage: python:3-alpine
     # Run langflow as a non-root user. When runAsUser is set without fsGroup,
     # the operator defaults fsGroup to the same value (with
     # fsGroupChangePolicy: OnRootMismatch) so the /app/data PVC is
     # group-chowned by the kubelet and stays writable.
     # On OpenShift, omit both runAsUser and fsGroup — the SCC assigns them.
-    # podSecurityContext:
-    #   runAsUser: 1500
-    #   # fsGroup: 1500   # optional; defaulted from runAsUser when omitted
+    podSecurityContext:
+      runAsUser: 1500
+      # fsGroup: 1500   # optional; defaulted from runAsUser when omitted
 
   # llm:
   #   provider: watsonx

@@ -40,6 +40,8 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_ENABLE_SUPERUSER_CLI": "false",
 
 			// Langflow runtime configuration
+			"LANGFLOW_HOST":                  "0.0.0.0",
+			"LANGFLOW_PORT":                  "7860",
 			"LANGFLOW_WORKERS":               "4",
 			"LANGFLOW_CONFIG_DIR":            "/tmp",
 			"LANGFLOW_LOG_LEVEL":             "DEBUG",

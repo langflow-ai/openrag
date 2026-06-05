@@ -75,6 +75,10 @@ COPY --chown=root:0 flows/ /app/flows/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 
 # Bake env vars into image — covers cases where entrypoint is bypassed
+# LANGFLOW_HOST/PORT: langflow defaults to 127.0.0.1, which breaks k8s probes
+# when the runtime overrides CMD and drops the --host/--port flags.
+ENV LANGFLOW_HOST=0.0.0.0
+ENV LANGFLOW_PORT=7860
 ENV HOME=/tmp
 ENV XDG_CACHE_HOME=/tmp/.cache
 ENV MEM0_DIR=/tmp/.mem0

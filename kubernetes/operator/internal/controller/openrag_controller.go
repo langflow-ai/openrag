@@ -945,6 +945,10 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
+							// Langflow can take several minutes to load its component
+							// catalog on small nodes; gate liveness behind a generous
+							// startup probe so slow starts aren't killed mid-boot.
+							StartupProbe:    httpStartupProbe("/health", 7860, 10, 10, 60),
 							LivenessProbe:   httpProbe("/health", 7860, 110, 30),
 							ReadinessProbe:  httpProbe("/health", 7860, 110, 30),
 						},
@@ -2622,6 +2626,15 @@ func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {
 		FailureThreshold:    5,
 		TimeoutSeconds:      15,
 	}
+}
+
+// httpStartupProbe is httpProbe with a configurable failureThreshold, for
+// containers with long, variable boot times (period*failureThreshold is the
+// total startup budget; liveness/readiness only begin after it succeeds).
+func httpStartupProbe(path string, port, initialDelay, period, failureThreshold int32) *corev1.Probe {
+	p := httpProbe(path, port, initialDelay, period)
+	p.FailureThreshold = failureThreshold
+	return p
 }
 
 // probeOrDefault returns the custom probe if provided, otherwise returns the default probe.
