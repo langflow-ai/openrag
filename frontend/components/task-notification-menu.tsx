@@ -26,7 +26,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { Task, useTask } from "@/contexts/task-context";
 import {
-  hasFailedFileEntries,
+  hasIssueFileEntries,
   isCompletedTotalFailure,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
@@ -347,7 +347,7 @@ export function TaskNotificationMenu() {
               </h4>
               {activeTasks.map((task) => {
                 const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasFailedFileEntries(task);
+                const hasFailedFiles = hasIssueFileEntries(task);
                 const showCancel =
                   task.status === "pending" ||
                   task.status === "running" ||
@@ -484,7 +484,7 @@ export function TaskNotificationMenu() {
               )}
               renderItem={(task) => {
                 const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasFailedFileEntries(task);
+                const hasFailedFiles = hasIssueFileEntries(task);
                 const isTotalFailure = isCompletedTotalFailure(task);
                 const shouldExpandDetails = selectedTaskId === task.task_id;
 

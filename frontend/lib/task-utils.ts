@@ -253,6 +253,10 @@ export function hasFailedFileEntries(task: Task): boolean {
   if ((task.failed_files ?? 0) > 0) {
     return true;
   }
+  return getFailedFileEntries(task).length > 0;
+}
+
+export function hasIssueFileEntries(task: Task): boolean {
   return getTaskIssueFileEntries(task).length > 0;
 }
 
