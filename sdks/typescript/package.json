@@ -1,6 +1,6 @@
 {
   "name": "openrag-sdk",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Official TypeScript/JavaScript SDK for OpenRAG API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -51,6 +51,11 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
+  },
+  "overrides": {
+    "picomatch": "^4.0.4",
+    "postcss": "^8.5.10",
+    "rollup": "^4.59.0"
   },
   "engines": {
     "node": ">=18.0.0"

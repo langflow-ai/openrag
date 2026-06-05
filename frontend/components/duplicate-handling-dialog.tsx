@@ -2,6 +2,8 @@
 
 import { RotateCcw } from "lucide-react";
 import type React from "react";
+import { useIsCloudBrand } from "@/contexts/brand-context";
+import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -35,6 +37,8 @@ export const DuplicateHandlingDialog: React.FC<
   duplicateCount,
   duplicateNames,
 }) => {
+  const isCloudBrand = useIsCloudBrand();
+
   const handleOverwrite = async () => {
     await onOverwrite();
     onOpenChange(false);
@@ -107,7 +111,12 @@ export const DuplicateHandlingDialog: React.FC<
             size="sm"
             onClick={handleOverwrite}
             disabled={isLoading}
-            className="flex items-center gap-2 whitespace-nowrap !bg-accent-amber-foreground hover:!bg-foreground text-primary-foreground"
+            className={cn(
+              "flex items-center gap-2 whitespace-nowrap text-primary-foreground",
+              isCloudBrand
+                ? "rounded-none !bg-[hsl(var(--ibm-overwrite-button))] hover:!bg-[hsl(var(--ibm-overwrite-button-hover))]"
+                : "!bg-accent-amber-foreground hover:!bg-foreground",
+            )}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             {overwriteLabel}

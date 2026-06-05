@@ -9,6 +9,7 @@ The orphan-deletion safety net must:
 - query either `document_id` or `connector_file_id` depending on the ingest path.
 """
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,6 +64,10 @@ def _make_session_manager(opensearch_client):
     sm = MagicMock()
     sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     return sm
+
+
+def _json(response):
+    return json.loads(response.body.decode())
 
 
 def _patch_write_client(monkeypatch, *, delete_side_effect=None):
@@ -386,3 +391,162 @@ async def test_document_id_field_used_by_default(monkeypatch):
     search_body = opensearch_client.search.await_args.kwargs["body"]
     assert search_body["query"] == {"terms": {"document_id": ["lf-id-b"]}}
     write_client.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
+    from api.connectors import _preview_orphans_for_connector_type
+
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["a", "b", "c", "d", "e", "f"], [], "document_id")),
+    )
+    monkeypatch.setattr(
+        "api.connectors.get_synced_id_to_filename_map",
+        AsyncMock(return_value={"b": "b.pdf", "e": "e.pdf"}),
+    )
+    monkeypatch.setattr(
+        "api.connectors.compute_orphans_for_connector_type",
+        AsyncMock(
+            return_value=[
+                {"document_id": "b", "filename": "b.pdf"},
+                {"document_id": "e", "filename": "e.pdf"},
+            ]
+        ),
+    )
+
+    orphans, synced_count = await _preview_orphans_for_connector_type(
+        connector_type="google_drive",
+        user_id="alice",
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        jwt_token="token",
+    )
+
+    assert synced_count == 4
+    assert orphans == [
+        {"document_id": "b", "filename": "b.pdf"},
+        {"document_id": "e", "filename": "e.pdf"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["a", "b", "c", "d", "e", "f"], [], "document_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=["b", "e"]),
+    )
+
+    connection = _make_connection("conn-1")
+    connector = MagicMock()
+    connector.authenticate = AsyncMock(return_value=True)
+
+    service = MagicMock()
+    service.connection_manager = MagicMock()
+    service.connection_manager.list_connections = AsyncMock(return_value=[connection])
+    service.get_connector = AsyncMock(return_value=connector)
+    service.sync_specific_files = AsyncMock(return_value="task-1")
+
+    response = await connectors_api.connector_sync(
+        "google_drive",
+        connectors_api.ConnectorSyncBody(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+    )
+
+    assert response.status_code == 201
+    service.sync_specific_files.assert_awaited_once()
+    args = service.sync_specific_files.await_args.args
+    assert args[2] == ["a", "c", "d", "f"]
+
+
+@pytest.mark.asyncio
+async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["a", "b"], [], "document_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=["a", "b"]),
+    )
+
+    connection = _make_connection("conn-1")
+    connector = MagicMock()
+    connector.authenticate = AsyncMock(return_value=True)
+
+    service = MagicMock()
+    service.connection_manager = MagicMock()
+    service.connection_manager.list_connections = AsyncMock(return_value=[connection])
+    service.get_connector = AsyncMock(return_value=connector)
+    service.sync_specific_files = AsyncMock()
+
+    response = await connectors_api.connector_sync(
+        "google_drive",
+        connectors_api.ConnectorSyncBody(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+    )
+
+    assert response.status_code == 200
+    assert _json(response)["status"] == "no_files"
+    service.sync_specific_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+
+    async def fake_synced_ids(connector_type, *args, **kwargs):
+        if connector_type == "google_drive":
+            return ["a", "b"], [], "document_id"
+        return [], [], "document_id"
+
+    monkeypatch.setattr(connectors_api, "get_synced_file_ids_for_connector", fake_synced_ids)
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=["a", "b"]),
+    )
+
+    connection = _make_connection("conn-1")
+    connector = MagicMock()
+    connector.authenticate = AsyncMock(return_value=True)
+
+    service = MagicMock()
+    service.connection_manager = MagicMock()
+    service.connection_manager.list_connections = AsyncMock(return_value=[connection])
+    service.get_connector = AsyncMock(return_value=connector)
+    service.sync_specific_files = AsyncMock()
+
+    response = await connectors_api.sync_all_connectors(
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+    )
+
+    body = _json(response)
+    assert response.status_code == 200
+    assert body["status"] == "no_files"
+    assert body.get("errors") is None
+    assert body["deleted_only_connectors"] == ["google_drive"]
+    assert "Deleted stale cloud files" in body["message"]
+    service.sync_specific_files.assert_not_awaited()

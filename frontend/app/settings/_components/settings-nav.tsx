@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
-  { value: "langflow", label: "Langflow" },
+  // Agent + ingest settings write workspace config (admin-only).
+  { value: "langflow", label: "Langflow", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
 ] as const;
 

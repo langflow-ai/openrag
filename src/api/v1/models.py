@@ -9,7 +9,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from config.settings import get_openrag_config
-from dependencies import get_api_key_user_async, get_models_service
+from dependencies import get_models_service, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -72,7 +72,7 @@ async def _fetch_models(provider, config, models_service):
 async def list_models_endpoint(
     provider: str,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("providers:read")),
 ):
     """
     List available language and embedding models for a provider.

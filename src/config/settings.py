@@ -3,6 +3,7 @@ import concurrent.futures
 import os
 import threading
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -67,6 +68,72 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     "http://openrag-backend:8000",
 ).rstrip("/")
+
+# --- Backend ingestion-callback proxy router ------------------------------
+# A standalone, minimal uvicorn app (spun up in the same process as the main
+# backend, on its own port) that proxies ONLY the Langflow ingest callback
+# (POST /internal/ingest/chunks) to the real backend. When enabled, Langflow is
+# pointed at the router instead of the backend internal URL, so Langflow's
+# reachable surface narrows to that single endpoint.
+INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+OPENRAG_BACKEND_ROUTER_HOST = os.getenv("OPENRAG_BACKEND_ROUTER_HOST", "0.0.0.0")
+OPENRAG_BACKEND_ROUTER_PORT = get_env_int("OPENRAG_BACKEND_ROUTER_PORT", 8100)
+
+
+def _derive_router_url() -> str:
+    """Default router URL: the backend host on the router port.
+
+    The router runs in the SAME pod/container as the backend, so it shares the
+    backend's host and differs only by port. Deriving from
+    OPENRAG_BACKEND_INTERNAL_URL means this resolves correctly in every
+    environment that var already works in (Helm, operator) with no new Service.
+    """
+    parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
+    host = parts.hostname or "openrag-backend"
+    netloc = f"{host}:{OPENRAG_BACKEND_ROUTER_PORT}"
+    return urlunsplit((parts.scheme or "http", netloc, "", "", ""))
+
+
+# Externally reachable base URL Langflow calls back to. Defaults to the backend
+# host on the router port; override only if fronted by a separate Service/ingress.
+OPENRAG_BACKEND_ROUTER_URL = (
+    os.getenv("OPENRAG_BACKEND_ROUTER_URL") or _derive_router_url()
+).rstrip("/")
+
+
+# Upstream the router FORWARDS callbacks to. The router is co-located with the
+# backend (same process), so the HOST is always loopback — but the scheme/port
+# are sourced from OPENRAG_BACKEND_INTERNAL_URL so the upstream tracks the
+# backend's configured port automatically. We force 127.0.0.1 (not the advertised
+# service name) because that name need not resolve where the router runs (e.g. a
+# host-run backend). Loopback is correct in every mode: host dev, single
+# container, and same k8s pod.
+def _derive_router_upstream_url() -> str:
+    parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
+    port = parts.port or 8000
+    return urlunsplit((parts.scheme or "http", f"127.0.0.1:{port}", "", "", ""))
+
+
+OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = (
+    os.getenv("OPENRAG_BACKEND_ROUTER_UPSTREAM_URL") or _derive_router_upstream_url()
+).rstrip("/")
+
+
+def get_ingest_callback_url() -> str:
+    """URL Langflow should call back to: the router when enabled, else the backend."""
+    base = (
+        OPENRAG_BACKEND_ROUTER_URL
+        if OPENRAG_BACKEND_ROUTER_ENABLE
+        else OPENRAG_BACKEND_INTERNAL_URL
+    )
+    return f"{base}{INGEST_CALLBACK_PATH}"
+
+
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID") or "ebc01d31-1976-46ce-a385-b0240327226c"
 
 
@@ -130,6 +197,30 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def get_default_user_role() -> str:
+    """Built-in role assigned to new users when JWT role sync is off."""
+    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+
+
+def get_noauth_user_role() -> str:
+    """Built-in role for the synthetic anonymous user in no-auth mode."""
+    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+
+
+def is_default_role_sync_enabled() -> bool:
+    """When true, sync eligible existing users if default-role env vars change.
+
+    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    via JWT sync; env-driven bulk migration is an OSS dev workflow.
+    """
+    from utils.run_mode_utils import is_run_mode_oss
+
+    if not is_run_mode_oss():
+        return False
+    raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
@@ -141,6 +232,28 @@ def get_jwt_auth_header() -> str:
     """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
     callers. Read per-call so tests can override via monkeypatch.setenv."""
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+
+
+def get_jwt_issuer_verify_tls() -> bool:
+    """Whether to verify TLS when fetching JWT signing keys from the token's
+    ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
+    issuers with cluster/self-signed certs; set true when the issuer uses a
+    public or pod-trusted CA."""
+    return os.getenv("OPENRAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
+def get_jwt_verify_signature() -> bool:
+    """When true, verify forwarded JWTs via issuer JWKS; when false, decode
+    claims only (upstream auth must have authenticated the caller)."""
+    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")

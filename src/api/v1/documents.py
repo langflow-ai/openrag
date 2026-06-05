@@ -11,8 +11,10 @@ from pydantic import BaseModel
 
 from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
+from api.v1._filter_resolution import resolve_filter_id
 from dependencies import (
     get_document_service,
+    get_knowledge_filter_service,
     get_langflow_file_service,
     get_session_manager,
     get_task_service,
@@ -25,7 +27,8 @@ logger = get_logger(__name__)
 
 
 class DeleteDocV1Body(BaseModel):
-    filename: str
+    filename: str | None = None
+    filter_id: str | None = None
 
 
 async def ingest_endpoint(
@@ -46,8 +49,12 @@ async def ingest_endpoint(
 
     POST /v1/documents/ingest
     Request: multipart/form-data with "file" field
+
+    NOTE: `create_filter` is upload-router/onboarding metadata. The router
+    echoes it in the upload response so onboarding can create a saved knowledge
+    filter after ingestion completes. It does not affect task creation or
+    ingestion behavior, and the v1 SDK does not expose this option.
     """
-    # Delegate to the router which handles both Langflow and traditional paths
     return await upload_ingest_router(
         file=file,
         session_id=session_id,
@@ -123,12 +130,64 @@ async def delete_document_endpoint(
     body: DeleteDocV1Body,
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("knowledge:delete:own")),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
-    """Delete a document from the knowledge base. DELETE /v1/documents"""
+    """Delete document(s) from the knowledge base. DELETE /v1/documents
+
+    Provide exactly one of:
+      - `filename`: delete all chunks for that filename.
+      - `filter_id`: resolve the filter's `data_sources` and delete chunks for
+        each concrete filename. Empty `data_sources` or a list containing the
+        wildcard value `"*"` is rejected to prevent mass deletion.
+    """
+    if bool(body.filename) == bool(body.filter_id):
+        return JSONResponse(
+            {"error": "Provide exactly one of `filename` or `filter_id`"},
+            status_code=400,
+        )
+
+    if body.filter_id:
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+        )
+        filenames = resolved["filters"].get("data_sources") or []
+        if not filenames:
+            return JSONResponse(
+                {"error": "Filter has no specific data_sources to delete"},
+                status_code=400,
+            )
+
+        results = []
+        total_deleted = 0
+        statuses = []
+        for fname in filenames:
+            payload, _status = await delete_documents_by_filename_core(
+                filename=fname,
+                session_manager=session_manager,
+                user_id=user.user_id,
+                jwt_token=user.jwt_token,
+            )
+            results.append(payload)
+            statuses.append(_status)
+            total_deleted += payload.get("deleted_chunks", 0) or 0
+
+        return JSONResponse(
+            {
+                "success": all(200 <= status < 300 for status in statuses),
+                "deleted_chunks": total_deleted,
+                "filenames": filenames,
+                "filter_id": body.filter_id,
+                "per_file": results,
+            }
+        )
+
     payload, status_code = await delete_documents_by_filename_core(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
-        jwt_token=None,
+        jwt_token=user.jwt_token,
     )
     return JSONResponse(payload, status_code=status_code)

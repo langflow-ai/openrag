@@ -1,11 +1,6 @@
 name: Publish TypeScript SDK
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'sdks/typescript/package.json'
   workflow_dispatch:
 
 jobs:

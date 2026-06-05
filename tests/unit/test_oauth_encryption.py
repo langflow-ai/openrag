@@ -67,6 +67,33 @@ async def test_google_drive_auth_missing_scopes_forces_reauth(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_google_drive_auth_allows_missing_optional_group_scopes(tmp_path, monkeypatch):
+    import utils.encryption
+
+    utils.encryption._cached_master_secret = None
+    monkeypatch.setenv(
+        "OPENRAG_ENCRYPTION_KEY",
+        "dGVzdC1rZXktMzItYnl0ZXMtZm9yLXVuaXQtdGVzdGluZy1vbmx5",
+    )
+
+    g_token_path = tmp_path / "fake_gdrive_token.json"
+    g_plain = {
+        "token": "google-token",
+        "refresh_token": "refresh",
+        "scopes": GoogleDriveOAuth.REQUIRED_SCOPES,
+        "expiry": "2028-03-02T15:46:11.368083",
+    }
+    with open(g_token_path, "w") as f:
+        json.dump(g_plain, f)
+
+    g_oauth = GoogleDriveOAuth(client_id="abc", client_secret="def", token_file=str(g_token_path))
+
+    assert await g_oauth.load_credentials() is not None
+    assert g_oauth.creds is not None
+    assert g_token_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_msal_auth_upgrade(tmp_path, monkeypatch):
     """Test that MSAL credentials are encrypted on load if not already."""
     import utils.encryption

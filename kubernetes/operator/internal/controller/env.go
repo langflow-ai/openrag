@@ -94,14 +94,16 @@ func NewEnvVarManager() *EnvVarManager {
 		},
 		DefaultOpenRagBEEnvVars: map[string]string{
 			// Langflow connection
-			"LANGFLOW_URL":                 "http://langflow:7860",
-			"OPENRAG_BACKEND_INTERNAL_URL": "http://openrag-be:8000",
-			"LANGFLOW_TIMEOUT":             "2400",
-			"LANGFLOW_CONNECT_TIMEOUT":     "30",
-			"LANGFLOW_AUTO_LOGIN":          "true",
-			"LANGFLOW_KEY_RETRIES":         "15",
-			"LANGFLOW_KEY_RETRY_DELAY":     "2",
-			"LANGFLOW_KEY":                 "",
+			"LANGFLOW_URL":                  "http://langflow:7860",
+			"OPENRAG_BACKEND_INTERNAL_URL":  "http://openrag-be:8000",
+			"OPENRAG_BACKEND_ROUTER_ENABLE": "false",
+			"OPENRAG_BACKEND_ROUTER_PORT":   "8100",
+			"LANGFLOW_TIMEOUT":              "2400",
+			"LANGFLOW_CONNECT_TIMEOUT":      "30",
+			"LANGFLOW_AUTO_LOGIN":           "true",
+			"LANGFLOW_KEY_RETRIES":          "15",
+			"LANGFLOW_KEY_RETRY_DELAY":      "2",
+			"LANGFLOW_KEY":                  "",
 
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
