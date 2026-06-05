@@ -29,6 +29,9 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+# Cloud connector types for sync-all (registry-derived single source of truth).
+CLOUD_CONNECTOR_TYPES = list(CONNECTOR_TYPES)
+
 
 async def _connector_access_denied(
     session: AsyncSession,
@@ -1211,16 +1214,13 @@ async def sync_all_connectors(
         )
         jwt_token = user.jwt_token
 
-        # Cloud connector types to sync
-        cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
-
         all_task_ids = []
         synced_connectors = []
         skipped_connectors = []
         deleted_only_connectors = []
         errors = []
 
-        for connector_type in cloud_connector_types:
+        for connector_type in CLOUD_CONNECTOR_TYPES:
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
                 (
@@ -1394,10 +1394,6 @@ async def sync_all_connectors(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
         )
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
-
-
-# Derived from the connector registry (single source of truth).
-CLOUD_CONNECTOR_TYPES = list(CONNECTOR_TYPES)
 
 
 async def _preview_orphans_for_connector_type(

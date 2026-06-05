@@ -7,6 +7,7 @@ import {
   type Brand,
   DEFAULT_BRAND,
   isCloudBrand,
+  resolveBrand,
 } from "@/lib/brand";
 
 export type { Brand } from "@/lib/brand";
@@ -46,7 +47,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       applyBrand("ibm");
       setBrandState("ibm");
     } else {
-      const stored = (localStorage.getItem("brand") as Brand) ?? DEFAULT_BRAND;
+      const stored = resolveBrand(localStorage.getItem("brand") ?? undefined);
       persistBrandPreference(stored);
       applyBrand(stored);
       setBrandState(stored);

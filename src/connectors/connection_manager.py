@@ -8,6 +8,7 @@ from typing import Any
 
 import aiofiles
 
+from config.settings import IBM_AUTH_ENABLED
 from utils.logging_config import get_logger
 
 from .aws_s3 import S3Connector
@@ -466,17 +467,12 @@ class ConnectionManager:
         1) its required env credentials are present, or
         2) the user has an active saved connection with usable credentials.
         """
-        ibm_auth_enabled = os.environ.get("IBM_AUTH_ENABLED", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
         return {
             key: {
                 "name": cls.CONNECTOR_NAME,
                 "description": cls.CONNECTOR_DESCRIPTION,
                 "icon": cls.CONNECTOR_ICON,
-                "available": ibm_auth_enabled
+                "available": IBM_AUTH_ENABLED
                 if uses_ibm_auth
                 else self._is_connector_available(key, user_id),
             }

@@ -30,9 +30,7 @@ function parseApiError(
 // order also sets which role is highlighted when a user holds several.
 const DEV_ROLES = [
   { value: "admin", label: "Admin" },
-  { value: "developer", label: "Developer" },
   { value: "user", label: "User" },
-  { value: "viewer", label: "Viewer" },
 ] as const;
 
 export function DevRoleToggle() {
@@ -46,8 +44,7 @@ export function DevRoleToggle() {
     refreshPermissions,
     applyDevRoles,
   } = useAuth();
-  const currentRole =
-    DEV_ROLES.find((r) => roles.includes(r.value))?.value ?? "user";
+  const currentRole = DEV_ROLES.find((r) => roles.includes(r.value))?.value;
 
   const mutation = useMutation({
     mutationFn: async (role: string) => {

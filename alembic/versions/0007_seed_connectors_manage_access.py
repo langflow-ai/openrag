@@ -16,7 +16,6 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
-from db.seed import permission_name
 
 revision: str = "0007_seed_connectors_manage_access"
 down_revision: str | Sequence[str] | None = "0006_revoke_provider_override_nonadmin"
@@ -26,7 +25,8 @@ depends_on: str | Sequence[str] | None = None
 _RESOURCE = "connectors"
 _ACTION = "manage:access"
 _DESCRIPTION = "Manage which connectors non-admin users may use"
-_PERM_NAME = permission_name(_RESOURCE, _ACTION)
+# Frozen at migration time — matches db.seed.permission_name(resource, action).
+_PERM_NAME = f"{_RESOURCE}:{_ACTION}"
 _ADMIN_ROLE = "admin"
 
 

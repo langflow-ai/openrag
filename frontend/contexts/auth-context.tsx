@@ -24,6 +24,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  /** True while /api/users/me permissions are being fetched. */
+  permissionsLoading: boolean;
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
@@ -252,6 +254,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
   // Default to true so RBAC-only UI doesn't briefly flash on first
   // load before /api/users/me responds. The backend is authoritative;
   // this is just a UI affordance.
@@ -326,10 +329,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     if (user || isNoAuthMode || isIbmAuthMode) {
-      fetchPermissions();
+      setPermissionsLoading(true);
+      void fetchPermissions().finally(() => setPermissionsLoading(false));
     } else {
       setPermissions(new Set());
       setRoles([]);
+      setPermissionsLoading(false);
     }
   }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
 
@@ -348,6 +353,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextType = {
     user,
     isLoading,
+    permissionsLoading,
     isAuthenticated: !!user,
     isNoAuthMode,
     isIbmAuthMode,
