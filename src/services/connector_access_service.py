@@ -48,16 +48,10 @@ def is_connector_access_policy_enforced(request: Request | None = None) -> bool:
     Production SaaS always enforces. Local OSS run mode uses the dev brand
     header (``X-OpenRAG-Brand``) so OSS UI is unaffected by SaaS admin toggles.
     """
-    import os
-
+    from config.settings import IBM_AUTH_ENABLED
     from utils.run_mode_utils import is_run_mode_oss, is_run_mode_saas
 
-    ibm_auth = os.getenv("IBM_AUTH_ENABLED", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-    )
-    if ibm_auth or is_run_mode_saas():
+    if IBM_AUTH_ENABLED or is_run_mode_saas():
         return True
 
     if is_run_mode_oss() and request is not None:

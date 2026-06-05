@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import RoleRepo, UserRepo
 from db.seed import BUILTIN_ROLES
-from services.rbac_service import RBACService
 from session_manager import User
 
 # Generic over every built-in role (admin, developer, user, viewer) so the
@@ -26,7 +25,6 @@ async def set_dev_role(
     session: AsyncSession,
     user: User,
     role_name: str,
-    rbac: RBACService,
 ) -> list[str]:
     """Replace built-in role membership with a single built-in role. Returns new role names."""
     if role_name not in _DEV_ROLES:
@@ -47,7 +45,6 @@ async def set_dev_role(
             await role_repo.revoke_role(db_user_id, role.id)
 
     await role_repo.assign_role(db_user_id, target.id)
-    rbac.invalidate(db_user_id)
 
     roles = await role_repo.list_user_roles(db_user_id)
     return [r.name for r in roles]

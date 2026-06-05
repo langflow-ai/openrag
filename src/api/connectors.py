@@ -33,7 +33,6 @@ logger = get_logger(__name__)
 async def _connector_access_denied(
     request: Request,
     session: AsyncSession,
-    user: User,
     connector_type: str,
 ) -> JSONResponse | None:
     """Return 403 when workspace policy blocks this connector type."""
@@ -47,6 +46,18 @@ async def _connector_access_denied(
         {"error": f"Connector not available: {connector_type}"},
         status_code=403,
     )
+
+
+async def _allowed_connector_types_for_request(
+    request: Request,
+    session: AsyncSession,
+    connector_types: list[str],
+) -> list[str]:
+    """Drop connector types blocked by workspace policy (sync-all style endpoints)."""
+    if not is_connector_access_policy_enforced(request):
+        return connector_types
+    access_map = await get_access_map(session)
+    return [t for t in connector_types if access_map.get(t, True)]
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -392,7 +403,7 @@ async def connector_check_duplicates(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Check if any of the selected files or folders contain files that already exist in the index"""
-    if denied := await _connector_access_denied(request, session, user, connector_type):
+    if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
     selected_files_raw = body.selected_files
@@ -618,7 +629,7 @@ async def connector_sync(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Sync files from all active connections of a connector type"""
-    if denied := await _connector_access_denied(request, session, user, connector_type):
+    if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
     max_files = body.max_files
@@ -871,7 +882,7 @@ async def connector_status(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get connector status for authenticated user"""
-    if denied := await _connector_access_denied(request, session, user, connector_type):
+    if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
     # Get connections for this connector type and user
@@ -967,6 +978,7 @@ async def connector_webhook(
     request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Handle webhook notifications from any connector type"""
 
@@ -993,6 +1005,9 @@ async def connector_webhook(
     except (NotImplementedError, ValueError):
         # Connector type not found or validation not needed
         pass
+
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
 
     try:
         # Get the raw payload and headers
@@ -1120,10 +1135,14 @@ async def connector_webhook(
 
 async def connector_disconnect(
     connector_type: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("connectors:delete:own")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Disconnect a connector by deleting its connection"""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
 
     try:
         # Get connections for this connector type and user
@@ -1199,9 +1218,11 @@ async def connector_disconnect(
 
 
 async def sync_all_connectors(
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
     Sync files from all active cloud connector connections.
@@ -1218,7 +1239,10 @@ async def sync_all_connectors(
         deleted_only_connectors = []
         errors = []
 
-        for connector_type in _cloud_connector_types():
+        connector_types = await _allowed_connector_types_for_request(
+            request, session, _cloud_connector_types()
+        )
+        for connector_type in connector_types:
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
                 (
@@ -1448,14 +1472,19 @@ async def _preview_orphans_for_connector_type(
 
 async def connector_sync_preview(
     connector_type: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of syncing a connector type without performing any
     deletion or ingest. Returns the list of orphan files (present in OpenSearch
     but no longer at the source) by filename, plus the total synced count.
     """
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     try:
         orphans, synced_count = await _preview_orphans_for_connector_type(
             connector_type=connector_type,
@@ -1479,9 +1508,11 @@ async def connector_sync_preview(
 
 
 async def connectors_sync_all_preview(
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of sync-all-connectors across every cloud connector
     type. Returns orphan filenames grouped by connector_type plus a per-type
@@ -1492,7 +1523,10 @@ async def connectors_sync_all_preview(
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
 
-        for connector_type in _cloud_connector_types():
+        connector_types = await _allowed_connector_types_for_request(
+            request, session, _cloud_connector_types()
+        )
+        for connector_type in connector_types:
             try:
                 orphans, synced_count = await _preview_orphans_for_connector_type(
                     connector_type=connector_type,
@@ -1536,8 +1570,12 @@ async def connector_token(
     request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get access token for connector API calls (e.g., Pickers)."""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     url_connector_type = connector_type
 
     try:
@@ -1652,9 +1690,11 @@ async def connector_token(
 async def browse_connection_files(
     connector_type: str,
     connection_id: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     bucket: str | None = None,
     search: str | None = None,
     page_token: str | None = None,
@@ -1666,6 +1706,9 @@ async def browse_connection_files(
     Lists files from the remote source (e.g., S3 bucket) and marks each
     as ingested or not by cross-referencing with OpenSearch.
     """
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     try:
         connector = await connector_service.get_connector(connection_id)
         if not connector:

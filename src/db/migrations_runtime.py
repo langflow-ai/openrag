@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 from collections.abc import Iterable
 from datetime import datetime
 
@@ -157,8 +156,6 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
     workspace has no config.yaml yet (fresh install) and the table will
     fill up the first time an admin completes onboarding.
     """
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
     from db.repositories import WorkspaceConfigRepo
     from utils.encryption import encrypt_secret
 

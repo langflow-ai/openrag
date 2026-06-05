@@ -1,14 +1,5 @@
-from typing import Optional
-
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-
-from utils.logging_config import get_logger
-from utils.telemetry import Category, MessageId, TelemetryClient
-from utils.version_utils import OPENRAG_VERSION
-
-logger = get_logger(__name__)
-
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +15,11 @@ from services.connector_access_service import (
     is_connector_allowed_for_request,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
+from utils.version_utils import OPENRAG_VERSION
+
+logger = get_logger(__name__)
 
 
 class AuthInitBody(BaseModel):

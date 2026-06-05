@@ -117,21 +117,21 @@ class _FakeRequest:
 
 def test_connector_access_policy_enforced_in_saas_run_mode(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
-    monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
     assert is_connector_access_policy_enforced() is True
     assert is_connector_access_policy_enforced(_FakeRequest("oss")) is True
 
 
 def test_connector_access_policy_enforced_with_ibm_auth(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    monkeypatch.setenv("IBM_AUTH_ENABLED", "true")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
     assert is_connector_access_policy_enforced() is True
     assert is_connector_access_policy_enforced(_FakeRequest("oss")) is True
 
 
 def test_connector_access_policy_oss_run_mode_follows_dev_brand(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     assert is_connector_access_policy_enforced(_FakeRequest("ibm")) is True
     assert is_connector_access_policy_enforced(_FakeRequest("oss")) is False

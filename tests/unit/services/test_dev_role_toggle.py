@@ -17,7 +17,6 @@ import db.models  # noqa: E402,F401
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import BUILTIN_ROLES, seed_roles_and_permissions  # noqa: E402
 from services.dev_role_toggle import _DEV_ROLES, set_dev_role  # noqa: E402
-from services.rbac_service import RBACService  # noqa: E402
 from services.user_service import ensure_user_row  # noqa: E402
 from session_manager import User  # noqa: E402
 
@@ -55,10 +54,9 @@ def test_dev_roles_covers_every_builtin_role():
 @pytest.mark.parametrize("target", ["admin", "developer", "viewer"])
 async def test_switch_to_any_builtin_role(setup, target):
     SessionLocal = setup
-    rbac = RBACService(SessionLocal)
 
     async with SessionLocal() as s:
-        roles = await set_dev_role(s, _TEST_USER, target, rbac)
+        roles = await set_dev_role(s, _TEST_USER, target)
         await s.commit()
 
     # Toggle is single-role: exactly the target replaces prior membership.
@@ -68,8 +66,7 @@ async def test_switch_to_any_builtin_role(setup, target):
 @pytest.mark.asyncio
 async def test_invalid_role_rejected(setup):
     SessionLocal = setup
-    rbac = RBACService(SessionLocal)
 
     async with SessionLocal() as s:
         with pytest.raises(ValueError, match="Unsupported dev role"):
-            await set_dev_role(s, _TEST_USER, "superuser", rbac)
+            await set_dev_role(s, _TEST_USER, "superuser")

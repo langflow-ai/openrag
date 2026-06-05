@@ -138,7 +138,7 @@ async def set_my_dev_role(
         raise HTTPException(status_code=404, detail="Not found")
 
     try:
-        roles = await set_dev_role(session, user, body.role, rbac)
+        roles = await set_dev_role(session, user, body.role)
         await session.commit()
     except ValueError as e:
         logger.error(
@@ -156,6 +156,7 @@ async def set_my_dev_role(
     if db_user is None:
         db_user = await UserRepo(session).get_by_id(user.user_id)
     db_id = db_user.id if db_user else user.user_id
+    rbac.invalidate(db_id)
     perms = await _effective_permissions(rbac, db_id, session)
 
     return JSONResponse(
