@@ -46,6 +46,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("connectors", "delete:own", "Delete own connectors"),
     ("connectors", "delete:any", "Delete any connector"),
     ("connectors", "use", "Use connector OAuth and browse"),
+    ("connectors", "manage:access", "Manage which connectors non-admin users may use"),
     # Knowledge
     ("knowledge", "upload", "Upload documents"),
     ("knowledge", "delete:own", "Delete own documents"),

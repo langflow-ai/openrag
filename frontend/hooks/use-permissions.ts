@@ -12,8 +12,8 @@ export interface UsePermissionsResult {
   /** True if the user has all of the listed permissions. */
   canAll: (perms: string[]) => boolean;
   /** Force a refetch from /api/users/me/permissions. */
-  refresh: () => Promise<void>;
-  /** True while the auth context is still resolving. */
+  refresh: () => Promise<boolean>;
+  /** True while auth or the /api/users/me permissions fetch is in flight. */
   isLoading: boolean;
   /**
    * Whether the backend is enforcing RBAC. When false, the system
@@ -34,7 +34,8 @@ export function usePermissions(): UsePermissionsResult {
   const {
     permissions,
     can,
-    isLoading,
+    isLoading: isAuthLoading,
+    permissionsLoading,
     refreshPermissions,
     isNoAuthMode,
     rbacEnforced,
@@ -56,7 +57,7 @@ export function usePermissions(): UsePermissionsResult {
     canAny,
     canAll,
     refresh: refreshPermissions,
-    isLoading,
+    isLoading: isAuthLoading || permissionsLoading,
     rbacEnforced,
   };
 }

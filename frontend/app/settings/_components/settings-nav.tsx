@@ -1,10 +1,11 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useSettingsTabAccess } from "@/hooks/use-settings-tab-access";
+import { canAccessConnectorAccessTab } from "@/lib/settings-tab-access";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -13,23 +14,44 @@ const TABS = [
   // Agent + ingest settings write workspace config (admin-only).
   { value: "langflow", label: "Langflow", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
+  {
+    value: "connector-access",
+    label: "Connectors Permission",
+    perm: "connectors:manage:access",
+  },
 ] as const;
 
 export function SettingsNav() {
-  const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const { can } = usePermissions();
+  const {
+    tabAccess,
+    isCloudBrand,
+    permissionsLoading,
+    canShowPermTab,
+    canShowConnectorAccessTab,
+  } = useSettingsTabAccess();
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
-    if ("perm" in tab) return can(tab.perm);
+    if (tab.value === "connector-access") return canShowConnectorAccessTab();
+    if ("perm" in tab) return canShowPermTab(tab.perm);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
     return true;
   });
+
+  useEffect(() => {
+    if (permissionsLoading) return;
+    if (
+      currentTab === "connector-access" &&
+      !canAccessConnectorAccessTab(tabAccess)
+    ) {
+      router.replace("/settings/connectors");
+    }
+  }, [currentTab, permissionsLoading, tabAccess, router]);
 
   return (
     <Tabs value={currentTab}>

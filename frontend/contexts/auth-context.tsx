@@ -8,6 +8,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { hasRbacPermission } from "@/lib/settings-tab-access";
 import { encodeBase64 } from "@/lib/utils";
 
 interface User {
@@ -24,6 +25,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  /** True while /api/users/me permissions are being fetched. */
+  permissionsLoading: boolean;
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
@@ -48,7 +51,11 @@ interface AuthContextType {
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
-  refreshPermissions: () => Promise<void>;
+  refreshPermissions: () => Promise<boolean>;
+  /** Optimistic role update after dev toggle (local SaaS testing only). */
+  applyDevRoles: (roles: string[]) => void;
+  /** Optimistic permission update after dev toggle (local SaaS testing only). */
+  applyDevPermissions: (permissions: string[]) => void;
   refreshOnboardingStatus: () => Promise<void>;
 }
 
@@ -250,18 +257,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
   // Default to true so RBAC-only UI doesn't briefly flash on first
   // load before /api/users/me responds. The backend is authoritative;
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
 
-  const fetchPermissions = useCallback(async () => {
+  const fetchPermissions = useCallback(async (): Promise<boolean> => {
     try {
       const r = await fetch("/api/users/me");
       if (!r.ok) {
-        setPermissions(new Set());
-        setRoles([]);
-        return;
+        // Session gone — clear. Transient errors keep existing state so a
+        // successful dev-role toggle is not wiped by a follow-up fetch failure.
+        if (r.status === 401) {
+          setPermissions(new Set());
+          setRoles([]);
+        }
+        return false;
       }
       const data = await r.json();
       const perms: string[] = Array.isArray(data?.permissions)
@@ -274,15 +286,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setRbacEnforced(
         typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
       );
+      return true;
     } catch {
-      setPermissions(new Set());
-      setRoles([]);
+      return false;
     }
   }, []);
 
   const refreshPermissions = useCallback(async () => {
-    await fetchPermissions();
+    return fetchPermissions();
   }, [fetchPermissions]);
+
+  const applyDevRoles = useCallback((userRoles: string[]) => {
+    setRoles(userRoles);
+  }, []);
+
+  const applyDevPermissions = useCallback((perms: string[]) => {
+    setPermissions(new Set(perms));
+  }, []);
 
   // Public onboarding-status — fetched once on mount, no auth required.
   // The frontend uses this to decide between the wizard and the login flow.
@@ -316,10 +336,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     if (user || isNoAuthMode || isIbmAuthMode) {
-      fetchPermissions();
+      setPermissionsLoading(true);
+      void fetchPermissions().finally(() => setPermissionsLoading(false));
     } else {
       setPermissions(new Set());
       setRoles([]);
+      setPermissionsLoading(false);
     }
   }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
 
@@ -328,16 +350,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [checkAuth]);
 
   const can = useCallback(
-    (perm: string): boolean => {
-      if (isNoAuthMode) return true;
-      return permissions.has(perm);
-    },
-    [permissions, isNoAuthMode],
+    (perm: string): boolean =>
+      hasRbacPermission(perm, { isNoAuthMode, rbacEnforced, permissions }),
+    [permissions, isNoAuthMode, rbacEnforced],
   );
 
   const value: AuthContextType = {
     user,
     isLoading,
+    permissionsLoading,
     isAuthenticated: !!user,
     isNoAuthMode,
     isIbmAuthMode,
@@ -353,6 +374,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     refreshAuth,
     refreshPermissions,
+    applyDevRoles,
+    applyDevPermissions,
     refreshOnboardingStatus,
   };
 
