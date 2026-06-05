@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from api.provider_validation import validate_provider_setup
 from config.settings import get_openrag_config
-from dependencies import get_current_user
+from dependencies import require_permission
 from session_manager import User
 from utils import provider_health_cache
 from utils.logging_config import get_logger
@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 async def check_provider_health(
     provider: str | None = None,
     test_completion: bool = False,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """
     Check if the configured provider is healthy and properly validated.

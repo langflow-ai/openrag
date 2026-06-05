@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
@@ -11,6 +12,7 @@ import {
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
+import { OnboardingBlocked } from "@/app/onboarding/_components/onboarding-blocked";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
@@ -18,6 +20,7 @@ import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { page } from "@/lib/analytics";
 import {
   ANIMATION_DURATION,
@@ -38,6 +41,7 @@ export function ChatRenderer({
   const router = useRouter();
   const queryClient = useQueryClient(); // Move hook to component level
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { can, isLoading: isPermLoading, rbacEnforced } = usePermissions();
   const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
@@ -253,6 +257,22 @@ export function ChatRenderer({
   const translateY = showLayout ? "0px" : `-50vh`;
   const translateX = showLayout ? "0px" : `-50vw`;
 
+  // Onboarding is admin-only. When the workspace still needs onboarding
+  // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
+  // they get a "contact your administrator" screen instead. It renders inside
+  // the same card shell as the wizard (below), so it shares the wizard's
+  // container sizing and entrance animation. Wait for the permission set to
+  // resolve first so the wizard never flashes for them.
+  const needsOnboardingGate = !showLayout && rbacEnforced && !isNoAuthMode;
+  if (needsOnboardingGate && isPermLoading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  const isOnboardingBlocked = needsOnboardingGate && !can("config:write");
+
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <>
@@ -336,28 +356,33 @@ export function ChatRenderer({
                   {children}
                 </div>
               )}
-              {!showLayout && (
-                <OnboardingContent
-                  handleStepComplete={handleStepComplete}
-                  handleStepBack={handleStepBack}
-                  currentStep={currentStep}
-                />
-              )}
+              {!showLayout &&
+                (isOnboardingBlocked ? (
+                  <OnboardingBlocked />
+                ) : (
+                  <OnboardingContent
+                    handleStepComplete={handleStepComplete}
+                    handleStepBack={handleStepBack}
+                    currentStep={currentStep}
+                  />
+                ))}
             </motion.div>
           </div>
         </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
-          transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
-          className={cn("absolute bottom-6 left-0 right-0")}
-        >
-          <ProgressBar
-            currentStep={currentStep}
-            totalSteps={TOTAL_ONBOARDING_STEPS}
-            onSkip={handleSkipOnboarding}
-          />
-        </motion.div>
+        {!isOnboardingBlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
+            transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
+            className={cn("absolute bottom-6 left-0 right-0")}
+          >
+            <ProgressBar
+              currentStep={currentStep}
+              totalSteps={TOTAL_ONBOARDING_STEPS}
+              onSkip={handleSkipOnboarding}
+            />
+          </motion.div>
+        )}
       </main>
     </>
   );

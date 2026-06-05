@@ -76,11 +76,13 @@ from dependencies import (
     get_knowledge_filter_service,
     get_langflow_file_service,
     get_models_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
     require_permission,
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
+from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
@@ -95,10 +97,18 @@ async def get_settings(
     request: Request,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsResponse:
     """Get application settings"""
     try:
         openrag_config = get_openrag_config()
+
+        # Provider configuration is admin-only. Non-admins still get the rest of
+        # settings (the UI needs them) but the providers section is redacted.
+        show_providers = True
+        if is_rbac_enforced():
+            uid = user.db_user_id or user.user_id
+            show_providers = await rbac.has_permission(uid, "providers:read")
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
@@ -201,7 +211,9 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-            ),
+            )
+            if show_providers
+            else None,
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
                 embedding_provider=knowledge_config.embedding_provider,
@@ -237,6 +249,7 @@ async def update_settings(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -266,6 +279,18 @@ async def update_settings(
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+
+        # Provider changes are admin-only. The outer gate only requires
+        # config:write; require providers:write specifically when any
+        # provider field is being touched (defends custom roles too).
+        if should_validate and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+            uid = user.db_user_id or user.user_id
+            if not await rbac.has_permission(uid, "providers:write"):
+                await rbac.audit_denied(uid, "providers:write")
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "permission_denied", "required": "providers:write"},
+                )
 
         if should_validate:
             try:
