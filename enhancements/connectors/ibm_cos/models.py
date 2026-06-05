@@ -1,7 +1,5 @@
 """Pydantic request/response models for IBM COS API endpoints."""
 
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 

@@ -6,8 +6,6 @@ In OSS it ships with a minimal set of additional connectors (IBM COS).
 Strip the imports below to ship a bare OSS build.
 """
 
-from typing import List, Type
-
 from connectors.base import BaseConnector
 
 from .connectors.ibm_cos import IBMCOSConnector

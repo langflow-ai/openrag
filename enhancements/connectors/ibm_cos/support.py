@@ -5,7 +5,6 @@ config dict construction, keeping the route handlers thin.
 """
 
 import os
-from typing import Dict, Optional, Tuple
 
 from .models import IBMCOSConfigureBody
 

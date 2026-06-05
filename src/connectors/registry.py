@@ -7,8 +7,6 @@ Shared code (`connection_manager`, settings endpoints, etc.) should look up
 connector classes via this module instead of hard-coding imports/branches.
 """
 
-from typing import List, Optional, Type
-
 from .aws_s3 import S3Connector
 from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
@@ -45,7 +43,7 @@ GENERAL_SECRET_KEYS = frozenset(
 
 def _load_additional() -> list[type[BaseConnector]]:
     try:
-        from enhancements import ADDITIONAL_CONNECTORS  # type: ignore
+        from enhancements import ADDITIONAL_CONNECTORS
     except ModuleNotFoundError:
         # No enhancements package installed — bare OSS build.
         return []

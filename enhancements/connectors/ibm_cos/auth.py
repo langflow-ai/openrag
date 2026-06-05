@@ -1,7 +1,7 @@
 """IBM Cloud Object Storage authentication and client factory."""
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 from utils.logging_config import get_logger
 
