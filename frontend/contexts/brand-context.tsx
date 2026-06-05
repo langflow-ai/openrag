@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   BRAND_COOKIE,
   type Brand,
-  IBM_THEME_DEV,
+  DEFAULT_BRAND,
   isCloudBrand,
 } from "@/lib/brand";
 
@@ -25,7 +25,7 @@ interface BrandContextValue {
 }
 
 const BrandContext = createContext<BrandContextValue>({
-  brand: "oss",
+  brand: DEFAULT_BRAND,
   setBrand: () => {},
 });
 
@@ -38,7 +38,7 @@ function applyBrand(brand: Brand) {
 }
 
 export function BrandProvider({ children }: { children: React.ReactNode }) {
-  const [brand, setBrandState] = useState<Brand>("oss");
+  const [brand, setBrandState] = useState<Brand>(DEFAULT_BRAND);
   const { isIbmAuthMode } = useAuth();
 
   useEffect(() => {
@@ -46,9 +46,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       applyBrand("ibm");
       setBrandState("ibm");
     } else {
-      const stored =
-        (localStorage.getItem("brand") as Brand) ??
-        (IBM_THEME_DEV ? "ibm" : "oss");
+      const stored = (localStorage.getItem("brand") as Brand) ?? DEFAULT_BRAND;
       persistBrandPreference(stored);
       applyBrand(stored);
       setBrandState(stored);
