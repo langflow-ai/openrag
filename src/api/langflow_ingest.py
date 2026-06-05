@@ -48,6 +48,41 @@ def _authorized_chunk_id(body: LangflowIngestBatch, document_id: str, index: int
     return f"{document_id}_{body.batch_id}_{index}"
 
 
+def _describe_ingest_error(error: Exception) -> tuple[dict[str, Any], str]:
+    """Pull structured OpenSearch context out of an ingest failure.
+
+    OpenSearch transport errors carry the real cause (the exception `type`, the
+    `reason`, and on mapping/parse failures the offending field) in their `info`
+    body. `str(e)` alone frequently hides that, leaving an opaque 500. This
+    returns ``(log_fields, detail)`` so the log line and the 500 detail both name
+    the actual cause instead of just the exception class.
+    """
+    log_fields: dict[str, Any] = {"error_type": type(error).__name__, "error": str(error)}
+
+    status = getattr(error, "status_code", None)
+    if status is not None:
+        log_fields["opensearch_status"] = status
+
+    info = getattr(error, "info", None)
+    if info is not None:
+        log_fields["opensearch_info"] = info
+
+    reason: str | None = None
+    if isinstance(info, dict):
+        err = info.get("error")
+        if isinstance(err, dict):
+            reason = err.get("reason")
+            root_cause = err.get("root_cause")
+            if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+                log_fields["opensearch_root_cause"] = root_cause[0]
+                reason = root_cause[0].get("reason") or reason
+
+    detail = str(error)
+    if reason:
+        detail = f"{detail} | opensearch: {reason}"
+    return log_fields, detail
+
+
 async def ingest_langflow_chunks(
     body: LangflowIngestBatch,
     authorization: str | None = Header(default=None),
@@ -77,14 +112,16 @@ async def ingest_langflow_chunks(
     try:
         result = await writer.index_chunks(context, chunks, final=body.final)
     except Exception as e:
+        log_fields, detail = _describe_ingest_error(e)
         logger.error(
             "Langflow ingest callback failed",
             ingest_run_id=body.ingest_run_id,
             batch_id=body.batch_id,
             chunk_count=len(chunks),
-            error=str(e),
+            document_id=context.document_id,
+            **log_fields,
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail=detail) from e
 
     if body.final:
         token_service.mark_finalized(jti)
