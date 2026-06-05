@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Stage: deps
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/nodejs-20:9.5 AS deps
+FROM registry.access.redhat.com/ubi9/nodejs-20:9.7 AS deps
 
 WORKDIR /opt/app-root/src
 USER 0
@@ -23,7 +23,7 @@ RUN npm ci --prefer-offline --no-audit
 # -----------------------------------------------------------------------------
 # Stage: builder
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/nodejs-20:9.5 AS builder
+FROM registry.access.redhat.com/ubi9/nodejs-20:9.7 AS builder
 
 WORKDIR /opt/app-root/src
 USER 0
