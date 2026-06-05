@@ -199,7 +199,6 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
         print(f"\nDEBUG: task_status returned from _wait_for_task: {task_status}")
         assert task_status["status"] == "completed"
-        
 
         config = config_manager.get_config()
         assert config.onboarding.openrag_docs_filter_id == payload["openrag_docs_filter_id"]
