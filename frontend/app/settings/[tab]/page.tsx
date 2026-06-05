@@ -21,6 +21,16 @@ const VALID_TABS = [
 
 type Tab = (typeof VALID_TABS)[number];
 
+/** Mirror auth-context `can()` for server-side tab guards. */
+function canAccess(
+  permissions: Set<string>,
+  isNoAuthMode: boolean,
+  perm: string,
+): boolean {
+  if (isNoAuthMode) return true;
+  return permissions.has(perm);
+}
+
 async function getTabAuthContext() {
   const [authRes, meRes] = await Promise.allSettled([
     fetchFromBackend("auth/me"),
@@ -85,7 +95,8 @@ export default async function SettingsTabPage({
   }
   if (
     tab === "connector-access" &&
-    (!isCloudBrandServer || !permissions.has("connectors:manage:access"))
+    (!isCloudBrandServer ||
+      !canAccess(permissions, isNoAuthMode, "connectors:manage:access"))
   ) {
     redirect("/settings/connectors");
   }
