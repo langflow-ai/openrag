@@ -47,7 +47,7 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
-    "prometheus-fastapi-instrumentator>=7.1.0",
+    "prometheus-fastapi-instrumentator>=8.0.0",
     "protobuf>=7.35.0",
     "litellm==1.84.0",
     "pyyaml>=6.0",
