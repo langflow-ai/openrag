@@ -29,12 +29,15 @@ ENV PATH="/root/.local/bin:$PATH" \
 # -----------------------------------------------------------------------------
 FROM base AS builder
 
-# Build-time deps only (not in final image)
+# Build-time deps only (not in final image).
+# python3.12-devel: aiohttp>=3.14.0 ships no cp312 wheels, so uv builds it
+# from source and needs Python.h.
 RUN microdnf install -y \
     git \
     gcc \
     gcc-c++ \
     make \
+    python3.12-devel \
     && microdnf clean all
 
 WORKDIR /app
