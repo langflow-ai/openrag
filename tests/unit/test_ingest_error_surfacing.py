@@ -50,7 +50,9 @@ def test_describe_ingest_error_extracts_opensearch_reason_and_field():
 
 
 def test_describe_ingest_error_plain_exception_is_still_described():
-    log_fields, detail = _describe_ingest_error(ValueError("Cannot index chunks with empty embeddings"))
+    log_fields, detail = _describe_ingest_error(
+        ValueError("Cannot index chunks with empty embeddings")
+    )
 
     assert log_fields["error_type"] == "ValueError"
     assert log_fields["error"] == "Cannot index chunks with empty embeddings"
