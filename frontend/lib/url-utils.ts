@@ -62,9 +62,9 @@ export function resolveLangflowEditUrl({
  *
  * IBM SaaS URL pattern:
  *   OpenRAG:  https://{instance_id}.or.{domain}/
- *   Langflow: https://{instance_id}.lf.or.{domain}/
+ *   Langflow: https://{instance_id}-langflow.or.{domain}/
  *
- * The transformation inserts "lf." before the "or." app segment in the hostname.
+ * The transformation appends "-langflow" to the instance ID segment of the hostname.
  * Returns null if the current URL does not match the expected IBM SaaS pattern.
  */
 export function deriveCloudLangflowUrl(
@@ -83,7 +83,7 @@ export function deriveCloudLangflowUrl(
     if (!match) return null;
 
     const [, instanceId, orAndDomain] = match;
-    url.hostname = `${instanceId}.lf.${orAndDomain}`;
+    url.hostname = `${instanceId}-langflow.${orAndDomain}`;
     return url.origin;
   } catch {
     return null;
