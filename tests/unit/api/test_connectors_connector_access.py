@@ -45,7 +45,7 @@ async def session():
 class _FakeRequest:
     def __init__(self, brand: str = "ibm"):
         self.headers = {OPENRAG_BRAND_HEADER: brand}
-        self.query_params = {}
+        self.query_params: dict[str, str] = {}
 
 
 @pytest.fixture
