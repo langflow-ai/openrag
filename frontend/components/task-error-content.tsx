@@ -55,6 +55,7 @@ export function TaskErrorContent({
   const failedCount = getFailedFileCount(task);
   const warningCount = getWarningFileEntries(task).length;
   const successCount = getSuccessfulFileCount(task);
+  const ingestedSuccessCount = Math.max(0, successCount - warningCount);
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
   const isFailedStatus =
@@ -85,7 +86,7 @@ export function TaskErrorContent({
   const accordionSummary = (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <span className="text-xs">
-        {successCount} success
+        {ingestedSuccessCount} success
         {warningCount > 0 ? ` · ${warningCount} warning` : ""}
         {failedCount > 0 ? ` · ${failedCount} failed` : ""}
       </span>
