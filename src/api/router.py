@@ -1,6 +1,7 @@
 """Router endpoints that automatically route based on configuration settings."""
 
 import json
+import os
 import tempfile
 
 from fastapi import Depends, File, Form, UploadFile
@@ -18,6 +19,18 @@ from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _write_upload_temp_file(content: bytes, original_filename: str | None) -> str:
+    """Stage upload bytes to a unique temp path, preserving the original extension."""
+    ext = os.path.splitext(original_filename or "")[1]
+    suffix = ext if ext else ".tmp"
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    temp_path = temp_file.name
+    temp_file.close()
+    with open(temp_path, "wb") as f:
+        f.write(content)
+    return temp_path
 
 
 async def upload_ingest_router(
@@ -105,13 +118,7 @@ async def _traditional_upload_ingest_task(
             for upload_file in upload_files:
                 content = await upload_file.read()
                 original_filenames.append(upload_file.filename)
-                # Generate unique temp file to avoid collisions
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
-                temp_path = temp_file.name
-                temp_file.close()
-                with open(temp_path, "wb") as f:
-                    f.write(content)
-                temp_file_paths.append(temp_path)
+                temp_file_paths.append(_write_upload_temp_file(content, upload_file.filename))
 
             file_path_to_original_filename = dict(
                 zip(temp_file_paths, original_filenames, strict=True)
@@ -206,13 +213,7 @@ async def _langflow_upload_ingest_task(
             for upload_file in upload_files:
                 content = await upload_file.read()
                 original_filenames.append(upload_file.filename)
-                # Generate unique temp file to avoid collisions
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
-                temp_path = temp_file.name
-                temp_file.close()
-                with open(temp_path, "wb") as f:
-                    f.write(content)
-                temp_file_paths.append(temp_path)
+                temp_file_paths.append(_write_upload_temp_file(content, upload_file.filename))
 
             file_path_to_original_filename = dict(
                 zip(temp_file_paths, original_filenames, strict=True)

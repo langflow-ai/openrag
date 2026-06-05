@@ -240,8 +240,10 @@ class TaskProcessor:
             file_hash=file_hash,
         )
 
-        # Check if this is a .txt or .md file - use simple processing instead of docling
-        file_ext = os.path.splitext(file_path)[1].lower()
+        # Check if this is a .txt or .md file - use simple processing instead of docling.
+        # Prefer original_filename: upload temp paths may not preserve the extension.
+        docling_filename = original_filename or os.path.basename(file_path)
+        file_ext = os.path.splitext(docling_filename)[1].lower()
 
         if file_ext in (".txt", ".md"):
             # Simple text file processing without docling
@@ -253,7 +255,10 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                filename=docling_filename,
             )
             slim_doc = extract_relevant(full_doc)
 

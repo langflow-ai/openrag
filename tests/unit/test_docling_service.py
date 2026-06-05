@@ -143,6 +143,36 @@ async def test_upload_success(docling_service, mock_httpx_client):
     assert data["do_ocr"] == "false"
 
 @pytest.mark.asyncio
+async def test_convert_file_uses_original_filename_for_docling_upload(
+    docling_service, mock_httpx_client, tmp_path
+):
+    """Upload name sent to Docling should not be the opaque temp basename."""
+    temp_path = tmp_path / "tmpABC123.tmp"
+    temp_path.write_bytes(b"%PDF-1.4")
+
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "task-1"})
+    mock_httpx_client.get.side_effect = [
+        _make_response(200, {"task_status": "success"}),
+        _make_response(200, {"document": {"json_content": {"key": "value"}}}),
+    ]
+
+    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+        mock_config = MagicMock()
+        mock_config.knowledge.table_structure = False
+        mock_config.knowledge.ocr = False
+        mock_config.knowledge.picture_descriptions = False
+        mock_get_config.return_value = mock_config
+
+        result = await docling_service.convert_file(
+            str(temp_path), filename="report.pdf"
+        )
+
+    assert result == {"key": "value"}
+    _, kwargs = mock_httpx_client.post.call_args
+    assert kwargs["files"]["files"][0] == "report.pdf"
+
+
+@pytest.mark.asyncio
 async def test_upload_http_error(docling_service, mock_httpx_client):
     """Raises exception if upload returns non-200."""
     mock_httpx_client.post.return_value = _make_response(400)

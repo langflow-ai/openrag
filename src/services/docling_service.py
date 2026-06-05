@@ -390,15 +390,24 @@ class DoclingService:
         raise TimeoutError(f"Docling task {task_id} did not complete within {timeout} seconds")
 
     async def convert_file(
-        self, file_path: str, user_id: str | None = None, auth_header: str | None = None
+        self,
+        file_path: str,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+        filename: str | None = None,
     ) -> dict[str, Any]:
         """
         Convert a local file via docling-serve async polling.
+
+        Args:
+            filename: Original upload name for Docling format detection. When omitted,
+                uses the basename of ``file_path``.
         """
         path = Path(file_path)
         file_bytes = path.read_bytes()
+        upload_name = filename or path.name
         task_id = await self.upload_to_docling_direct_async(
-            path.name, file_bytes, user_id=user_id, auth_header=auth_header
+            upload_name, file_bytes, user_id=user_id, auth_header=auth_header
         )
         return await self.get_docling_result_async(
             task_id, user_id=user_id, auth_header=auth_header
