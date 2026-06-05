@@ -15,6 +15,16 @@ logger = get_logger(__name__)
 _REFRESH_TIMEOUT_SECONDS = 30
 
 
+class _TimeoutSession(req_lib.Session):
+    def __init__(self, timeout: float) -> None:
+        super().__init__()
+        self._timeout = timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", self._timeout)
+        return super().request(method, url, **kwargs)
+
+
 class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
 
@@ -51,9 +61,7 @@ class GoogleDriveOAuth:
 
     def _make_timeout_request(self) -> Request:
         """Build a google-auth Request transport with a bounded timeout."""
-        session = req_lib.Session()
-        session.timeout = _REFRESH_TIMEOUT_SECONDS  # type: ignore[attr-defined]
-        return Request(session=session)
+        return Request(session=_TimeoutSession(_REFRESH_TIMEOUT_SECONDS))
 
     def _missing_required_scopes(self, scopes: list[str] | None) -> list[str]:
         current_scopes = set(scopes or [])
