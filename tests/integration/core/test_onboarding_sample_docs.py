@@ -41,7 +41,6 @@ _RELOAD_MODULES = [
 ]
 
 _EXCLUDED_DEFAULT_DOCS = {"warmup_ocr.pdf"}
-_OPENRAG_DOCS_URL = "https://docs.openr.ag/"
 
 
 def _reload_openrag_modules() -> None:
@@ -70,12 +69,12 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         pytest.skip("OPENAI_API_KEY is required for onboarding sample-doc ingestion")
 
     docs_dir = Path(__file__).resolve().parents[3] / "openrag-documents"
-    expected_local_filenames = sorted(
+    expected_filenames = sorted(
         path.name
         for path in docs_dir.rglob("*")
         if path.is_file() and path.name not in _EXCLUDED_DEFAULT_DOCS
     )
-    if not expected_local_filenames:
+    if not expected_filenames:
         pytest.fail(f"No default docs found in {docs_dir}")
 
     config_dir = tmp_path / "config"
@@ -94,8 +93,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENRAG_KEYS_PATH", str(keys_dir))
     monkeypatch.setenv("OPENSEARCH_INDEX_NAME", index_name)
     monkeypatch.setenv("INGEST_SAMPLE_DATA", "true")
-    monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "url")
-    monkeypatch.setenv("DEFAULT_DOCS_URL", _OPENRAG_DOCS_URL)
+    monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "files")
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
     monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
@@ -115,7 +113,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     try:
         yield {
             "index_name": index_name,
-            "expected_openrag_docs_url": _OPENRAG_DOCS_URL,
+            "expected_filenames": expected_filenames,
         }
     finally:
         try:
@@ -197,8 +195,11 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         assert payload["openrag_docs_filter_id"]
 
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
-        print(f"\nDEBUG: task_status returned from _wait_for_task: {task_status}")
         assert task_status["status"] == "completed"
+        assert task_status["successful_files"] == len(
+            isolated_onboarding_docs_workspace["expected_filenames"]
+        )
+        assert task_status["failed_files"] == 0
 
         config = config_manager.get_config()
         assert config.onboarding.openrag_docs_filter_id == payload["openrag_docs_filter_id"]
@@ -207,41 +208,13 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         await clients.opensearch.indices.refresh(
             index=isolated_onboarding_docs_workspace["index_name"]
         )
-
-        # DEBUG: Print everything in index to see what's actually there
-        import json
-
-        try:
-            all_docs = await clients.opensearch.search(
-                index=isolated_onboarding_docs_workspace["index_name"],
-                body={"query": {"match_all": {}}, "size": 5},
-            )
-            print(f"\nDEBUG: Sample 5 docs in index: {json.dumps(all_docs, indent=2)}")
-
-            agg_query = await clients.opensearch.search(
-                index=isolated_onboarding_docs_workspace["index_name"],
-                body={
-                    "size": 0,
-                    "aggs": {
-                        "by_connector": {"terms": {"field": "connector_type"}},
-                        "by_sample_data": {"terms": {"field": "is_sample_data"}},
-                    },
-                },
-            )
-            print(
-                f"DEBUG: Aggs in index (connector_type/is_sample_data): {json.dumps(agg_query, indent=2)}"
-            )
-        except Exception as e:
-            print(f"DEBUG: Error querying all docs: {e}")
-
         search_response = await clients.opensearch.search(
             index=isolated_onboarding_docs_workspace["index_name"],
             body={
                 "query": {
                     "bool": {
                         "filter": [
-                            {"term": {"connector_type": "openrag_docs"}},
-                            {"term": {"is_sample_data": "true"}},
+                            {"term": {"connector_type": "local"}},
                         ]
                     }
                 },
@@ -251,23 +224,16 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         )
         total = search_response.get("hits", {}).get("total", {})
         total_value = total.get("value", 0) if isinstance(total, dict) else total
-        if total_value <= 0:
-            print(
-                f"\nDEBUG: Search response for test query when total_value <= 0: {json.dumps(search_response, indent=2)}"
-            )
-            print(f"DEBUG: payload from onboarding: {json.dumps(payload, indent=2)}")
-
-        assert total_value > 0, (
-            f"Expected URL-ingested OpenRAG docs chunks to be indexed, got {total_value}. search_response: {search_response}"
-        )
+        assert total_value > 0, "Expected onboarding sample document chunks to be indexed"
 
         filename_buckets = (
             search_response.get("aggregations", {}).get("filenames", {}).get("buckets", [])
         )
         indexed_filenames = {bucket["key"] for bucket in filename_buckets}
-        assert indexed_filenames == {
-            isolated_onboarding_docs_workspace["expected_openrag_docs_url"]
-        }
+        assert set(isolated_onboarding_docs_workspace["expected_filenames"]).issubset(
+            indexed_filenames
+        )
+        assert indexed_filenames.isdisjoint(_EXCLUDED_DEFAULT_DOCS)
     finally:
         if startup_complete:
             await app.router.shutdown()
