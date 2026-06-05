@@ -52,6 +52,9 @@ RUN pip install --no-cache-dir \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
     uv
 
+# Create a symlink for backwards compatibility with the 'langflow' command
+RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
+
 # Create application directory and langflow data directory
 WORKDIR /app
 RUN mkdir -p /app/data

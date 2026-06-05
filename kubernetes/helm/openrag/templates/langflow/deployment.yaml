@@ -62,7 +62,7 @@ spec:
             - name: LANGFLOW_WORKERS
               value: "1"
 
-          args: ["langflow", "run", "--env-file", "/app/.env"]
+          args: ["python", "-m", "langflow", "run", "--env-file", "/app/.env"]
 
           volumeMounts:
             - name: openrag-langflow-dotenv
