@@ -225,7 +225,11 @@ async def _build_and_start_app():
     config_manager._config = None
     await run_alembic_upgrade_async("head")
     app = await create_app()
-    await app.router.startup()
+    # Starlette 1.x removed Router.startup()/shutdown(); drive the app's
+    # lifespan context manager directly, the same way an ASGI server boots it.
+    lifespan_ctx = app.router.lifespan_context(app)
+    await lifespan_ctx.__aenter__()
+    app.state.lifespan_ctx = lifespan_ctx
     return app
 
 
@@ -237,7 +241,7 @@ async def _shutdown_app(app) -> None:
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-    await app.router.shutdown()
+    await app.state.lifespan_ctx.__aexit__(None, None, None)
     await dispose_engine()
 
 

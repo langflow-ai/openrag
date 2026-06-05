@@ -3,8 +3,10 @@
 `run_startup(app)` and `run_shutdown(app)` collapse what previously lived
 as three @app.on_event("startup") handlers and three @app.on_event("shutdown")
 handlers into one helper each. The factory registers these as on_event
-handlers so they fire under both Starlette's lifespan-from-on_event flow
-(production) and `app.router.startup()` / `app.router.shutdown()` (tests).
+handlers so they fire under FastAPI's lifespan-from-on_event flow, both in
+production (the ASGI server drives it) and in tests (which enter/exit
+`app.router.lifespan_context(app)` directly, since Starlette 1.x removed the
+`app.router.startup()` / `app.router.shutdown()` helpers).
 """
 
 import asyncio
