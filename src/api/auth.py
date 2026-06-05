@@ -12,8 +12,15 @@ from dependencies import (
     get_auth_service,
     get_optional_user,
     get_current_user,
+    get_db_session,
 )
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from services.connector_access_service import (
+    CONNECTOR_TYPES,
+    is_connector_access_policy_enforced,
+    is_connector_allowed_for_request,
+)
 from session_manager import User
 
 
@@ -22,8 +29,6 @@ class AuthInitBody(BaseModel):
     purpose: str = "data_source"
     name: Optional[str] = None
     redirect_uri: Optional[str] = None
-
-
 
 
 class AuthCallbackBody(BaseModel):
@@ -41,9 +46,23 @@ async def auth_init(
     request: Request,
     auth_service=Depends(get_auth_service),
     user: Optional[User] = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Initialize OAuth flow for authentication or data source connection"""
     try:
+        if (
+            body.purpose == "data_source"
+            and body.connector_type in CONNECTOR_TYPES
+            and is_connector_access_policy_enforced(request)
+            and not await is_connector_allowed_for_request(
+                session, body.connector_type, request
+            )
+        ):
+            return JSONResponse(
+                {"error": f"Connector not available: {body.connector_type}"},
+                status_code=403,
+            )
+
         connection_name = body.name or f"{body.connector_type}_{body.purpose}"
         user_id = user.user_id if user else None
 

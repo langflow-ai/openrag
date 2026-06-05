@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 
 interface GoogleDriveFile {
   id: string;
@@ -51,6 +52,8 @@ export interface GetConnectorsResponse {
 export const useGetConnectorsQuery = (
   options?: Omit<UseQueryOptions<Connector[]>, "queryKey" | "queryFn">,
 ) => {
+  const isCloudBrand = useIsCloudBrand();
+
   async function getConnectors(): Promise<Connector[]> {
     const connectorsResponse = await fetch("/api/connectors");
     if (!connectorsResponse.ok) {
@@ -110,7 +113,7 @@ export const useGetConnectorsQuery = (
   }
 
   return useQuery({
-    queryKey: ["connectors"],
+    queryKey: ["connectors", isCloudBrand],
     queryFn: getConnectors,
     refetchOnMount: "always",
     ...options,

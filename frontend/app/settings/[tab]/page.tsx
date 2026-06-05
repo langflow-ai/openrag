@@ -1,14 +1,28 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
+import { BRAND_COOKIE, type Brand } from "@/lib/brand";
 import { fetchFromBackend } from "@/lib/fetch-server";
+import {
+  buildSettingsTabAccess,
+  canAccessConnectorAccessTab,
+  canShowRbacGatedSettingsTab,
+} from "@/lib/settings-tab-access";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
+import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import ModelProviders from "../_components/model-providers";
 
-const VALID_TABS = ["connectors", "providers", "langflow", "api-keys"] as const;
+const VALID_TABS = [
+  "connectors",
+  "providers",
+  "langflow",
+  "api-keys",
+  "connector-access",
+] as const;
 
 type Tab = (typeof VALID_TABS)[number];
 
@@ -27,13 +41,18 @@ async function getTabAuthContext() {
       ? await meRes.value.json()
       : {};
 
+  const permissions = new Set<string>(
+    Array.isArray(meData.permissions) ? meData.permissions : [],
+  );
+  const rbacEnforced =
+    typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true;
+
   return {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
     isAuthenticated: Boolean(authData.authenticated),
-    permissions: new Set<string>(
-      Array.isArray(meData.permissions) ? meData.permissions : [],
-    ),
+    permissions,
+    rbacEnforced,
   };
 }
 
@@ -48,10 +67,25 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
 
-  const { isNoAuthMode, isIbmAuthMode, isAuthenticated, permissions } =
-    await getTabAuthContext();
+  const {
+    isNoAuthMode,
+    isIbmAuthMode,
+    isAuthenticated,
+    permissions,
+    rbacEnforced,
+  } = await getTabAuthContext();
 
-  // Mirror the visibility logic from settings-nav.tsx
+  const brandCookie = (await cookies()).get(BRAND_COOKIE)?.value as
+    | Brand
+    | undefined;
+  const tabAccess = buildSettingsTabAccess({
+    isIbmAuthMode,
+    brand: brandCookie,
+    isNoAuthMode,
+    rbacEnforced,
+    permissions,
+  });
+
   if (
     tab === "api-keys" &&
     (isIbmAuthMode || (!isAuthenticated && !isNoAuthMode))
@@ -60,13 +94,17 @@ export default async function SettingsTabPage({
   }
   if (
     tab === "providers" &&
-    !isNoAuthMode &&
-    !permissions.has("providers:write")
+    !canShowRbacGatedSettingsTab("providers:write", tabAccess)
   ) {
     redirect("/settings/connectors");
   }
-  // Langflow tab edits agent + ingest settings (workspace config) — admin-only.
-  if (tab === "langflow" && !isNoAuthMode && !permissions.has("config:write")) {
+  if (tab === "connector-access" && !canAccessConnectorAccessTab(tabAccess)) {
+    redirect("/settings/connectors");
+  }
+  if (
+    tab === "langflow" &&
+    !canShowRbacGatedSettingsTab("config:write", tabAccess)
+  ) {
     redirect("/settings/connectors");
   }
 
@@ -110,6 +148,7 @@ export default async function SettingsTabPage({
         </div>
       )}
       {tab === "api-keys" && <ApiKeysSection />}
+      {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>
   );
 }

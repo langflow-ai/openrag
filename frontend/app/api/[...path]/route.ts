@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BRAND_COOKIE } from "@/lib/brand";
 
 function getRequestId(request: NextRequest): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
@@ -98,6 +99,11 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       headers.set(key, value);
     }
     headers.set("x-request-id", requestId);
+
+    const brand = request.cookies.get(BRAND_COOKIE)?.value;
+    if (brand === "oss" || brand === "ibm") {
+      headers.set("X-OpenRAG-Brand", brand);
+    }
 
     const init: RequestInit = {
       method: request.method,
