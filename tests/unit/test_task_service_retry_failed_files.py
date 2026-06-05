@@ -35,6 +35,32 @@ def _store_task(
 
 
 @pytest.mark.asyncio
+async def test_retry_skips_cancelled_files(task_service):
+    processor = Mock()
+    ft = FileTask(file_path="/data/cancelled.pdf", filename="cancelled.pdf")
+    ft.status = TaskStatus.FAILED
+    ft.phase = IngestionPhase.DOCLING
+    ft.docling_status = DoclingPhaseStatus.PROCESSING
+    ft.error = "Task cancelled by user"
+    task = UploadTask(
+        task_id="task-cancelled",
+        total_files=1,
+        file_tasks={"/data/cancelled.pdf": ft},
+        status=TaskStatus.FAILED,
+        failed_files=1,
+        processor=processor,
+    )
+    _store_task(task_service, "user1", task)
+
+    with patch("os.path.isfile", return_value=True):
+        result = await task_service.retry_failed_files("user1", "task-cancelled")
+
+    assert result["retried"] == 0
+    assert result["status"] == "no_op"
+    assert result["skipped"][0]["reason"] == "not_retryable"
+
+
+@pytest.mark.asyncio
 async def test_retry_all_failed_retryable_files(task_service):
     processor = Mock()
     ft_a = _retryable_failed_file("/data/a.pdf")
