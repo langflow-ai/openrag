@@ -32,9 +32,17 @@ class SharePointConnector(BaseConnector):
     CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
 
     # Connector metadata
+    CONNECTOR_TYPE = "sharepoint"
+    CONNECTOR_KIND = "oauth"
     CONNECTOR_NAME = "SharePoint"
     CONNECTOR_DESCRIPTION = "Add knowledge from SharePoint"
     CONNECTOR_ICON = "sharepoint"
+
+    @classmethod
+    def get_oauth_class(cls):
+        from .oauth import SharePointOAuth
+
+        return SharePointOAuth
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

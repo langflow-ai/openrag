@@ -5,15 +5,14 @@ config dict construction, keeping the route handlers thin.
 """
 
 import os
-from typing import Dict, Optional, Tuple
 
 from .models import IBMCOSConfigureBody
 
 
 def build_ibm_cos_config(
     body: IBMCOSConfigureBody,
-    existing_config: Dict,
-) -> Tuple[Dict, Optional[str]]:
+    existing_config: dict,
+) -> tuple[dict, str | None]:
     """Resolve IBM COS credentials and build the connection config dict.
 
     Resolution order for each credential: request body → environment variable
@@ -23,17 +22,13 @@ def build_ibm_cos_config(
         (conn_config, None)  on success
         ({}, error_message)  on validation failure
     """
-    conn_config: Dict = {
+    conn_config: dict = {
         "auth_mode": body.auth_mode,
         "endpoint_url": body.endpoint,
     }
 
     if body.auth_mode == "iam":
-        api_key = (
-            body.api_key
-            or os.getenv("IBM_COS_API_KEY")
-            or existing_config.get("api_key")
-        )
+        api_key = body.api_key or os.getenv("IBM_COS_API_KEY") or existing_config.get("api_key")
         svc_id = (
             body.service_instance_id
             or os.getenv("IBM_COS_SERVICE_INSTANCE_ID")

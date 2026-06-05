@@ -8,24 +8,20 @@ import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
-import AwsLogo from "@/components/icons/aws-logo";
-import GoogleDriveIcon from "@/components/icons/google-drive-logo";
-import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
-import OneDriveIcon from "@/components/icons/one-drive-logo";
-import SharePointIcon from "@/components/icons/share-point-logo";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import {
+  getConnectorDescriptor,
+  getConnectorDescriptors,
+} from "@/lib/connectors/registry";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
-import IBMCOSSettingsDialog from "./ibm-cos-settings-dialog";
-import S3SettingsDialog from "./s3-settings-dialog";
 
 export default function ConnectorCards() {
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const router = useRouter();
-  const [ibmCOSDialogOpen, setIBMCOSDialogOpen] = useState(false);
-  const [s3DialogOpen, setS3DialogOpen] = useState(false);
+  const [openDialog, setOpenDialog] = useState<string | null>(null);
 
   const { data: queryConnectors = [], isLoading: connectorsLoading } =
     useGetConnectorsQuery({
@@ -35,21 +31,16 @@ export default function ConnectorCards() {
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
 
-  const getConnectorIcon = useCallback((iconName: string) => {
-    const iconMap: { [key: string]: React.ReactElement } = {
-      "google-drive": <GoogleDriveIcon />,
-      sharepoint: <SharePointIcon />,
-      onedrive: <OneDriveIcon />,
-      "ibm-cos": <IBMCOSIcon />,
-      "aws-s3": <AwsLogo />,
-    };
-    return (
-      iconMap[iconName] || (
+  const getConnectorIcon = useCallback((connectorType: string) => {
+    const Icon = getConnectorDescriptor(connectorType)?.Icon;
+    if (!Icon) {
+      return (
         <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
           ?
         </div>
-      )
-    );
+      );
+    }
+    return <Icon />;
   }, []);
 
   const connectors = queryConnectors
@@ -60,7 +51,7 @@ export default function ConnectorCards() {
     })
     .map((c) => ({
       ...c,
-      icon: getConnectorIcon(c.icon),
+      icon: getConnectorIcon(c.type),
     })) as Connector[];
 
   const handleConnect = async (connector: Connector) => {
@@ -79,13 +70,10 @@ export default function ConnectorCards() {
     router.push(`/upload/${provider}`);
   };
 
-  // Connectors that use a settings dialog instead of OAuth for configuration
   const getConfigureHandler = (connector: Connector) => {
-    if (connector.type === "ibm_cos") {
-      return () => setIBMCOSDialogOpen(true);
-    }
-    if (connector.type === "aws_s3") {
-      return () => setS3DialogOpen(true);
+    const descriptor = getConnectorDescriptor(connector.type);
+    if (descriptor?.SettingsDialog) {
+      return () => setOpenDialog(connector.type);
     }
     return undefined;
   };
@@ -93,6 +81,10 @@ export default function ConnectorCards() {
   if (!connectorsLoading && connectors.length === 0) {
     return null;
   }
+
+  const dialogDescriptors = getConnectorDescriptors().filter(
+    (d) => d.SettingsDialog,
+  );
 
   return (
     <>
@@ -125,11 +117,18 @@ export default function ConnectorCards() {
         )}
       </div>
 
-      <IBMCOSSettingsDialog
-        open={ibmCOSDialogOpen}
-        setOpen={setIBMCOSDialogOpen}
-      />
-      <S3SettingsDialog open={s3DialogOpen} setOpen={setS3DialogOpen} />
+      {dialogDescriptors.map((descriptor) => {
+        const Dialog = descriptor.SettingsDialog!;
+        return (
+          <Dialog
+            key={descriptor.connectorType}
+            open={openDialog === descriptor.connectorType}
+            setOpen={(open: boolean) =>
+              setOpenDialog(open ? descriptor.connectorType : null)
+            }
+          />
+        );
+      })}
     </>
   );
 }

@@ -83,9 +83,17 @@ class GoogleDriveConnector(BaseConnector):
     CLIENT_SECRET_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_SECRET"
 
     # Connector metadata
+    CONNECTOR_TYPE = "google_drive"
+    CONNECTOR_KIND = "oauth"
     CONNECTOR_NAME = "Google Drive"
     CONNECTOR_DESCRIPTION = "Add knowledge from Google Drive"
     CONNECTOR_ICON = "google-drive"
+
+    @classmethod
+    def get_oauth_class(cls):
+        from .oauth import GoogleDriveOAuth
+
+        return GoogleDriveOAuth
 
     # Supported alias keys coming from various frontends / pickers
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
@@ -395,7 +403,7 @@ class GoogleDriveConnector(BaseConnector):
             )
             for fid in self.cfg.file_ids:
                 meta = self._get_file_meta_by_id(fid)
-                if not meta or meta.get("trashed"):
+                if not meta:
                     logger.debug(
                         "[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid
                     )

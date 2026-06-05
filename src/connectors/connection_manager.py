@@ -10,12 +10,8 @@ import aiofiles
 
 from utils.logging_config import get_logger
 
-from .aws_s3 import S3Connector
 from .base import BaseConnector
-from .google_drive import GoogleDriveConnector
-from .ibm_cos import IBMCOSConnector
-from .onedrive import OneDriveConnector
-from .sharepoint import SharePointConnector
+from .registry import get_all_secret_keys, get_connector_class, get_connector_classes
 
 logger = get_logger(__name__)
 
@@ -58,20 +54,7 @@ class ConnectionManager:
 
         needs_encryption_upgrade = False
         decryption_failed = False
-        secret_keys = {
-            "api_key",
-            "hmac_secret_key",
-            "secret_key",
-            "client_secret",
-            "aws_secret_access_key",
-            "ibm_api_key",
-            "access_token",
-            "refresh_token",
-            "access_key",
-            "hmac_access_key",
-            "service_instance_id",
-            "basic_credentials",
-        }
+        secret_keys = get_all_secret_keys()
 
         if self.connections_file.exists():
             async with aiofiles.open(self.connections_file) as f:
@@ -124,20 +107,7 @@ class ConnectionManager:
         """Save connections to persistent storage"""
         from utils.encryption import encrypt_secret
 
-        secret_keys = {
-            "api_key",
-            "hmac_secret_key",
-            "secret_key",
-            "client_secret",
-            "aws_secret_access_key",
-            "ibm_api_key",
-            "access_token",
-            "refresh_token",
-            "access_key",
-            "hmac_access_key",
-            "service_instance_id",
-            "basic_credentials",
-        }
+        secret_keys = get_all_secret_keys()
 
         data = {"connections": []}
 
@@ -447,56 +417,26 @@ class ConnectionManager:
     ) -> dict[str, dict[str, Any]]:
         """Get available connector types with their metadata.
 
-        Availability is user-scoped when ``user_id`` is provided:
-        a connector is considered available if either:
-        1) its required env credentials are present, or
-        2) the user has an active saved connection with usable credentials.
+        Each connector class decides its own availability via `is_available`.
+        OAuth connectors default to "env credentials present OR user has a saved
+        connection"; bucket-kind connectors gate on their own feature flag.
         """
-        return {
-            "google_drive": {
-                "name": GoogleDriveConnector.CONNECTOR_NAME,
-                "description": GoogleDriveConnector.CONNECTOR_DESCRIPTION,
-                "icon": GoogleDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("google_drive", user_id),
-            },
-            "sharepoint": {
-                "name": SharePointConnector.CONNECTOR_NAME,
-                "description": SharePointConnector.CONNECTOR_DESCRIPTION,
-                "icon": SharePointConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("sharepoint", user_id),
-            },
-            "onedrive": {
-                "name": OneDriveConnector.CONNECTOR_NAME,
-                "description": OneDriveConnector.CONNECTOR_DESCRIPTION,
-                "icon": OneDriveConnector.CONNECTOR_ICON,
-                "available": self._is_connector_available("onedrive", user_id),
-            },
-            "ibm_cos": {
-                "name": IBMCOSConnector.CONNECTOR_NAME,
-                "description": IBMCOSConnector.CONNECTOR_DESCRIPTION,
-                "icon": IBMCOSConnector.CONNECTOR_ICON,
-                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
-            },
-            "aws_s3": {
-                "name": S3Connector.CONNECTOR_NAME,
-                "description": S3Connector.CONNECTOR_DESCRIPTION,
-                "icon": S3Connector.CONNECTOR_ICON,
-                "available": os.environ.get("IBM_AUTH_ENABLED", "").lower() in ("1", "true", "yes"),
-            },
-        }
+        result: dict[str, dict[str, Any]] = {}
+        for cls in get_connector_classes():
+            result[cls.CONNECTOR_TYPE] = {
+                "name": cls.CONNECTOR_NAME,
+                "description": cls.CONNECTOR_DESCRIPTION,
+                "icon": cls.CONNECTOR_ICON,
+                "available": cls.is_available(self, user_id),
+            }
+        return result
 
     def get_auth_user_principals(self, user: Any) -> list[str]:
         """Return connector ACL principals derivable from the OpenRAG auth user."""
         from utils.group_acl import unique_acl_principals
 
         principals: list[str] = []
-        for connector_cls in (
-            GoogleDriveConnector,
-            SharePointConnector,
-            OneDriveConnector,
-            IBMCOSConnector,
-            S3Connector,
-        ):
+        for connector_cls in get_connector_classes():
             try:
                 principals.extend(connector_cls.get_auth_user_principals(user) or [])
             except Exception as e:
@@ -523,46 +463,15 @@ class ConnectionManager:
                 continue
         return False
 
-    def _is_connector_available(self, connector_type: str, user_id: str | None = None) -> bool:
-        """Check whether connector is available for use by the given user."""
-        try:
-            temp_config = ConnectionConfig(
-                connection_id="temp",
-                connector_type=connector_type,
-                name="temp",
-                config={},
-            )
-            connector = self._create_connector(temp_config)
-            # Try to get credentials to check if env vars are set
-            connector.get_client_id()
-            connector.get_client_secret()
-            return True
-        except (ValueError, NotImplementedError, RuntimeError):
-            # Fallback: saved per-user connection config (e.g. aws_s3 / ibm_cos)
-            return self._has_saved_credentials_for_user(connector_type, user_id)
-
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
-        """Factory method to create connector instances"""
+        """Factory method to create connector instances via the registry."""
         try:
-            if config.connector_type == "google_drive":
-                return GoogleDriveConnector(config.config)
-            elif config.connector_type == "sharepoint":
-                return SharePointConnector(config.config)
-            elif config.connector_type == "onedrive":
-                return OneDriveConnector(config.config)
-            elif config.connector_type == "ibm_cos":
-                return IBMCOSConnector(config.config)
-            elif config.connector_type == "aws_s3":
-                return S3Connector(config.config)
-            elif config.connector_type == "box":
-                raise NotImplementedError("Box connector not implemented yet")
-            elif config.connector_type == "dropbox":
-                raise NotImplementedError("Dropbox connector not implemented yet")
-            else:
+            cls = get_connector_class(config.connector_type)
+            if cls is None:
                 raise ValueError(f"Unknown connector type: {config.connector_type}")
+            return cls(config.config)
         except Exception as e:
             logger.error(f"Failed to create {config.connector_type} connector: {e}")
-            # Re-raise the exception so caller can handle appropriately
             raise
 
     async def update_last_sync(self, connection_id: str):

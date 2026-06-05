@@ -335,9 +335,9 @@ class ConnectorSyncBody(BaseModel):
     max_files: int | None = None
     selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
-    # Used by direct-sync providers on initial ingest.
+    # Used by bucket-kind connectors on initial ingest.
     sync_all: bool = False
-    # When set, only ingest files from these buckets.
+    # When set, only ingest files from these buckets (bucket-kind connectors).
     bucket_filter: list[str] | None = None
     # Per-request ingest options from the connector upload UI (overrides saved Knowledge for this sync).
     settings: dict[str, Any] | None = None
@@ -1108,7 +1108,7 @@ async def sync_all_connectors(
         jwt_token = user.jwt_token
 
         # Cloud connector types to sync
-        cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
+        cloud_connector_types = _cloud_connector_types()
 
         all_task_ids = []
         synced_connectors = []
@@ -1292,7 +1292,10 @@ async def sync_all_connectors(
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
-CLOUD_CONNECTOR_TYPES = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
+def _cloud_connector_types() -> list[str]:
+    from connectors.registry import get_connector_classes
+
+    return [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
 
 async def _preview_orphans_for_connector_type(
@@ -1387,7 +1390,7 @@ async def connectors_sync_all_preview(
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
 
-        for connector_type in CLOUD_CONNECTOR_TYPES:
+        for connector_type in _cloud_connector_types():
             try:
                 orphans, synced_count = await _preview_orphans_for_connector_type(
                     connector_type=connector_type,

@@ -2,10 +2,11 @@
 
 import mimetypes
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from posixpath import basename
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -46,15 +47,53 @@ class IBMCOSConnector(BaseConnector):
         connection_id (str): Connection identifier used for logging.
     """
 
+    CONNECTOR_TYPE = "ibm_cos"
+    CONNECTOR_KIND = "bucket"
     CONNECTOR_NAME = "IBM Cloud Object Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from IBM Cloud Object Storage"
     CONNECTOR_ICON = "ibm-cos"
+    # api_key/hmac_access_key/hmac_secret_key are already in GENERAL_SECRET_KEYS;
+    # only service_instance_id is IBM-specific.
+    SECRET_CONFIG_KEYS = ("service_instance_id",)
 
     # BaseConnector uses these to check env-var availability for IAM mode.
     # HMAC-only setups will show as "unavailable" in the UI but can still be
     # used when credentials are supplied in the config dict directly.
     CLIENT_ID_ENV_VAR = "IBM_COS_API_KEY"
     CLIENT_SECRET_ENV_VAR = "IBM_COS_SERVICE_INSTANCE_ID"
+
+    @classmethod
+    def is_available(cls, manager, user_id=None) -> bool:
+        return IBM_AUTH_ENABLED
+
+    @classmethod
+    def register_routes(cls, app) -> None:
+        from .api import (
+            ibm_cos_bucket_status,
+            ibm_cos_configure,
+            ibm_cos_defaults,
+            ibm_cos_list_buckets,
+        )
+
+        # Registered before generic /{connector_type}/... to avoid shadowing.
+        app.add_api_route(
+            "/connectors/ibm_cos/defaults", ibm_cos_defaults, methods=["GET"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/configure", ibm_cos_configure, methods=["POST"], tags=["internal"]
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/{connection_id}/buckets",
+            ibm_cos_list_buckets,
+            methods=["GET"],
+            tags=["internal"],
+        )
+        app.add_api_route(
+            "/connectors/ibm_cos/{connection_id}/bucket-status",
+            ibm_cos_bucket_status,
+            methods=["GET"],
+            tags=["internal"],
+        )
 
     def get_client_id(self) -> str:
         """Return IAM API key, or HMAC access key ID as fallback."""
@@ -86,26 +125,25 @@ class IBMCOSConnector(BaseConnector):
             "or IBM_COS_HMAC_SECRET_ACCESS_KEY (HMAC)."
         )
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         if config is None:
             config = {}
         super().__init__(config)
 
-        self.bucket_names: List[str] = config.get("bucket_names") or []
+        self.bucket_names: list[str] = config.get("bucket_names") or []
         self.prefix: str = config.get("prefix", "")
         self.connection_id: str = config.get("connection_id", "default")
 
         # Resolved service instance ID used as ACL owner fallback
-        self._service_instance_id: str = (
-            config.get("service_instance_id")
-            or os.getenv("IBM_COS_SERVICE_INSTANCE_ID", "")
+        self._service_instance_id: str = config.get("service_instance_id") or os.getenv(
+            "IBM_COS_SERVICE_INSTANCE_ID", ""
         )
 
         self._handle = None  # Lazy-initialised on first use
         # IAM mode uses ibm_boto3.client to avoid internal service-instance
         # discovery calls that cause XML-parse errors against the real IBM COS API.
         # HMAC mode uses ibm_boto3.resource (confirmed working with MinIO and S3).
-        self._is_hmac: bool = (config.get("auth_mode", "iam") == "hmac")
+        self._is_hmac: bool = config.get("auth_mode", "iam") == "hmac"
 
     def _get_handle(self):
         """Return (and cache) the appropriate boto3 handle for the configured auth mode.
@@ -130,9 +168,9 @@ class IBMCOSConnector(BaseConnector):
         try:
             handle = self._get_handle()
             if self._is_hmac:
-                list(handle.buckets.all())        # resource API
+                list(handle.buckets.all())  # resource API
             else:
-                handle.list_buckets()             # client API
+                handle.list_buckets()  # client API
             self._authenticated = True
             logger.debug(f"IBM COS authenticated for connection {self.connection_id}")
             return True
@@ -141,7 +179,7 @@ class IBMCOSConnector(BaseConnector):
             self._authenticated = False
             return False
 
-    def _resolve_bucket_names(self) -> List[str]:
+    def _resolve_bucket_names(self) -> list[str]:
         """Return configured bucket names, or auto-discover all accessible buckets."""
         if self.bucket_names:
             return self.bucket_names
@@ -160,10 +198,10 @@ class IBMCOSConnector(BaseConnector):
 
     async def list_files(
         self,
-        page_token: Optional[str] = None,
-        max_files: Optional[int] = None,
+        page_token: str | None = None,
+        max_files: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List objects across all configured (or auto-discovered) buckets.
 
         Uses the ibm_boto3 resource API: Bucket.objects.all() handles pagination
@@ -177,7 +215,7 @@ class IBMCOSConnector(BaseConnector):
                 "next_page_token": always None (SDK handles pagination internally)
         """
         handle = self._get_handle()
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         bucket_names = self._resolve_bucket_names()
 
         for bucket_name in bucket_names:
@@ -209,7 +247,7 @@ class IBMCOSConnector(BaseConnector):
                             return {"files": files, "next_page_token": None}
                 else:
                     # client API: list_objects_v2 with manual pagination
-                    kwargs: Dict[str, Any] = {"Bucket": bucket_name}
+                    kwargs: dict[str, Any] = {"Bucket": bucket_name}
                     if self.prefix:
                         kwargs["Prefix"] = self.prefix
                     while True:
@@ -261,12 +299,12 @@ class IBMCOSConnector(BaseConnector):
         # Both client.get_object() and resource.Object().get() return the same
         # response dict: Body stream + ContentType, ContentLength, LastModified.
         if self._is_hmac:
-            response = handle.Object(bucket_name, key).get()   # resource
+            response = handle.Object(bucket_name, key).get()  # resource
         else:
             response = handle.get_object(Bucket=bucket_name, Key=key)  # client
         content: bytes = response["Body"].read()
 
-        last_modified: datetime = response.get("LastModified") or datetime.now(timezone.utc)
+        last_modified: datetime = response.get("LastModified") or datetime.now(UTC)
         size: int = response.get("ContentLength", len(content))
 
         # MIME type detection: prefer filename extension over generic S3 content-type.
@@ -317,7 +355,7 @@ class IBMCOSConnector(BaseConnector):
                 or self._service_instance_id
             )
 
-            allowed_users: List[str] = []
+            allowed_users: list[str] = []
             for grant in acl_response.get("Grants", []):
                 grantee = grant.get("Grantee", {})
                 permission = grant.get("Permission", "")
@@ -352,19 +390,15 @@ class IBMCOSConnector(BaseConnector):
         """No-op: IBM COS event notifications are out of scope for this connector."""
         return ""
 
-    async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
+    async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
         """No-op: webhooks are not supported in this connector version."""
         return []
 
     def extract_webhook_channel_id(
-        self, payload: Dict[str, Any], headers: Dict[str, str]
-    ) -> Optional[str]:
+        self, payload: dict[str, Any], headers: dict[str, str]
+    ) -> str | None:
         return None
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:
         """No-op: no subscription to clean up."""
         return True
-
-
-
-
