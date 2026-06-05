@@ -862,7 +862,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName},
 			},
 		})
-		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
+		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data2"})
 	}
 
 	// Only create initContainer if FlowsRef is specified

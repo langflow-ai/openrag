@@ -13365,7 +13365,7 @@ spec:
                       (ClusterIP, LoadBalancer, NodePort).
                     type: string
                   storage:
-                    description: Storage configures a PVC mounted at /app/data (Langflow
+                    description: Storage configures a PVC mounted at /app/data2 (Langflow
                       SQLite + flows).
                     properties:
                       accessModes:

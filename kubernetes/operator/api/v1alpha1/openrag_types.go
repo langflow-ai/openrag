@@ -269,7 +269,7 @@ type LangflowSpec struct {
 	// +optional
 	FlowsInitImage string `json:"flowsInitImage,omitempty"`
 
-	// Storage configures a PVC mounted at /app/data (Langflow SQLite + flows).
+	// Storage configures a PVC mounted at /app/data2 (Langflow SQLite + flows).
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`
 
