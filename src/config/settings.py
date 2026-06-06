@@ -82,8 +82,8 @@ IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-sess
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 
-# Granite 4.0 H-Tiny — LLM router
-GRANITE_MODEL = os.getenv("GRANITE_MODEL", "granite4.0-htiny:instruct")
+# Granite 4.1 — LLM router (dev default: granite4.1:3b)
+GRANITE_MODEL = os.getenv("GRANITE_MODEL", "granite4.1:3b")
 GRANITE_ENDPOINT = os.getenv("GRANITE_ENDPOINT", "")  # Falls back to OLLAMA_ENDPOINT
 GRANITE_BACKEND = os.getenv("GRANITE_BACKEND", "ollama")  # "ollama" | "sglang" (Phase 3)
 

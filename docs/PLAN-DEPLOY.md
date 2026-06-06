@@ -89,9 +89,18 @@ OPENRAG_ENCRYPTION_KEY=<opcional local; obligatorio VPS>
 ### 2. Modelos Ollama
 
 ```bash
-ollama pull granite4.0-htiny:instruct    # chat en Langflow
-ollama pull <embedding-model>            # misma dimensión para todo el índice
+ollama pull granite4.1:3b                # dev default — chat con tool-calling (~2.1 GB)
+ollama pull nomic-embed-text             # embeddings Ollama (768d); misma dimensión en todo el índice
 ```
+
+Con **GPU y más RAM**, subir calidad en onboarding/settings (sin cambiar código):
+
+```bash
+ollama pull granite4.1:8b                # ~5.3 GB — recomendado con 16 GB RAM
+ollama pull granite4.1:30b               # ~17 GB — solo con GPU y RAM de sobra
+```
+
+El modelo de chat **efectivo** se guarda en onboarding → `./config` y se inyecta en los flows Langflow. `GRANITE_MODEL` solo aplica a `LLMRouter` (Fase 4 opt-in).
 
 ### 3. Docling (obligatorio, puerto 5001)
 
@@ -163,8 +172,27 @@ Si solo se dispone del host Windows sin Docker/Ollama/Docling en ejecución:
 | TLS | Caddy/Nginx → `127.0.0.1:3000` |
 | Timeouts proxy | ≥ 300s (ingesta larga; alinear con `LANGFLOW_TIMEOUT`) |
 | OAuth | Redirect `https://<dominio>/auth/callback`; `WEBHOOK_BASE_URL` si conectores |
-| Backups | Volúmenes `opensearch-data`, `langflow-data`, `redis-data`, `./keys`, `./config` |
+| Backups | Volúmenes `opensearch-data`, `langflow-data`, `redis-data`, `./config`; `./keys` por servidor |
 | Langflow DB | Valorar `LANGFLOW_DATABASE_URL=postgresql://...` |
+
+### Certificados OpenSearch (`keys/`)
+
+Los `.pem` en `keys/` **no son secretos de la app** — son PKI demo para TLS/admin de OpenSearch (`generate-certs.sh`, CN=`kirk`). `*.pem` está en `.gitignore`.
+
+| Archivo | Origen | Uso |
+|---------|--------|-----|
+| `root-ca*.pem`, `kirk*.pem` | `bash generate-certs.sh` | PKI OpenSearch (por entorno) |
+| `private_key.pem`, `public_key.pem` | Auto-generados al primer arranque del backend | Firma JWT de sesión |
+
+**En VPS (antes del primer `docker compose up`):**
+
+```bash
+# Generar PKI nueva en el servidor — no copiar certs de dev
+bash generate-certs.sh
+docker compose up -d
+```
+
+`scripts/setup-droplet.sh` ejecuta `generate-certs.sh` automáticamente si falta `keys/root-ca.pem`. Si ya existen certs viejos en el host, **regenerar** en lugar de reutilizar los de otra máquina.
 
 ### systemd — Docling (ejemplo)
 
@@ -258,7 +286,7 @@ El chat RAG usa **flows Langflow**, no `src/services/llm_router.py`.
 
 1. Abrir Langflow UI (`http://localhost:7860` o vía VPN en prod).
 2. Editar el flow de chat (`LANGFLOW_CHAT_FLOW_ID`).
-3. En el componente **Ollama** del agente, model: `granite4.0-htiny:instruct`.
+3. En el componente **Ollama** del agente, model: `granite4.1:3b` (dev) o `granite4.1:8b` / `granite4.1:30b` con GPU.
 4. Asegurar `OLLAMA_ENDPOINT` / `OLLAMA_BASE_URL` apunta al host Ollama.
 5. Probar query multi-hop en la UI de Axioma.
 

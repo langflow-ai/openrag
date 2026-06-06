@@ -15,7 +15,7 @@ Usage:
 
 Required env vars (when GRANITE_BACKEND=ollama, the default):
     OLLAMA_ENDPOINT   — Ollama server URL (e.g. http://localhost:11434)
-    GRANITE_MODEL     — Model name in Ollama registry (default: granite4.0-htiny:instruct)
+    GRANITE_MODEL     — Model name in Ollama registry (default: granite4.1:3b)
 
 Optional env vars:
     GRANITE_ENDPOINT  — Override endpoint (bypasses OLLAMA_ENDPOINT lookup)
