@@ -37,6 +37,8 @@ export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
 
+  const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
+
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
   const [chunkValidationError, setChunkValidationError] = useState<
@@ -239,6 +241,7 @@ export function IngestSettingsSection() {
   };
 
   const handleRestoreIngestFlow = (closeDialog: () => void) => {
+    setIsRestoringFlow(true);
     fetch("/api/reset-flow/ingest", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();
@@ -252,12 +255,15 @@ export function IngestSettingsSection() {
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
+        toast.success("Default ingest flow restored successfully");
         closeDialog();
       })
       .catch((err) => {
         console.error("Error restoring ingest flow:", err);
+        toast.error("Failed to restore default ingest flow");
         closeDialog();
-      });
+      })
+      .finally(() => setIsRestoringFlow(false));
   };
 
   return (
@@ -285,6 +291,7 @@ export function IngestSettingsSection() {
                 confirmText="Restore"
                 variant="destructive"
                 onConfirm={handleRestoreIngestFlow}
+                isLoading={isRestoringFlow}
               />
               <ConfirmationDialog
                 trigger={
