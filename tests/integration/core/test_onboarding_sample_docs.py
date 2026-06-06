@@ -171,8 +171,12 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
 
     app = await create_app()
     startup_complete = False
+    lifespan_ctx = None
     try:
-        await app.router.startup()
+        # Starlette 1.x removed Router.startup()/shutdown(); drive the app's
+        # lifespan context manager directly, like an ASGI server would.
+        lifespan_ctx = app.router.lifespan_context(app)
+        await lifespan_ctx.__aenter__()
         startup_complete = True
 
         transport = httpx.ASGITransport(app=app)
@@ -235,5 +239,5 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         )
         assert indexed_filenames.isdisjoint(_EXCLUDED_DEFAULT_DOCS)
     finally:
-        if startup_complete:
-            await app.router.shutdown()
+        if startup_complete and lifespan_ctx is not None:
+            await lifespan_ctx.__aexit__(None, None, None)
