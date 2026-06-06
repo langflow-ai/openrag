@@ -370,7 +370,11 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         await configure_alerting_security()
 
     except Exception as e:
-        from utils.opensearch_utils import OpenSearchDiskSpaceError, is_disk_space_error
+        from utils.opensearch_utils import (
+            OpenSearchDiskSpaceError,
+            is_disk_space_error,
+            opensearch_error_fields,
+        )
 
         # TransportError stringifies to just "TransportError(500, '')" — surface
         # the failing step plus the OpenSearch status/error/body it carries.
@@ -378,11 +382,8 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             "failed_step": step,
             "error": str(e),
             "error_repr": repr(e),
+            **opensearch_error_fields(e),
         }
-        if hasattr(e, "status_code"):
-            err_fields["os_status_code"] = getattr(e, "status_code", None)
-            err_fields["os_error"] = getattr(e, "error", None)
-            err_fields["os_info"] = getattr(e, "info", None)
         logger.error("init_index failed", **err_fields)
 
         if is_disk_space_error(e):
