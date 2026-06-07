@@ -123,7 +123,10 @@ func TestEnvVarManager_CREmptyValueOverridesDefault(t *testing.T) {
 	}
 
 	_ = os.Setenv("OPTLF_LANGFLOW_KEY", "operator-key")
-	defer os.Unsetenv("OPTLF_LANGFLOW_KEY")
+	defer func() {
+		err := os.Unsetenv("OPTLF_LANGFLOW_KEY")
+		require.NoError(t, err)
+	}()
 
 	crEnvVars := []corev1.EnvVar{
 		{Name: "LANGFLOW_KEY", Value: ""},   // explicit empty — must win
