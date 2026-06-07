@@ -18,7 +18,7 @@ services:
       - opensearch-data:/usr/share/opensearch/data
     stop_grace_period: 2m
     healthcheck:
-      test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
+      test: ["CMD-SHELL", "curl -kfsS -u \"admin:$$OPENSEARCH_INITIAL_ADMIN_PASSWORD\" 'https://localhost:9200/_cluster/health' > /dev/null"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -59,13 +59,15 @@ services:
       - LANGFLOW_INGEST_FLOW_ID=${LANGFLOW_INGEST_FLOW_ID}
       - LANGFLOW_URL_INGEST_FLOW_ID=${LANGFLOW_URL_INGEST_FLOW_ID}
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
-      - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
+      - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-false}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
       - LANGFLOW_OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
       - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_API_KEY=${WATSONX_API_KEY}
@@ -121,6 +123,7 @@ services:
       - GRANITE_BACKEND=${GRANITE_BACKEND:-ollama}
       - HYBRID_CHUNKER_ENABLED=${HYBRID_CHUNKER_ENABLED:-false}
       - CONTEXT_EXPANSION_ENABLED=${CONTEXT_EXPANSION_ENABLED:-false}
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
@@ -189,11 +192,11 @@ services:
       - OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_URL=https://${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}:${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
-      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
-      - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-text-embedding-3-small}
+      - SELECTED_EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_WORKERS=${LANGFLOW_WORKERS:-1}
@@ -205,8 +208,23 @@ services:
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
 
+  docling:
+    image: quay.io/docling-project/docling-serve-cpu@sha256:c7d56cf78c45ab61406bc2dfebbac562c16e38538393f838991a949577cd3d0a
+    container_name: axioma_docling
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=2)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    restart: unless-stopped
+
   valkey:
-    image: valkey/valkey-bundle:latest
+    image: valkey/valkey-bundle:8.1.3
     container_name: axioma_valkey
     command: >
       valkey-server
@@ -228,3 +246,5 @@ services:
 volumes:
   opensearch-data:
   redis-data:
+
+

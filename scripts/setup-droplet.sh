@@ -10,9 +10,9 @@ set -e
 # Qué hace:
 #   1. Instala Docker y Docker Compose
 #   2. Clona el repositorio
-#   3. Genera los certificados SSL para OpenSearch
-#   4. Crea el .env desde .env.example
-#   5. Levanta todos los servicios
+#   3. Crea el .env desde .env.example
+#   4. Sugiere generación de secretos de producción
+#   5. Levanta servicios con overlay de producción
 # =============================================================================
 
 REPO_URL="https://github.com/javi2481/Axioma-2.0.git"
@@ -59,14 +59,6 @@ fi
 
 cd "$APP_DIR"
 
-# --- Certificados SSL ---
-if [ ! -f "keys/root-ca.pem" ]; then
-    echo "==> Generando certificados SSL para OpenSearch..."
-    MSYS_NO_PATHCONV=1 bash generate-certs.sh
-else
-    echo "==> Certificados SSL ya existen, saltando..."
-fi
-
 # --- Archivo .env ---
 if [ ! -f ".env" ]; then
     echo "==> Creando .env desde .env.example..."
@@ -75,10 +67,13 @@ if [ ! -f ".env" ]; then
     echo "  IMPORTANTE: Editá el archivo .env antes de continuar."
     echo "  Como mínimo configurá:"
     echo "    - OPENSEARCH_PASSWORD"
-    echo "    - OPENSEARCH_INITIAL_ADMIN_PASSWORD"
-    echo "    - ENCRYPTION_KEY"
-    echo "    - NEXTAUTH_SECRET"
-    echo "    - Credenciales del proveedor LLM (OpenAI, Anthropic, etc.)"
+    echo "    - OPENRAG_ENCRYPTION_KEY"
+    echo "    - LANGFLOW_SECRET_KEY"
+    echo "    - SESSION_SECRET"
+    echo "    - VALKEY_PASSWORD"
+    echo "    - Credenciales del proveedor LLM/embedding"
+    echo ""
+    echo "  Sugerencia: scripts/generate-secrets.sh --write .env"
     echo ""
     read -p "  ¿Ya editaste el .env? Presioná Enter para continuar o Ctrl+C para salir y editarlo primero..."
 else
@@ -87,16 +82,16 @@ fi
 
 # --- Levantar servicios ---
 echo "==> Levantando servicios con Docker Compose..."
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 echo ""
 echo "==> Deploy completado."
 echo ""
 echo "  Servicios disponibles:"
-echo "    Frontend:             http://$(curl -s ifconfig.me):3000"
-echo "    Backend API:          http://$(curl -s ifconfig.me):8000"
-echo "    Langflow:             http://$(curl -s ifconfig.me):7860"
-echo "    OpenSearch Dashboards: http://$(curl -s ifconfig.me):5601"
+echo "    Frontend (publicar via Caddy/Nginx): http://127.0.0.1:3000"
+echo "    Backend API (interno via frontend):  http://openrag-backend:8000"
+echo "    Langflow (admin local/VPN):          http://127.0.0.1:7860"
+echo "    OpenSearch Dashboards (admin):       http://127.0.0.1:5601"
 echo ""
 echo "  Para ver logs:   docker compose logs -f"
 echo "  Para detener:    docker compose down"

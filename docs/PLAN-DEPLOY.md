@@ -2,7 +2,7 @@
 
 > Guía operativa para desplegar el MVP (chat RAG + ingesta + API v1) en **local (Windows/WSL2)** y **VPS Linux**, con **Ollama** + **Docker Compose**.
 >
-> Última actualización: 2026-05-31
+> Última actualización: 2026-06-07
 
 ---
 
@@ -30,6 +30,20 @@ Instancia **funcional y reproducible** corrigiendo gaps entre documentación y c
 ---
 
 ## Fase 1 — Infra y documentación (repo)
+
+### Perfiles Compose (dev vs prod)
+
+| Perfil | Comando | Uso |
+|--------|---------|-----|
+| Dev local | `docker compose -f docker-compose.yml up -d` | Iteración local con puertos de debug |
+| Prod ligera | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` | VPS detrás de proxy; sin puertos internos públicos |
+
+Notas del overlay `docker-compose.prod.yml`:
+
+- Frontend bind: `127.0.0.1:3000`
+- Sin exposición pública de `9200`, `6379`, `7860`
+- `env_file: .env` solo en `openrag-backend`
+- Valkey con `requirepass` vía `VALKEY_PASSWORD`
 
 ### Valkey en Docker Compose
 
@@ -102,6 +116,27 @@ ollama pull granite4.1:30b               # ~17 GB — solo con GPU y RAM de sobr
 
 El modelo de chat **efectivo** se guarda en onboarding → `./config` y se inyecta en los flows Langflow. `GRANITE_MODEL` solo aplica a `LLMRouter` (Fase 4 opt-in).
 
+### Regla de re-ingesta por embeddings
+
+Si cambiás `EMBEDDING_MODEL` (o el proveedor de embeddings), el índice vectorial previo puede quedar incompatible en dimensión y degradar retrieval. En ese caso, reiniciá el stack (`docker compose up -d`) y re-ingerí documentos para reconstruir embeddings con el modelo nuevo.
+
+Antes de dar por válido el cambio, verificá dimensión del índice y una consulta real con citas al documento cargado. Arranque exitoso de contenedores no alcanza como señal de calidad RAG.
+
+#### Re-ingesta cuando hay datos mezclados
+
+Si el índice contiene mezcla de corpus de prueba (`openrag_docs`) y documentos de negocio, limpiá y re-ingerí el dataset objetivo para evitar falsos positivos en retrieval:
+
+```bash
+docker compose up -d
+curl -k -u "admin:${OPENSEARCH_PASSWORD}" -X DELETE "https://localhost:9200/${OPENSEARCH_INDEX_NAME:-documents}"
+# Re-ingerir solamente documentos del corpus objetivo (balance/casos reales anonimizados)
+```
+
+Luego verificá:
+1. Mapping `knn_vector` en dimensión `768` (para `nomic-embed-text`).
+2. `embedding_dimensions` sin mezcla (`768` únicamente).
+3. Preguntas smoke devuelven citas del documento objetivo y no de contenido sample.
+
 ### 3. Docling (obligatorio, puerto 5001)
 
 En WSL, desde la raíz del repo:
@@ -172,27 +207,23 @@ Si solo se dispone del host Windows sin Docker/Ollama/Docling en ejecución:
 | TLS | Caddy/Nginx → `127.0.0.1:3000` |
 | Timeouts proxy | ≥ 300s (ingesta larga; alinear con `LANGFLOW_TIMEOUT`) |
 | OAuth | Redirect `https://<dominio>/auth/callback`; `WEBHOOK_BASE_URL` si conectores |
-| Backups | Volúmenes `opensearch-data`, `langflow-data`, `redis-data`, `./config`; `./keys` por servidor |
+| Backups | Volúmenes `opensearch-data`, `langflow-data`, `redis-data`, `./config`; `./keys` (JWT backend) por servidor |
 | Langflow DB | Valorar `LANGFLOW_DATABASE_URL=postgresql://...` |
 
-### Certificados OpenSearch (`keys/`)
+### PKI y claves locales (aclaración #7)
 
-Los `.pem` en `keys/` **no son secretos de la app** — son PKI demo para TLS/admin de OpenSearch (`generate-certs.sh`, CN=`kirk`). `*.pem` está en `.gitignore`.
+En el estado actual del repo:
 
-| Archivo | Origen | Uso |
-|---------|--------|-----|
-| `root-ca*.pem`, `kirk*.pem` | `bash generate-certs.sh` | PKI OpenSearch (por entorno) |
-| `private_key.pem`, `public_key.pem` | Auto-generados al primer arranque del backend | Firma JWT de sesión |
+- OpenSearch usa PKI embebida en imagen.
+- `./keys` se usa para claves JWT del backend (`private_key.pem`, `public_key.pem`).
+- Los archivos `kirk*.pem`/`root-ca*.pem` no deben tratarse como secretos de aplicación.
 
-**En VPS (antes del primer `docker compose up`):**
+| Archivo | Uso real |
+|---------|----------|
+| `private_key.pem`, `public_key.pem` | Firma/verificación JWT de sesión |
+| `kirk*.pem`, `root-ca*.pem` | Material demo; no define la PKI runtime de OpenSearch en este wiring |
 
-```bash
-# Generar PKI nueva en el servidor — no copiar certs de dev
-bash generate-certs.sh
-docker compose up -d
-```
-
-`scripts/setup-droplet.sh` ejecuta `generate-certs.sh` automáticamente si falta `keys/root-ca.pem`. Si ya existen certs viejos en el host, **regenerar** en lugar de reutilizar los de otra máquina.
+Si se necesita PKI OpenSearch custom por entorno, requiere wiring explícito (mount de certs y ajuste de imagen/config), no solo generar archivos en host.
 
 ### systemd — Docling (ejemplo)
 
@@ -386,3 +417,4 @@ Requiere Langfuse + juez (script usa OpenAI por defecto):
 | Smoke E2E | Manual tras stack healthy — tabla Fase 2 |
 | VPS deploy | Documentado en Fase 3 (systemd, Caddy, ufw) |
 | Fase 4 (Granite/Guardian/Langfuse) | Documentado en Fase 4 — activación opt-in en UI y `.env` |
+

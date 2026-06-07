@@ -94,7 +94,7 @@ endef
 ######################
 # PHONY TARGETS
 ######################
-.PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
+.PHONY: help check_tools preflight help_docker help_dev help_test help_local help_utils \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
@@ -148,6 +148,11 @@ check_tools: ## Verify required tools are installed with correct versions
 	echo "$(PURPLE)✓ $$MAKE_VERSION$(NC)"
 	@echo ""
 	@echo "$(PURPLE)All required tools are installed and meet version requirements!$(NC)"
+
+preflight: ## Run deployment preflight checks
+	@echo "$(YELLOW)Running preflight checks...$(NC)"
+	@bash scripts/preflight.sh
+	@echo "$(PURPLE)Preflight checks completed.$(NC)"
 
 ######################
 # HELP SYSTEM

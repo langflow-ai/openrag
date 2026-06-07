@@ -139,7 +139,7 @@ export function OnboardingContent({
     },
   });
 
-  const NUDGES = ["What is OpenRAG?"];
+  const NUDGES = ["What can you do with my uploaded documents?"];
 
   const handleNudgeClick = async (nudge: string) => {
     setSelectedNudge(nudge);
