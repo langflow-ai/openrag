@@ -674,6 +674,17 @@ type NetworkPolicySpec struct {
 
 // OpenRAGSpec defines the desired state of an OpenRAG instance.
 type OpenRAGSpec struct {
+	// MultiInstance enables per-CR resource naming (openrag-<crName>-<role>) so that
+	// multiple OpenRAG CRs can coexist in the same namespace. When false (default),
+	// resources use the legacy static names (openrag-fe, openrag-be, openrag-lf),
+	// which preserves backwards compatibility for existing deployments.
+	// Changing this field after initial deployment will rename all managed resources,
+	// which will break any external references (IngressRoutes, DNS, etc.).
+	// +optional
+	// +kubebuilder:default=false
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="multiInstance is immutable after creation"
+	MultiInstance bool `json:"multiInstance,omitempty"`
+
 	// TargetNamespace is the namespace where all OpenRAG resources are created.
 	// Defaults to the namespace of the CR itself. Cannot be "default".
 	// +optional

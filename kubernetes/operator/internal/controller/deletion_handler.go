@@ -34,7 +34,7 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	logger.Info("starting secret cleanup", "targetNamespace", targetNS)
 
 	// Remove finalizers from .env secrets and delete them
-	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
+	for _, envSecretName := range []string{instanceResourceName(o, "be-env"), instanceResourceName(o, "lf-env")} {
 		logger.Info("processing .env secret", "name", envSecretName, "namespace", targetNS)
 		envSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
@@ -176,7 +176,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 	logger := log.FromContext(ctx)
 
 	// Delete .env secrets with finalizers first
-	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
+	for _, envSecretName := range []string{instanceResourceName(o, "be-env"), instanceResourceName(o, "lf-env")} {
 		envSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
 		if err == nil {
@@ -245,7 +245,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 	}
 
 	// Delete deployments
-	for _, name := range []string{resourceName("fe"), resourceName("be"), resourceName("lf")} {
+	for _, name := range []string{instanceResourceName(o, "fe"), instanceResourceName(o, "be"), instanceResourceName(o, "lf")} {
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
 		if err == nil {
@@ -289,35 +289,35 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 
 	if policy == openragv1alpha1.PVCReclaimDelete {
 		pvc := &corev1.PersistentVolumeClaim{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-data"), Namespace: targetNS}, pvc)
+		err := r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "lf-data"), Namespace: targetNS}, pvc)
 		if err == nil {
-			logger.Info("Deleting Langflow PVC per pvcReclaimPolicy", "pvc", resourceName("lf-data"), "policy", policy)
+			logger.Info("Deleting Langflow PVC per pvcReclaimPolicy", "pvc", instanceResourceName(o, "lf-data"), "policy", policy)
 			if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete PVC", "name", resourceName("lf-data"))
+				logger.Error(err, "failed to delete PVC", "name", instanceResourceName(o, "lf-data"))
 			}
 		}
 	} else {
-		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "policy", policy)
+		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", instanceResourceName(o, "lf-data"), "policy", policy)
 	}
 
 	// Delete network policy if enabled
 	if o.Spec.NetworkPolicy.Enabled {
 		np := &networkingv1.NetworkPolicy{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-netpol"), Namespace: targetNS}, np)
+		err := r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "lf-netpol"), Namespace: targetNS}, np)
 		if err == nil {
-			logger.Info("Deleting NetworkPolicy", "name", resourceName("lf-netpol"), "namespace", targetNS)
+			logger.Info("Deleting NetworkPolicy", "name", instanceResourceName(o, "lf-netpol"), "namespace", targetNS)
 			if err := r.Delete(ctx, np); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete network policy", "name", resourceName("lf-netpol"))
+				logger.Error(err, "failed to delete network policy", "name", instanceResourceName(o, "lf-netpol"))
 			}
 		} else if !errors.IsNotFound(err) {
-			logger.Error(err, "failed to get network policy for deletion", "name", resourceName("lf-netpol"))
+			logger.Error(err, "failed to get network policy for deletion", "name", instanceResourceName(o, "lf-netpol"))
 		}
 	}
 
 	// Delete Docling components if enabled
 	if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Enabled {
 		// Delete Docling deployments (ds and dw)
-		for _, name := range []string{resourceName("ds"), resourceName("dw")} {
+		for _, name := range []string{instanceResourceName(o, "ds"), instanceResourceName(o, "dw")} {
 			deployment := &appsv1.Deployment{}
 			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
 			if err == nil {
@@ -356,7 +356,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 		}
 
 		// Delete Docling HPAs if enabled
-		for _, name := range []string{resourceName("ds-hpa"), resourceName("dw-hpa")} {
+		for _, name := range []string{instanceResourceName(o, "ds-hpa"), instanceResourceName(o, "dw-hpa")} {
 			hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, hpa)
 			if err == nil {
@@ -369,7 +369,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 
 		// Delete Docling PVCs if storage is enabled
 		// Note: Could add reclaim policy for Docling PVCs in future
-		for _, name := range []string{resourceName("ds-data"), resourceName("dw-data")} {
+		for _, name := range []string{instanceResourceName(o, "ds-data"), instanceResourceName(o, "dw-data")} {
 			pvc := &corev1.PersistentVolumeClaim{}
 			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, pvc)
 			if err == nil {
@@ -384,16 +384,16 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 		if o.Spec.DoclingComponents.Valkey != nil {
 			// Delete Valkey StatefulSet
 			sts := &appsv1.StatefulSet{}
-			err := r.Get(ctx, client.ObjectKey{Name: resourceName("valkey"), Namespace: targetNS}, sts)
+			err := r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "valkey"), Namespace: targetNS}, sts)
 			if err == nil {
-				logger.Info("Deleting Valkey StatefulSet", "name", resourceName("valkey"))
+				logger.Info("Deleting Valkey StatefulSet", "name", instanceResourceName(o, "valkey"))
 				if err := r.Delete(ctx, sts); err != nil && !errors.IsNotFound(err) {
 					logger.Error(err, "failed to delete Valkey StatefulSet")
 				}
 			}
 
 			// Delete Valkey services
-			for _, name := range []string{resourceName("valkey"), resourceName("valkey-headless")} {
+			for _, name := range []string{instanceResourceName(o, "valkey"), instanceResourceName(o, "valkey-headless")} {
 				service := &corev1.Service{}
 				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
 				if err == nil {
@@ -406,9 +406,9 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 
 			// Delete Valkey ConfigMap
 			cm := &corev1.ConfigMap{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-config"), Namespace: targetNS}, cm)
+			err = r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "valkey-config"), Namespace: targetNS}, cm)
 			if err == nil {
-				logger.Info("Deleting Valkey ConfigMap", "name", resourceName("valkey-config"))
+				logger.Info("Deleting Valkey ConfigMap", "name", instanceResourceName(o, "valkey-config"))
 				if err := r.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
 					logger.Error(err, "failed to delete Valkey ConfigMap")
 				}
@@ -416,9 +416,9 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 
 			// Delete Valkey Secret
 			secret := &corev1.Secret{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-auth"), Namespace: targetNS}, secret)
+			err = r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "valkey-auth"), Namespace: targetNS}, secret)
 			if err == nil {
-				logger.Info("Deleting Valkey Secret", "name", resourceName("valkey-auth"))
+				logger.Info("Deleting Valkey Secret", "name", instanceResourceName(o, "valkey-auth"))
 				if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
 					logger.Error(err, "failed to delete Valkey Secret")
 				}
@@ -428,7 +428,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 			// Note: StatefulSet PVCs have format: data-<statefulset-name>-<ordinal>
 			// We should delete these to avoid orphaned PVCs
 			for i := 0; i < 1; i++ { // Default replicas is 1
-				pvcName := fmt.Sprintf("data-%s-%d", resourceName("valkey"), i)
+				pvcName := fmt.Sprintf("data-%s-%d", instanceResourceName(o, "valkey"), i)
 				pvc := &corev1.PersistentVolumeClaim{}
 				err := r.Get(ctx, client.ObjectKey{Name: pvcName, Namespace: targetNS}, pvc)
 				if err == nil {
