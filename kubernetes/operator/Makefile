@@ -1,7 +1,7 @@
 # OpenRAG Operator Makefile
 #
-# Go version: managed via gvm.  The Makefile auto-selects go1.26.0 when found
-# under ~/.gvm/gos/go1.26.0, otherwise falls back to whatever 'go' is in PATH.
+# Go version: managed via gvm.  The Makefile auto-selects go1.26.4 when found
+# under ~/.gvm/gos/go1.26.4, otherwise falls back to whatever 'go' is in PATH.
 #
 # Quick start:
 #   make deps            # install controller-gen, kustomize, envtest into ./bin
@@ -16,8 +16,8 @@ IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
 # Kubernetes version used by envtest.
 ENVTEST_K8S_VERSION = 1.33.0
 
-# Go 1.26.0 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
-GVM_GO_VERSION   ?= go1.26.0
+# Go 1.26.4 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
+GVM_GO_VERSION   ?= go1.26.4
 GVM_GO_ROOT      := $(HOME)/.gvm/gos/$(GVM_GO_VERSION)
 ifneq ($(wildcard $(GVM_GO_ROOT)/bin/go),)
   export GOROOT := $(GVM_GO_ROOT)
