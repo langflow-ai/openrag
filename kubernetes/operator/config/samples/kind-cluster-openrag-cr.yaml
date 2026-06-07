@@ -5,6 +5,7 @@ metadata:
   namespace: my-tenant
 spec:
   targetNamespace: my-tenant
+  multiInstance: true   # Set to true to allow multiple OpenRAG CRs in the same namespace (namespaced resource names)
 
   frontend:
     image: edwinjosechittilappilly/orag-staging-frontend:release-saas-19a95c48
