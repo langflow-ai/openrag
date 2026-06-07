@@ -216,13 +216,15 @@ func (m *EnvVarManager) mergeEnvVars(ctx context.Context, c client.Client, names
 			result[envVar.Name] = envVar.Value
 		} else if envVar.ValueFrom != nil {
 			// Resolve valueFrom references
-			value, err := resolveEnvVarValue(ctx, c, namespace, &envVar)
+			value, found, err := resolveEnvVarValue(ctx, c, namespace, &envVar)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve env var %s: %w", envVar.Name, err)
 			}
-			if value != "" {
-				result[envVar.Name] = value
+			if !found {
+				// If the reference was optional and not found, skip it without error
+				continue
 			}
+			result[envVar.Name] = value
 		}
 	}
 
@@ -232,9 +234,9 @@ func (m *EnvVarManager) mergeEnvVars(ctx context.Context, c client.Client, names
 // resolveEnvVarValue resolves a Kubernetes EnvVarSource to its actual string value.
 // Supports secretKeyRef and configMapKeyRef. fieldRef is not supported as it requires
 // runtime pod information (like pod name, namespace) that isn't available at reconcile time.
-func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, envVar *corev1.EnvVar) (string, error) {
+func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, envVar *corev1.EnvVar) (string, bool, error) {
 	if envVar.ValueFrom == nil {
-		return "", nil
+		return "", false, nil
 	}
 
 	// Resolve secret reference
@@ -247,20 +249,20 @@ func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, 
 		if err != nil {
 			// If optional is true, don't fail on missing secret
 			if envVar.ValueFrom.SecretKeyRef.Optional != nil && *envVar.ValueFrom.SecretKeyRef.Optional {
-				return "", nil
+				return "", false, nil
 			}
-			return "", fmt.Errorf("failed to get secret %s: %w", secretName, err)
+			return "", false, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 
 		value, ok := secret.Data[secretKey]
 		if !ok {
 			if envVar.ValueFrom.SecretKeyRef.Optional != nil && *envVar.ValueFrom.SecretKeyRef.Optional {
-				return "", nil
+				return "", false, nil
 			}
-			return "", fmt.Errorf("key %s not found in secret %s", secretKey, secretName)
+			return "", false, fmt.Errorf("key %s not found in secret %s", secretKey, secretName)
 		}
 
-		return string(value), nil
+		return string(value), true, nil
 	}
 
 	// Resolve configmap reference
@@ -272,32 +274,33 @@ func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, 
 		err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: configMapName}, configMap)
 		if err != nil {
 			if envVar.ValueFrom.ConfigMapKeyRef.Optional != nil && *envVar.ValueFrom.ConfigMapKeyRef.Optional {
-				return "", nil
+				return "", false, nil
 			}
-			return "", fmt.Errorf("failed to get configmap %s: %w", configMapName, err)
+			return "", false, fmt.Errorf("failed to get configmap %s: %w", configMapName, err)
 		}
 
 		value, ok := configMap.Data[configMapKey]
 		if !ok {
 			if envVar.ValueFrom.ConfigMapKeyRef.Optional != nil && *envVar.ValueFrom.ConfigMapKeyRef.Optional {
-				return "", nil
+				return "", false, nil
 			}
-			return "", fmt.Errorf("key %s not found in configmap %s", configMapKey, configMapName)
+			return "", false, fmt.Errorf("key %s not found in configmap %s", configMapKey, configMapName)
 		}
 
-		return value, nil
+		return value, true, nil
 	}
 
 	// fieldRef and resourceFieldRef cannot be resolved at reconcile time
 	if envVar.ValueFrom.FieldRef != nil {
-		return "", fmt.Errorf("fieldRef is not supported in spec.env (requires runtime pod info). Use direct values or secretKeyRef instead")
+		return "", false, fmt.Errorf("fieldRef is not supported in spec.env (requires runtime pod info). Use direct values or secretKeyRef instead")
 	}
 
 	if envVar.ValueFrom.ResourceFieldRef != nil {
-		return "", fmt.Errorf("resourceFieldRef is not supported in spec.env. Use direct values or secretKeyRef instead")
+		return "", false, fmt.Errorf("resourceFieldRef is not supported in spec.env. Use direct values or secretKeyRef instead")
 	}
 
-	return "", nil
+	// no supported valueFrom type found
+	return "", false, nil
 }
 
 // BuildEnvFileContent converts a map of env vars to .env file format
