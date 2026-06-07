@@ -12,6 +12,7 @@ wheels/
 
 # RSA keys for JWT signing
 *.pem
+keys/*.srl
 
 .idea/
 
