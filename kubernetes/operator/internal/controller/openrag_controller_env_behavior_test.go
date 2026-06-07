@@ -25,9 +25,9 @@ func TestComponentSpec_Env_DirectValues_GoToEnvFileOnly(t *testing.T) {
 	// Check .env file content contains direct values
 	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
-	assert.Contains(t, backendEnvContent, `CUSTOM_VAR="custom_value"`,
+	assert.Contains(t, backendEnvContent, `CUSTOM_VAR=custom_value`,
 		"Direct value should be in .env file")
-	assert.Contains(t, backendEnvContent, `ANOTHER_VAR="another_value"`,
+	assert.Contains(t, backendEnvContent, `ANOTHER_VAR=another_value`,
 		"Direct value should be in .env file")
 
 	// Check container env is EMPTY (no spec.Env)
@@ -79,9 +79,9 @@ func TestComponentSpec_Env_SecretRefs_ResolvedToEnvFile(t *testing.T) {
 	// Check .env file content - should contain RESOLVED secret value
 	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
-	assert.Contains(t, backendEnvContent, `DATABASE_PASSWORD="super-secret-password"`,
+	assert.Contains(t, backendEnvContent, `DATABASE_PASSWORD=super-secret-password`,
 		".env file should contain RESOLVED secret value")
-	assert.Contains(t, backendEnvContent, `REGULAR_VAR="regular_value"`,
+	assert.Contains(t, backendEnvContent, `REGULAR_VAR=regular_value`,
 		".env file should contain direct values")
 
 	// Check container env - should be EMPTY (no spec.Env)
@@ -129,7 +129,7 @@ func TestComponentSpec_Env_ConfigMapRefs_ResolvedToEnvFile(t *testing.T) {
 	// Check .env file - should contain resolved value
 	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
-	assert.Contains(t, backendEnvContent, `API_ENDPOINT="https://api.example.com"`,
+	assert.Contains(t, backendEnvContent, `API_ENDPOINT=https://api.example.com`,
 		".env file should contain resolved configmap value")
 
 	// Check container env - should be empty
@@ -175,9 +175,9 @@ func TestComponentSpec_Env_Langflow_SameBehavior(t *testing.T) {
 	// Check .env file
 	langflowEnvContent, err := r.buildLangflowEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
-	assert.Contains(t, langflowEnvContent, `DIRECT_VAR="direct_value"`,
+	assert.Contains(t, langflowEnvContent, `DIRECT_VAR=direct_value`,
 		"Direct value should be in Langflow .env file")
-	assert.Contains(t, langflowEnvContent, `SECRET_VAR="secret-value"`,
+	assert.Contains(t, langflowEnvContent, `SECRET_VAR=secret-value`,
 		"Resolved secret value should be in Langflow .env file")
 
 	// Check container env is empty
@@ -270,11 +270,11 @@ func TestComponentSpec_Env_MixedTypes_AllResolvedToEnvFile(t *testing.T) {
 	// Check .env file - should contain ALL 5 resolved values
 	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
-	assert.Contains(t, backendEnvContent, `LITERAL_1="value1"`)
-	assert.Contains(t, backendEnvContent, `SECRET_REF="secret-value-1"`)
-	assert.Contains(t, backendEnvContent, `LITERAL_2="value2"`)
-	assert.Contains(t, backendEnvContent, `CONFIGMAP_REF="config-value-2"`)
-	assert.Contains(t, backendEnvContent, `LITERAL_3="value3"`)
+	assert.Contains(t, backendEnvContent, `LITERAL_1=value1`)
+	assert.Contains(t, backendEnvContent, `SECRET_REF=secret-value-1`)
+	assert.Contains(t, backendEnvContent, `LITERAL_2=value2`)
+	assert.Contains(t, backendEnvContent, `CONFIGMAP_REF=config-value-2`)
+	assert.Contains(t, backendEnvContent, `LITERAL_3=value3`)
 
 	// Check container env - should be empty (no spec.Env vars)
 	deploy := r.backendDeployment(cr, "test-ns", "hash123")
