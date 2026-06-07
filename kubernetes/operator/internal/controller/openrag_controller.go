@@ -98,8 +98,8 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
-	if instance.Spec.MultiInstance && len(instance.Name) > 40 {
-		return ctrl.Result{}, fmt.Errorf("CR name %q exceeds maximum length of 40 characters (%d) required for multiInstance mode", instance.Name, len(instance.Name))
+	if instance.Spec.MultiInstance && len(instance.Name) > 38 {
+		return ctrl.Result{}, fmt.Errorf("CR name %q exceeds maximum length of 38 characters (%d) required for multiInstance mode", instance.Name, len(instance.Name))
 	}
 
 	targetNS := targetNamespace(instance)
@@ -2270,7 +2270,7 @@ func instanceSAName(o *openragv1alpha1.OpenRAG, role string) string {
 
 // resourceName generates a per-CR resource name with the openrag- prefix for DNS-1035
 // compliance (required when crName is a UUID starting with a digit).
-// Max length with a 40-char crName: "openrag-"(8) + 40 + "-docling-worker"(15) = 63 chars.
+// Max length with a 38-char crName: "openrag-"(8) + 38 + "-valkey-headless"(16) = 62 chars.
 func resourceName(crName, role string) string {
 	switch role {
 	case "ds":
