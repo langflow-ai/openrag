@@ -23,7 +23,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Task, useTask } from "@/contexts/task-context";
-import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
+import {
+  formatDuration,
+  formatTaskProgress,
+  getElapsedSeconds,
+  getRunningFileEntries,
+  hasFailedFileEntries,
+  isTerminalFailedTask,
+} from "@/lib/task-utils";
 import { parseTimestampMs } from "@/lib/time-utils";
 
 export function TaskNotificationMenu() {
@@ -202,45 +209,17 @@ export function TaskNotificationMenu() {
     }
   };
 
-  const formatTaskProgress = (task: Task) => {
-    const total = task.total_files || 0;
-    const processed = task.processed_files || 0;
-    const successful = task.successful_files || 0;
-    const failed = task.failed_files || 0;
-    const running = task.running_files || 0;
-    const pending = task.pending_files || 0;
-
-    if (total > 0) {
-      return {
-        basic: `${processed}/${total} files`,
-        detailed: {
-          total,
-          processed,
-          successful,
-          failed,
-          running,
-          pending,
-          remaining: total - processed,
-        },
-      };
+  const getSingleFileRunningDuration = (task: Task) => {
+    if ((task.total_files ?? 0) !== 1) {
+      return null;
     }
-    return null;
-  };
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds || seconds < 0) return null;
-
-    if (seconds < 60) {
-      return `${Math.round(seconds)}s`;
-    } else if (seconds < 3600) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.round(seconds % 60);
-      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    const running = getRunningFileEntries(task);
+    if (running.length === 0) {
+      return null;
     }
+
+    return formatDuration(getElapsedSeconds(running[0][1]));
   };
 
   const formatRelativeTime = (dateString: string) => {
@@ -301,6 +280,7 @@ export function TaskNotificationMenu() {
               </h4>
               {activeTasks.map((task) => {
                 const progress = formatTaskProgress(task);
+                const singleFileDuration = getSingleFileRunningDuration(task);
                 const showCancel =
                   task.status === "pending" ||
                   task.status === "running" ||
@@ -333,6 +313,9 @@ export function TaskNotificationMenu() {
                           <div className="space-y-2">
                             <div className="text-xs text-muted-foreground">
                               Progress: {progress.basic}
+                              {singleFileDuration && (
+                                <span className="ml-2">• {singleFileDuration}</span>
+                              )}
                             </div>
                             {progress.detailed && (
                               <div className="grid grid-cols-2 gap-2 text-xs">

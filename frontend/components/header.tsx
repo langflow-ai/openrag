@@ -30,7 +30,7 @@ export function Header() {
             className="text-lg font-semibold pl-2.5"
             style={{ fontFamily: '"IBM Plex Mono", monospace' }}
           >
-            OpenRAG
+            Axioma
           </span>
         </div>
       </div>

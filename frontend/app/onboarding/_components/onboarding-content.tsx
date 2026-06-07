@@ -18,7 +18,7 @@ import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { OnboardingStep } from "./onboarding-step";
 import OnboardingUpload from "./onboarding-upload";
 
-// Filters for OpenRAG documentation
+// Filters for sample OpenRAG documentation corpus (only when sample ingest is enabled)
 const OPENRAG_DOCS_FILTERS: FilterInput = {
   data_sources: [],
   document_types: [],
@@ -133,13 +133,13 @@ export function OnboardingContent({
       setAssistantMessage({
         role: "assistant",
         content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
+          "No pude conectar con el servicio de chat. Intentá de nuevo.",
         timestamp: new Date(),
       });
     },
   });
 
-  const NUDGES = ["What can you do with my uploaded documents?"];
+  const NUDGES = ["¿Qué podés hacer con los documentos del estudio?"];
 
   const handleNudgeClick = async (nudge: string) => {
     setSelectedNudge(nudge);
@@ -179,9 +179,8 @@ export function OnboardingContent({
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,
-        // Send both filter_id and filters (selections)
         filter_id: filterToUse?.id,
-        filters: openragDocsFilterId
+        filters: filterToUse
           ? buildSearchPayloadFilters(OPENRAG_DOCS_FILTERS)
           : undefined,
       });
@@ -214,7 +213,7 @@ export function OnboardingContent({
             isVisible={currentStep >= 0}
             isCompleted={currentStep > 0}
             showCompleted={true}
-            text="Let's get started by setting up your LLM provider."
+            text="Empecemos configurando tu proveedor de LLM."
           >
             <OnboardingCard
               onComplete={() => {
@@ -229,7 +228,7 @@ export function OnboardingContent({
             isVisible={currentStep >= 1}
             isCompleted={currentStep > 1}
             showCompleted={true}
-            text="Now, let's set up your embedding provider."
+            text="Ahora configuremos tu proveedor de embeddings."
           >
             <OnboardingCard
               isEmbedding={true}
@@ -244,7 +243,7 @@ export function OnboardingContent({
           <OnboardingStep
             isVisible={currentStep >= 2}
             isCompleted={currentStep > 2 || !!selectedNudge}
-            text="Excellent, let's move on to learning the basics."
+            text="Perfecto, veamos lo básico."
           >
             <div className="py-2">
               <Nudges
@@ -282,7 +281,7 @@ export function OnboardingContent({
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}
-            text="Lastly, let's add your data."
+            text="Por último, agreguemos tus documentos."
             hideIcon={true}
           >
             <OnboardingUpload onComplete={handleStepComplete} />

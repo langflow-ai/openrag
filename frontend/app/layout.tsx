@@ -34,8 +34,8 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "OpenRAG",
-  description: "Open source RAG (Retrieval Augmented Generation) system",
+  title: "Axioma 2.0",
+  description: "Asistente de IA para estudios contables con RAG sobre documentos del cliente",
 };
 export default function RootLayout({
   children,

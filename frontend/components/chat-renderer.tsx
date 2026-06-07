@@ -129,8 +129,12 @@ export function ChatRenderer({
         filterId = currentSettings?.onboarding?.user_doc_filter_id || null;
       }
 
-      // Fall back to OpenRAG docs filter
-      if (!filterId) {
+      // Fall back to OpenRAG docs filter only when sample corpus was ingested
+      const sampleCorpusIngested = Boolean(
+        currentSettings?.onboarding?.openrag_docs_ingested_version &&
+          currentSettings?.onboarding?.openrag_docs_filter_id,
+      );
+      if (!filterId && sampleCorpusIngested) {
         filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
       }
 
@@ -155,6 +159,7 @@ export function ChatRenderer({
       setConversationFilter,
       settings?.onboarding?.user_doc_filter_id,
       settings?.onboarding?.openrag_docs_filter_id,
+      settings?.onboarding?.openrag_docs_ingested_version,
     ],
   );
 
@@ -228,8 +233,7 @@ export function ChatRenderer({
 
     // Mark onboarding as complete in context
     setOnboardingComplete(true);
-    // Store the OpenRAG docs filter as default for new conversations
-    await storeDefaultFilterForNewConversations(false);
+    // No default filter when skipping — sample corpus may not be ingested
     setShowLayout(true);
   };
 

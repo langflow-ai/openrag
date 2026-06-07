@@ -110,7 +110,7 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
 
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv(
-    "INGEST_SAMPLE_DATA", "true"
+    "INGEST_SAMPLE_DATA", "false"
 ).lower() in ("true", "1", "yes")
 
 # Default OpenRAG docs sample ingestion source

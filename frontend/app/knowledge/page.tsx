@@ -14,6 +14,7 @@ import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
+import { IngestionProgressCell } from "@/components/ingestion-progress-cell";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
@@ -26,6 +27,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { IngestionProgressCell } from "@/components/ingestion-progress-cell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -536,6 +538,27 @@ function SearchPage() {
             >
               <StatusBadge status={status} className="pointer-events-none" />
             </button>
+          );
+        }
+
+        if (status === "processing") {
+          const taskId = getTaskIdForRow(data);
+          const task = taskId
+            ? tasks.find((entry) => entry.task_id === taskId)
+            : undefined;
+
+          return (
+            <IngestionProgressCell
+              task={task}
+              filename={data?.filename ?? ""}
+              onOpenActivity={() => {
+                if (taskId) {
+                  selectTask(taskId);
+                }
+                openMenu();
+                setRecentTasksExpanded(true);
+              }}
+            />
           );
         }
 

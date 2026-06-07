@@ -53,6 +53,7 @@ export interface OnboardingState {
   upload_steps?: Record<string, unknown> | null;
   openrag_docs_filter_id?: string | null;
   user_doc_filter_id?: string | null;
+  openrag_docs_ingested_version?: string | null;
 }
 
 export interface Settings {

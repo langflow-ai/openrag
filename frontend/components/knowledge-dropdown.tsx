@@ -46,6 +46,16 @@ import {
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
+function showIngestionStartedToast(fileCount: number) {
+  const baseMessage =
+    "Ingesta iniciada. PDFs grandes pueden tardar 15–40 min en CPU.";
+  if (fileCount > 1) {
+    toast.info(`${baseMessage} (${fileCount} archivos).`);
+    return;
+  }
+  toast.info(baseMessage);
+}
+
 /**
  * Local / chat file picker + folder ingest filter — single source of truth.
  * Only extensions verified to ingest successfully in the Langflow pipeline.
@@ -326,9 +336,13 @@ export function KnowledgeDropdown() {
 
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    showIngestionStartedToast(1);
 
     try {
-      await uploadFileUtil(file, replace);
+      const result = await uploadFileUtil(file, replace);
+      if (result.taskId) {
+        addTask(result.taskId);
+      }
       refetchTasks();
     } catch (error) {
       // Dispatch event that chat context can listen to
@@ -352,6 +366,12 @@ export function KnowledgeDropdown() {
     filesToUpload: File[],
     replace: boolean,
   ) => {
+    if (filesToUpload.length === 0) {
+      return;
+    }
+
+    showIngestionStartedToast(filesToUpload.length);
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
@@ -575,6 +595,10 @@ export function KnowledgeDropdown() {
         if (!taskId) {
           throw new Error("No task ID received from server");
         }
+
+        const fileCount =
+          typeof result.file_count === "number" ? result.file_count : 1;
+        showIngestionStartedToast(fileCount);
 
         addTask(taskId);
         setFolderPath("");
