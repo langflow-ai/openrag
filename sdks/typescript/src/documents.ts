@@ -4,7 +4,6 @@
 
 import type { OpenRAGClient } from "./client";
 import type {
-  DeleteDocumentOptions,
   DeleteDocumentResponse,
   IngestResponse,
   IngestTaskStatus,
@@ -145,57 +144,33 @@ export class DocumentsClient {
   }
 
   /**
-   * Delete document(s) from the knowledge base.
+   * Delete a document from the knowledge base.
    *
-   * Provide exactly one of:
-   *   - filename: a single filename, or
-   *   - { filename } / { filterId }: an options object.
-   *
+   * @param filename - Name of the file to delete.
    * @returns DeleteDocumentResponse with deleted chunk count.
    */
-  async delete(
-    arg: string | DeleteDocumentOptions
-  ): Promise<DeleteDocumentResponse> {
-    const opts: DeleteDocumentOptions =
-      typeof arg === "string" ? { filename: arg } : arg;
-
-    if (!opts.filename === !opts.filterId) {
-      throw new Error(
-        "Provide exactly one of `filename` or `filterId`"
-      );
-    }
-
-    const body: Record<string, string> = {};
-    if (opts.filename) body["filename"] = opts.filename;
-    if (opts.filterId) body["filter_id"] = opts.filterId;
-
+  async delete(filename: string): Promise<DeleteDocumentResponse> {
     try {
       const response = await this.client._request("DELETE", "/api/v1/documents", {
-        body: JSON.stringify(body),
+        body: JSON.stringify({ filename }),
       });
 
       const data = await response.json();
       return {
         success: data.success ?? false,
         deleted_chunks: data.deleted_chunks ?? 0,
-        filename: data.filename ?? opts.filename ?? null,
+        filename: data.filename ?? filename,
         message: data.message ?? null,
         error: data.error ?? null,
-        filenames: data.filenames ?? null,
-        filter_id: data.filter_id ?? null,
-        per_file: data.per_file ?? null,
       };
     } catch (error) {
-      // Filename delete stays idempotent (404 -> success:false). Filter-id 404s
-      // are caller errors (bad filter id) and should propagate.
-      if (
-        opts.filename &&
-        (error as NotFoundError)?.statusCode === 404
-      ) {
+      // Delete is idempotent: if no chunks match, backend may return 404.
+      // Surface this as a non-throwing "nothing deleted" response.
+      if ((error as NotFoundError)?.statusCode === 404) {
         return {
           success: false,
           deleted_chunks: 0,
-          filename: opts.filename,
+          filename,
           message: null,
           error: (error as Error)?.message ?? "Resource not found",
         };
