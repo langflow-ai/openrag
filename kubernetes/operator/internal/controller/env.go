@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -319,20 +320,10 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 	for _, k := range keys {
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(quoteEnvValue(envVars[k]))
+		b.WriteString(strconv.Quote(envVars[k]))
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-// quoteEnvValue wraps a value in double quotes and escapes characters that
-// would otherwise break dotenv parsing: backslashes, double quotes, and newlines.
-func quoteEnvValue(v string) string {
-	v = strings.ReplaceAll(v, `\`, `\\`)
-	v = strings.ReplaceAll(v, `"`, `\"`)
-	v = strings.ReplaceAll(v, "\n", `\n`)
-	v = strings.ReplaceAll(v, "\r", `\r`)
-	return `"` + v + `"`
 }
 
 // EnsureRequiredEnvVars ensures all variables listed in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,13 +219,11 @@ func parseEnvValue(envContent, key string) string {
 		if strings.HasPrefix(line, prefix) {
 			val := strings.TrimPrefix(line, prefix)
 			// Unquote values written by BuildEnvFileContent (KEY="value" format).
-			// Also handles legacy unquoted values for backward compatibility.
-			if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
-				val = val[1 : len(val)-1]
-				val = strings.ReplaceAll(val, `\"`, `"`)
-				val = strings.ReplaceAll(val, `\\`, `\`)
-				val = strings.ReplaceAll(val, `\n`, "\n")
-				val = strings.ReplaceAll(val, `\r`, "\r")
+			// strconv.Unquote handles escape sequences in a single pass, avoiding
+			// ordering bugs (e.g. \\n must become \n, not a newline).
+			// Falls through for legacy unquoted values for backward compatibility.
+			if unquoted, err := strconv.Unquote(val); err == nil {
+				return unquoted
 			}
 			return val
 		}
