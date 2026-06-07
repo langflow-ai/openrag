@@ -216,7 +216,17 @@ func parseEnvValue(envContent, key string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, prefix) {
-			return strings.TrimPrefix(line, prefix)
+			val := strings.TrimPrefix(line, prefix)
+			// Unquote values written by BuildEnvFileContent (KEY="value" format).
+			// Also handles legacy unquoted values for backward compatibility.
+			if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
+				val = val[1 : len(val)-1]
+				val = strings.ReplaceAll(val, `\"`, `"`)
+				val = strings.ReplaceAll(val, `\\`, `\`)
+				val = strings.ReplaceAll(val, `\n`, "\n")
+				val = strings.ReplaceAll(val, `\r`, "\r")
+			}
+			return val
 		}
 	}
 	return ""
