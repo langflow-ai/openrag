@@ -13635,6 +13635,19 @@ spec:
                   provider:
                     type: string
                 type: object
+              multiInstance:
+                default: false
+                description: |-
+                  MultiInstance enables per-CR resource naming (openrag-<crName>-<role>) so that
+                  multiple OpenRAG CRs can coexist in the same namespace. When false (default),
+                  resources use the legacy static names (openrag-fe, openrag-be, openrag-lf),
+                  which preserves backwards compatibility for existing deployments.
+                  Changing this field after initial deployment will rename all managed resources,
+                  which will break any external references (IngressRoutes, DNS, etc.).
+                type: boolean
+                x-kubernetes-validations:
+                - message: multiInstance is immutable after creation
+                  rule: self == oldSelf
               networkPolicy:
                 description: NetworkPolicy controls creation of a NetworkPolicy for
                   the Langflow pod.

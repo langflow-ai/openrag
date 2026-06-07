@@ -505,11 +505,13 @@ class DocumentFileProcessor(TaskProcessor):
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
                 await self.delete_document_by_filename(original_filename, opensearch_client)
-                # Refresh index to make deletion visible before processing
+                # Refresh index to make deletion visible before processing.
+                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
+                # so it must run under the admin/service client, not the user client.
                 from config.settings import get_index_name
 
                 try:
-                    await opensearch_client.indices.refresh(index=get_index_name())
+                    await clients.opensearch.indices.refresh(index=get_index_name())
                 except Exception as refresh_error:
                     logger.warning(
                         "Failed to refresh index after delete",
@@ -1073,8 +1075,10 @@ class LangflowFileProcessor(TaskProcessor):
                     owner_user_id=self.owner_user_id,
                 )
                 # Refresh index to make deletion visible before processing.
+                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
+                # so it must run under the admin/service client, not the user client.
                 try:
-                    await opensearch_client.indices.refresh(index=get_index_name())
+                    await clients.opensearch.indices.refresh(index=get_index_name())
                 except Exception as refresh_error:
                     logger.warning(
                         "Failed to refresh index after delete",

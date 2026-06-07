@@ -260,9 +260,16 @@ class DocumentIndexWriter:
     def _raise_for_bulk_errors(result: Any) -> None:
         if not isinstance(result, dict) or not result.get("errors"):
             return
+        # Keep only the items that actually failed (a bulk response interleaves
+        # successes and failures) and carry their full OpenSearch error body so
+        # the cause — e.g. a mapper_parsing_exception naming the offending field
+        # — survives in the raised error. The caller logs this once with request
+        # context; this helper only raises so the failure isn't logged twice.
         failures = []
-        for item in result.get("items", [])[:5]:
+        for item in result.get("items", []):
             action = item.get("index") or item.get("create") or item.get("update") or item
+            if not action.get("error"):
+                continue
             failures.append(
                 {
                     "id": action.get("_id"),
@@ -270,6 +277,12 @@ class DocumentIndexWriter:
                     "error": action.get("error"),
                 }
             )
+            if len(failures) >= 5:
+                break
+        if not failures:
+            # `errors` was set but no item carried an error body (rare/contradictory);
+            # fall back to the first few raw items so the message keeps some detail.
+            failures = result.get("items", [])[:3]
         raise RuntimeError(f"OpenSearch bulk indexing failed: {failures}")
 
     async def _refresh(self, index_name: str) -> None:
