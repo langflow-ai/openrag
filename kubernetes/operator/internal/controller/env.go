@@ -303,7 +303,10 @@ func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, 
 	return "", false, nil
 }
 
-// BuildEnvFileContent converts a map of env vars to .env file format
+// BuildEnvFileContent converts a map of env vars to .env file format.
+// Values are always double-quoted with special characters escaped so that
+// arbitrary secret/configmap content cannot corrupt the file.
+// python-dotenv (>=1.0.0) interprets these escape sequences correctly.
 func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 	// Sort keys to ensure deterministic output
 	keys := make([]string, 0, len(envVars))
@@ -316,10 +319,20 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 	for _, k := range keys {
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(envVars[k])
+		b.WriteString(quoteEnvValue(envVars[k]))
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// quoteEnvValue wraps a value in double quotes and escapes characters that
+// would otherwise break dotenv parsing: backslashes, double quotes, and newlines.
+func quoteEnvValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	v = strings.ReplaceAll(v, "\n", `\n`)
+	v = strings.ReplaceAll(v, "\r", `\r`)
+	return `"` + v + `"`
 }
 
 // EnsureRequiredEnvVars ensures all variables listed in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT

@@ -181,16 +181,16 @@ func TestEnvVarManager_BuildEnvFileContent(t *testing.T) {
 
 	content := manager.BuildEnvFileContent(envVars)
 
-	// Should contain all three vars in key=value format
-	assert.Contains(t, content, "VAR1=value1")
-	assert.Contains(t, content, "VAR2=value2")
-	assert.Contains(t, content, "VAR3=value3")
+	// Should contain all three vars in quoted key=value format
+	assert.Contains(t, content, `VAR1="value1"`)
+	assert.Contains(t, content, `VAR2="value2"`)
+	assert.Contains(t, content, `VAR3="value3"`)
 
 	// Should have newlines
 	assert.Contains(t, content, "\n")
 
 	// Should be deterministic (alphabetically sorted)
-	expected := "VAR1=value1\nVAR2=value2\nVAR3=value3\n"
+	expected := "VAR1=\"value1\"\nVAR2=\"value2\"\nVAR3=\"value3\"\n"
 	assert.Equal(t, expected, content, "Output should be deterministic and sorted")
 
 	// Verify determinism by calling multiple times
