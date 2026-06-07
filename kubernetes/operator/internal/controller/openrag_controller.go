@@ -938,8 +938,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Name:            "langflow",
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
-							Args:            []string{"run", "--env-file", "/app/.env"},
-							Command:         []string{"langflow"},
+							Command:         commandOrDefault(spec.Command, []string{"langflow"}),
+							Args:            argsOrDefault(spec.Args, []string{"run", "--env-file", "/app/.env"}),
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
@@ -2598,6 +2598,22 @@ func probeOrDefault(custom, defaultProbe *corev1.Probe) *corev1.Probe {
 		return custom
 	}
 	return defaultProbe
+}
+
+// commandOrDefault returns the custom command if provided, otherwise returns the default command.
+func commandOrDefault(custom, defaultCommand []string) []string {
+	if len(custom) > 0 {
+		return custom
+	}
+	return defaultCommand
+}
+
+// argsOrDefault returns the custom args if provided, otherwise returns the default args.
+func argsOrDefault(custom, defaultArgs []string) []string {
+	if len(custom) > 0 {
+		return custom
+	}
+	return defaultArgs
 }
 
 func tcpPort(p int32) networkingv1.NetworkPolicyPort {
