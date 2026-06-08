@@ -53,6 +53,8 @@ class DoclingPollingService:
         backoff_factor: float = 1.5,
         transient_retry_budget: int = 5,
         result_fetch_retry_budget: int = 3,
+        user_id: str | None = None,
+        auth_header: str | None = None,
     ) -> DoclingPollResult:
         """Loop on Docling status until terminal or until max_seconds elapses.
 
@@ -82,7 +84,9 @@ class DoclingPollingService:
 
         while True:
             logger.debug("Docling polling", task_id=task_id)
-            snapshot = await self.docling_service.check_task_status(task_id)
+            snapshot = await self.docling_service.check_task_status(
+                task_id, user_id=user_id, auth_header=auth_header
+            )
             last_snapshot = snapshot
             logger.debug("Snapshot received", task_id=task_id, snapshot=last_snapshot)
             elapsed = time.monotonic() - start
@@ -112,7 +116,9 @@ class DoclingPollingService:
                             elapsed_seconds=elapsed,
                         )
                     try:
-                        await self.docling_service.fetch_task_result(task_id)
+                        await self.docling_service.fetch_task_result(
+                            task_id, user_id=user_id, auth_header=auth_header
+                        )
                         break
                     except DoclingTransientError as e:
                         result_fetch_errors += 1

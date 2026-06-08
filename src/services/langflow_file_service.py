@@ -920,6 +920,8 @@ class LangflowFileService:
                 max_interval=DOCLING_POLL_MAX_INTERVAL_SECONDS,
                 backoff_factor=DOCLING_POLL_BACKOFF_FACTOR,
                 transient_retry_budget=DOCLING_POLL_TRANSIENT_RETRIES,
+                user_id=owner,
+                auth_header=jwt_token,
             )
 
             if poll_result.outcome != PollOutcome.SUCCESS:
