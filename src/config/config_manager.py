@@ -31,9 +31,11 @@ logger = get_logger(__name__)
 # `# NOSONAR` is also unreliable for the taint/security engine.
 #
 # GUARANTEED FIXES (require SonarQube SAST / Administer-Issues access):
-#   1. Register this function as a SAST custom sanitizer (Enterprise Edition):
+#   1. Register these validators as SAST custom sanitizers (Enterprise Edition):
 #        { "S2083": { "sanitizers": [
 #            { "methodId": "src.config.config_manager._validate_config_path",
+#              "args": [0] },
+#            { "methodId": "src.config.config_manager._validate_config_dir",
 #              "args": [0] } ] } }
 #      Upload via Project Settings -> General Settings -> SAST Engine, or pass
 #      `sonar.security.sanitizers.pythonsecurity.S2083=<file>` to the scanner.
@@ -62,6 +64,19 @@ def _validate_config_path(config_file: str | Path) -> Path:
     value = os.fspath(config_file)
     if ".." in value.split("/") or _SAFE_CONFIG_PATH.fullmatch(value) is None:
         raise ValueError(f"Refusing unsafe config file path: {config_file!r}")
+    return Path(value)
+
+
+# Strict allowlist for config DIRECTORY paths (same rationale as _SAFE_CONFIG_PATH;
+# no .yaml suffix). Used so mkdir() runs on a validator's direct return value.
+_SAFE_CONFIG_DIR = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]*$")
+
+
+def _validate_config_dir(directory: str | Path) -> Path:
+    """Validate a config directory path against a strict allowlist (anti path-injection)."""
+    value = os.fspath(directory)
+    if ".." in value.split("/") or _SAFE_CONFIG_DIR.fullmatch(value) is None:
+        raise ValueError(f"Refusing unsafe config directory: {directory!r}")
     return Path(value)
 
 
@@ -426,8 +441,10 @@ class ConfigManager:
             # sinks (see the S2083 note above _validate_config_path).
             config_path = _validate_config_path(self.config_file)
 
-            # Ensure directory exists
-            config_path.parent.mkdir(parents=True, exist_ok=True)
+            # Ensure directory exists. Validate the dir inline so mkdir runs on
+            # the validator's direct return (see the S2083 note above).
+            config_dir = _validate_config_dir(config_path.parent)
+            config_dir.mkdir(parents=True, exist_ok=True)
 
             config_dict = config.to_dict()
 
