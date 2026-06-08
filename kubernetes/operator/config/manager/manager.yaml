@@ -18,6 +18,7 @@ spec:
         control-plane: controller-manager
     spec:
       serviceAccountName: controller-manager
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
       containers:
