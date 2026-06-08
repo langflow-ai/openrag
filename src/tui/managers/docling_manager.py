@@ -302,9 +302,11 @@ class DoclingManager:
                 "--with",
                 "easyocr",
                 "--with",
-                f"docling[{docling_extras}]",
+                f"docling[{docling_extras}]==2.95.0",
                 "--with",
                 "docling-core==2.77.1",
+                "--with",
+                "docling-jobkit==1.20.0",
                 "--with",
                 "transformers>=5.8.1,<5.9.0",
             ]
