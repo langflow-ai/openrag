@@ -29,6 +29,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
   },
+  // Disable built-in image optimization so Next does not require the `sharp`
+  // native dependency (and its LGPL libvips binaries). The only <Image> usage
+  // is a 32px file-preview thumbnail, which does not benefit from optimization.
+  images: {
+    unoptimized: true,
+  },
   // Ignore TypeScript errors during build (includes ESLint)
   typescript: {
     ignoreBuildErrors: true,
