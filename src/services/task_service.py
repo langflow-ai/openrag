@@ -595,9 +595,27 @@ class TaskService:
                 # the newly indexed chunks without hitting the near-real-time refresh window.
                 if upload_task.successful_files > 0:
                     try:
-                        from config.settings import clients, get_index_name
+                        from config.settings import get_index_name
 
-                        await clients.opensearch.indices.refresh(index=get_index_name())
+                        # Refresh with the user's JWT-scoped client. The global
+                        # client is unauthenticated when IBM_AUTH_ENABLED=true, so
+                        # using it here would silently fail; openrag_user_role grants
+                        # indices:admin/refresh, so the user client can refresh.
+                        session_manager = getattr(processor, "session_manager", None)
+                        owner_user_id = getattr(processor, "owner_user_id", None)
+                        jwt_token = getattr(processor, "jwt_token", None)
+                        if session_manager is not None and owner_user_id and jwt_token:
+                            opensearch_client = session_manager.get_user_opensearch_client(
+                                owner_user_id, jwt_token
+                            )
+                        else:
+                            # Defensive fallback: works in non-IBM mode where the
+                            # global client is authenticated.
+                            from config.settings import clients
+
+                            opensearch_client = clients.opensearch
+
+                        await opensearch_client.indices.refresh(index=get_index_name())
                     except Exception as e:
                         logger.debug("Index refresh after ingest failed (non-fatal)", error=str(e))
 
