@@ -246,6 +246,19 @@ func TestEnvVarManager_BuildEnvFileContent(t *testing.T) {
 	expected := "VAR1=value1\nVAR2=value2\nVAR3=value3\n"
 	assert.Equal(t, expected, content, "Output should be deterministic and sorted")
 
+	t.Run("quotes values that need dotenv protection", func(t *testing.T) {
+		protected := map[string]string{
+			"HASH_VALUE": "postgresql://user:p@ss#word@host/db",
+			"MULTILINE":  "line1\nline2",
+			"CR_VALUE":   "line1\rline2",
+		}
+
+		protectedContent := manager.BuildEnvFileContent(protected)
+		assert.Contains(t, protectedContent, `HASH_VALUE="postgresql://user:p@ss#word@host/db"`)
+		assert.Contains(t, protectedContent, `MULTILINE="line1\nline2"`)
+		assert.Contains(t, protectedContent, `CR_VALUE="line1\rline2"`)
+	})
+
 	// Verify determinism by calling multiple times
 	for i := 0; i < 10; i++ {
 		result := manager.BuildEnvFileContent(envVars)
