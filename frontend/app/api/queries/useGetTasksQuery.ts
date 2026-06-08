@@ -29,6 +29,7 @@ export interface TaskFileEntry {
     | "running"
     | "processing"
     | "completed"
+    | "skipped"
     | "failed"
     | "error";
   result?: unknown;
@@ -57,6 +58,7 @@ export interface Task {
     | "running"
     | "processing"
     | "completed"
+    | "skipped"
     | "failed"
     | "error";
   total_files?: number;

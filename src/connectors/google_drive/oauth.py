@@ -1,7 +1,6 @@
 import asyncio
-import os
 import json
-from typing import Optional
+import os
 
 import requests as req_lib
 from google.auth.transport.requests import Request
@@ -16,15 +15,31 @@ logger = get_logger(__name__)
 _REFRESH_TIMEOUT_SECONDS = 30
 
 
+class _TimeoutSession(req_lib.Session):
+    def __init__(self, timeout: float) -> None:
+        super().__init__()
+        self._timeout = timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", self._timeout)
+        return super().request(method, url, **kwargs)
+
+
 class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
+
+    REQUIRED_SCOPES = [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+    ]
 
     SCOPES = [
         "openid",
         "email",
         "profile",
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        *REQUIRED_SCOPES,
+        "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+        "https://www.googleapis.com/auth/admin.directory.group.readonly",
     ]
 
     AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -32,22 +47,31 @@ class GoogleDriveOAuth:
 
     def __init__(
         self,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
         token_file: str = "token.json",
     ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.token_file = token_file
-        self.creds: Optional[Credentials] = None
+        self.creds: Credentials | None = None
 
     def _make_timeout_request(self) -> Request:
         """Build a google-auth Request transport with a bounded timeout."""
-        session = req_lib.Session()
-        session.timeout = _REFRESH_TIMEOUT_SECONDS
-        return Request(session=session)
+        return Request(session=_TimeoutSession(_REFRESH_TIMEOUT_SECONDS))
 
-    async def load_credentials(self) -> Optional[Credentials]:
+    def _missing_required_scopes(self, scopes: list[str] | None) -> list[str]:
+        current_scopes = set(scopes or [])
+        return [scope for scope in self.REQUIRED_SCOPES if scope not in current_scopes]
+
+    def _remove_token_file(self) -> None:
+        if os.path.exists(self.token_file):
+            try:
+                os.remove(self.token_file)
+            except Exception:
+                logger.debug("[GoogleDrive] load_credentials: failed to remove token file")
+
+    async def load_credentials(self) -> Credentials | None:
         """Load existing credentials from token file"""
         from utils.encryption import read_encrypted_file
 
@@ -65,7 +89,9 @@ class GoogleDriveOAuth:
                 os.remove(self.token_file)
             return None
 
-        logger.debug("[GoogleDrive] load_credentials: token data loaded, creating Credentials object")
+        logger.debug(
+            "[GoogleDrive] load_credentials: token data loaded, creating Credentials object"
+        )
 
         self.creds = Credentials(
             token=token_data.get("token"),
@@ -134,13 +160,12 @@ class GoogleDriveOAuth:
             # Add expiry if available
             if self.creds.expiry:
                 token_data["expiry"] = self.creds.expiry.isoformat()
-                
+
             from utils.encryption import write_encrypted_file
+
             await write_encrypted_file(self.token_file, json.dumps(token_data))
 
-    def create_authorization_url(
-        self, redirect_uri: str, state: Optional[str] = None
-    ) -> str:
+    def create_authorization_url(self, redirect_uri: str, state: str | None = None) -> str:
         """Create authorization URL for OAuth flow"""
         # Create flow from client credentials directly
         client_config = {
@@ -152,9 +177,7 @@ class GoogleDriveOAuth:
             }
         }
 
-        flow = Flow.from_client_config(
-            client_config, scopes=self.SCOPES, redirect_uri=redirect_uri
-        )
+        flow = Flow.from_client_config(client_config, scopes=self.SCOPES, redirect_uri=redirect_uri)
 
         kwargs = {
             "access_type": "offline",
@@ -172,9 +195,7 @@ class GoogleDriveOAuth:
 
         return auth_url
 
-    async def handle_authorization_callback(
-        self, authorization_code: str, state: str
-    ) -> bool:
+    async def handle_authorization_callback(self, authorization_code: str, state: str) -> bool:
         """Handle OAuth callback and exchange code for tokens"""
         if not hasattr(self, "_flow") or self._flow_state != state:
             raise ValueError("Invalid OAuth state")

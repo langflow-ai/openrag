@@ -20,7 +20,10 @@ if [ "$(id -u)" = "0" ]; then
         /app/data \
         /app/openrag-documents \
         2>/dev/null || true
-    exec gosu appuser "$@"
+    exec runuser -u appuser -- env \
+        VIRTUAL_ENV=/app/.venv \
+        PATH="/app/.venv/bin:$PATH" \
+        "$@"
 else
     exec "$@"
 fi

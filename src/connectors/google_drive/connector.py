@@ -227,7 +227,7 @@ class GoogleDriveConnector(BaseConnector):
                     fileId=target_id,
                     fields=(
                         "id, name, mimeType, modifiedTime, createdTime, size, "
-                        "webViewLink, parents, owners, driveId"
+                        "webViewLink, parents, owners, driveId, trashed"
                     ),
                     **self._drives_get_flags,
                 )
@@ -322,9 +322,16 @@ class GoogleDriveConnector(BaseConnector):
                     )
                     .execute()
                 )
-            return self._resolve_shortcut(meta)
-        except HttpError:
-            return None
+            if meta.get("trashed"):
+                return None
+            resolved = self._resolve_shortcut(meta)
+            if resolved.get("trashed"):
+                return None
+            return resolved
+        except HttpError as e:
+            if getattr(e.resp, "status", None) == 404:
+                return None
+            raise
 
     def _filter_by_mime(self, items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         """
@@ -395,6 +402,8 @@ class GoogleDriveConnector(BaseConnector):
             folder_children = self._bfs_expand_folders(folders_to_expand)
             for meta in folder_children:
                 meta = self._resolve_shortcut(meta)
+                if meta.get("trashed"):
+                    continue
                 if meta.get("id") in seen:
                     continue
                 seen.add(meta["id"])
