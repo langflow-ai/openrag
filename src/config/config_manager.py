@@ -2,6 +2,7 @@
 
 import os
 import re
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -13,22 +14,35 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _canonicalize_config_path(config_file: str | Path) -> Path:
-    """Canonicalize and validate a configuration file path.
+# Trusted roots the resolved config file must live under. Every supported
+# deployment places config.yaml under one of these:
+#   * /app   - docker-compose (/app/config) and operator (/app/backend-data/config)
+#   * /data  - helm chart (/data/config)
+#   * the current working directory - the relative "config" default
+#   * the system temp dir - pytest fixtures pointing at TemporaryDirectory
+_TRUSTED_CONFIG_ROOTS: tuple[str, ...] = ("/app", "/data")
 
-    Collapses ``..``/symlinks via ``os.path.realpath`` and rejects any path
-    whose components contain a parent-directory traversal token. The path is
-    operator-configurable (OPENRAG_CONFIG_PATH) so we deliberately do not pin
-    it to a fixed base directory; we only forbid traversal and canonicalize,
-    which is the recognized "canonicalize then validate" pattern.
+
+def _resolve_trusted_config_path(config_file: str | Path) -> Path:
+    """Resolve a config file path and confirm it stays within a trusted root.
+
+    The configuration location is operator-configurable (OPENRAG_CONFIG_PATH),
+    but the resolved file must live under one of the trusted roots. This is the
+    recognized path-injection remediation: canonicalize with ``Path.resolve()``
+    (which collapses ``..`` and symlinks), then validate containment against a
+    fixed set of base directories with ``Path.is_relative_to`` - which
+    neutralizes directory traversal into arbitrary filesystem locations.
     """
-    raw = Path(config_file)
-    if any(part == ".." for part in raw.parts):
-        raise ValueError(f"Invalid config file path (traversal not allowed): {config_file!r}")
-    resolved = Path(os.path.realpath(raw))
-    if ".." in resolved.parts:  # defense in depth
-        raise ValueError(f"Invalid config file path after resolution: {config_file!r}")
-    return resolved
+    target = Path(config_file).resolve()
+    allowed_roots = [Path(root).resolve() for root in _TRUSTED_CONFIG_ROOTS]
+    allowed_roots.append(Path.cwd().resolve())
+    allowed_roots.append(Path(tempfile.gettempdir()).resolve())
+    if not any(target.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(
+            f"Config file path {str(target)!r} is outside the trusted roots "
+            f"{[str(r) for r in allowed_roots]!r}"
+        )
+    return target
 
 
 def _sanitize_for_log(value: object) -> str:
@@ -201,18 +215,18 @@ class ConfigManager:
             from config.paths import get_config_file_path
 
             config_file = get_config_file_path()
-        # Routes through the property setter -> canonicalize + traversal check.
+        # Routes through the property setter -> canonicalize + trusted-root check.
         self.config_file = config_file
         self._config: OpenRAGConfig | None = None
 
     @property
     def config_file(self) -> Path:
-        """Canonical, traversal-validated path to the config file."""
+        """Canonical, trusted-root-validated path to the config file."""
         return self._config_file
 
     @config_file.setter
     def config_file(self, value: str | Path) -> None:
-        self._config_file = _canonicalize_config_path(value)
+        self._config_file = _resolve_trusted_config_path(value)
 
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.
