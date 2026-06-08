@@ -90,6 +90,7 @@
     "semver": "7.5.4",
     "debug": "4.3.7",
     "postcss": "8.5.10",
+    "sharp": "file:./stubs/sharp-0.34.5.tgz",
     "uuid": "13.0.1",
     "lodash": "4.18.0",
     "lodash-es": "4.18.0",
