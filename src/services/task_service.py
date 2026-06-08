@@ -602,9 +602,11 @@ class TaskService:
                         # using it here would silently fail; openrag_user_role grants
                         # indices:admin/refresh, so the user client can refresh.
                         session_manager = getattr(processor, "session_manager", None)
-                        if session_manager is not None:
+                        owner_user_id = getattr(processor, "owner_user_id", None)
+                        jwt_token = getattr(processor, "jwt_token", None)
+                        if session_manager is not None and owner_user_id and jwt_token:
                             opensearch_client = session_manager.get_user_opensearch_client(
-                                processor.owner_user_id, processor.jwt_token
+                                owner_user_id, jwt_token
                             )
                         else:
                             # Defensive fallback: works in non-IBM mode where the
