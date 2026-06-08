@@ -302,7 +302,7 @@ class DoclingManager:
                 "--with",
                 "easyocr",
                 "--with",
-                f"docling[{docling_extras}]",
+                f"docling[{docling_extras}]==2.95.0",
                 "--with",
                 "docling-core==2.77.1",
                 "--with",
