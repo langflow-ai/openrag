@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ interface ConfirmationDialogProps {
   onCancel?: () => void;
   variant?: "default" | "destructive" | "warning";
   confirmIcon?: ReactNode | null;
+  isLoading?: boolean;
 }
 
 export function ConfirmationDialog({
@@ -34,6 +36,7 @@ export function ConfirmationDialog({
   onCancel,
   variant = "default",
   confirmIcon = null,
+  isLoading = false,
 }: ConfirmationDialogProps) {
   const [open, setOpen] = useState(false);
 
@@ -61,7 +64,13 @@ export function ConfirmationDialog({
           <Button variant="ghost" onClick={handleCancel} size="sm">
             {cancelText}
           </Button>
-          <Button variant={variant} onClick={handleConfirm} size="sm">
+          <Button
+            variant={variant}
+            onClick={handleConfirm}
+            size="sm"
+            disabled={isLoading}
+          >
+            {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {confirmText}
             {confirmIcon}
           </Button>
