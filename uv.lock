@@ -2102,6 +2102,7 @@ requires-dist = [
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "ibm-cos-sdk", specifier = ">=2.13.0" },
+    { name = "idna", specifier = ">=3.15" },
     { name = "idna", specifier = ">=3.18" },
     { name = "litellm", specifier = "==1.84.0" },
     { name = "msal", specifier = ">=1.29.0" },
