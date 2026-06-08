@@ -210,22 +210,21 @@ func (m *EnvVarManager) mergeEnvVars(ctx context.Context, c client.Client, names
 	}
 
 	// Level 3: Override with CR spec env vars (highest priority)
-	// Resolve ALL types of env vars (direct values, secrets, configmaps)
+	// CR values are always respected as-is, including empty string.
 	for _, envVar := range crEnvVars {
-		if envVar.Value != "" {
-			// Direct value assignment
-			result[envVar.Name] = envVar.Value
-		} else if envVar.ValueFrom != nil {
-			// Resolve valueFrom references
+		if envVar.ValueFrom != nil {
 			value, found, err := resolveEnvVarValue(ctx, c, namespace, &envVar)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve env var %s: %w", envVar.Name, err)
 			}
 			if !found {
-				// If the reference was optional and not found, skip it without error
+				// Optional reference not found — leave any existing value in place
 				continue
 			}
 			result[envVar.Name] = value
+		} else {
+			// Direct value: always set, even if empty. CR is authoritative.
+			result[envVar.Name] = envVar.Value
 		}
 	}
 
@@ -305,9 +304,9 @@ func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, 
 }
 
 // BuildEnvFileContent converts a map of env vars to .env file format.
-// Values are always double-quoted with special characters escaped so that
-// arbitrary secret/configmap content cannot corrupt the file.
-// python-dotenv (>=1.0.0) interprets these escape sequences correctly.
+// Values are written raw unless they contain characters that would break dotenv
+// parsing without quoting: newlines, carriage returns, or '#' (comment marker).
+// Those values are double-quoted via strconv.Quote so the content is preserved.
 func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 	// Sort keys to ensure deterministic output
 	keys := make([]string, 0, len(envVars))
@@ -318,9 +317,14 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 
 	var b strings.Builder
 	for _, k := range keys {
+		v := envVars[k]
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(strconv.Quote(envVars[k]))
+		if strings.ContainsAny(v, "\n\r#") {
+			b.WriteString(strconv.Quote(v))
+		} else {
+			b.WriteString(v)
+		}
 		b.WriteString("\n")
 	}
 	return b.String()

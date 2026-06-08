@@ -236,8 +236,8 @@ func TestReconcile_BackendEnvContainsLangflowURL(t *testing.T) {
 	if envContent == "" && sec.StringData != nil {
 		envContent = sec.StringData[".env"]
 	}
-	assert.Contains(t, envContent, `LANGFLOW_URL="http://`+instanceResourceName(cr, "lf")+`:7860"`)
-	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL="http://`+instanceResourceName(cr, "be")+`:8000"`)
+	assert.Contains(t, envContent, `LANGFLOW_URL=http://`+instanceResourceName(cr, "lf")+`:7860`)
+	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL=http://`+instanceResourceName(cr, "be")+`:8000`)
 }
 
 func TestReconcile_LangflowMountsPVC(t *testing.T) {
@@ -1103,9 +1103,9 @@ func TestReconcile_CustomServiceName_OperatorCreates(t *testing.T) {
 	if envContent == "" && secret.StringData != nil {
 		envContent = secret.StringData[".env"]
 	}
-	assert.Contains(t, envContent, `LANGFLOW_URL="http://`+instanceResourceName(cr, "lf")+`:7860"`,
+	assert.Contains(t, envContent, `LANGFLOW_URL=http://`+instanceResourceName(cr, "lf")+`:7860`,
 		"Backend env should reference default langflow service")
-	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL="http://my-backend-svc:8000"`,
+	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL=http://my-backend-svc:8000`,
 		"Backend env should reference custom backend service name")
 }
 
@@ -1211,9 +1211,9 @@ func TestReconcile_CustomServiceName_Langflow_UsedInBackendEnv(t *testing.T) {
 	if envContent == "" && secret.StringData != nil {
 		envContent = secret.StringData[".env"]
 	}
-	assert.Contains(t, envContent, `LANGFLOW_URL="http://custom-lf-svc:7860"`,
+	assert.Contains(t, envContent, `LANGFLOW_URL=http://custom-lf-svc:7860`,
 		"Backend env should reference custom langflow service name")
-	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL="http://`+instanceResourceName(cr, "be")+`:8000"`,
+	assert.Contains(t, envContent, `OPENRAG_BACKEND_INTERNAL_URL=http://`+instanceResourceName(cr, "be")+`:8000`,
 		"Backend env should reference default backend service")
 }
 

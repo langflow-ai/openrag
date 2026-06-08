@@ -112,6 +112,59 @@ func TestEnvVarManager_CREnvVarOverride(t *testing.T) {
 	assert.Equal(t, "DEBUG", result["LOG_LEVEL"], "CR should override defaults")
 }
 
+// TestEnvVarManager_CREmptyValueOverridesDefault verifies that an explicit empty string
+// in the CR is respected as-is and overrides any default or operator-set value.
+func TestEnvVarManager_CREmptyValueOverridesDefault(t *testing.T) {
+	manager := &EnvVarManager{
+		DefaultLangflowEnvVars: map[string]string{
+			"LANGFLOW_KEY":   "some-default-key",
+			"SEGMENT_WRITES": "default-segment-key",
+		},
+	}
+
+	_ = os.Setenv("OPTLF_LANGFLOW_KEY", "operator-key")
+	defer func() {
+		err := os.Unsetenv("OPTLF_LANGFLOW_KEY")
+		require.NoError(t, err)
+	}()
+
+	crEnvVars := []corev1.EnvVar{
+		{Name: "LANGFLOW_KEY", Value: ""},   // explicit empty — must win
+		{Name: "SEGMENT_WRITES", Value: ""}, // overrides default
+	}
+
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	require.NoError(t, err)
+
+	assert.Equal(t, "", result["LANGFLOW_KEY"], "CR empty string must override operator env value")
+	assert.Equal(t, "", result["SEGMENT_WRITES"], "CR empty string must override default value")
+}
+
+// TestEnvVarManager_CRValueIsLiterallyRespected verifies that CR values containing
+// special characters (spaces, quotes, hashes, URLs) are passed through without modification.
+func TestEnvVarManager_CRValueIsLiterallyRespected(t *testing.T) {
+	manager := &EnvVarManager{
+		DefaultOpenRagBEEnvVars: map[string]string{
+			"DATABASE_URL": "default-url",
+			"DESCRIPTION":  "default-desc",
+			"API_KEY":      "default-key",
+		},
+	}
+
+	crEnvVars := []corev1.EnvVar{
+		{Name: "DATABASE_URL", Value: "postgresql://user:p@ss#word@host:5432/db"},
+		{Name: "DESCRIPTION", Value: "hello world with spaces"},
+		{Name: "API_KEY", Value: "key with \"quotes\" inside"},
+	}
+
+	result, err := manager.GetBackendEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	require.NoError(t, err)
+
+	assert.Equal(t, "postgresql://user:p@ss#word@host:5432/db", result["DATABASE_URL"])
+	assert.Equal(t, "hello world with spaces", result["DESCRIPTION"])
+	assert.Equal(t, `key with "quotes" inside`, result["API_KEY"])
+}
+
 func TestEnvVarManager_EmptyCREnvVars(t *testing.T) {
 	manager := &EnvVarManager{
 		DefaultLangflowEnvVars: map[string]string{
@@ -181,22 +234,36 @@ func TestEnvVarManager_BuildEnvFileContent(t *testing.T) {
 
 	content := manager.BuildEnvFileContent(envVars)
 
-	// Should contain all three vars in quoted key=value format
-	assert.Contains(t, content, `VAR1="value1"`)
-	assert.Contains(t, content, `VAR2="value2"`)
-	assert.Contains(t, content, `VAR3="value3"`)
+	// Should contain all three vars in raw key=value format (no quotes for simple values)
+	assert.Contains(t, content, "VAR1=value1")
+	assert.Contains(t, content, "VAR2=value2")
+	assert.Contains(t, content, "VAR3=value3")
 
 	// Should have newlines
 	assert.Contains(t, content, "\n")
 
 	// Should be deterministic (alphabetically sorted)
-	expected := "VAR1=\"value1\"\nVAR2=\"value2\"\nVAR3=\"value3\"\n"
+	expected := "VAR1=value1\nVAR2=value2\nVAR3=value3\n"
 	assert.Equal(t, expected, content, "Output should be deterministic and sorted")
+
+	t.Run("quotes values that need dotenv protection", func(t *testing.T) {
+		protected := map[string]string{
+			"HASH_VALUE": "postgresql://user:p@ss#word@host/db",
+			"MULTILINE":  "line1\nline2",
+			"CR_VALUE":   "line1\rline2",
+		}
+
+		protectedContent := manager.BuildEnvFileContent(protected)
+		assert.Contains(t, protectedContent, `HASH_VALUE="postgresql://user:p@ss#word@host/db"`)
+		assert.Contains(t, protectedContent, `MULTILINE="line1\nline2"`)
+		assert.Contains(t, protectedContent, `CR_VALUE="line1\rline2"`)
+	})
 
 	// Verify determinism by calling multiple times
 	for i := 0; i < 10; i++ {
 		result := manager.BuildEnvFileContent(envVars)
 		assert.Equal(t, expected, result, "Output should be identical on iteration %d", i)
+
 	}
 }
 
