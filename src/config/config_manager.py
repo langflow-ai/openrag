@@ -13,12 +13,47 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-# Strict allowlist for config file paths. SonarQube treats a value that has
-# passed a correctly-defined regex validation as no longer tainted, because it
-# can no longer carry a path-traversal / injection payload. We allow POSIX
-# absolute or relative paths built from a safe character set and ending in a
-# .yaml/.yml file, and we reject any '..' traversal segment, whitespace, NUL
-# bytes, and shell metacharacters.
+# ---------------------------------------------------------------------------
+# SonarQube pythonsecurity:S2083 ("Change this code to not construct the path
+# from user-controlled data") on the open()/mkdir() sinks below.
+#
+# These are REVIEWED FALSE POSITIVES. The config path comes from the
+# OPENRAG_CONFIG_PATH operator environment variable (or temp dirs in tests),
+# never from an end-user/HTTP request, and every value is run through
+# `_validate_config_path` (strict allowlist: safe chars, no '..', must end in
+# .yaml/.yml) before it reaches a filesystem operation.
+#
+# Pure code CANNOT be guaranteed to clear S2083 here (verified across three
+# attempts: os.path.realpath + '..'-rejection; Path.resolve() + is_relative_to
+# containment; and this regex allowlist). Python's taint engine does not credit
+# these as sanitizers the way Java's credits Path.resolve(), and validation
+# extracted into a helper/property is not propagated across the call boundary.
+# `# NOSONAR` is also unreliable for the taint/security engine.
+#
+# GUARANTEED FIXES (require SonarQube SAST / Administer-Issues access):
+#   1. Register this function as a SAST custom sanitizer (Enterprise Edition):
+#        { "S2083": { "sanitizers": [
+#            { "methodId": "src.config.config_manager._validate_config_path",
+#              "args": [0] } ] } }
+#      Upload via Project Settings -> General Settings -> SAST Engine, or pass
+#      `sonar.security.sanitizers.pythonsecurity.S2083=<file>` to the scanner.
+#      Verify methodId against the scanned component path; drop the leading
+#      `src.` if the sources root is `src/`.
+#   2. Or mark these S2083 issues as Accepted / False Positive (needs the
+#      "Administer Issues" permission), justification:
+#      "Path is the OPENRAG_CONFIG_PATH operator env var, validated against a
+#       strict allowlist; not end-user input."
+#
+# References:
+#   - SAST custom config: https://docs.sonarsource.com/sonarqube-server/analyzing-source-code/security-engine-custom-configuration
+#   - Why extracted-function validation still flags S2083 (root cause):
+#     https://community.sonarsource.com/t/sonar-still-complains-about-security-s2083/81492
+#   - Recognized validation pattern discussion:
+#     https://community.sonarsource.com/t/javasecurity-show-that-were-validating-paths-to-sonarcloud/52041
+#
+# Strict allowlist regex: POSIX absolute or relative paths built from a safe
+# character set and ending in a .yaml/.yml file.
+# ---------------------------------------------------------------------------
 _SAFE_CONFIG_PATH = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]+\.ya?ml$")
 
 
@@ -240,10 +275,14 @@ class ConfigManager:
         needs_encryption_upgrade = False
         from utils.encryption import get_master_secret
 
+        # Validate inline so the sanitizer output is used directly at the sink
+        # (see the S2083 note above _validate_config_path).
+        config_path = _validate_config_path(self.config_file)
+
         # Load from config file if it exists
-        if self.config_file.exists():
+        if config_path.exists():
             try:
-                with open(self.config_file) as f:
+                with open(config_path) as f:
                     file_config = yaml.safe_load(f) or {}
 
                 # Merge file config
@@ -383,8 +422,12 @@ class ConfigManager:
             config.edited = True
 
         try:
+            # Validate inline so the sanitizer output is used directly at the
+            # sinks (see the S2083 note above _validate_config_path).
+            config_path = _validate_config_path(self.config_file)
+
             # Ensure directory exists
-            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_path.parent.mkdir(parents=True, exist_ok=True)
 
             config_dict = config.to_dict()
 
@@ -396,7 +439,7 @@ class ConfigManager:
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
 
-            with open(self.config_file, "w") as f:
+            with open(config_path, "w") as f:
                 yaml.dump(config_dict, f, default_flow_style=False, indent=2)
 
             # Update cached config to reflect the edited flags
