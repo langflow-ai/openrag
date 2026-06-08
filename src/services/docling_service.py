@@ -275,7 +275,7 @@ class DoclingService:
                     err_msg_list.append(err["error_message"])
                 elif isinstance(err, str):
                     err_msg_list.append(err)
-            
+
             single_err = payload.get("error")
             if isinstance(single_err, str):
                 err_msg_list.append(single_err)
