@@ -1,6 +1,7 @@
 """Configuration management for OpenRAG."""
 
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -10,6 +11,29 @@ import yaml
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _canonicalize_config_path(config_file: str | Path) -> Path:
+    """Canonicalize and validate a configuration file path.
+
+    Collapses ``..``/symlinks via ``os.path.realpath`` and rejects any path
+    whose components contain a parent-directory traversal token. The path is
+    operator-configurable (OPENRAG_CONFIG_PATH) so we deliberately do not pin
+    it to a fixed base directory; we only forbid traversal and canonicalize,
+    which is the recognized "canonicalize then validate" pattern.
+    """
+    raw = Path(config_file)
+    if any(part == ".." for part in raw.parts):
+        raise ValueError(f"Invalid config file path (traversal not allowed): {config_file!r}")
+    resolved = Path(os.path.realpath(raw))
+    if ".." in resolved.parts:  # defense in depth
+        raise ValueError(f"Invalid config file path after resolution: {config_file!r}")
+    return resolved
+
+
+def _sanitize_for_log(value: object) -> str:
+    """Strip CR/LF/TAB from a value before logging to prevent log injection."""
+    return re.sub(r"[\r\n\t]", "_", str(value))
 
 
 @dataclass
@@ -173,13 +197,22 @@ class ConfigManager:
         Args:
             config_file: Path to configuration file. Defaults to 'config.yaml' in project root.
         """
-        if config_file:
-            self.config_file = Path(config_file)
-        else:
+        if not config_file:
             from config.paths import get_config_file_path
 
-            self.config_file = Path(get_config_file_path())
+            config_file = get_config_file_path()
+        # Routes through the property setter -> canonicalize + traversal check.
+        self.config_file = config_file
         self._config: OpenRAGConfig | None = None
+
+    @property
+    def config_file(self) -> Path:
+        """Canonical, traversal-validated path to the config file."""
+        return self._config_file
+
+    @config_file.setter
+    def config_file(self, value: str | Path) -> None:
+        self._config_file = _canonicalize_config_path(value)
 
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.
@@ -234,9 +267,11 @@ class ConfigManager:
 
                 config_data["edited"] = file_config.get("edited", False)
 
-                logger.info(f"Loaded configuration from {self.config_file}")
+                logger.info(f"Loaded configuration from {_sanitize_for_log(self.config_file)}")
             except Exception as e:
-                logger.warning(f"Failed to load config file {self.config_file}: {e}")
+                logger.warning(
+                    f"Failed to load config file {_sanitize_for_log(self.config_file)}: {e}"
+                )
 
         # Create config object first to check edited flags
         temp_config = OpenRAGConfig.from_dict(config_data)
@@ -368,10 +403,14 @@ class ConfigManager:
             # Update cached config to reflect the edited flags
             self._config = config
 
-            logger.info(f"Configuration saved to {self.config_file} - marked as edited")
+            logger.info(
+                f"Configuration saved to {_sanitize_for_log(self.config_file)} - marked as edited"
+            )
             return True
         except Exception as e:
-            logger.error(f"Failed to save configuration to {self.config_file}: {e}")
+            logger.error(
+                f"Failed to save configuration to {_sanitize_for_log(self.config_file)}: {e}"
+            )
             raise e
 
     def update_onboarding_state(self, **kwargs) -> bool:
