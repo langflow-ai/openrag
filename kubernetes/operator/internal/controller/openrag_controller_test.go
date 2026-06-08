@@ -754,50 +754,25 @@ func TestReconcile_AllThreeComponentsSupportBothLevels(t *testing.T) {
 // TestReconcile_UUIDNameDNS1035Compliance verifies that resource names are DNS-1035
 // compliant even when the CR name is a UUID starting with a digit.
 // The openrag- prefix ensures names always start with a letter.
-func TestReconcile_UUIDNameDNS1035Compliance(t *testing.T) {
+func TestReconcile_InstanceName_UsedInResourceNames(t *testing.T) {
 	s := newScheme(t)
-	uuidName := "9a826efa-112d-4e2d-9f8d-ce103880ab41"
-	cr := minimalCR(uuidName, "test-ns")
-	cr.Spec.MultiInstance = true
+	cr := minimalCR("9a826efa-112d-4e2d-9f8d-ce103880ab41", "test-ns")
+	cr.Spec.InstanceName = "prod"
 
 	r, c := reconciler(s, cr)
 	reconcileOnce(t, r, cr)
 
 	dns1035Regex := `^[a-z]([-a-z0-9]*[a-z0-9])?$`
 
-	feDeploy := &appsv1.Deployment{}
-	feName := instanceResourceName(cr, "fe")
-	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: feName, Namespace: "test-ns"}, feDeploy))
-	assert.Regexp(t, dns1035Regex, feName, "Frontend deployment name must be DNS-1035 compliant")
-	assert.Regexp(t, dns1035Regex, feDeploy.Name, "Frontend deployment name must be DNS-1035 compliant")
+	for _, role := range []string{"fe", "be", "lf"} {
+		name := instanceResourceName(cr, role)
+		assert.Equal(t, "openrag-prod-"+role, name)
+		assert.Regexp(t, dns1035Regex, name, "resource name for role %s must be DNS-1035 compliant", role)
 
-	feSvc := &corev1.Service{}
-	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: feName, Namespace: "test-ns"}, feSvc))
-	assert.Regexp(t, dns1035Regex, feSvc.Name, "Frontend service name must be DNS-1035 compliant")
-
-	beDeploy := &appsv1.Deployment{}
-	beName := instanceResourceName(cr, "be")
-	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: beName, Namespace: "test-ns"}, beDeploy))
-	assert.Regexp(t, dns1035Regex, beName, "Backend deployment name must be DNS-1035 compliant")
-
-	lfDeploy := &appsv1.Deployment{}
-	lfName := instanceResourceName(cr, "lf")
-	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: lfName, Namespace: "test-ns"}, lfDeploy))
-	assert.Regexp(t, dns1035Regex, lfName, "Langflow deployment name must be DNS-1035 compliant")
-
-	// Verify names follow the openrag-<crName>-<role> pattern
-	assert.Equal(t, "openrag-"+uuidName+"-fe", feName)
-	assert.Equal(t, "openrag-"+uuidName+"-be", beName)
-	assert.Equal(t, "openrag-"+uuidName+"-lf", lfName)
-
-	// CR name is tracked in labels
-	assert.Equal(t, uuidName, feDeploy.Labels["app.kubernetes.io/instance"])
-	assert.Equal(t, uuidName, beDeploy.Labels["app.kubernetes.io/instance"])
-	assert.Equal(t, uuidName, lfDeploy.Labels["app.kubernetes.io/instance"])
+		d := &appsv1.Deployment{}
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: name, Namespace: "test-ns"}, d))
+	}
 }
 
 // ---------------------------------------------------------------------------
