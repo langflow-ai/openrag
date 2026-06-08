@@ -306,6 +306,8 @@ class DoclingManager:
                 "--with",
                 "docling-core==2.77.1",
                 "--with",
+                "docling-jobkit==1.20.0",
+                "--with",
                 "transformers>=5.8.1,<5.9.0",
             ]
             if override_path:
