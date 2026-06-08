@@ -8,6 +8,7 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: manager
         env:
