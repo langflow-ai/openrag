@@ -98,10 +98,6 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
-	if instance.Spec.MultiInstance && len(instance.Name) > 38 {
-		return ctrl.Result{}, fmt.Errorf("CR name %q exceeds maximum length of 38 characters (%d) required for multiInstance mode", instance.Name, len(instance.Name))
-	}
-
 	targetNS := targetNamespace(instance)
 	logger.Info("target namespace determined", "targetNS", targetNS, "crNamespace", instance.Namespace)
 
@@ -2250,27 +2246,26 @@ func targetNamespace(o *openragv1alpha1.OpenRAG) string {
 	return o.Namespace
 }
 
-// instanceResourceName returns the resource name for a role, respecting MultiInstance.
-// When MultiInstance is false (default), legacy static names are used for backwards
-// compatibility. When true, the CR name is embedded to allow multiple CRs per namespace.
+// instanceResourceName returns the resource name for a role, respecting InstanceName.
+// When InstanceName is empty (default), legacy static names are used for backwards
+// compatibility. When set, the InstanceName is embedded to allow multiple CRs per namespace.
 func instanceResourceName(o *openragv1alpha1.OpenRAG, role string) string {
-	if o.Spec.MultiInstance {
-		return resourceName(o.Name, role)
+	if o.Spec.InstanceName != "" {
+		return resourceName(o.Spec.InstanceName, role)
 	}
 	return legacyResourceName(role)
 }
 
-// instanceSAName returns the ServiceAccount name for a role, respecting MultiInstance.
+// instanceSAName returns the ServiceAccount name for a role, respecting InstanceName.
 func instanceSAName(o *openragv1alpha1.OpenRAG, role string) string {
-	if o.Spec.MultiInstance {
-		return saName(o.Name, role)
+	if o.Spec.InstanceName != "" {
+		return saName(o.Spec.InstanceName, role)
 	}
 	return legacySAName(role)
 }
 
-// resourceName generates a per-CR resource name with the openrag- prefix for DNS-1035
-// compliance (required when crName is a UUID starting with a digit).
-// Max length with a 38-char crName: "openrag-"(8) + 38 + "-valkey-headless"(16) = 62 chars.
+// resourceName generates a per-CR resource name with the openrag- prefix.
+// Max length with an 8-char instanceName: "openrag-"(8) + 8 + "-valkey-headless"(16) = 32 chars.
 func resourceName(crName, role string) string {
 	switch role {
 	case "ds":

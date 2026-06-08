@@ -11609,6 +11609,20 @@ spec:
                 x-kubernetes-validations:
                 - message: imagePullSecret name cannot be empty
                   rule: self.all(x, x.name != '')
+              instanceName:
+                description: |-
+                  InstanceName is a short unique identifier embedded in all resource names, enabling
+                  multiple OpenRAG CRs to coexist in the same namespace (e.g. "prod", "staging").
+                  Must start with a lowercase letter and contain only lowercase letters, digits, and
+                  hyphens, with a maximum of 8 characters. When empty (default), resources use legacy
+                  static names (openrag-fe, openrag-be, openrag-lf) for backwards compatibility.
+                  This field is immutable after creation.
+                maxLength: 8
+                pattern: ^[a-z][a-z0-9-]*$
+                type: string
+                x-kubernetes-validations:
+                - message: instanceName is immutable after creation
+                  rule: self == oldSelf
               langflow:
                 description: Langflow configures the Langflow workflow engine.
                 properties:
@@ -13635,19 +13649,6 @@ spec:
                   provider:
                     type: string
                 type: object
-              multiInstance:
-                default: false
-                description: |-
-                  MultiInstance enables per-CR resource naming (openrag-<crName>-<role>) so that
-                  multiple OpenRAG CRs can coexist in the same namespace. When false (default),
-                  resources use the legacy static names (openrag-fe, openrag-be, openrag-lf),
-                  which preserves backwards compatibility for existing deployments.
-                  Changing this field after initial deployment will rename all managed resources,
-                  which will break any external references (IngressRoutes, DNS, etc.).
-                type: boolean
-                x-kubernetes-validations:
-                - message: multiInstance is immutable after creation
-                  rule: self == oldSelf
               networkPolicy:
                 description: NetworkPolicy controls creation of a NetworkPolicy for
                   the Langflow pod.
