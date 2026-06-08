@@ -43,6 +43,7 @@ export function AgentSettingsSection() {
   const pathname = usePathname();
 
   const focusLlmModel = searchParams.get("focusLlmModel") === "true";
+  const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
   const [openLlmSelector, setOpenLlmSelector] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState<string>("");
 
@@ -183,6 +184,8 @@ export function AgentSettingsSection() {
   };
 
   const handleRestoreRetrievalFlow = (closeDialog: () => void) => {
+    setIsRestoringFlow(true);
+
     fetch("/api/reset-flow/retrieval", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();
@@ -190,12 +193,15 @@ export function AgentSettingsSection() {
       })
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
+        toast.success("Default agent flow settings restored successfully");
         closeDialog();
       })
       .catch((err) => {
         console.error("Error restoring retrieval flow:", err);
+        toast.error("Failed to restore default agent flow settings");
         closeDialog();
-      });
+      })
+      .finally(() => setIsRestoringFlow(false));
   };
 
   return (
@@ -223,6 +229,7 @@ export function AgentSettingsSection() {
                 confirmText="Restore"
                 variant="destructive"
                 onConfirm={handleRestoreRetrievalFlow}
+                isLoading={isRestoringFlow}
               />
               <ConfirmationDialog
                 trigger={
