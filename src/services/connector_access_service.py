@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from connectors.registry import get_connector_classes
 from db.repositories import WorkspaceConfigRepo
 
-if TYPE_CHECKING:
-    from starlette.requests import Request
-
 CONNECTOR_ACCESS_SECTION = "connector_access"
-OPENRAG_BRAND_HEADER = "X-OpenRAG-Brand"
 
 # Derived from the connector registry so new connector types are governable
 # without touching this module.
 CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_connector_classes())
+
+_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos"})
+
+
+def governable_connector_types() -> tuple[str, ...]:
+    """Types shown in admin Connectors Permission — independent of the live connectors list."""
+    from config.settings import IBM_AUTH_ENABLED, is_cloud_context
+
+    if is_cloud_context() and not IBM_AUTH_ENABLED:
+        return tuple(t for t in CONNECTOR_TYPES if t not in _BUCKET_CONNECTOR_TYPES)
+    return CONNECTOR_TYPES
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:
@@ -42,23 +47,11 @@ async def set_connector_access_bulk(
     return current
 
 
-def is_connector_access_policy_enforced(request: Request | None = None) -> bool:
-    """Workspace connector policy applies in SaaS/cloud context only.
+def is_connector_access_policy_enforced() -> bool:
+    """Workspace connector policy applies in SaaS/cloud context only."""
+    from config.settings import is_cloud_context
 
-    Production SaaS always enforces. Local OSS run mode uses the dev brand
-    header (``X-OpenRAG-Brand``) so OSS UI is unaffected by SaaS admin toggles.
-    """
-    from config.settings import IBM_AUTH_ENABLED
-    from utils.run_mode_utils import is_run_mode_oss, is_run_mode_saas
-
-    if IBM_AUTH_ENABLED or is_run_mode_saas():
-        return True
-
-    if is_run_mode_oss() and request is not None:
-        brand = request.headers.get(OPENRAG_BRAND_HEADER, "").strip().lower()
-        return brand == "ibm"
-
-    return False
+    return is_cloud_context()
 
 
 async def is_connector_allowed(session: AsyncSession, connector_type: str) -> bool:
@@ -69,9 +62,8 @@ async def is_connector_allowed(session: AsyncSession, connector_type: str) -> bo
 async def is_connector_allowed_for_request(
     session: AsyncSession,
     connector_type: str,
-    request: Request | None = None,
 ) -> bool:
-    if not is_connector_access_policy_enforced(request):
+    if not is_connector_access_policy_enforced():
         return True
     return await is_connector_allowed(session, connector_type)
 
@@ -94,7 +86,7 @@ async def list_access_for_admin(
 ) -> list[dict[str, str | bool]]:
     access_map = await get_access_map(session)
     items: list[dict[str, str | bool]] = []
-    for connector_type in CONNECTOR_TYPES:
+    for connector_type in governable_connector_types():
         meta = connector_metadata.get(connector_type, {})
         items.append(
             {

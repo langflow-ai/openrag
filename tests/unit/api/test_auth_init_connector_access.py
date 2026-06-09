@@ -19,7 +19,6 @@ from sqlmodel import SQLModel  # noqa: E402
 import db.models  # noqa: E402,F401
 from api.auth import AuthInitBody, auth_init  # noqa: E402
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
-from services.connector_access_service import OPENRAG_BRAND_HEADER  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -37,13 +36,12 @@ async def session():
 
 
 class _FakeRequest:
-    def __init__(self, brand: str = "ibm"):
-        self.headers = {OPENRAG_BRAND_HEADER: brand}
+    headers: dict[str, str] = {}
 
 
 @pytest.mark.asyncio
 async def test_auth_init_blocks_disabled_connector_without_user(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -57,7 +55,7 @@ async def test_auth_init_blocks_disabled_connector_without_user(session, monkeyp
 
     response = await auth_init(
         body,
-        _FakeRequest("ibm"),
+        _FakeRequest(),
         auth_service=auth_service,
         user=None,
         session=session,
@@ -89,7 +87,7 @@ async def test_auth_init_allows_disabled_connector_when_policy_not_enforced(sess
 
     response = await auth_init(
         body,
-        _FakeRequest("oss"),
+        _FakeRequest(),
         auth_service=auth_service,
         user=None,
         session=session,

@@ -268,7 +268,6 @@ async def _attach_db_user_id(request: Request, user: User | None) -> User | None
         request.state.user = None
         return None
     jwt_roles = getattr(request.state, "jwt_roles", None)
-    # Dev role toggle uses DB roles as source of truth; JWT sync would undo it.
     from config.settings import is_dev_role_toggle_enabled
 
     if is_dev_role_toggle_enabled():

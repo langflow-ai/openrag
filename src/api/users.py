@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import is_dev_role_toggle_enabled
+from config.settings import is_cloud_context, is_dev_role_toggle_enabled
 from db.repositories import PermissionRepo, RoleRepo, UserRepo
 from dependencies import (
     get_current_user,
@@ -57,6 +57,8 @@ class MeResponse(BaseModel):
     # sections (Users & Roles, Audit log, role pills) when the
     # operator has the kill switch off.
     rbac_enforced: bool
+    # SaaS/cloud context — connector policy and gated settings tabs.
+    cloud_context: bool
 
 
 @router.get("/me", response_model=MeResponse)
@@ -86,6 +88,7 @@ async def get_me(
         roles=[r.name for r in roles],
         permissions=sorted(perms),
         rbac_enforced=is_rbac_enforced(),
+        cloud_context=is_cloud_context(),
     )
 
 
@@ -110,12 +113,10 @@ async def get_my_permissions(
 
 
 class DevRoleBody(BaseModel):
-    # Any built-in role name; validated against the seed catalog in set_dev_role.
     role: str
 
 
 def _dev_role_client_error(exc: ValueError) -> str:
-    """Safe client message for set_dev_role validation failures."""
     detail = str(exc)
     if detail == "User not found in database":
         return "User account not found"
@@ -141,10 +142,7 @@ async def set_my_dev_role(
         roles = await set_dev_role(session, user, body.role)
         await session.commit()
     except ValueError as e:
-        logger.error(
-            "[USERS] Invalid dev role update",
-            error=str(e),
-        )
+        logger.error("[USERS] Invalid dev role update", error=str(e))
         return JSONResponse(
             {"error": _dev_role_client_error(e)},
             status_code=400,

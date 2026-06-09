@@ -2,8 +2,10 @@
 
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useUpdateConnectorAccessMutation } from "@/app/api/mutations/useUpdateConnectorAccessMutation";
-import { useVisibleConnectorAccessQuery } from "@/app/api/queries/useGetConnectorAccessQuery";
+import {
+  useGetConnectorAccessQuery,
+  useUpdateConnectorAccessMutation,
+} from "@/app/api/queries/useGetConnectorsQuery";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,36 +15,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/contexts/auth-context";
-import { useBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
-import {
-  buildSettingsTabAccess,
-  canAccessConnectorAccessTab,
-} from "@/lib/settings-tab-access";
 
 export function ConnectorAccessSection() {
-  const { brand } = useBrand();
-  const { isNoAuthMode, isIbmAuthMode } = useAuth();
-  const { permissions, rbacEnforced } = usePermissions();
-  const tabAccess = buildSettingsTabAccess({
-    isIbmAuthMode,
-    brand,
-    isNoAuthMode,
-    rbacEnforced,
-    permissions,
-  });
-
-  if (!canAccessConnectorAccessTab(tabAccess)) {
-    return null;
-  }
-
-  return <ConnectorAccessForm />;
-}
-
-function ConnectorAccessForm() {
-  const { connectors, isLoading, isError, error, refetch } =
-    useVisibleConnectorAccessQuery();
+  const {
+    data: connectors = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useGetConnectorAccessQuery();
   const updateAccess = useUpdateConnectorAccessMutation();
   /** Non-null only after the user edits; server data stays the source of truth until then. */
   const [userDraft, setUserDraft] = useState<Record<string, boolean> | null>(

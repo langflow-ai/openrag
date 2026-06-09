@@ -8,8 +8,6 @@ from db.repositories import RoleRepo, UserRepo
 from db.seed import BUILTIN_ROLES
 from session_manager import User
 
-# Generic over every built-in role (admin, developer, user, viewer) so the
-# SaaS UI test toggle can preview any role. Strictly testing-gated upstream.
 _DEV_ROLES = frozenset(name for _id, name, _desc in BUILTIN_ROLES)
 
 

@@ -11,7 +11,6 @@ from dependencies import (
 )
 from services.connector_access_service import (
     CONNECTOR_TYPES,
-    is_connector_access_policy_enforced,
     is_connector_allowed_for_request,
 )
 from session_manager import User
@@ -51,8 +50,7 @@ async def auth_init(
         if (
             body.purpose == "data_source"
             and body.connector_type in CONNECTOR_TYPES
-            and is_connector_access_policy_enforced(request)
-            and not await is_connector_allowed_for_request(session, body.connector_type, request)
+            and not await is_connector_allowed_for_request(session, body.connector_type)
         ):
             return JSONResponse(
                 {"error": f"Connector not available: {body.connector_type}"},

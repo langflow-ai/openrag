@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { BRAND_COOKIE } from "@/lib/brand";
 
 export async function fetchFromBackend(
   path: string,
@@ -12,16 +11,12 @@ export async function fetchFromBackend(
     : `http://${backendHost}:8000`;
 
   const cookieStore = await cookies();
-  const brandCookie = cookieStore.get(BRAND_COOKIE)?.value;
-  const brandHeader =
-    brandCookie === "oss" || brandCookie === "ibm" ? brandCookie : undefined;
 
   return fetch(`${baseUrl}/${path}`, {
     ...init,
     headers: {
       ...init?.headers,
       Cookie: cookieStore.toString(),
-      ...(brandHeader ? { "X-OpenRAG-Brand": brandHeader } : {}),
     },
     cache: "no-store",
   });

@@ -3,8 +3,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import {
+  CONNECTOR_USER_ACCESS_KEY,
+  connectorsQueryFilter,
+} from "@/app/api/queries/useGetConnectorsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useBrand } from "@/contexts/brand-context";
 import { IBM_THEME_DEV } from "@/lib/brand";
 
 function parseApiError(
@@ -26,7 +30,6 @@ function parseApiError(
   return `Failed to set role (${status})`;
 }
 
-// Built-in roles from db.seed BUILTIN_ROLES, highest-privilege first.
 const DEV_ROLES = [
   { value: "admin", label: "Admin" },
   { value: "developer", label: "Developer" },
@@ -35,11 +38,11 @@ const DEV_ROLES = [
 ] as const;
 
 export function DevRoleToggle() {
-  const isCloudBrand = useIsCloudBrand();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { roles, isAuthenticated, isNoAuthMode, refreshPermissions } =
     useAuth();
+  const { brand } = useBrand();
   const currentRole = DEV_ROLES.find((r) => roles.includes(r.value))?.value;
 
   const mutation = useMutation({
@@ -61,9 +64,9 @@ export function DevRoleToggle() {
     },
     onSuccess: async (data) => {
       await refreshPermissions();
-      await queryClient.invalidateQueries({ queryKey: ["connectors"] });
+      await queryClient.invalidateQueries(connectorsQueryFilter);
       await queryClient.invalidateQueries({
-        queryKey: ["connector-user-access"],
+        queryKey: CONNECTOR_USER_ACCESS_KEY,
       });
       router.refresh();
       const label =
@@ -75,14 +78,18 @@ export function DevRoleToggle() {
     },
   });
 
-  if (!IBM_THEME_DEV || !isCloudBrand || (!isAuthenticated && !isNoAuthMode)) {
+  if (
+    !IBM_THEME_DEV ||
+    brand === "oss" ||
+    (!isAuthenticated && !isNoAuthMode)
+  ) {
     return null;
   }
 
   return (
     <div
       className="flex items-center gap-0.5 border border-border rounded-full px-0.5"
-      title="Dev only: switch RBAC role for SaaS UI testing"
+      title="Dev only: switch RBAC role for UI testing"
     >
       {DEV_ROLES.map((role) => (
         <button

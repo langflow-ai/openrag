@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
-  BRAND_COOKIE,
   type Brand,
   DEFAULT_BRAND,
   isCloudBrand,
@@ -12,13 +11,6 @@ import {
 
 export type { Brand } from "@/lib/brand";
 export { IBM_THEME_DEV } from "@/lib/brand";
-
-const BRAND_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-
-function persistBrandPreference(brand: Brand) {
-  localStorage.setItem("brand", brand);
-  document.cookie = `${BRAND_COOKIE}=${brand}; path=/; max-age=${BRAND_COOKIE_MAX_AGE}; SameSite=Lax`;
-}
 
 interface BrandContextValue {
   brand: Brand;
@@ -39,25 +31,27 @@ function applyBrand(brand: Brand) {
 }
 
 export function BrandProvider({ children }: { children: React.ReactNode }) {
-  const [brand, setBrandState] = useState<Brand>(DEFAULT_BRAND);
+  const [storedBrand, setStoredBrandState] = useState<Brand>(DEFAULT_BRAND);
   const { isIbmAuthMode } = useAuth();
+  // IBM auth always presents as IBM in context; dev OSS/IBM toggle uses localStorage.
+  const brand: Brand = isIbmAuthMode ? "ibm" : storedBrand;
 
   useEffect(() => {
-    if (isIbmAuthMode) {
-      applyBrand("ibm");
-      setBrandState("ibm");
-    } else {
+    if (!isIbmAuthMode) {
       const stored = resolveBrand(localStorage.getItem("brand") ?? undefined);
-      persistBrandPreference(stored);
-      applyBrand(stored);
-      setBrandState(stored);
+      localStorage.setItem("brand", stored);
+      setStoredBrandState(stored);
     }
   }, [isIbmAuthMode]);
 
+  useEffect(() => {
+    applyBrand(brand);
+  }, [brand]);
+
   function setBrand(newBrand: Brand) {
-    persistBrandPreference(newBrand);
-    applyBrand(newBrand);
-    setBrandState(newBrand);
+    if (isIbmAuthMode) return;
+    localStorage.setItem("brand", newBrand);
+    setStoredBrandState(newBrand);
   }
 
   return (
@@ -71,6 +65,5 @@ export const useBrand = () => useContext(BrandContext);
 
 export const useIsCloudBrand = () => {
   const { brand } = useContext(BrandContext);
-  const { isIbmAuthMode } = useAuth();
-  return isCloudBrand({ isIbmAuthMode, brand });
+  return isCloudBrand(brand);
 };

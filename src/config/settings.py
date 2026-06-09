@@ -198,12 +198,25 @@ def get_role_claim_viewer() -> str | None:
 
 
 def is_dev_role_toggle_enabled() -> bool:
-    """Allow POST /users/me/dev-role for local SaaS UI testing.
+    """Allow POST /users/me/dev-role for local RBAC UI testing.
 
     Requires ``OPENRAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
     """
     raw = os.getenv("OPENRAG_DEV_ROLE_TOGGLE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_connector_policy_enabled() -> bool:
+    """Local OSS dev: enforce workspace connector policy (pair with IBM theme dev UI)."""
+    raw = os.getenv("OPENRAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_cloud_context() -> bool:
+    """True when connector policy and SaaS settings guards should apply."""
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return IBM_AUTH_ENABLED or is_run_mode_saas() or is_dev_connector_policy_enabled()
 
 
 def get_default_user_role() -> str:

@@ -59,7 +59,6 @@ async def test_switch_to_any_builtin_role(setup, target):
         roles = await set_dev_role(s, _TEST_USER, target)
         await s.commit()
 
-    # Toggle is single-role: exactly the target replaces prior membership.
     assert roles == [target]
 
 

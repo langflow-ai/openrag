@@ -4,13 +4,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
-import { useBrand, useIsCloudBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useSettingsTabAccess } from "@/hooks/use-permissions";
 import {
-  buildSettingsTabAccess,
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
-} from "@/lib/settings-tab-access";
+} from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -29,17 +28,15 @@ const TABS = [
 export function SettingsNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const { brand } = useBrand();
-  const isCloudBrand = useIsCloudBrand();
-  const { permissions, rbacEnforced } = usePermissions();
-  const tabAccess = buildSettingsTabAccess({
-    isIbmAuthMode,
-    brand,
+  const {
+    isAuthenticated,
     isNoAuthMode,
-    rbacEnforced,
-    permissions,
-  });
+    isIbmAuthMode,
+    isLoading,
+    permissionsResolved,
+  } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
+  const tabAccess = useSettingsTabAccess();
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
@@ -53,14 +50,22 @@ export function SettingsNav() {
     return true;
   });
 
+  const visibleTabKey = visibleTabs.map((tab) => tab.value).join("|");
   const tabIsVisible = visibleTabs.some((tab) => tab.value === currentTab);
   const fallbackTab = visibleTabs[0]?.value ?? "connectors";
 
   useEffect(() => {
-    if (visibleTabs.length === 0 || tabIsVisible) return;
+    if (isLoading || !permissionsResolved) return;
+    if (tabIsVisible) return;
     router.replace(`/settings/${fallbackTab}`);
-    router.refresh();
-  }, [tabIsVisible, fallbackTab, visibleTabs.length, router]);
+  }, [
+    isLoading,
+    permissionsResolved,
+    tabIsVisible,
+    fallbackTab,
+    visibleTabKey,
+    router,
+  ]);
 
   return (
     <Tabs value={currentTab}>

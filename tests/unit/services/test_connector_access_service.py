@@ -17,11 +17,12 @@ import db.models  # noqa: E402,F401
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
 from services.connector_access_service import (  # noqa: E402
     CONNECTOR_TYPES,
-    OPENRAG_BRAND_HEADER,
     filter_connectors_for_user,
     get_access_map,
+    governable_connector_types,
     is_connector_access_policy_enforced,
     is_connector_allowed,
+    list_access_for_admin,
     set_connector_access_bulk,
 )
 
@@ -110,30 +111,64 @@ async def test_set_connector_access_bulk_rejects_unknown_type(session):
         await set_connector_access_bulk(session, {"not_a_connector": True}, actor_user_id="u1")
 
 
-class _FakeRequest:
-    def __init__(self, brand: str = ""):
-        self.headers = {OPENRAG_BRAND_HEADER: brand} if brand else {}
-
-
 def test_connector_access_policy_enforced_in_saas_run_mode(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
     assert is_connector_access_policy_enforced() is True
-    assert is_connector_access_policy_enforced(_FakeRequest("oss")) is True
 
 
 def test_connector_access_policy_enforced_with_ibm_auth(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
     assert is_connector_access_policy_enforced() is True
-    assert is_connector_access_policy_enforced(_FakeRequest("oss")) is True
 
 
-def test_connector_access_policy_oss_run_mode_follows_dev_brand(monkeypatch):
+def test_connector_access_policy_not_enforced_in_oss_run_mode(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
-
-    assert is_connector_access_policy_enforced(_FakeRequest("ibm")) is True
-    assert is_connector_access_policy_enforced(_FakeRequest("oss")) is False
-    assert is_connector_access_policy_enforced(_FakeRequest()) is False
+    monkeypatch.delenv("OPENRAG_DEV_CONNECTOR_POLICY", raising=False)
     assert is_connector_access_policy_enforced() is False
+
+
+def test_connector_access_policy_enforced_with_dev_connector_policy(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.setenv("OPENRAG_DEV_CONNECTOR_POLICY", "true")
+    assert is_connector_access_policy_enforced() is True
+
+
+def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    governable = governable_connector_types()
+
+    assert "google_drive" in governable
+    assert "sharepoint" in governable
+    assert "aws_s3" not in governable
+    assert "ibm_cos" not in governable
+
+
+@pytest.mark.asyncio
+async def test_list_access_for_admin_includes_disabled_types(session, monkeypatch):
+    """Admin permission list is independent of the filtered connectors tab."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    await set_connector_access_bulk(
+        session,
+        {"google_drive": False, "sharepoint": False},
+        actor_user_id="admin",
+    )
+    await session.commit()
+
+    metadata = {
+        "google_drive": {"name": "Google Drive"},
+        "sharepoint": {"name": "SharePoint"},
+    }
+    items = await list_access_for_admin(session, metadata)
+    by_type = {item["type"]: item for item in items}
+
+    assert by_type["google_drive"]["enabled"] is False
+    assert by_type["sharepoint"]["enabled"] is False
+    assert by_type["google_drive"]["name"] == "Google Drive"

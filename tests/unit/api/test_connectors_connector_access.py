@@ -3,7 +3,7 @@
 import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -22,9 +22,9 @@ from api.connectors import (  # noqa: E402
     connector_disconnect,
     connector_sync_preview,
     connector_token,
+    connector_webhook,
 )
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
-from services.connector_access_service import OPENRAG_BRAND_HEADER  # noqa: E402
 from session_manager import User  # noqa: E402
 
 
@@ -43,9 +43,14 @@ async def session():
 
 
 class _FakeRequest:
-    def __init__(self, brand: str = "ibm"):
-        self.headers = {OPENRAG_BRAND_HEADER: brand}
-        self.query_params: dict[str, str] = {}
+    headers: dict[str, str] = {}
+    query_params: dict[str, str] = {}
+
+
+class _FakeWebhookRequest:
+    method = "POST"
+    headers: dict[str, str] = {}
+    query_params = {"validationToken": "graph-validation-token"}
 
 
 @pytest.fixture
@@ -55,7 +60,7 @@ def user():
 
 @pytest.mark.asyncio
 async def test_connector_disconnect_blocks_disabled_type(session, user, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -67,7 +72,7 @@ async def test_connector_disconnect_blocks_disabled_type(session, user, monkeypa
     connector_service = AsyncMock()
     response = await connector_disconnect(
         "google_drive",
-        _FakeRequest("ibm"),
+        _FakeRequest(),
         connector_service=connector_service,
         user=user,
         session=session,
@@ -80,7 +85,7 @@ async def test_connector_disconnect_blocks_disabled_type(session, user, monkeypa
 
 @pytest.mark.asyncio
 async def test_connector_token_blocks_disabled_type(session, user, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -93,7 +98,7 @@ async def test_connector_token_blocks_disabled_type(session, user, monkeypatch):
     response = await connector_token(
         "google_drive",
         "conn-1",
-        _FakeRequest("ibm"),
+        _FakeRequest(),
         connector_service=connector_service,
         user=user,
         session=session,
@@ -105,7 +110,7 @@ async def test_connector_token_blocks_disabled_type(session, user, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_connector_sync_preview_blocks_disabled_type(session, user, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -116,7 +121,7 @@ async def test_connector_sync_preview_blocks_disabled_type(session, user, monkey
 
     response = await connector_sync_preview(
         "sharepoint",
-        _FakeRequest("ibm"),
+        _FakeRequest(),
         connector_service=AsyncMock(),
         session_manager=AsyncMock(),
         user=user,
@@ -129,7 +134,7 @@ async def test_connector_sync_preview_blocks_disabled_type(session, user, monkey
 
 @pytest.mark.asyncio
 async def test_browse_connection_files_blocks_disabled_type(session, user, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -142,7 +147,7 @@ async def test_browse_connection_files_blocks_disabled_type(session, user, monke
     response = await browse_connection_files(
         "aws_s3",
         "conn-1",
-        _FakeRequest("ibm"),
+        _FakeRequest(),
         connector_service=connector_service,
         session_manager=AsyncMock(),
         user=user,
@@ -151,3 +156,36 @@ async def test_browse_connection_files_blocks_disabled_type(session, user, monke
 
     assert response.status_code == 403
     connector_service.get_connector.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_connector_webhook_blocks_disabled_type_before_validation(
+    session, monkeypatch
+):
+    """Policy must run before validation handshakes for disabled connector types."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    await WorkspaceConfigRepo(session).upsert(
+        "connector_access",
+        {"sharepoint": False},
+    )
+    await session.commit()
+
+    mock_connector = MagicMock()
+    mock_connector.handle_webhook_validation.return_value = "graph-validation-token"
+    connector_service = AsyncMock()
+    connector_service.connection_manager._create_connector.return_value = mock_connector
+
+    response = await connector_webhook(
+        "sharepoint",
+        _FakeWebhookRequest(),
+        connector_service=connector_service,
+        session_manager=AsyncMock(),
+        session=session,
+    )
+
+    assert response.status_code == 403
+    assert "sharepoint" in json.loads(response.body)["error"]
+    mock_connector.handle_webhook_validation.assert_not_called()
+    connector_service.connection_manager._create_connector.assert_not_called()

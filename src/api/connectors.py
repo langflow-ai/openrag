@@ -38,9 +38,9 @@ async def _connector_access_denied(
     """Return 403 when workspace policy blocks this connector type."""
     if connector_type not in CONNECTOR_TYPES:
         return None
-    if not is_connector_access_policy_enforced(request):
+    if not is_connector_access_policy_enforced():
         return None
-    if await is_connector_allowed_for_request(session, connector_type, request):
+    if await is_connector_allowed_for_request(session, connector_type):
         return None
     return JSONResponse(
         {"error": f"Connector not available: {connector_type}"},
@@ -54,7 +54,7 @@ async def _allowed_connector_types_for_request(
     connector_types: list[str],
 ) -> list[str]:
     """Drop connector types blocked by workspace policy (sync-all style endpoints)."""
-    if not is_connector_access_policy_enforced(request):
+    if not is_connector_access_policy_enforced():
         return connector_types
     access_map = await get_access_map(session)
     return [t for t in connector_types if access_map.get(t, True)]
@@ -554,7 +554,7 @@ async def list_connectors(
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
         )
-        if is_connector_access_policy_enforced(request):
+        if is_connector_access_policy_enforced():
             access_map = await get_access_map(session)
             connector_types = filter_connectors_for_user(connector_types, access_map)
         return JSONResponse({"connectors": connector_types})
@@ -573,6 +573,23 @@ def _connector_access_client_error(exc: ValueError) -> str:
     if detail.startswith("Unknown connector type:"):
         return "Unknown connector type"
     return "Invalid request data"
+
+
+async def get_connector_workspace_policy(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Read-only stored workspace connector overrides for Connectors tab filtering.
+
+    Returns only explicit admin saves (missing types default to allowed server-side
+    but still follow deployment visibility rules on the client).
+    """
+    from db.repositories import WorkspaceConfigRepo
+
+    from services.connector_access_service import CONNECTOR_ACCESS_SECTION
+
+    stored = await WorkspaceConfigRepo(session).get_section(CONNECTOR_ACCESS_SECTION) or {}
+    return JSONResponse({"access": stored})
 
 
 async def get_connector_user_access(
@@ -982,6 +999,9 @@ async def connector_webhook(
 ):
     """Handle webhook notifications from any connector type"""
 
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     # Handle webhook validation (connector-specific)
     temp_config = {"token_file": "temp.json"}
     from connectors.connection_manager import ConnectionConfig
@@ -1005,9 +1025,6 @@ async def connector_webhook(
     except (NotImplementedError, ValueError):
         # Connector type not found or validation not needed
         pass
-
-    if denied := await _connector_access_denied(request, session, connector_type):
-        return denied
 
     try:
         # Get the raw payload and headers
