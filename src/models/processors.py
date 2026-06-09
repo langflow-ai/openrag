@@ -39,6 +39,23 @@ def _verification_client(fallback_client):
     return clients.opensearch if clients.opensearch is not None else fallback_client
 
 
+def resolve_shared_owner_fields(
+    user_id: str | None,
+    owner_name: str | None,
+    owner_email: str | None,
+    shared: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (owner, owner_name, owner_email) for indexing.
+
+    When shared=True, all three are None so the indexed chunk omits the owner
+    field entirely, triggering the OpenSearch DLS must_not-exists-owner clause
+    that makes the document visible to all users in the instance.
+    """
+    if shared:
+        return None, None, None
+    return user_id, owner_name, owner_email
+
+
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
@@ -249,6 +266,7 @@ class TaskProcessor:
         is_sample_data: bool = False,
         acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
+        shared: bool = False,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -400,9 +418,11 @@ class TaskProcessor:
                 error=str(e),
             )
 
-        # Owner is always the authenticated uploading/syncing user. Upstream ACL
-        # owners/authors only contribute read access through allowed principals.
-        owner = owner_user_id
+        # Owner is always the authenticated uploading/syncing user unless shared=True,
+        # in which case owner fields are omitted so DLS makes the doc visible to all users.
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            owner_user_id, owner_name, owner_email, shared
+        )
         if acl:
             allowed_users = acl.allowed_users or []
             allowed_groups = acl.allowed_groups or []
@@ -635,6 +655,7 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -650,6 +671,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
+        self.shared = shared
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -877,15 +899,20 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
+                    effective_owner, effective_owner_name, effective_owner_email = (
+                        resolve_shared_owner_fields(
+                            self.user_id, self.owner_name, self.owner_email, self.shared
+                        )
+                    )
                     result = await self.connector_service.langflow_service.upload_and_ingest_file(
                         file_tuple=file_tuple,
                         session_id=None,
                         tweaks=tweaks,
                         settings=self.ingest_settings,
                         jwt_token=self.jwt_token,
-                        owner=self.user_id,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
+                        owner=effective_owner,
+                        owner_name=effective_owner_name,
+                        owner_email=effective_owner_email,
                         connector_type=connection.connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
@@ -939,6 +966,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         connector_type=connection.connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
+                        shared=self.shared,
                         **standard_kwargs,
                     )
 
