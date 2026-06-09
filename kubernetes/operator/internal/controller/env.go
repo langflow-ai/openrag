@@ -143,9 +143,9 @@ func NewEnvVarManager() *EnvVarManager {
 			"EMBEDDING_MODEL":    "",
 			"EMBEDDING_PROVIDER": "",
 
-			"WATSONX_API_KEY":    "",
-			"WATSONX_ENDPOINT":   "",
-			"WATSONX_PROJECT_ID": "",
+			"WATSONX_API_KEY":          "",
+			"WATSONX_ENDPOINT":         "",
+			"WATSONX_PROJECT_ID":       "",
 			"DOCLING_SERVE_VERIFY_SSL": "false",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
