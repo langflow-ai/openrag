@@ -585,7 +585,6 @@ async def get_connector_workspace_policy(
     but still follow deployment visibility rules on the client).
     """
     from db.repositories import WorkspaceConfigRepo
-
     from services.connector_access_service import CONNECTOR_ACCESS_SECTION
 
     stored = await WorkspaceConfigRepo(session).get_section(CONNECTOR_ACCESS_SECTION) or {}

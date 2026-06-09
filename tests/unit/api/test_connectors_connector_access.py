@@ -159,9 +159,7 @@ async def test_browse_connection_files_blocks_disabled_type(session, user, monke
 
 
 @pytest.mark.asyncio
-async def test_connector_webhook_blocks_disabled_type_before_validation(
-    session, monkeypatch
-):
+async def test_connector_webhook_blocks_disabled_type_before_validation(session, monkeypatch):
     """Policy must run before validation handshakes for disabled connector types."""
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
