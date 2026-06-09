@@ -6,6 +6,7 @@ and that documents WITH an owner field remain private to their owner.
 
 Requires a live OpenSearch instance with DLS configured (OPENSEARCH_PASSWORD set).
 """
+
 from uuid import uuid4
 
 import pytest
@@ -205,9 +206,7 @@ async def test_null_owner_field_does_not_trigger_anonymous_path():
         )
 
         session_manager = SessionManager("test")
-        unrelated = User(
-            user_id=unrelated_user_id, email=unrelated_email, name="Unrelated User"
-        )
+        unrelated = User(user_id=unrelated_user_id, email=unrelated_email, name="Unrelated User")
         token = session_manager.create_opensearch_jwt_token(unrelated, ttl_seconds=120)
         client = clients.create_user_opensearch_client(token)
 
