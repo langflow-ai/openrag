@@ -8,6 +8,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { hasRbacPermission } from "@/lib/brand";
 import { encodeBase64 } from "@/lib/utils";
 
 interface User {
@@ -39,6 +40,10 @@ interface AuthContextType {
    * matches the backend behavior.
    */
   rbacEnforced: boolean;
+  /** SaaS/cloud context from backend (connector policy, gated settings). */
+  cloudContext: boolean;
+  /** False until the first /api/users/me permissions fetch finishes. */
+  permissionsResolved: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
    * GET /api/onboarding-status endpoint (no auth needed). */
   isOnboarded: boolean | null;
@@ -257,13 +262,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // load before /api/users/me responds. The backend is authoritative;
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
+  const [cloudContext, setCloudContext] = useState<boolean>(false);
+  const [permissionsResolved, setPermissionsResolved] =
+    useState<boolean>(false);
+
+  const resetPermissionState = useCallback(() => {
+    setPermissions(new Set());
+    setRoles([]);
+    setRbacEnforced(true);
+    setCloudContext(false);
+  }, []);
 
   const fetchPermissions = useCallback(async () => {
     try {
       const r = await fetch("/api/users/me");
       if (!r.ok) {
-        setPermissions(new Set());
-        setRoles([]);
+        resetPermissionState();
         return;
       }
       const data = await r.json();
@@ -277,11 +291,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setRbacEnforced(
         typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
       );
+      setCloudContext(
+        typeof data?.cloud_context === "boolean" ? data.cloud_context : false,
+      );
     } catch {
-      setPermissions(new Set());
-      setRoles([]);
+      resetPermissionState();
+    } finally {
+      setPermissionsResolved(true);
     }
-  }, []);
+  }, [resetPermissionState]);
 
   const refreshPermissions = useCallback(async () => {
     await fetchPermissions();
@@ -319,23 +337,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     if (user || isNoAuthMode || isIbmAuthMode) {
-      fetchPermissions();
+      setPermissionsResolved(false);
+      void fetchPermissions();
     } else {
-      setPermissions(new Set());
-      setRoles([]);
+      resetPermissionState();
+      setPermissionsResolved(true);
     }
-  }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
+  }, [
+    user,
+    isNoAuthMode,
+    isIbmAuthMode,
+    fetchPermissions,
+    resetPermissionState,
+  ]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
   const can = useCallback(
-    (perm: string): boolean => {
-      if (isNoAuthMode) return true;
-      return permissions.has(perm);
-    },
-    [permissions, isNoAuthMode],
+    (perm: string): boolean =>
+      hasRbacPermission(perm, { isNoAuthMode, rbacEnforced, permissions }),
+    [permissions, isNoAuthMode, rbacEnforced],
   );
 
   const value: AuthContextType = {
@@ -349,6 +372,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     permissions,
     roles,
     rbacEnforced,
+    cloudContext,
+    permissionsResolved,
     isOnboarded,
     onboardingStep,
     can,

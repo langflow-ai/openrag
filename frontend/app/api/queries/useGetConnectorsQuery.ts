@@ -1,4 +1,113 @@
-import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  type UseQueryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/auth-context";
+import { useBrand, useIsCloudBrand } from "@/contexts/brand-context";
+import {
+  isConnectorShownInWorkspace,
+  isConnectorTypeVisible,
+  isSaasPolicyContext,
+} from "@/lib/brand";
+
+/** Prefix for all connector list queries (see `connectorsQueryKey`). */
+export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
+
+/**
+ * Cache key from policy + deployment filter context (inputs to `getConnectors`).
+ * `cloudContext`: backend `/api/connectors` filtering (server policy).
+ * `applyWorkspacePolicy`: SaaS workspace policy path in the query fn.
+ * `isCloudBrand` / `isIbmAuthMode`: client deployment visibility (`isConnectorTypeVisible`).
+ */
+export function connectorsQueryKey(
+  cloudContext: boolean,
+  applyWorkspacePolicy: boolean,
+  isCloudBrand: boolean,
+  isIbmAuthMode: boolean,
+) {
+  return [
+    ...CONNECTORS_QUERY_KEY_ROOT,
+    cloudContext,
+    applyWorkspacePolicy,
+    isCloudBrand,
+    isIbmAuthMode,
+  ] as const;
+}
+
+export type ConnectorsQueryKey = ReturnType<typeof connectorsQueryKey>;
+
+/** Snapshot of every cached connector list — safe across policy key changes. */
+export type ConnectorsMutationContext = {
+  previousByKey: Array<[ConnectorsQueryKey, Connector[] | undefined]>;
+};
+
+export function snapshotConnectorQueries(
+  queryClient: QueryClient,
+): ConnectorsMutationContext {
+  return {
+    previousByKey: queryClient
+      .getQueriesData<Connector[]>(connectorsQueryFilter)
+      .map(([queryKey, data]) => [queryKey as ConnectorsQueryKey, data]),
+  };
+}
+
+export function restoreConnectorQueries(
+  queryClient: QueryClient,
+  context?: ConnectorsMutationContext,
+): void {
+  context?.previousByKey.forEach(([queryKey, data]) => {
+    if (data !== undefined) {
+      queryClient.setQueryData(queryKey, data);
+    }
+  });
+}
+
+export function updateAllConnectorQueries(
+  queryClient: QueryClient,
+  updater: (connectors: Connector[]) => Connector[],
+): void {
+  queryClient
+    .getQueriesData<Connector[]>(connectorsQueryFilter)
+    .forEach(([queryKey, data]) => {
+      if (data !== undefined) {
+        queryClient.setQueryData(queryKey as ConnectorsQueryKey, updater(data));
+      }
+    });
+}
+
+/** Shared policy context for connector list query key + optimistic updates. */
+export function useConnectorsQueryKey() {
+  const { isIbmAuthMode, cloudContext } = useAuth();
+  const { brand } = useBrand();
+  const isCloudBrand = useIsCloudBrand();
+  const applyWorkspacePolicy = isSaasPolicyContext({
+    isIbmAuthMode,
+    cloudContext,
+    brand,
+  });
+  return {
+    cloudContext,
+    applyWorkspacePolicy,
+    isCloudBrand,
+    isIbmAuthMode,
+    queryKey: connectorsQueryKey(
+      cloudContext,
+      applyWorkspacePolicy,
+      isCloudBrand,
+      isIbmAuthMode,
+    ),
+  };
+}
+
+/** Match every `["connectors", …]` query — required for invalidate/cancel after key shape change. */
+export const connectorsQueryFilter = {
+  queryKey: CONNECTORS_QUERY_KEY_ROOT,
+  exact: false,
+} as const;
 
 interface GoogleDriveFile {
   id: string;
@@ -48,9 +157,21 @@ export interface GetConnectorsResponse {
   connectors: Connector[];
 }
 
+async function fetchWorkspaceConnectorAccess(): Promise<
+  Record<string, boolean>
+> {
+  const response = await fetch("/api/connectors/workspace-policy");
+  if (!response.ok) return {};
+  const data = await response.json();
+  return data?.access && typeof data.access === "object" ? data.access : {};
+}
+
 export const useGetConnectorsQuery = (
   options?: Omit<UseQueryOptions<Connector[]>, "queryKey" | "queryFn">,
 ) => {
+  const { applyWorkspacePolicy, isCloudBrand, isIbmAuthMode, queryKey } =
+    useConnectorsQueryKey();
+
   async function getConnectors(): Promise<Connector[]> {
     const connectorsResponse = await fetch("/api/connectors");
     if (!connectorsResponse.ok) {
@@ -106,13 +227,92 @@ export const useGetConnectorsQuery = (
       }),
     );
 
-    return connectorsWithStatus;
+    let result = connectorsWithStatus;
+    const deploymentCtx = { isCloudBrand, isIbmAuthMode };
+
+    if (applyWorkspacePolicy) {
+      const storedAccess = await fetchWorkspaceConnectorAccess();
+      result = result.filter((c) =>
+        isConnectorShownInWorkspace(c.type, storedAccess, deploymentCtx),
+      );
+    } else {
+      result = result.filter((c) =>
+        isConnectorTypeVisible(c.type, deploymentCtx),
+      );
+    }
+
+    return result;
   }
 
   return useQuery({
-    queryKey: ["connectors"],
+    queryKey,
     queryFn: getConnectors,
     refetchOnMount: "always",
     ...options,
+  });
+};
+
+export interface ConnectorAccessItem {
+  type: string;
+  name: string;
+  enabled: boolean;
+}
+
+export const CONNECTOR_USER_ACCESS_KEY = ["connector-user-access"] as const;
+
+export const useGetConnectorAccessQuery = (
+  options?: Omit<
+    UseQueryOptions<ConnectorAccessItem[]>,
+    "queryKey" | "queryFn"
+  >,
+) => {
+  async function fetchConnectorAccess(): Promise<ConnectorAccessItem[]> {
+    const response = await fetch("/api/connectors/user-access");
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch connectors permission (${response.status})`,
+      );
+    }
+    const data = await response.json();
+    return Array.isArray(data.connectors) ? data.connectors : [];
+  }
+
+  return useQuery({
+    queryKey: CONNECTOR_USER_ACCESS_KEY,
+    queryFn: fetchConnectorAccess,
+    refetchOnWindowFocus: false,
+    ...options,
+  });
+};
+
+export const useUpdateConnectorAccessMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      access: Record<string, boolean>,
+    ): Promise<ConnectorAccessItem[]> => {
+      const response = await fetch("/api/connectors/user-access", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(
+          result.error || "Failed to update connectors permission",
+        );
+      }
+      const data = await response.json();
+      return Array.isArray(data.connectors) ? data.connectors : [];
+    },
+    onSuccess: (connectors) => {
+      queryClient.setQueryData(CONNECTOR_USER_ACCESS_KEY, connectors);
+      queryClient.invalidateQueries(connectorsQueryFilter);
+      toast.success("Connectors permission saved");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
   });
 };
