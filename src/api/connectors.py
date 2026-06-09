@@ -1015,6 +1015,7 @@ async def connector_webhook(
         )
         connector_type = canonical_type
 
+
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
