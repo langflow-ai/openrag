@@ -1,6 +1,7 @@
 """Configuration management for OpenRAG."""
 
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -10,6 +11,78 @@ import yaml
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# SonarQube pythonsecurity:S2083 ("Change this code to not construct the path
+# from user-controlled data") on the open()/mkdir() sinks below.
+#
+# These are REVIEWED FALSE POSITIVES. The config path comes from the
+# OPENRAG_CONFIG_PATH operator environment variable (or temp dirs in tests),
+# never from an end-user/HTTP request, and every value is run through
+# `_validate_config_path` (strict allowlist: safe chars, no '..', must end in
+# .yaml/.yml) before it reaches a filesystem operation.
+#
+# Pure code CANNOT be guaranteed to clear S2083 here (verified across three
+# attempts: os.path.realpath + '..'-rejection; Path.resolve() + is_relative_to
+# containment; and this regex allowlist). Python's taint engine does not credit
+# these as sanitizers the way Java's credits Path.resolve(), and validation
+# extracted into a helper/property is not propagated across the call boundary.
+# `# NOSONAR` is also unreliable for the taint/security engine.
+#
+# GUARANTEED FIXES (require SonarQube SAST / Administer-Issues access):
+#   1. Register these validators as SAST custom sanitizers (Enterprise Edition):
+#        { "S2083": { "sanitizers": [
+#            { "methodId": "src.config.config_manager._validate_config_path",
+#              "args": [0] },
+#            { "methodId": "src.config.config_manager._validate_config_dir",
+#              "args": [0] } ] } }
+#      Upload via Project Settings -> General Settings -> SAST Engine, or pass
+#      `sonar.security.sanitizers.pythonsecurity.S2083=<file>` to the scanner.
+#      Verify methodId against the scanned component path; drop the leading
+#      `src.` if the sources root is `src/`.
+#   2. Or mark these S2083 issues as Accepted / False Positive (needs the
+#      "Administer Issues" permission), justification:
+#      "Path is the OPENRAG_CONFIG_PATH operator env var, validated against a
+#       strict allowlist; not end-user input."
+#
+# References:
+#   - SAST custom config: https://docs.sonarsource.com/sonarqube-server/analyzing-source-code/security-engine-custom-configuration
+#   - Why extracted-function validation still flags S2083 (root cause):
+#     https://community.sonarsource.com/t/sonar-still-complains-about-security-s2083/81492
+#   - Recognized validation pattern discussion:
+#     https://community.sonarsource.com/t/javasecurity-show-that-were-validating-paths-to-sonarcloud/52041
+#
+# Strict allowlist regex: POSIX absolute or relative paths built from a safe
+# character set and ending in a .yaml/.yml file.
+# ---------------------------------------------------------------------------
+_SAFE_CONFIG_PATH = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]+\.ya?ml$")
+
+
+def _validate_config_path(config_file: str | Path) -> Path:
+    """Validate a config file path against a strict allowlist (anti path-injection)."""
+    value = os.fspath(config_file)
+    if ".." in value.split("/") or _SAFE_CONFIG_PATH.fullmatch(value) is None:
+        raise ValueError(f"Refusing unsafe config file path: {config_file!r}")
+    return Path(value)
+
+
+# Strict allowlist for config DIRECTORY paths (same rationale as _SAFE_CONFIG_PATH;
+# no .yaml suffix). Used so mkdir() runs on a validator's direct return value.
+_SAFE_CONFIG_DIR = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]*$")
+
+
+def _validate_config_dir(directory: str | Path) -> Path:
+    """Validate a config directory path against a strict allowlist (anti path-injection)."""
+    value = os.fspath(directory)
+    if ".." in value.split("/") or _SAFE_CONFIG_DIR.fullmatch(value) is None:
+        raise ValueError(f"Refusing unsafe config directory: {directory!r}")
+    return Path(value)
+
+
+def _sanitize_for_log(value: object) -> str:
+    """Strip CR/LF/TAB from a value before logging to prevent log injection."""
+    return re.sub(r"[\r\n\t]", "_", str(value))
 
 
 @dataclass
@@ -173,13 +246,22 @@ class ConfigManager:
         Args:
             config_file: Path to configuration file. Defaults to 'config.yaml' in project root.
         """
-        if config_file:
-            self.config_file = Path(config_file)
-        else:
+        if not config_file:
             from config.paths import get_config_file_path
 
-            self.config_file = Path(get_config_file_path())
+            config_file = get_config_file_path()
+        # Routes through the property setter -> strict allowlist validation.
+        self.config_file = config_file
         self._config: OpenRAGConfig | None = None
+
+    @property
+    def config_file(self) -> Path:
+        """Allowlist-validated path to the config file."""
+        return self._config_file
+
+    @config_file.setter
+    def config_file(self, value: str | Path) -> None:
+        self._config_file = _validate_config_path(value)
 
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.
@@ -208,10 +290,14 @@ class ConfigManager:
         needs_encryption_upgrade = False
         from utils.encryption import get_master_secret
 
+        # Validate inline so the sanitizer output is used directly at the sink
+        # (see the S2083 note above _validate_config_path).
+        config_path = _validate_config_path(self.config_file)
+
         # Load from config file if it exists
-        if self.config_file.exists():
+        if config_path.exists():
             try:
-                with open(self.config_file) as f:
+                with open(config_path) as f:
                     file_config = yaml.safe_load(f) or {}
 
                 # Merge file config
@@ -234,9 +320,11 @@ class ConfigManager:
 
                 config_data["edited"] = file_config.get("edited", False)
 
-                logger.info(f"Loaded configuration from {self.config_file}")
+                logger.info(f"Loaded configuration from {_sanitize_for_log(self.config_file)}")
             except Exception as e:
-                logger.warning(f"Failed to load config file {self.config_file}: {e}")
+                logger.warning(
+                    f"Failed to load config file {_sanitize_for_log(self.config_file)}: {e}"
+                )
 
         # Create config object first to check edited flags
         temp_config = OpenRAGConfig.from_dict(config_data)
@@ -349,8 +437,14 @@ class ConfigManager:
             config.edited = True
 
         try:
-            # Ensure directory exists
-            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            # Validate inline so the sanitizer output is used directly at the
+            # sinks (see the S2083 note above _validate_config_path).
+            config_path = _validate_config_path(self.config_file)
+
+            # Ensure directory exists. Validate the dir inline so mkdir runs on
+            # the validator's direct return (see the S2083 note above).
+            config_dir = _validate_config_dir(config_path.parent)
+            config_dir.mkdir(parents=True, exist_ok=True)
 
             config_dict = config.to_dict()
 
@@ -362,16 +456,20 @@ class ConfigManager:
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
 
-            with open(self.config_file, "w") as f:
+            with open(config_path, "w") as f:
                 yaml.dump(config_dict, f, default_flow_style=False, indent=2)
 
             # Update cached config to reflect the edited flags
             self._config = config
 
-            logger.info(f"Configuration saved to {self.config_file} - marked as edited")
+            logger.info(
+                f"Configuration saved to {_sanitize_for_log(self.config_file)} - marked as edited"
+            )
             return True
         except Exception as e:
-            logger.error(f"Failed to save configuration to {self.config_file}: {e}")
+            logger.error(
+                f"Failed to save configuration to {_sanitize_for_log(self.config_file)}: {e}"
+            )
             raise e
 
     def update_onboarding_state(self, **kwargs) -> bool:
