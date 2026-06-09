@@ -106,4 +106,3 @@ async def test_connector_sync_reports_one_connection_with_multiple_active(monkey
     args = service.sync_specific_files.await_args.args
     assert args[0] == "conn-1"  # connection_id of first connector
 
-# Made with Bob
