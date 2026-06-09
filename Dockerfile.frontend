@@ -1,27 +1,70 @@
-FROM node:25.9-slim
+# syntax=docker/dockerfile:1.4
 
-# Set working directory and ensure it is owned by the non-root node user 
-WORKDIR /app
-RUN chown node:node /app
+# -----------------------------------------------------------------------------
+# Stage: deps
+# -----------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS deps
 
-# Switch to non-root user for all subsequent steps
-USER node
+WORKDIR /opt/app-root/src
+USER 0
 
-# Copy frontend dependencies
-COPY --chown=node:node frontend/package*.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 # Copy local stub packages referenced via file: in package.json (e.g. sharp stub
 # that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
-COPY --chown=node:node frontend/stubs ./stubs
-RUN npm ci
+COPY frontend/stubs ./stubs
 
-# Copy frontend source
-COPY --chown=node:node frontend/ ./
+RUN npm ci --prefer-offline --no-audit
 
-# Build frontend
-RUN npm run build
+# -----------------------------------------------------------------------------
+# Stage: builder
+# -----------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS builder
 
-# Expose frontend port
+WORKDIR /opt/app-root/src
+USER 0
+
+COPY --from=deps /opt/app-root/src/node_modules ./node_modules
+COPY --from=deps /opt/app-root/src/stubs ./stubs
+COPY frontend/package*.json ./
+COPY frontend/ ./
+
+RUN npm run build \
+    && npm prune --omit=dev
+
+# -----------------------------------------------------------------------------
+# Stage: runtime
+# -----------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS runtime
+
+WORKDIR /opt/app-root/src
+USER 0
+
+# Apply security updates for system packages (glibc, openssl, krb5, etc.)
+RUN microdnf update -y \
+    glibc glibc-common glibc-minimal-langpack \
+    openssl openssl-libs \
+    krb5-libs \
+    && microdnf clean all \
+    && mkdir -p /tmp/patch \
+    && cd /tmp/patch \
+    && npm install ip-address@10.1.1 --no-audit \
+    && cp -rf node_modules/ip-address /usr/lib/node_modules/npm/node_modules/ \
+    && rm -rf /tmp/patch
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=builder --chown=1001:0 /opt/app-root/src/package*.json ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/stubs ./stubs
+COPY --from=builder --chown=1001:0 /opt/app-root/src/.next ./.next
+COPY --from=builder --chown=1001:0 /opt/app-root/src/public ./public
+COPY --from=builder --chown=1001:0 /opt/app-root/src/node_modules ./node_modules
+COPY --from=builder --chown=1001:0 /opt/app-root/src/next.config.* ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/postcss.config.* ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/tailwind.config.* ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/biome.json* ./
+
 EXPOSE 3000
+USER 1001
 
-# Start frontend in foreground
 CMD ["npm", "start"]

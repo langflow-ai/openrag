@@ -1,21 +1,95 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:1.9.6.rc0
+# UBI 9 Python 3.12 base image for enterprise compliance
 
-# Install uv and pre-create the Langflow data directory.
-# The base image already runs as uid=1000 and owns /app, so no root or chown needed.
-RUN pip install uv \
-    && pip uninstall -y litellm \
-    && mkdir -p /app/langflow-data
+# Stage 1: Build SQLite from source
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS builder
 
-COPY flows/ /app/flows/
+USER 0
 
-# Copy the entrypoint before switching to root so the COPY runs as uid=1000
-# (which owns /app), then switch to root so the entrypoint can correct
-# bind-mount permissions at runtime before dropping back to uid=1000.
+# Install build dependencies
+RUN microdnf install -y \
+    git \
+    gcc \
+    gcc-c++ \
+    make \
+    tar \
+    gzip \
+    ca-certificates \
+    && microdnf clean all
+
+# Install SQLite >= 3.35.0 (UBI9 has 3.34.1) from source
+RUN curl -L -o sqlite-autoconf-3460000.tar.gz https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz \
+    && echo "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc  sqlite-autoconf-3460000.tar.gz" > sqlite-autoconf-3460000.tar.gz.sha3 \
+    && openssl dgst -sha3-256 sqlite-autoconf-3460000.tar.gz | grep -q "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc" \
+    && tar -xzf sqlite-autoconf-3460000.tar.gz \
+    && cd sqlite-autoconf-3460000 \
+    && ./configure --prefix=/usr --libdir=/usr/lib64 \
+    && make -j$(nproc) install \
+    && cd .. \
+    && rm -rf sqlite-autoconf-3460000 sqlite-autoconf-3460000.tar.gz sqlite-autoconf-3460000.tar.gz.sha3
+
+# Stage 2: Runtime image
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime
+
+USER 0
+
+# Copy SQLite 3.46.0 from builder stage
+COPY --from=builder /usr/lib64/libsqlite3.so* /usr/lib64/
+COPY --from=builder /usr/bin/sqlite3 /usr/bin/
+COPY --from=builder /usr/include/sqlite3* /usr/include/
+
+# Install runtime system packages and shadow-utils (for groupadd/useradd)
+RUN microdnf install -y \
+    ca-certificates \
+    shadow-utils \
+    && microdnf update -y \
+    glibc glibc-common glibc-minimal-langpack \
+    openssl openssl-libs \
+    krb5-libs \
+    expat \
+    && microdnf clean all
+
+# Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch \
+    torchvision \
+    "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    uv
+
+# Create a symlink for backwards compatibility with the 'langflow' command
+RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
+
+# Create application directory and pre-create LANGFLOW_CONFIG_DIR
+WORKDIR /app
+RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /app/langflow
+
+# Copy flows with proper ownership from the start to prevent chown duplication
+COPY --chown=root:0 flows/ /app/flows/
+
+# Copy the entrypoint script
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
-USER root
+
+# Bake env vars into image — covers cases where entrypoint is bypassed
+ENV HOME=/tmp
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV MEM0_DIR=/tmp/.mem0
+ENV LANGFLOW_CONFIG_DIR=/app/langflow
+ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
+ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
+
+# Set proper ownership for the app directory with OpenShift compatibility
+# Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
+RUN if ! getent passwd 1000 >/dev/null; then \
+        useradd --uid 1000 --gid 0 --home-dir /tmp --no-create-home langflow; \
+    fi \
+    && chgrp -R 0 /app \
+    && chmod -R g+rwX /app
+
+# NOTE: Container runs as root initially so entrypoint can fix permissions
+# The entrypoint script drops to UID 1000 before executing the main process
 
 EXPOSE 7860
 
 ENTRYPOINT ["langflow-entrypoint"]
-CMD ["langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "-m", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

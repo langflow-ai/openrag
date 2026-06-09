@@ -1,22 +1,28 @@
 # syntax=docker/dockerfile:1.4
 # BuildKit: enables cache mounts and better layer reuse.
 #
-# Build: docker build -t openrag-backend .
+# Build: docker build -t openrag-backend -f Dockerfile.backend .
 
 # -----------------------------------------------------------------------------
 # Stage: base (system + uv)
 # -----------------------------------------------------------------------------
-FROM python:3.13-slim AS base
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# Install system dependencies using microdnf (UBI minimal package manager)
+USER 0
+RUN microdnf install -y \
     ca-certificates \
     openssl \
-    \
+    tar \
+    gzip \
+    && microdnf clean all \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && rm -rf /var/lib/apt/lists/*
+    && python -m ensurepip --upgrade \
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
 
-ENV PATH="/root/.local/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH" \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
 # -----------------------------------------------------------------------------
 # Stage: builder (deps + app)
@@ -24,10 +30,13 @@ ENV PATH="/root/.local/bin:$PATH"
 FROM base AS builder
 
 # Build-time deps only (not in final image)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN microdnf install -y \
     git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    gcc \
+    gcc-c++ \
+    make \
+    python3.12-devel \
+    && microdnf clean all
 
 WORKDIR /app
 
@@ -53,15 +62,23 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)
 # -----------------------------------------------------------------------------
-FROM python:3.13-slim AS runtime
+FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# Install runtime dependencies and apply security updates for CVE remediation
+USER 0
+RUN microdnf install -y \
     ca-certificates \
     openssl \
-    gosu \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade "pip>=26.0"
+    shadow-utils \
+    util-linux \
+    && microdnf update -y \
+    glibc glibc-common glibc-minimal-langpack \
+    openssl openssl-libs \
+    krb5-libs \
+    expat \
+    && microdnf clean all \
+    && python -m ensurepip --upgrade \
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and
@@ -71,10 +88,11 @@ RUN groupadd --gid 1000 appuser \
 
 WORKDIR /app
 
-COPY --from=builder /app /app
-COPY securityconfig/ ./securityconfig/
-COPY cloud_securityconfig/ ./cloud_securityconfig/
-COPY scripts/backend-entrypoint.sh /entrypoint.sh
+# Copy files directly with non-root ownership to avoid layer duplication via chown -R
+COPY --from=builder --chown=appuser:appuser /app /app
+COPY --chown=appuser:appuser securityconfig/ ./securityconfig/
+COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
+COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
@@ -91,12 +109,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 #   flows/backup/      - Langflow flow backups (flows/ itself is COPY'd from builder)
 #   openrag-documents/ - uploaded documents staging area
 RUN mkdir -p keys data config flows/backup openrag-documents \
-    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser keys data config flows/backup openrag-documents \
     && chmod +x /entrypoint.sh
 
-# entrypoint.sh runs as root, re-chowns volume-mounted directories to appuser
-# (belt-and-suspenders for Docker where :U is not supported), then execs the
-# application as appuser via gosu.
 EXPOSE 8000
 # Ingestion-callback proxy router (OPENRAG_BACKEND_ROUTER_ENABLE), when enabled.
 EXPOSE 8100

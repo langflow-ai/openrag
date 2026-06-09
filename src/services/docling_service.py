@@ -214,7 +214,12 @@ class DoclingService:
             logger.error("Docling result retrieval failed", task_id=task_id, error=str(e))
             raise
 
-    async def check_task_status(self, task_id: str) -> DoclingStatusSnapshot:
+    async def check_task_status(
+        self,
+        task_id: str,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> DoclingStatusSnapshot:
         """
         Single (non-blocking) status check against Docling Serve.
 
@@ -224,8 +229,9 @@ class DoclingService:
         """
         client = self._get_client()
         url = f"{self.docling_url}/v1/status/poll/{task_id}"
+        headers = self._get_auth_headers(user_id, auth_header)
         try:
-            response = await client.get(url)
+            response = await client.get(url, headers=headers)
         except httpx.RequestError as e:
             # Transient network error — surface as PROCESSING so caller can
             # retry without prematurely failing the file.
@@ -261,7 +267,7 @@ class DoclingService:
         status = payload.get("task_status")
         if status == "success":
             return DoclingStatusSnapshot(state=DoclingTaskState.SUCCESS, raw=payload)
-        if status == "failure" or payload.get("errors"):
+        if status == "failure" or payload.get("errors") or payload.get("error"):
             errors = payload.get("errors", [])
             err_msg_list = []
             for err in errors:
@@ -269,6 +275,11 @@ class DoclingService:
                     err_msg_list.append(err["error_message"])
                 elif isinstance(err, str):
                     err_msg_list.append(err)
+
+            single_err = payload.get("error")
+            if isinstance(single_err, str):
+                err_msg_list.append(single_err)
+
             err_details = (
                 "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
             )
@@ -281,7 +292,12 @@ class DoclingService:
             return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, raw=payload)
         return DoclingStatusSnapshot(state=DoclingTaskState.PENDING, raw=payload)
 
-    async def fetch_task_result(self, task_id: str) -> dict[str, Any]:
+    async def fetch_task_result(
+        self,
+        task_id: str,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+    ) -> dict[str, Any]:
         """
         Fetch the converted document for a Docling task that is already SUCCESS.
 
@@ -292,8 +308,9 @@ class DoclingService:
         """
         client = self._get_client()
         url = f"{self.docling_url}/v1/result/{task_id}"
+        headers = self._get_auth_headers(user_id, auth_header)
         try:
-            response = await client.get(url)
+            response = await client.get(url, headers=headers)
         except httpx.RequestError as e:
             raise DoclingTransientError(f"Network error fetching docling result: {str(e)}") from e
 

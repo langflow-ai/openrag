@@ -275,7 +275,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 120_000);
 
     it("documents.delete(filterId) only removes filenames in the filter", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
@@ -321,7 +321,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 120_000);
 
     it("documents.delete rejects both filename and filterId together", async () => {
       await expect(

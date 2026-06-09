@@ -73,7 +73,7 @@ func (r *OpenRAGReconciler) updateBackendCondition(ctx context.Context, instance
 
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKey{
-		Name:      resourceName("be"),
+		Name:      instanceResourceName(instance, "be"),
 		Namespace: targetNS,
 	}, deployment)
 
@@ -87,7 +87,7 @@ func (r *OpenRAGReconciler) updateBackendCondition(ctx context.Context, instance
 				Message:            "Backend deployment not found",
 				ObservedGeneration: instance.Generation,
 			})
-			logger.Info("Backend deployment not found", "deployment", resourceName("be"))
+			logger.Info("Backend deployment not found", "deployment", instanceResourceName(instance, "be"))
 			return metav1.ConditionUnknown, nil
 		}
 		return metav1.ConditionUnknown, fmt.Errorf("failed to get backend deployment: %w", err)

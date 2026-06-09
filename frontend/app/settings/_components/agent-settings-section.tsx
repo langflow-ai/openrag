@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
-import { deriveCloudLangflowUrl } from "@/lib/url-utils";
+import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
@@ -37,7 +37,7 @@ const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
 export function AgentSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -168,25 +168,14 @@ export function AgentSettingsSection() {
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
-    const cloudLangflowUrl =
-      isIbmAuthMode && typeof window !== "undefined"
-        ? deriveCloudLangflowUrl(window.location.origin)
-        : null;
-    const derivedFromWindow =
-      typeof window !== "undefined"
-        ? `${window.location.protocol}//${window.location.hostname}:7860`
-        : "";
-    const base = (
-      cloudLangflowUrl ||
-      settings.langflow_public_url ||
-      derivedFromWindow ||
-      "http://localhost:7860"
-    ).replace(/\/$/, "");
-    const computed = settings.flow_id
-      ? `${base}/flow/${settings.flow_id}`
-      : base;
     window.open(
-      settings.langflow_edit_url || computed,
+      resolveLangflowEditUrl({
+        flowId: settings.flow_id,
+        editUrlOverride: settings.langflow_edit_url,
+        publicUrl: settings.langflow_public_url,
+        isIbmAuthMode,
+        runMode,
+      }),
       "_blank",
       "noopener,noreferrer",
     );

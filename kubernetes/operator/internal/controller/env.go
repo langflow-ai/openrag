@@ -1,14 +1,17 @@
 package controller
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -153,31 +156,35 @@ func NewEnvVarManager() *EnvVarManager {
 // 1. Highest priority: CR spec env vars
 // 2. Medium priority: Operator env vars with OPTLF_ prefix
 // 3. Lowest priority: Hardcoded defaults
-func (m *EnvVarManager) GetLangflowEnvVars(crEnvVars []corev1.EnvVar) map[string]string {
-	return m.mergeEnvVars(m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
+func (m *EnvVarManager) GetLangflowEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
+	return m.mergeEnvVars(ctx, c, namespace, m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
 }
 
 // GetBackendEnvVars returns merged Backend env vars with three-level priority:
-// 1. Highest priority: CR spec env vars
+// 1. Highest priority: CR spec env vars (including resolved secrets/configmaps)
 // 2. Medium priority: Operator env vars with OPTORBE_ prefix
 // 3. Lowest priority: Hardcoded defaults
-func (m *EnvVarManager) GetBackendEnvVars(crEnvVars []corev1.EnvVar) map[string]string {
-	return m.mergeEnvVars(m.DefaultOpenRagBEEnvVars, OPENRAGBE_ENV_PREFIX, crEnvVars)
+func (m *EnvVarManager) GetBackendEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
+	return m.mergeEnvVars(ctx, c, namespace, m.DefaultOpenRagBEEnvVars, OPENRAGBE_ENV_PREFIX, crEnvVars)
 }
 
 // GetFrontendEnvVars returns merged Frontend env vars with three-level priority:
-// 1. Highest priority: CR spec env vars
+// 1. Highest priority: CR spec env vars (including resolved secrets/configmaps)
 // 2. Medium priority: Operator env vars with OPTORFE_ prefix
 // 3. Lowest priority: Hardcoded defaults
-func (m *EnvVarManager) GetFrontendEnvVars(crEnvVars []corev1.EnvVar) map[string]string {
-	return m.mergeEnvVars(m.DefaultOpenRagFEEnvVars, OPENRAGFE_ENV_PREFIX, crEnvVars)
+func (m *EnvVarManager) GetFrontendEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
+	return m.mergeEnvVars(ctx, c, namespace, m.DefaultOpenRagFEEnvVars, OPENRAGFE_ENV_PREFIX, crEnvVars)
 }
 
 // mergeEnvVars implements the three-level override priority:
 // Level 1 (Lowest):  hardcoded defaults
 // Level 2 (Medium):  operator environment variables with prefix
-// Level 3 (Highest): CR spec env vars
-func (m *EnvVarManager) mergeEnvVars(defaults map[string]string, prefix string, crEnvVars []corev1.EnvVar) map[string]string {
+// Level 3 (Highest): CR spec env vars (including resolved secret/configmap references)
+//
+// ALL env vars (including those from secrets) are resolved and added to the result map.
+// This ensures they appear ONLY in the .env file, not in the container's Env field,
+// so they don't show up when users run 'env' command in the pod.
+func (m *EnvVarManager) mergeEnvVars(ctx context.Context, c client.Client, namespace string, defaults map[string]string, prefix string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
 	result := make(map[string]string)
 
 	// Level 1: Start with hardcoded defaults (lowest priority)
@@ -203,17 +210,103 @@ func (m *EnvVarManager) mergeEnvVars(defaults map[string]string, prefix string, 
 	}
 
 	// Level 3: Override with CR spec env vars (highest priority)
+	// CR values are always respected as-is, including empty string.
 	for _, envVar := range crEnvVars {
-		// Only process direct value assignments (not valueFrom)
-		if envVar.Value != "" {
+		if envVar.ValueFrom != nil {
+			value, found, err := resolveEnvVarValue(ctx, c, namespace, &envVar)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve env var %s: %w", envVar.Name, err)
+			}
+			if !found {
+				// Optional reference not found — leave any existing value in place
+				continue
+			}
+			result[envVar.Name] = value
+		} else {
+			// Direct value: always set, even if empty. CR is authoritative.
 			result[envVar.Name] = envVar.Value
 		}
 	}
 
-	return result
+	return result, nil
 }
 
-// BuildEnvFileContent converts a map of env vars to .env file format
+// resolveEnvVarValue resolves a Kubernetes EnvVarSource to its actual string value.
+// Supports secretKeyRef and configMapKeyRef. fieldRef is not supported as it requires
+// runtime pod information (like pod name, namespace) that isn't available at reconcile time.
+func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, envVar *corev1.EnvVar) (string, bool, error) {
+	if envVar.ValueFrom == nil {
+		return "", false, nil
+	}
+
+	// Resolve secret reference
+	if envVar.ValueFrom.SecretKeyRef != nil {
+		secret := &corev1.Secret{}
+		secretName := envVar.ValueFrom.SecretKeyRef.Name
+		secretKey := envVar.ValueFrom.SecretKeyRef.Key
+
+		err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, secret)
+		if err != nil {
+			// If optional is true, don't fail on missing secret
+			if envVar.ValueFrom.SecretKeyRef.Optional != nil && *envVar.ValueFrom.SecretKeyRef.Optional {
+				return "", false, nil
+			}
+			return "", false, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		}
+
+		value, ok := secret.Data[secretKey]
+		if !ok {
+			if envVar.ValueFrom.SecretKeyRef.Optional != nil && *envVar.ValueFrom.SecretKeyRef.Optional {
+				return "", false, nil
+			}
+			return "", false, fmt.Errorf("key %s not found in secret %s", secretKey, secretName)
+		}
+
+		return string(value), true, nil
+	}
+
+	// Resolve configmap reference
+	if envVar.ValueFrom.ConfigMapKeyRef != nil {
+		configMap := &corev1.ConfigMap{}
+		configMapName := envVar.ValueFrom.ConfigMapKeyRef.Name
+		configMapKey := envVar.ValueFrom.ConfigMapKeyRef.Key
+
+		err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: configMapName}, configMap)
+		if err != nil {
+			if envVar.ValueFrom.ConfigMapKeyRef.Optional != nil && *envVar.ValueFrom.ConfigMapKeyRef.Optional {
+				return "", false, nil
+			}
+			return "", false, fmt.Errorf("failed to get configmap %s: %w", configMapName, err)
+		}
+
+		value, ok := configMap.Data[configMapKey]
+		if !ok {
+			if envVar.ValueFrom.ConfigMapKeyRef.Optional != nil && *envVar.ValueFrom.ConfigMapKeyRef.Optional {
+				return "", false, nil
+			}
+			return "", false, fmt.Errorf("key %s not found in configmap %s", configMapKey, configMapName)
+		}
+
+		return value, true, nil
+	}
+
+	// fieldRef and resourceFieldRef cannot be resolved at reconcile time
+	if envVar.ValueFrom.FieldRef != nil {
+		return "", false, fmt.Errorf("fieldRef is not supported in spec.env (requires runtime pod info). Use direct values or secretKeyRef instead")
+	}
+
+	if envVar.ValueFrom.ResourceFieldRef != nil {
+		return "", false, fmt.Errorf("resourceFieldRef is not supported in spec.env. Use direct values or secretKeyRef instead")
+	}
+
+	// no supported valueFrom type found
+	return "", false, nil
+}
+
+// BuildEnvFileContent converts a map of env vars to .env file format.
+// Values are written raw unless they contain characters that would break dotenv
+// parsing without quoting: newlines, carriage returns, or '#' (comment marker).
+// Those values are double-quoted via strconv.Quote so the content is preserved.
 func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 	// Sort keys to ensure deterministic output
 	keys := make([]string, 0, len(envVars))
@@ -224,9 +317,14 @@ func (m *EnvVarManager) BuildEnvFileContent(envVars map[string]string) string {
 
 	var b strings.Builder
 	for _, k := range keys {
+		v := envVars[k]
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(envVars[k])
+		if strings.ContainsAny(v, "\n\r#") {
+			b.WriteString(strconv.Quote(v))
+		} else {
+			b.WriteString(v)
+		}
 		b.WriteString("\n")
 	}
 	return b.String()
