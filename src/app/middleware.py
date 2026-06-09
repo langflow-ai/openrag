@@ -51,6 +51,7 @@ class RequestLoggingMiddleware:
                 status_code = message["status"]
                 headers = list(message.get("headers", []))
                 headers.append((b"x-request-id", request_id.encode()))
+                headers.append((b"Strict-Transport-Security", b"max-age=31536000; includeSubDomains"))
                 message = {**message, "headers": headers}
             await send(message)
 

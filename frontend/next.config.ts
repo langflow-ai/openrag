@@ -26,6 +26,19 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: 300000, // 5 minutes
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
   },
