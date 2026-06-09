@@ -43,14 +43,16 @@ async def session():
 
 
 class _FakeRequest:
-    headers: dict[str, str] = {}
-    query_params: dict[str, str] = {}
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {}
+        self.query_params: dict[str, str] = {}
 
 
 class _FakeWebhookRequest:
-    method = "POST"
-    headers: dict[str, str] = {}
-    query_params = {"validationToken": "graph-validation-token"}
+    def __init__(self) -> None:
+        self.method = "POST"
+        self.headers: dict[str, str] = {}
+        self.query_params = {"validationToken": "graph-validation-token"}
 
 
 @pytest.fixture

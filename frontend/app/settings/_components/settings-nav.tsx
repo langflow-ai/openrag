@@ -61,6 +61,7 @@ export function SettingsNav() {
   }, [
     isLoading,
     permissionsResolved,
+    currentTab,
     tabIsVisible,
     fallbackTab,
     visibleTabKey,
