@@ -1,10 +1,14 @@
 """Unit tests for the shared COS ingestion flag."""
+
 import pytest
 from fastapi.testclient import TestClient
 
 from models.processors import resolve_shared_owner_fields
-from services.document_index_writer import DocumentIndexChunk, DocumentIndexContext, DocumentIndexWriter
-
+from services.document_index_writer import (
+    DocumentIndexChunk,
+    DocumentIndexContext,
+    DocumentIndexWriter,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_shared_owner_fields
@@ -130,7 +134,7 @@ async def test_non_cos_connector_rejects_shared_true():
     """The API handler must return 400 when shared=True and connector_type != ibm_cos."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from api.connectors import connector_sync, ConnectorSyncBody
+    from api.connectors import ConnectorSyncBody, connector_sync
 
     body = ConnectorSyncBody(shared=True)
     connector_service = MagicMock()
@@ -151,6 +155,7 @@ async def test_non_cos_connector_rejects_shared_true():
     )
     assert response.status_code == 400
     import json
+
     detail = json.loads(response.body)
     assert "ibm_cos" in detail["detail"]
 
@@ -160,7 +165,7 @@ async def test_ibm_cos_shared_true_does_not_hit_guard():
     """shared=True with ibm_cos should NOT be rejected by the guard."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from api.connectors import connector_sync, ConnectorSyncBody
+    from api.connectors import ConnectorSyncBody, connector_sync
 
     body = ConnectorSyncBody(shared=True)
     connector_service = MagicMock()
