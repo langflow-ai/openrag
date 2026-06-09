@@ -208,7 +208,6 @@ class DocumentIndexWriter:
             else metadata.get("file_size"),
             "connector_type": context.connector_type or metadata.get("connector_type") or "local",
             "source_url": context.source_url or metadata.get("source_url") or "",
-            "owner": context.owner,
             "allowed_users": list(context.allowed_users),
             "allowed_groups": list(context.allowed_groups),
             "allowed_principals": unique_acl_principals(context.allowed_principals),
@@ -219,6 +218,8 @@ class DocumentIndexWriter:
             "metadata": metadata.get("metadata", {}),
         }
 
+        if context.owner is not None:
+            doc["owner"] = context.owner
         if context.owner_name is not None:
             doc["owner_name"] = context.owner_name
         if context.owner_email is not None:

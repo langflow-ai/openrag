@@ -28,6 +28,8 @@ export interface SharedBucketViewProps {
   ) => void;
   onBack: () => void;
   onDone: () => void;
+  /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
+  showShared?: boolean;
 }
 
 export function SharedBucketView({
@@ -41,6 +43,7 @@ export function SharedBucketView({
   addTask,
   onBack,
   onDone,
+  showShared = false,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -97,6 +100,7 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
+          shared: showShared ? (ingestSettings.shared ?? false) : undefined,
         },
       },
       {
@@ -272,6 +276,7 @@ export function SharedBucketView({
             onOpenChange={setIsSettingsOpen}
             settings={ingestSettings}
             onSettingsChange={setIngestSettings}
+            showShared={showShared}
           />
         )}
       </div>
