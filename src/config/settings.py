@@ -1416,8 +1416,7 @@ class AppClients:
             service_token = get_openrag_service_token()
             if service_token:
                 logger.info(
-                    "Index admin OpenSearch client: saas mode, "
-                    "using platform service token"
+                    "Index admin OpenSearch client: saas mode, using platform service token"
                 )
                 return self.create_opensearch_client_from_jwt(service_token)
             if user_jwt_token:

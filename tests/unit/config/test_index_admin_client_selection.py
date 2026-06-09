@@ -93,8 +93,6 @@ def test_oss_uses_basic_auth(monkeypatch):
     monkeypatch.setattr(settings, "get_opensearch_username", lambda: "admin")
     monkeypatch.setattr(settings, "get_opensearch_password", lambda: "secret")
 
-    monkeypatch.setattr(
-        settings.clients, "create_basic_opensearch_client", lambda u, p: sentinel
-    )
+    monkeypatch.setattr(settings.clients, "create_basic_opensearch_client", lambda u, p: sentinel)
 
     assert settings.clients.create_index_admin_opensearch_client(None) is sentinel
