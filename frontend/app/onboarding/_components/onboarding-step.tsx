@@ -35,8 +35,11 @@ export function OnboardingStep({
   isMarkdown = false,
   hideIcon = false,
 }: OnboardingStepProps) {
-  const [displayedText, setDisplayedText] = useState("");
-  const [showChildren, setShowChildren] = useState(false);
+  const completedOnMount = isVisible && isCompleted && !isMarkdown;
+  const [displayedText, setDisplayedText] = useState(
+    completedOnMount ? text : "",
+  );
+  const [showChildren, setShowChildren] = useState(completedOnMount);
   const [prev, setPrev] = useState({ text, isVisible, isCompleted });
 
   if (

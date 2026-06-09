@@ -27,7 +27,7 @@ export function AnimatedProviderSteps({
   processingStartTime?: number | null;
   hasError?: boolean;
 }) {
-  const [prevIsCompleted, setPrevIsCompleted] = useState(isCompleted);
+  const [prevIsCompleted, setPrevIsCompleted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
 
   if (isCompleted && !prevIsCompleted) {
@@ -35,6 +35,8 @@ export function AnimatedProviderSteps({
     if (processingStartTime) {
       setElapsedTime(Date.now() - processingStartTime);
     }
+  } else if (!isCompleted && prevIsCompleted) {
+    setPrevIsCompleted(false);
   }
 
   // Progress through steps
