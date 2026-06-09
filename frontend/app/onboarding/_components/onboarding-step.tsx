@@ -37,24 +37,30 @@ export function OnboardingStep({
 }: OnboardingStepProps) {
   const [displayedText, setDisplayedText] = useState("");
   const [showChildren, setShowChildren] = useState(false);
+  const [prev, setPrev] = useState({ text, isVisible, isCompleted });
 
-  useEffect(() => {
+  if (
+    text !== prev.text ||
+    isVisible !== prev.isVisible ||
+    isCompleted !== prev.isCompleted
+  ) {
+    setPrev({ text, isVisible, isCompleted });
     if (!isVisible) {
       setDisplayedText("");
       setShowChildren(false);
-      return;
-    }
-
-    if (isCompleted) {
+    } else if (isCompleted) {
       setDisplayedText(text);
       setShowChildren(true);
-      return;
+    } else {
+      setDisplayedText("");
+      setShowChildren(false);
     }
+  }
+
+  useEffect(() => {
+    if (!isVisible || isCompleted) return;
 
     let currentIndex = 0;
-    setDisplayedText("");
-    setShowChildren(false);
-
     const interval = setInterval(() => {
       if (currentIndex < text.length) {
         setDisplayedText(text.slice(0, currentIndex + 1));
@@ -63,7 +69,7 @@ export function OnboardingStep({
         clearInterval(interval);
         setShowChildren(true);
       }
-    }, 20); // 20ms per character
+    }, 20);
 
     return () => clearInterval(interval);
   }, [text, isVisible, isCompleted]);
