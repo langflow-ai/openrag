@@ -348,6 +348,7 @@ class ConnectorService:
         filename_filter: set = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -450,6 +451,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -478,6 +480,7 @@ class ConnectorService:
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -633,6 +636,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Create custom task using TaskService

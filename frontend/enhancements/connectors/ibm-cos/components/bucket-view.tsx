@@ -37,6 +37,7 @@ export function IBMCOSBucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      showShared
     />
   );
 }
