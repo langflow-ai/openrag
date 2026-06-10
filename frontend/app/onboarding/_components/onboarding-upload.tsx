@@ -46,6 +46,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   // Monitor tasks and call onComplete when file processing is done
   useEffect(() => {
+    let completeTimeoutId: NodeJS.Timeout;
     if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
@@ -161,7 +162,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             refetchNudges();
 
             // Wait a bit before completing (after filter is created)
-            setTimeout(() => {
+            completeTimeoutId = setTimeout(() => {
               onComplete();
             }, 1000);
           });
@@ -171,11 +172,13 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         refetchNudges();
 
         // Wait a bit before completing
-        setTimeout(() => {
+        completeTimeoutId = setTimeout(() => {
           onComplete();
         }, 1000);
       }
     }
+
+    return () => clearTimeout(completeTimeoutId);
   }, [
     tasks,
     currentStep,

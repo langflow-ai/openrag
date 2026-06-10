@@ -35,6 +35,8 @@ function AuthCallbackContent() {
     }
     sessionStorage.setItem(callbackKey, "true");
 
+    let redirectTimeoutId: NodeJS.Timeout;
+
     const handleCallback = async () => {
       try {
         // Get parameters from URL
@@ -158,7 +160,7 @@ function AuthCallbackContent() {
             localStorage.removeItem("auth_redirect_to");
 
             // Redirect to the original page or home
-            setTimeout(() => {
+            redirectTimeoutId = setTimeout(() => {
               router.push(redirectTo);
             }, 2000);
           } else {
@@ -170,7 +172,7 @@ function AuthCallbackContent() {
             localStorage.removeItem("auth_purpose");
 
             // Redirect to settings page with success indicator
-            setTimeout(() => {
+            redirectTimeoutId = setTimeout(() => {
               router.push("/settings?oauth_success=true");
             }, 2000);
           }
@@ -191,6 +193,7 @@ function AuthCallbackContent() {
     };
 
     handleCallback();
+    return () => clearTimeout(redirectTimeoutId);
   }, [searchParams, router, refreshAuth]);
 
   // Dynamic UI content based on purpose
