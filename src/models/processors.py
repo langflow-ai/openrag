@@ -202,13 +202,14 @@ class TaskProcessor:
         filename: str,
         opensearch_client,
         owner_user_id: str | None = None,
+        shared: bool = False,
     ) -> None:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-        from utils.opensearch_queries import build_owned_filename_query
+        from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
         try:
             write_client = clients.opensearch
@@ -230,11 +231,18 @@ class TaskProcessor:
                     filename=filename,
                 )
                 return
+
+            # When shared=True the document being replaced may have previously
+            # been ingested without an owner field (also shared), so the normal
+            # owner-scoped query would miss those chunks.  Use a broader query
+            # that covers both owned and ownerless chunks for this filename.
+            build_query = build_replace_filename_query if shared else build_owned_filename_query
+
             for candidate in candidate_filenames:
                 document_ids = await collect_visible_document_ids(
                     opensearch_client,
                     index=get_index_name(),
-                    query=build_owned_filename_query(candidate, owner_user_id),
+                    query=build_query(candidate, owner_user_id),
                 )
                 deleted_count += await delete_document_ids(
                     write_client,
@@ -816,6 +824,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     document.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
+                    shared=self.shared,
                 )
 
             # Create temporary file from document content
