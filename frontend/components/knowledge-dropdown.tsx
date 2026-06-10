@@ -607,7 +607,6 @@ export function KnowledgeDropdown() {
                 router.push("/settings");
               }
             },
-            ariaDisabled: !isConnected,
             className: !isConnected ? "opacity-50" : undefined,
           };
         }),
@@ -746,7 +745,6 @@ export function KnowledgeDropdown() {
           {menuItems.map((item, index) => {
             const entry = item as typeof item & {
               disabled?: boolean;
-              ariaDisabled?: boolean;
               className?: string;
             };
             return (
@@ -754,7 +752,6 @@ export function KnowledgeDropdown() {
                 key={`${entry.label}-${index}`}
                 onClick={entry.onClick}
                 disabled={entry.disabled ?? false}
-                aria-disabled={entry.ariaDisabled ? true : undefined}
                 className={entry.className}
               >
                 <entry.icon className="mr-2 h-4 w-4" />
