@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -180,7 +179,6 @@ async function fetchUploadOptions(): Promise<{ upload_batch_size?: number }> {
 }
 
 export function KnowledgeDropdown() {
-  const { cloudContext, isIbmAuthMode } = useAuth();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -590,13 +588,6 @@ export function KnowledgeDropdown() {
       connectors
         .filter((c) => !BUCKET_CONNECTOR_TYPES.has(c.type))
         .filter((c) => c.available !== false)
-        .filter(
-          (c) =>
-            !(
-              (isCloudBrand || cloudContext || isIbmAuthMode) &&
-              c.type === "onedrive"
-            ),
-        )
         .map((c) => {
           const descriptor = getConnectorDescriptor(c.type);
           const isConnected = c.status === "connected";
@@ -620,7 +611,7 @@ export function KnowledgeDropdown() {
             className: !isConnected ? "opacity-50" : undefined,
           };
         }),
-    [cloudContext, connectors, isCloudBrand, isIbmAuthMode, router],
+    [connectors, router],
   );
 
   const bucketConnectorItems = useMemo(() => {
