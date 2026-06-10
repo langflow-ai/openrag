@@ -360,7 +360,13 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <MultiSelect
                 options={sourceOptions}
-                value={selectedFilters.data_sources}
+                value={
+                  selectedFilters.data_sources[0] === "*"
+                    ? selectedFilters.data_sources
+                    : selectedFilters.data_sources.filter((source) =>
+                        sourceOptions.some((option) => option.value === source),
+                      )
+                }
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }
