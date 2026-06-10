@@ -22,6 +22,7 @@ from services.connector_access_service import (  # noqa: E402
     governable_connector_types,
     is_connector_access_policy_enforced,
     is_connector_allowed,
+    is_connector_allowed_for_request,
     list_access_for_admin,
     set_connector_access_bulk,
 )
@@ -137,7 +138,7 @@ def test_connector_access_policy_enforced_with_dev_connector_policy(monkeypatch)
     assert is_connector_access_policy_enforced() is True
 
 
-def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
+def test_governable_connector_types_includes_buckets_in_saas(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
@@ -145,8 +146,114 @@ def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
 
     assert "google_drive" in governable
     assert "sharepoint" in governable
+    assert "aws_s3" in governable
+    assert "ibm_cos" in governable
+
+
+def test_governable_connector_types_excludes_buckets_in_oss(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.delenv("OPENRAG_DEV_CONNECTOR_POLICY", raising=False)
+
+    governable = governable_connector_types()
+
     assert "aws_s3" not in governable
     assert "ibm_cos" not in governable
+
+
+def test_governable_connector_types_excludes_onedrive_in_saas(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    governable = governable_connector_types()
+
+    assert "onedrive" not in governable
+    assert "sharepoint" in governable
+
+
+def test_filter_connectors_for_deployment_saas_connector_set(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    from services.connector_access_service import filter_connectors_for_deployment
+
+    metadata = {
+        "google_drive": {"name": "Google Drive"},
+        "sharepoint": {"name": "SharePoint"},
+        "onedrive": {"name": "OneDrive"},
+        "aws_s3": {"name": "Amazon S3"},
+        "ibm_cos": {"name": "IBM COS"},
+    }
+    filtered = filter_connectors_for_deployment(metadata)
+    assert set(filtered.keys()) == {
+        "google_drive",
+        "sharepoint",
+        "aws_s3",
+        "ibm_cos",
+    }
+
+
+def test_filter_connectors_for_deployment_excludes_buckets_in_oss(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.delenv("OPENRAG_DEV_CONNECTOR_POLICY", raising=False)
+
+    from services.connector_access_service import filter_connectors_for_deployment
+
+    metadata = {
+        "google_drive": {"name": "Google Drive"},
+        "aws_s3": {"name": "Amazon S3"},
+        "ibm_cos": {"name": "IBM COS"},
+    }
+    filtered = filter_connectors_for_deployment(metadata)
+    assert set(filtered.keys()) == {"google_drive"}
+
+
+def test_filter_connectors_for_deployment_includes_buckets_with_dev_policy(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.setenv("OPENRAG_DEV_CONNECTOR_POLICY", "true")
+
+    from services.connector_access_service import filter_connectors_for_deployment
+
+    metadata = {
+        "google_drive": {"name": "Google Drive"},
+        "onedrive": {"name": "OneDrive"},
+        "aws_s3": {"name": "Amazon S3"},
+        "ibm_cos": {"name": "IBM COS"},
+    }
+    filtered = filter_connectors_for_deployment(metadata)
+    assert set(filtered.keys()) == {"google_drive", "aws_s3", "ibm_cos"}
+
+
+def test_governable_connector_types_includes_buckets_with_dev_policy(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.setenv("OPENRAG_DEV_CONNECTOR_POLICY", "true")
+
+    governable = governable_connector_types()
+
+    assert "aws_s3" in governable
+    assert "ibm_cos" in governable
+
+
+@pytest.mark.asyncio
+async def test_is_connector_allowed_for_request_blocks_buckets_in_oss(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+    monkeypatch.delenv("OPENRAG_DEV_CONNECTOR_POLICY", raising=False)
+
+    assert await is_connector_allowed_for_request(session, "aws_s3") is False
+    assert await is_connector_allowed_for_request(session, "google_drive") is True
+
+
+@pytest.mark.asyncio
+async def test_is_connector_allowed_for_request_blocks_onedrive_in_saas(session, monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
+
+    assert await is_connector_allowed_for_request(session, "onedrive") is False
+    assert await is_connector_allowed_for_request(session, "sharepoint") is True
 
 
 @pytest.mark.asyncio

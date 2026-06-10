@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from posixpath import basename
 from typing import Any
 
-from config.settings import IBM_AUTH_ENABLED
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -64,7 +63,20 @@ class IBMCOSConnector(BaseConnector):
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
-        return IBM_AUTH_ENABLED
+        from config.settings import is_bucket_connector_deployed
+        from utils.run_mode_utils import is_run_mode_saas
+
+        if not is_bucket_connector_deployed():
+            return False
+        if is_run_mode_saas():
+            return True
+        try:
+            instance = cls({})
+            instance.get_client_id()
+            instance.get_client_secret()
+            return True
+        except (ValueError, NotImplementedError, RuntimeError):
+            return manager._has_saved_credentials_for_user(cls.CONNECTOR_TYPE, user_id)
 
     @classmethod
     def register_routes(cls, app) -> None:

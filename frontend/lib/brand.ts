@@ -52,24 +52,15 @@ export function isConnectorAllowedByWorkspace(
 }
 
 /**
- * Connectors tab visibility: workspace policy first, then deployment rules.
- * Explicit `storedAccess[type] === true` (saved in Connectors Permission) overrides
- * deployment filters so admins can re-enable types like OneDrive on cloud brand.
+ * Connectors tab visibility: workspace policy (admin disable) only.
+ * Deployment rules (OneDrive in SaaS, buckets in OSS, etc.) are enforced by
+ * GET /api/connectors — do not re-apply client-side or admin saves can bypass them.
  */
 export function isConnectorShownInWorkspace(
   type: string,
   storedAccess: Record<string, boolean>,
-  {
-    isCloudBrand: cloudBrand,
-    isIbmAuthMode,
-  }: { isCloudBrand: boolean; isIbmAuthMode: boolean },
 ): boolean {
-  if (!isConnectorAllowedByWorkspace(type, storedAccess)) return false;
-  if (storedAccess[type] === true) return true;
-  return isConnectorTypeVisible(type, {
-    isCloudBrand: cloudBrand,
-    isIbmAuthMode,
-  });
+  return isConnectorAllowedByWorkspace(type, storedAccess);
 }
 
 /** Deployment filter shared by Connectors tab, permission admin, and upload menus. */
@@ -78,10 +69,14 @@ export function isConnectorTypeVisible(
   {
     isCloudBrand: cloudBrand,
     isIbmAuthMode,
-  }: { isCloudBrand: boolean; isIbmAuthMode: boolean },
+    cloudContext = false,
+  }: { isCloudBrand: boolean; isIbmAuthMode: boolean; cloudContext?: boolean },
 ): boolean {
-  if (type === "ibm_cos" || type === "aws_s3") return isIbmAuthMode;
-  if (cloudBrand && type === "onedrive") return false;
+  if (type === "ibm_cos" || type === "aws_s3") {
+    return isIbmAuthMode || cloudContext;
+  }
+  if ((cloudContext || cloudBrand || isIbmAuthMode) && type === "onedrive")
+    return false;
   return true;
 }
 

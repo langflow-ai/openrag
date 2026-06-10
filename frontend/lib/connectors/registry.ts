@@ -47,6 +47,19 @@ const ALL_CONNECTORS: ConnectorUIDescriptor[] = [
   ...ADDITIONAL_CONNECTORS,
 ];
 
+function buildBucketConnectorTypes(): Set<string> {
+  const types = new Set<string>();
+  for (const descriptor of ALL_CONNECTORS) {
+    if (descriptor.kind === "bucket") {
+      types.add(descriptor.connectorType);
+    }
+  }
+  return types;
+}
+
+export const BUCKET_CONNECTOR_TYPES: ReadonlySet<string> =
+  buildBucketConnectorTypes();
+
 export function getConnectorDescriptors(): ConnectorUIDescriptor[] {
   return ALL_CONNECTORS;
 }
