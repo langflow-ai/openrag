@@ -109,6 +109,51 @@ class KnowledgeFilterService:
                 knowledge_filter["score"] = hit.get("_score")
                 filters.append(knowledge_filter)
 
+            # compute active_source_count field: how many of each filter's configured
+            # data sources still have indexed documents. Filters scoped to "*" are skipped
+            # We use the admin client to check existence in the documents index so the count is the
+            # same for every viewer of a shared filter, not DLS-scoped per user
+            try:
+                import json
+                import logging
+
+                from config.settings import clients, get_index_name
+                from utils.opensearch_queries import build_existing_filenames_agg_body
+
+                data_sources_by_filter = []
+                all_filenames = set()
+                for knowledge_filter in filters:
+                    data_sources = json.loads(knowledge_filter.get("query_data") or "{}").get("filters", {}).get(
+                        "data_sources"
+                    )
+                    if not data_sources or data_sources == ["*"]:
+                        data_sources_by_filter.append(None)
+                        continue
+                    data_sources_by_filter.append(data_sources)
+                    all_filenames.update(data_sources)
+
+                existing_filenames = set()
+                if all_filenames and clients.opensearch is not None:
+                    existence_result = await clients.opensearch.search(
+                        index=get_index_name(),
+                        body=build_existing_filenames_agg_body(list(all_filenames)),
+                    )
+                    existing_filenames = {
+                        bucket["key"]
+                        for bucket in existence_result["aggregations"]["filenames"]["buckets"]
+                    }
+
+                for knowledge_filter, data_sources in zip(filters, data_sources_by_filter):
+                    if data_sources:
+                        knowledge_filter["active_source_count"] = sum(
+                            1 for source in data_sources if source in existing_filenames
+                        )
+
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "active_source_count computation failed", exc_info=True
+                )
+
             return {"success": True, "filters": filters}
 
         except Exception as e:
