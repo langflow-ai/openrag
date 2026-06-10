@@ -35,10 +35,10 @@ def build_filename_search_body(
 
 def build_existing_filenames_agg_body(filenames: list[str]) -> dict:
     """
-    build a search body that for checking which of the given filenames currently have one indexed chunk
+    build a search body for checking which of the given filenames currently have indexed chunks
 
     Args:
-        filenames: Filenames to check for existance
+        filenames: Filenames to check for existence
 
     Returns:
         A dict containing the complete OpenSearch search body
