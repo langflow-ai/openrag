@@ -115,17 +115,22 @@ class KnowledgeFilterService:
             # same for every viewer of a shared filter, not DLS-scoped per user
             try:
                 import json
-                import logging
 
                 from config.settings import clients, get_index_name
                 from utils.opensearch_queries import build_existing_filenames_agg_body
+                from utils.logging_config import get_logger
 
                 data_sources_by_filter = []
                 all_filenames = set()
                 for knowledge_filter in filters:
-                    data_sources = json.loads(knowledge_filter.get("query_data") or "{}").get("filters", {}).get(
-                        "data_sources"
-                    )
+                    try:
+                        data_sources = json.loads(knowledge_filter.get("query_data") or "{}").get("filters", {}).get(
+                            "data_sources"
+                        )
+                    except Exception:
+                        data_sources_by_filter.append(None)
+                        continue 
+                    
                     if not data_sources or data_sources == ["*"]:
                         data_sources_by_filter.append(None)
                         continue
@@ -150,7 +155,7 @@ class KnowledgeFilterService:
                         )
 
             except Exception:
-                logging.getLogger(__name__).warning(
+                get_logger(__name__).warning(
                     "active_source_count computation failed", exc_info=True
                 )
 
