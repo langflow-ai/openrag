@@ -1,7 +1,8 @@
 """Unit tests for the shared COS ingestion flag."""
 
+from typing import Any
+
 import pytest
-from fastapi.testclient import TestClient
 
 from models.processors import resolve_shared_owner_fields
 from services.document_index_writer import (
@@ -41,11 +42,17 @@ def test_resolve_shared_owner_fields_private_none_inputs():
 
 
 def _make_context(**kwargs):
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         document_id="doc-1",
         filename="test.pdf",
         mimetype="application/pdf",
         embedding_model="test-model",
+        file_size=None,
+        allowed_users=[],
+        allowed_groups=[],
+        allowed_principals=[],
+        allowed_principal_labels=[],
+        is_sample_data=False,
     )
     defaults.update(kwargs)
     return DocumentIndexContext(**defaults)
@@ -95,6 +102,33 @@ def test_build_chunk_document_allowed_users_always_present():
     )
     assert "allowed_users" in doc
     assert "allowed_groups" in doc
+
+
+# ---------------------------------------------------------------------------
+# build_replace_filename_query
+# ---------------------------------------------------------------------------
+
+
+def test_build_replace_filename_query_structure():
+    """Must match filename AND (owner == user OR must_not-exists-owner)."""
+    from utils.opensearch_queries import build_replace_filename_query
+
+    q = build_replace_filename_query("report.pdf", "user-1")
+    assert q["bool"]["filter"][0] == {"term": {"filename": "report.pdf"}}
+    should = q["bool"]["filter"][1]["bool"]["should"]
+    assert {"term": {"owner": "user-1"}} in should
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in should
+    assert q["bool"]["filter"][1]["bool"]["minimum_should_match"] == 1
+
+
+def test_build_replace_filename_query_differs_from_owned_query():
+    """replace query is broader than the owner-only query."""
+    from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
+
+    owned = build_owned_filename_query("f.pdf", "u")
+    replace = build_replace_filename_query("f.pdf", "u")
+    # owned has a single term filter; replace has a bool/should
+    assert owned != replace
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +191,7 @@ async def test_non_cos_connector_rejects_shared_true():
     import json
 
     detail = json.loads(response.body)
-    assert "ibm_cos" in detail["detail"]
+    assert "ibm_cos" in detail["error"]
 
 
 @pytest.mark.asyncio
