@@ -451,7 +451,7 @@ func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
 
 	// Parse the required variables list
 	requiredVars := []string{"JWT", "OPENRAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
-		"OPENSEARCH_INDEX_NAME", "DOCLING_SERVE_URL", "DOCLING_TASK_ID", "OWNER", "OWNER_NAME",
+		"OPENSEARCH_INDEX_NAME", "DOCLING_SERVE_URL", "DOCLING_SERVE_VERIFY_SSL", "DOCLING_TASK_ID", "OWNER", "OWNER_NAME",
 		"OWNER_EMAIL", "CONNECTOR_TYPE", "DOCUMENT_ID", "SOURCE_URL", "ALLOWED_USERS",
 		"ALLOWED_GROUPS", "FILENAME", "MIMETYPE", "FILESIZE", "SELECTED_EMBEDDING_MODEL",
 		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "WATSONX_API_KEY", "WATSONX_ENDPOINT",
@@ -470,6 +470,7 @@ func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
 	assert.Equal(t, "None", envVars["OPENSEARCH_URL"], "OPENSEARCH_URL should have default 'None'")
 	assert.Equal(t, "None", envVars["OPENSEARCH_INDEX_NAME"], "OPENSEARCH_INDEX_NAME should have default 'None'")
 	assert.Equal(t, "None", envVars["DOCLING_SERVE_URL"], "DOCLING_SERVE_URL should have default 'None'")
+	assert.Equal(t, "false", envVars["DOCLING_SERVE_VERIFY_SSL"], "DOCLING_SERVE_VERIFY_SSL should have default 'false'")
 }
 
 func TestEnvVarManager_EnsureRequiredEnvVars_CustomList(t *testing.T) {

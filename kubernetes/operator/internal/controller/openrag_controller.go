@@ -474,6 +474,9 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			port = 5001
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
+		if d.VerifySsl != nil {
+			envVars["DOCLING_SERVE_VERIFY_SSL"] = strconv.FormatBool(*d.VerifySsl)
+		}
 	}
 
 	// Convert map to .env file format
@@ -568,6 +571,9 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 			port = 5001
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
+		if d.VerifySsl != nil {
+			envVars["DOCLING_SERVE_VERIFY_SSL"] = strconv.FormatBool(*d.VerifySsl)
+		}
 	}
 
 	// Ensure all variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exist with at least "None" value
