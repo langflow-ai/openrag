@@ -168,8 +168,19 @@ async function fetchBucketConnectorConfigured(
   return Object.fromEntries(entries);
 }
 
+const UPLOAD_OPTIONS_QUERY_KEY = ["upload-options"] as const;
+const DEFAULT_UPLOAD_BATCH_SIZE = 25;
+
+async function fetchUploadOptions(): Promise<{ upload_batch_size?: number }> {
+  const res = await fetch("/api/upload_options");
+  if (!res.ok) {
+    throw new Error("Failed to fetch upload options");
+  }
+  return res.json();
+}
+
 export function KnowledgeDropdown() {
-  const { cloudContext } = useAuth();
+  const { cloudContext, isIbmAuthMode } = useAuth();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -181,7 +192,6 @@ export function KnowledgeDropdown() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
-  const [uploadBatchSize, setUploadBatchSize] = useState(25);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -221,22 +231,22 @@ export function KnowledgeDropdown() {
     staleTime: 60_000,
   });
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const { data: uploadOptions } = useQuery({
+    queryKey: UPLOAD_OPTIONS_QUERY_KEY,
+    queryFn: fetchUploadOptions,
+    staleTime: 60_000,
+  });
+
+  const uploadBatchSize = useMemo(() => {
+    const size = uploadOptions?.upload_batch_size;
+    if (typeof size === "number" && size > 0) {
+      return size;
+    }
+    return DEFAULT_UPLOAD_BATCH_SIZE;
+  }, [uploadOptions?.upload_batch_size]);
 
   useEffect(() => {
-    fetch("/api/upload_options")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (
-          typeof data?.upload_batch_size === "number" &&
-          data.upload_batch_size > 0
-        ) {
-          setUploadBatchSize(data.upload_batch_size);
-        }
-      })
-      .catch(() => {});
+    setMounted(true);
   }, []);
 
   const handleFileUpload = () => {
@@ -581,7 +591,11 @@ export function KnowledgeDropdown() {
         .filter((c) => !BUCKET_CONNECTOR_TYPES.has(c.type))
         .filter((c) => c.available !== false)
         .filter(
-          (c) => !((isCloudBrand || cloudContext) && c.type === "onedrive"),
+          (c) =>
+            !(
+              (isCloudBrand || cloudContext || isIbmAuthMode) &&
+              c.type === "onedrive"
+            ),
         )
         .map((c) => {
           const descriptor = getConnectorDescriptor(c.type);
@@ -602,10 +616,11 @@ export function KnowledgeDropdown() {
                 router.push("/settings");
               }
             },
-            disabled: !isConnected,
+            ariaDisabled: !isConnected,
+            className: !isConnected ? "opacity-50" : undefined,
           };
         }),
-    [cloudContext, connectors, isCloudBrand, router],
+    [cloudContext, connectors, isCloudBrand, isIbmAuthMode, router],
   );
 
   const bucketConnectorItems = useMemo(() => {
@@ -737,16 +752,25 @@ export function KnowledgeDropdown() {
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {menuItems.map((item, index) => (
-            <DropdownMenuItem
-              key={`${item.label}-${index}`}
-              onClick={item.onClick}
-              disabled={"disabled" in item ? item.disabled : false}
-            >
-              <item.icon className="mr-2 h-4 w-4" />
-              {item.label}
-            </DropdownMenuItem>
-          ))}
+          {menuItems.map((item, index) => {
+            const entry = item as typeof item & {
+              disabled?: boolean;
+              ariaDisabled?: boolean;
+              className?: string;
+            };
+            return (
+              <DropdownMenuItem
+                key={`${entry.label}-${index}`}
+                onClick={entry.onClick}
+                disabled={entry.disabled ?? false}
+                aria-disabled={entry.ariaDisabled ? true : undefined}
+                className={entry.className}
+              >
+                <entry.icon className="mr-2 h-4 w-4" />
+                {entry.label}
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
 

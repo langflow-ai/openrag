@@ -75,7 +75,8 @@ export function isConnectorTypeVisible(
   if (type === "ibm_cos" || type === "aws_s3") {
     return isIbmAuthMode || cloudContext;
   }
-  if ((cloudContext || cloudBrand) && type === "onedrive") return false;
+  if ((cloudContext || cloudBrand || isIbmAuthMode) && type === "onedrive")
+    return false;
   return true;
 }
 
