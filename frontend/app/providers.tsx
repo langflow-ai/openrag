@@ -19,7 +19,10 @@ if (typeof window !== "undefined") {
             if (redirectUrl && typeof redirectUrl === "string") {
               // Validate redirectUrl to prevent open redirect
               let validatedUrl = "/login";
-              if (redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")) {
+              if (
+                redirectUrl.startsWith("/") &&
+                !redirectUrl.startsWith("//")
+              ) {
                 // Relative path - safe to use
                 validatedUrl = redirectUrl;
               } else {
