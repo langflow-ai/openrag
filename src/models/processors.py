@@ -209,7 +209,10 @@ class TaskProcessor:
         """
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-        from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
+        from utils.opensearch_queries import (
+            build_owned_filename_query,
+            build_replace_filename_query,
+        )
 
         try:
             write_client = clients.opensearch
