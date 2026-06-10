@@ -26,7 +26,6 @@ class DocumentsClient:
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: float = 300.0,
-        shared: bool = False,
     ) -> IngestResponse | IngestTaskStatus:
         """
         Ingest a document into the knowledge base.
@@ -38,9 +37,6 @@ class DocumentsClient:
             wait: If True, poll until ingestion completes. If False, return immediately.
             poll_interval: Seconds between status checks when waiting.
             timeout: Maximum seconds to wait for completion.
-            shared: If True, index the document without an owner so all users in
-                the same OpenRAG instance can retrieve it. Defaults to False (private).
-                COS ingestion only; temporary mechanism until OpenRAG-level ACLs land.
 
         Returns:
             IngestTaskStatus with final status if wait=True.
@@ -50,8 +46,6 @@ class DocumentsClient:
             ValueError: If neither file_path nor file is provided.
             TimeoutError: If ingestion doesn't complete within timeout.
         """
-        extra_data = {"shared": "true"} if shared else {}
-
         if file_path is not None:
             path = Path(file_path)
             with open(path, "rb") as f:
@@ -60,7 +54,6 @@ class DocumentsClient:
                     "POST",
                     "/api/v1/documents/ingest",
                     files=files,
-                    data=extra_data or None,
                 )
         elif file is not None:
             if filename is None:
@@ -70,7 +63,6 @@ class DocumentsClient:
                 "POST",
                 "/api/v1/documents/ingest",
                 files=files,
-                data=extra_data or None,
             )
         else:
             raise ValueError("Either file_path or file must be provided")
