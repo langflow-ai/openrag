@@ -16,10 +16,11 @@ from dependencies import (
 )
 from services.connector_access_service import (
     CONNECTOR_TYPES,
-    filter_connectors_for_user,
+    filter_connectors_for_list,
     get_access_map,
     is_connector_access_policy_enforced,
     is_connector_allowed_for_request,
+    is_connector_listed_in_deployment,
     list_access_for_admin,
     set_connector_access_bulk,
 )
@@ -35,10 +36,8 @@ async def _connector_access_denied(
     session: AsyncSession,
     connector_type: str,
 ) -> JSONResponse | None:
-    """Return 403 when workspace policy blocks this connector type."""
+    """Return 403 when deployment rules or workspace policy block this connector type."""
     if connector_type not in CONNECTOR_TYPES:
-        return None
-    if not is_connector_access_policy_enforced():
         return None
     if await is_connector_allowed_for_request(session, connector_type):
         return None
@@ -53,11 +52,12 @@ async def _allowed_connector_types_for_request(
     session: AsyncSession,
     connector_types: list[str],
 ) -> list[str]:
-    """Drop connector types blocked by workspace policy (sync-all style endpoints)."""
+    """Drop connector types blocked by deployment rules and workspace policy."""
+    allowed = [t for t in connector_types if is_connector_listed_in_deployment(t)]
     if not is_connector_access_policy_enforced():
-        return connector_types
+        return allowed
     access_map = await get_access_map(session)
-    return [t for t in connector_types if access_map.get(t, True)]
+    return [t for t in allowed if access_map.get(t, True)]
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -554,9 +554,7 @@ async def list_connectors(
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
         )
-        if is_connector_access_policy_enforced():
-            access_map = await get_access_map(session)
-            connector_types = filter_connectors_for_user(connector_types, access_map)
+        connector_types = await filter_connectors_for_list(session, connector_types)
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
         logger.error("[CONNECTOR] Error listing connectors", error=str(e))

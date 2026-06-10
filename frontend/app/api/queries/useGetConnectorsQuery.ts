@@ -8,20 +8,25 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand, useIsCloudBrand } from "@/contexts/brand-context";
-import {
-  isConnectorShownInWorkspace,
-  isConnectorTypeVisible,
-  isSaasPolicyContext,
-} from "@/lib/brand";
+import { isSaasPolicyContext } from "@/lib/brand";
 
 /** Prefix for all connector list queries (see `connectorsQueryKey`). */
 export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
 
+/** Knowledge dropdown bucket menu — invalidate after S3/COS configure. */
+export const BUCKET_CONNECTORS_CONFIGURED_QUERY_KEY = [
+  "bucket-connectors-configured",
+] as const;
+
+/** Match every `["bucket-connectors-configured", …]` query (listed bucket types suffix). */
+export const bucketConnectorsConfiguredQueryFilter = {
+  queryKey: BUCKET_CONNECTORS_CONFIGURED_QUERY_KEY,
+  exact: false,
+} as const;
+
 /**
- * Cache key from policy + deployment filter context (inputs to `getConnectors`).
- * `cloudContext`: backend `/api/connectors` filtering (server policy).
- * `applyWorkspacePolicy`: SaaS workspace policy path in the query fn.
- * `isCloudBrand` / `isIbmAuthMode`: client deployment visibility (`isConnectorTypeVisible`).
+ * Cache key from policy context (inputs to `getConnectors` workspace filter).
+ * Deployment visibility comes from GET /api/connectors on the server.
  */
 export function connectorsQueryKey(
   cloudContext: boolean,
@@ -157,20 +162,10 @@ export interface GetConnectorsResponse {
   connectors: Connector[];
 }
 
-async function fetchWorkspaceConnectorAccess(): Promise<
-  Record<string, boolean>
-> {
-  const response = await fetch("/api/connectors/workspace-policy");
-  if (!response.ok) return {};
-  const data = await response.json();
-  return data?.access && typeof data.access === "object" ? data.access : {};
-}
-
 export const useGetConnectorsQuery = (
   options?: Omit<UseQueryOptions<Connector[]>, "queryKey" | "queryFn">,
 ) => {
-  const { applyWorkspacePolicy, isCloudBrand, isIbmAuthMode, queryKey } =
-    useConnectorsQueryKey();
+  const { queryKey } = useConnectorsQueryKey();
 
   async function getConnectors(): Promise<Connector[]> {
     const connectorsResponse = await fetch("/api/connectors");
@@ -181,7 +176,7 @@ export const useGetConnectorsQuery = (
     const { connectors: connectorsMap } = await connectorsResponse.json();
     const connectorTypes = Object.keys(connectorsMap);
 
-    const connectorsWithStatus = await Promise.all(
+    return Promise.all(
       connectorTypes.map(async (type) => {
         const connectorData = connectorsMap[type];
         const statusResponse = await fetch(`/api/connectors/${type}/status`);
@@ -226,22 +221,6 @@ export const useGetConnectorsQuery = (
         } as Connector;
       }),
     );
-
-    let result = connectorsWithStatus;
-    const deploymentCtx = { isCloudBrand, isIbmAuthMode };
-
-    if (applyWorkspacePolicy) {
-      const storedAccess = await fetchWorkspaceConnectorAccess();
-      result = result.filter((c) =>
-        isConnectorShownInWorkspace(c.type, storedAccess, deploymentCtx),
-      );
-    } else {
-      result = result.filter((c) =>
-        isConnectorTypeVisible(c.type, deploymentCtx),
-      );
-    }
-
-    return result;
   }
 
   return useQuery({

@@ -219,6 +219,14 @@ def is_cloud_context() -> bool:
     return IBM_AUTH_ENABLED or is_run_mode_saas() or is_dev_connector_policy_enabled()
 
 
+def is_bucket_connector_deployed() -> bool:
+    """Whether bucket connectors (S3, IBM COS) are offered in this deployment.
+
+    Kept in sync with ``is_cloud_context()`` / frontend ``cloudContext``.
+    """
+    return is_cloud_context()
+
+
 def get_default_user_role() -> str:
     """Built-in role assigned to new users when JWT role sync is off."""
     return os.getenv("OPENRAG_DEFAULT_ROLE", "user")

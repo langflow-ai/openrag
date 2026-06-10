@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   File as FileIcon,
@@ -10,8 +10,13 @@ import {
   PlugZap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  BUCKET_CONNECTORS_CONFIGURED_QUERY_KEY,
+  type Connector,
+  useGetConnectorsQuery,
+} from "@/app/api/queries/useGetConnectorsQuery";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
@@ -36,8 +41,8 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
+  BUCKET_CONNECTOR_TYPES,
   getConnectorDescriptor,
-  getConnectorDescriptors,
 } from "@/lib/connectors/registry";
 import {
   duplicateCheck,
@@ -116,8 +121,55 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
   <Folder className={cn(className, "text-muted-foreground")} />
 );
 
+/** Stable cache key for listed bucket types (at most two: aws_s3, ibm_cos). */
+function bucketTypesCacheKey(connectors: Connector[]): string {
+  const types: string[] = [];
+  for (const c of connectors) {
+    if (BUCKET_CONNECTOR_TYPES.has(c.type)) {
+      types.push(c.type);
+    }
+  }
+  if (types.length < 2) {
+    return types[0] ?? "";
+  }
+  types.sort();
+  return types.join(",");
+}
+
+async function fetchBucketConnectorConfigured(
+  bucketTypes: string[],
+): Promise<Record<string, boolean>> {
+  if (bucketTypes.length === 0) {
+    return {};
+  }
+
+  const entries = await Promise.all(
+    bucketTypes.map(async (connectorType) => {
+      try {
+        const res = await fetch(`/api/connectors/${connectorType}/defaults`);
+        if (!res.ok) {
+          return [connectorType, false] as const;
+        }
+        const data = (await res.json()) as Record<string, unknown> & {
+          connection_id?: string;
+        };
+        const hasCredentialSetFlag = Object.entries(data).some(
+          ([key, value]) => key.endsWith("_set") && value === true,
+        );
+        return [
+          connectorType,
+          Boolean(data.connection_id || hasCredentialSetFlag),
+        ] as const;
+      } catch {
+        return [connectorType, false] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
 export function KnowledgeDropdown() {
-  const { isIbmAuthMode } = useAuth();
+  const { cloudContext } = useAuth();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -134,9 +186,6 @@ export function KnowledgeDropdown() {
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
-  const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
-    Record<string, boolean>
-  >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
@@ -146,14 +195,6 @@ export function KnowledgeDropdown() {
     unsupportedCount: number;
   } | null>(null);
   const isFolderOverwriteConfirmedRef = useRef(false);
-  const [cloudConnectors, setCloudConnectors] = useState<{
-    [key: string]: {
-      name: string;
-      available: boolean;
-      connected: boolean;
-      hasToken: boolean;
-    };
-  }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,124 +204,39 @@ export function KnowledgeDropdown() {
     setDuplicateFilename("");
   };
 
-  // Check AWS availability and cloud connectors on mount
-  useEffect(() => {
-    const checkAvailability = async () => {
-      try {
-        const bucketDescriptors = getConnectorDescriptors().filter(
-          (d) => d.kind === "bucket",
-        );
+  const { data: connectors = [] } = useGetConnectorsQuery();
 
-        // Check upload batch size and bucket connector availability in parallel
-        const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
-          fetch("/api/upload_options"),
-          ...bucketDescriptors.map((d) =>
-            fetch(`/api/connectors/${d.connectorType}/defaults`),
-          ),
-        ]);
+  const listedBucketTypesKey = useMemo(
+    () => bucketTypesCacheKey(connectors),
+    [connectors],
+  );
 
-        if (uploadOptionsRes.ok) {
-          const uploadOptionsData = await uploadOptionsRes.json();
-          if (
-            typeof uploadOptionsData.upload_batch_size === "number" &&
-            uploadOptionsData.upload_batch_size > 0
-          ) {
-            setUploadBatchSize(uploadOptionsData.upload_batch_size);
-          }
-        }
-
-        const configured: Record<string, boolean> = {};
-        await Promise.all(
-          bucketResponses.map(async (res, i) => {
-            const descriptor = bucketDescriptors[i];
-            if (!res.ok) return;
-            const data = await res.json();
-            // Generic predicate: connection_id set OR any *_set boolean is true.
-            const anySetFlag = Object.entries(data).some(
-              ([k, v]) => k.endsWith("_set") && v === true,
-            );
-            configured[descriptor.connectorType] = Boolean(
-              data.connection_id || anySetFlag,
-            );
-          }),
-        );
-        setBucketConnectorConfigured(configured);
-
-        // Check cloud connectors
-        const connectorsRes = await fetch("/api/connectors");
-        if (connectorsRes.ok) {
-          const connectorsResult = await connectorsRes.json();
-          const cloudConnectorTypes = [
-            "google_drive",
-            "onedrive",
-            "sharepoint",
-          ];
-          const connectorInfo: {
-            [key: string]: {
-              name: string;
-              available: boolean;
-              connected: boolean;
-              hasToken: boolean;
-            };
-          } = {};
-
-          for (const type of cloudConnectorTypes) {
-            if (connectorsResult.connectors[type]) {
-              connectorInfo[type] = {
-                name: connectorsResult.connectors[type].name,
-                available: connectorsResult.connectors[type].available,
-                connected: false,
-                hasToken: false,
-              };
-
-              // Check connection status
-              try {
-                const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (statusRes.ok) {
-                  const statusData = await statusRes.json();
-                  const connections = statusData.connections || [];
-                  const activeConnection = connections.find(
-                    (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
-                  );
-                  const isConnected = activeConnection !== undefined;
-
-                  if (isConnected && activeConnection) {
-                    connectorInfo[type].connected = true;
-
-                    // Check token availability
-                    try {
-                      const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
-                      );
-                      if (tokenRes.ok) {
-                        const tokenData = await tokenRes.json();
-                        if (tokenData.access_token) {
-                          connectorInfo[type].hasToken = true;
-                        }
-                      }
-                    } catch {
-                      // Token check failed
-                    }
-                  }
-                }
-              } catch {
-                // Status check failed
-              }
-            }
-          }
-
-          setCloudConnectors(connectorInfo);
-        }
-      } catch (err) {
-        console.error("Failed to check availability", err);
-      }
-    };
-    checkAvailability();
-  }, []);
+  const { data: bucketConnectorConfigured = {} } = useQuery({
+    queryKey: [...BUCKET_CONNECTORS_CONFIGURED_QUERY_KEY, listedBucketTypesKey],
+    queryFn: () =>
+      fetchBucketConnectorConfigured(
+        listedBucketTypesKey ? listedBucketTypesKey.split(",") : [],
+      ),
+    enabled: listedBucketTypesKey.length > 0,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/upload_options")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (
+          typeof data?.upload_batch_size === "number" &&
+          data.upload_batch_size > 0
+        ) {
+          setUploadBatchSize(data.upload_batch_size);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleFileUpload = () => {
@@ -619,48 +575,56 @@ export function KnowledgeDropdown() {
     }
   };
 
-  const cloudConnectorItems = Object.entries(cloudConnectors)
-    .filter(([type, info]) => {
-      if (!info.available) return false;
-      if (isCloudBrand && type === "onedrive") return false;
-      return true;
-    })
-    .map(([type, info]) => {
-      const descriptor = getConnectorDescriptor(type);
-      return {
-        label: info.name,
-        icon: descriptor?.Icon ?? PlugZap,
-        onClick: async () => {
-          if (info.connected && info.hasToken) {
-            setIsNavigatingToCloud(true);
-            try {
-              router.push(`/upload/${type}`);
-              setTimeout(() => setIsNavigatingToCloud(false), 1000);
-            } catch {
-              setIsNavigatingToCloud(false);
-            }
-          } else {
-            router.push("/settings");
-          }
-        },
-        disabled: !info.connected || !info.hasToken,
-      };
-    });
-
-  const bucketConnectorItems = isIbmAuthMode
-    ? getConnectorDescriptors()
+  const cloudConnectorItems = useMemo(
+    () =>
+      connectors
+        .filter((c) => !BUCKET_CONNECTOR_TYPES.has(c.type))
+        .filter((c) => c.available !== false)
         .filter(
-          (d) =>
-            d.kind === "bucket" &&
-            d.menuItem &&
-            bucketConnectorConfigured[d.connectorType],
+          (c) => !((isCloudBrand || cloudContext) && c.type === "onedrive"),
         )
-        .map((d) => ({
-          label: d.menuItem!.label,
-          icon: d.Icon,
-          onClick: () => router.push(d.menuItem!.route),
-        }))
-    : [];
+        .map((c) => {
+          const descriptor = getConnectorDescriptor(c.type);
+          const isConnected = c.status === "connected";
+          return {
+            label: c.name,
+            icon: descriptor?.Icon ?? PlugZap,
+            onClick: async () => {
+              if (isConnected) {
+                setIsNavigatingToCloud(true);
+                try {
+                  router.push(`/upload/${c.type}`);
+                  setTimeout(() => setIsNavigatingToCloud(false), 1000);
+                } catch {
+                  setIsNavigatingToCloud(false);
+                }
+              } else {
+                router.push("/settings");
+              }
+            },
+            disabled: !isConnected,
+          };
+        }),
+    [cloudContext, connectors, isCloudBrand, router],
+  );
+
+  const bucketConnectorItems = useMemo(() => {
+    const items = [];
+
+    for (const c of connectors) {
+      if (!BUCKET_CONNECTOR_TYPES.has(c.type)) continue;
+      if (!bucketConnectorConfigured[c.type]) continue;
+      const descriptor = getConnectorDescriptor(c.type);
+      if (!descriptor?.menuItem) continue;
+      items.push({
+        label: descriptor.menuItem.label,
+        icon: descriptor.Icon,
+        onClick: () => router.push(descriptor.menuItem!.route),
+      });
+    }
+
+    return items;
+  }, [bucketConnectorConfigured, connectors, router]);
 
   const menuItems = [
     {

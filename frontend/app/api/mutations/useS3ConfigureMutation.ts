@@ -1,4 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  bucketConnectorsConfiguredQueryFilter,
+  connectorsQueryFilter,
+} from "@/app/api/queries/useGetConnectorsQuery";
 
 export interface S3ConfigurePayload {
   access_key?: string;
@@ -26,8 +30,9 @@ export function useS3ConfigureMutation() {
   return useMutation({
     mutationFn: configureS3,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["connectors"] });
+      queryClient.invalidateQueries(connectorsQueryFilter);
       queryClient.invalidateQueries({ queryKey: ["s3-defaults"] });
+      queryClient.invalidateQueries(bucketConnectorsConfiguredQueryFilter);
     },
   });
 }

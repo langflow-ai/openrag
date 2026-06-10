@@ -16,13 +16,27 @@ CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_conne
 _BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos"})
 
 
+def is_connector_listed_in_deployment(connector_type: str) -> bool:
+    """Deployment-level listing rules (independent of admin workspace policy)."""
+    from config.settings import is_bucket_connector_deployed, is_cloud_context
+
+    if connector_type in _BUCKET_CONNECTOR_TYPES:
+        return is_bucket_connector_deployed()
+    if connector_type == "onedrive" and is_cloud_context():
+        return False
+    return True
+
+
 def governable_connector_types() -> tuple[str, ...]:
     """Types shown in admin Connectors Permission — independent of the live connectors list."""
-    from config.settings import IBM_AUTH_ENABLED, is_cloud_context
+    from config.settings import is_bucket_connector_deployed, is_cloud_context
 
-    if is_cloud_context() and not IBM_AUTH_ENABLED:
-        return tuple(t for t in CONNECTOR_TYPES if t not in _BUCKET_CONNECTOR_TYPES)
-    return CONNECTOR_TYPES
+    types: tuple[str, ...] = CONNECTOR_TYPES
+    if not is_bucket_connector_deployed():
+        types = tuple(t for t in types if t not in _BUCKET_CONNECTOR_TYPES)
+    if is_cloud_context():
+        types = tuple(t for t in types if t != "onedrive")
+    return types
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:
@@ -63,21 +77,46 @@ async def is_connector_allowed_for_request(
     session: AsyncSession,
     connector_type: str,
 ) -> bool:
+    if not is_connector_listed_in_deployment(connector_type):
+        return False
     if not is_connector_access_policy_enforced():
         return True
     return await is_connector_allowed(session, connector_type)
+
+
+def filter_connectors_for_deployment(
+    connector_metadata: dict[str, dict],
+) -> dict[str, dict]:
+    """Drop connector types excluded by deployment rules."""
+    return {
+        connector_type: meta
+        for connector_type, meta in connector_metadata.items()
+        if is_connector_listed_in_deployment(connector_type)
+    }
 
 
 def filter_connectors_for_user(
     connector_metadata: dict[str, dict],
     access_map: dict[str, bool],
 ) -> dict[str, dict]:
-    """Apply workspace policy to the connector list for every role."""
+    """Apply workspace admin policy to the connector list."""
     return {
         connector_type: meta
         for connector_type, meta in connector_metadata.items()
         if access_map.get(connector_type, True)
     }
+
+
+async def filter_connectors_for_list(
+    session: AsyncSession,
+    connector_metadata: dict[str, dict],
+) -> dict[str, dict]:
+    """Deployment rules plus workspace policy when enforced (used by GET /api/connectors)."""
+    filtered = filter_connectors_for_deployment(connector_metadata)
+    if not is_connector_access_policy_enforced():
+        return filtered
+    access_map = await get_access_map(session)
+    return filter_connectors_for_user(filtered, access_map)
 
 
 async def list_access_for_admin(

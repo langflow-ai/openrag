@@ -1,4 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  bucketConnectorsConfiguredQueryFilter,
+  connectorsQueryFilter,
+} from "@/app/api/queries/useGetConnectorsQuery";
 
 export interface IBMCOSConfigurePayload {
   auth_mode: "iam" | "hmac";
@@ -33,8 +37,9 @@ export function useIBMCOSConfigureMutation() {
   return useMutation({
     mutationFn: configureIBMCOS,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["connectors"] });
+      queryClient.invalidateQueries(connectorsQueryFilter);
       queryClient.invalidateQueries({ queryKey: ["ibm-cos-defaults"] });
+      queryClient.invalidateQueries(bucketConnectorsConfiguredQueryFilter);
     },
   });
 }
