@@ -169,8 +169,8 @@ async def test_search_knowledge_filters_malformed_query_data_fails_silently(monk
 
     assert result["success"] is True
     assert len(result["filters"]) == 2
-    for knowledge_filter in result["filters"]:
-        assert "active_source_count" not in knowledge_filter
+    assert "active_source_count" not in result["filters"][0]  # malformed filter
+    assert result["filters"][1]["active_source_count"] == 1  # valid filter
 
 
 @pytest.mark.asyncio
