@@ -266,6 +266,9 @@ export const useGetConnectorAccessQuery = (
     "queryKey" | "queryFn"
   >,
 ) => {
+  const isCloudBrand = useIsCloudBrand();
+  const { isIbmAuthMode } = useAuth();
+
   async function fetchConnectorAccess(): Promise<ConnectorAccessItem[]> {
     const response = await fetch("/api/connectors/user-access");
     if (!response.ok) {
@@ -274,11 +277,15 @@ export const useGetConnectorAccessQuery = (
       );
     }
     const data = await response.json();
-    return Array.isArray(data.connectors) ? data.connectors : [];
+    const connectors = Array.isArray(data.connectors) ? data.connectors : [];
+    const deploymentCtx = { isCloudBrand, isIbmAuthMode };
+    return connectors.filter((c: ConnectorAccessItem) =>
+      isConnectorTypeVisible(c.type, deploymentCtx),
+    );
   }
 
   return useQuery({
-    queryKey: CONNECTOR_USER_ACCESS_KEY,
+    queryKey: [...CONNECTOR_USER_ACCESS_KEY, isCloudBrand, isIbmAuthMode],
     queryFn: fetchConnectorAccess,
     refetchOnWindowFocus: false,
     ...options,
