@@ -260,6 +260,22 @@ export interface ConnectorAccessItem {
 
 export const CONNECTOR_USER_ACCESS_KEY = ["connector-user-access"] as const;
 
+export function connectorUserAccessQueryKey(
+  isCloudBrand: boolean,
+  isIbmAuthMode: boolean,
+) {
+  return [...CONNECTOR_USER_ACCESS_KEY, isCloudBrand, isIbmAuthMode] as const;
+}
+
+function filterConnectorAccessItems(
+  connectors: ConnectorAccessItem[],
+  deploymentCtx: { isCloudBrand: boolean; isIbmAuthMode: boolean },
+): ConnectorAccessItem[] {
+  return connectors.filter((c) =>
+    isConnectorTypeVisible(c.type, deploymentCtx),
+  );
+}
+
 export const useGetConnectorAccessQuery = (
   options?: Omit<
     UseQueryOptions<ConnectorAccessItem[]>,
@@ -279,13 +295,11 @@ export const useGetConnectorAccessQuery = (
     const data = await response.json();
     const connectors = Array.isArray(data.connectors) ? data.connectors : [];
     const deploymentCtx = { isCloudBrand, isIbmAuthMode };
-    return connectors.filter((c: ConnectorAccessItem) =>
-      isConnectorTypeVisible(c.type, deploymentCtx),
-    );
+    return filterConnectorAccessItems(connectors, deploymentCtx);
   }
 
   return useQuery({
-    queryKey: [...CONNECTOR_USER_ACCESS_KEY, isCloudBrand, isIbmAuthMode],
+    queryKey: connectorUserAccessQueryKey(isCloudBrand, isIbmAuthMode),
     queryFn: fetchConnectorAccess,
     refetchOnWindowFocus: false,
     ...options,
@@ -294,6 +308,13 @@ export const useGetConnectorAccessQuery = (
 
 export const useUpdateConnectorAccessMutation = () => {
   const queryClient = useQueryClient();
+  const isCloudBrand = useIsCloudBrand();
+  const { isIbmAuthMode } = useAuth();
+  const deploymentCtx = { isCloudBrand, isIbmAuthMode };
+  const accessQueryKey = connectorUserAccessQueryKey(
+    isCloudBrand,
+    isIbmAuthMode,
+  );
 
   return useMutation({
     mutationFn: async (
@@ -311,10 +332,11 @@ export const useUpdateConnectorAccessMutation = () => {
         );
       }
       const data = await response.json();
-      return Array.isArray(data.connectors) ? data.connectors : [];
+      const connectors = Array.isArray(data.connectors) ? data.connectors : [];
+      return filterConnectorAccessItems(connectors, deploymentCtx);
     },
     onSuccess: (connectors) => {
-      queryClient.setQueryData(CONNECTOR_USER_ACCESS_KEY, connectors);
+      queryClient.setQueryData(accessQueryKey, connectors);
       queryClient.invalidateQueries(connectorsQueryFilter);
       toast.success("Connectors permission saved");
     },
