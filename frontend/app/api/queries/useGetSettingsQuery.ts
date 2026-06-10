@@ -95,7 +95,7 @@ export const useGetSettingsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["settings"],
       queryFn: getSettings,
@@ -103,6 +103,4 @@ export const useGetSettingsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -244,7 +244,7 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
@@ -255,6 +255,4 @@ export const useGetSearchQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -51,7 +51,7 @@ export const useDoclingHealthQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["docling-health"],
       queryFn: checkDoclingHealth,
@@ -67,6 +67,4 @@ export const useDoclingHealthQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
