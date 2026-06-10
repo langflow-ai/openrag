@@ -24,12 +24,6 @@ export interface IngestOptions {
   pollInterval?: number;
   /** Maximum seconds to wait for completion. Default: 300. */
   timeout?: number;
-  /**
-   * If true, index the document without an owner so all users in the same
-   * OpenRAG instance can retrieve it. Defaults to false (private).
-   * COS ingestion only; temporary mechanism until OpenRAG-level ACLs land.
-   */
-  shared?: boolean;
 }
 
 export class DocumentsClient {
@@ -68,10 +62,6 @@ export class DocumentsClient {
       formData.append("file", options.file, options.filename);
     } else {
       throw new Error("Either filePath or file must be provided");
-    }
-
-    if (options.shared) {
-      formData.append("shared", "true");
     }
 
     const response = await this.client._request(
