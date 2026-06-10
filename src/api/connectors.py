@@ -678,7 +678,7 @@ async def connector_sync(
 
         if body.shared and connector_type != "ibm_cos":
             return JSONResponse(
-                {"detail": "shared flag is only supported for the ibm_cos connector"},
+                {"error": "shared flag is only supported for the ibm_cos connector"},
                 status_code=400,
             )
 
