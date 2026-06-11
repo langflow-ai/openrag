@@ -9,7 +9,8 @@ import {
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useBrand } from "@/contexts/brand-context";
+import { isSaasPolicyContext } from "@/lib/brand";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -18,8 +19,14 @@ import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
 
 export default function ConnectorCards() {
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
-  const isCloudBrand = useIsCloudBrand();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, cloudContext } =
+    useAuth();
+  const { brand } = useBrand();
+  const isSaasPolicy = isSaasPolicyContext({
+    isIbmAuthMode,
+    cloudContext,
+    brand,
+  });
   const router = useRouter();
   const [openDialog, setOpenDialog] = useState<string | null>(null);
 
@@ -43,16 +50,10 @@ export default function ConnectorCards() {
     return <Icon />;
   }, []);
 
-  const connectors = queryConnectors
-    .filter((c) => {
-      if (c.type === "ibm_cos" || c.type === "aws_s3") return isIbmAuthMode;
-      if (isCloudBrand && c.type === "onedrive") return false;
-      return true;
-    })
-    .map((c) => ({
-      ...c,
-      icon: getConnectorIcon(c.type),
-    })) as Connector[];
+  const connectors = queryConnectors.map((c) => ({
+    ...c,
+    icon: getConnectorIcon(c.type),
+  })) as Connector[];
 
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({
@@ -79,6 +80,13 @@ export default function ConnectorCards() {
   };
 
   if (!connectorsLoading && connectors.length === 0) {
+    if (isSaasPolicy) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          No connectors available or authorized for your organization.
+        </p>
+      );
+    }
     return null;
   }
 

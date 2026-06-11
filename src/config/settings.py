@@ -76,7 +76,21 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 # pointed at the router instead of the backend internal URL, so Langflow's
 # reachable surface narrows to that single endpoint.
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+
+
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas                 -> "true" (the platform requires the narrowed surface)
+#   * anything else        -> "false" (today's behaviour preserved)
+# An explicit OPENRAG_BACKEND_ROUTER_ENABLE value always wins.
+def _resolve_backend_router_enable_default() -> str:
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return "true" if is_run_mode_saas() else "false"
+
+
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
+    "OPENRAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
+).lower() in (
     "true",
     "1",
     "yes",
@@ -197,6 +211,28 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def is_dev_role_toggle_enabled() -> bool:
+    """Allow POST /users/me/dev-role for local RBAC UI testing.
+
+    Requires ``OPENRAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
+    """
+    raw = os.getenv("OPENRAG_DEV_ROLE_TOGGLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_connector_policy_enabled() -> bool:
+    """Local OSS dev: enforce workspace connector policy (pair with IBM theme dev UI)."""
+    raw = os.getenv("OPENRAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_cloud_context() -> bool:
+    """True when connector policy and SaaS settings guards should apply."""
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return IBM_AUTH_ENABLED or is_run_mode_saas() or is_dev_connector_policy_enabled()
+
+
 def get_default_user_role() -> str:
     """Built-in role assigned to new users when JWT role sync is off."""
     return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
@@ -282,10 +318,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
 # An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
 # operator can force-enable the setup in SaaS for a one-off bootstrap.
 def _resolve_skip_os_security_default() -> str:
-    run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
-    if run_mode in ("saas", "on_prem"):
-        return "true"
-    return "false"
+    from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
+
+    return "true" if is_run_mode_saas() or is_run_mode_on_prem() else "false"
 
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
@@ -1368,6 +1403,54 @@ class AppClients:
     def create_user_opensearch_client(self, jwt_token: str):
         """Create OpenSearch client with user's auth token."""
         return self.create_opensearch_client_from_jwt(jwt_token)
+
+    def create_index_admin_opensearch_client(self, user_jwt_token: str = None):
+        """Create the OpenSearch client used for index administration
+        (init_index: index creation, mapping/settings updates), by run mode:
+
+          saas    -> platform service token — the end-user JWT identity can
+                     search/write documents but lacks index-admin privileges on
+                     managed OpenSearch, so admin calls (e.g. HEAD /<index>)
+                     fail. Falls back to the user's token for legacy
+                     deployments without OPENRAG_SERVICE_TOKEN.
+          on_prem -> OpenSearch basic auth
+          oss     -> OpenSearch basic auth
+
+        Returns None when no suitable credentials exist; callers should then
+        use the global writer client (clients.opensearch).
+        """
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+            is_run_mode_saas,
+        )
+
+        if is_run_mode_saas():
+            service_token = get_openrag_service_token()
+            if service_token:
+                logger.info(
+                    "Index admin OpenSearch client: saas mode, using platform service token"
+                )
+                return self.create_opensearch_client_from_jwt(service_token)
+            if user_jwt_token:
+                logger.warning(
+                    "Index admin OpenSearch client: saas mode without "
+                    "OPENRAG_SERVICE_TOKEN; falling back to the requesting "
+                    "user's token (backward-compatibility path)"
+                )
+                return self.create_opensearch_client_from_jwt(user_jwt_token)
+            logger.info(
+                "Index admin OpenSearch client: saas mode with no service or "
+                "user token; using the global writer client"
+            )
+            return None
+        if is_run_mode_on_prem() or is_run_mode_oss():
+            # Build a fresh basic-auth client so credentials updated after
+            # startup (e.g. during onboarding) take effect immediately.
+            return self.create_basic_opensearch_client(
+                get_opensearch_username(), get_opensearch_password()
+            )
+        return None
 
 
 # Component template paths — derived from the centralized flows directory

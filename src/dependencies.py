@@ -268,6 +268,10 @@ async def _attach_db_user_id(request: Request, user: User | None) -> User | None
         request.state.user = None
         return None
     jwt_roles = getattr(request.state, "jwt_roles", None)
+    from config.settings import is_dev_role_toggle_enabled
+
+    if is_dev_role_toggle_enabled():
+        jwt_roles = None
     db_user_id = await _resolve_db_user_id(user, jwt_roles=jwt_roles)
     user_with_db_id = dataclasses.replace(user, db_user_id=db_user_id)
     request.state.db_user_id = db_user_id

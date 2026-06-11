@@ -3,20 +3,61 @@ from typing import Any
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
     get_current_user,
+    get_db_session,
     get_session_manager,
     require_permission,
+)
+from services.connector_access_service import (
+    CONNECTOR_TYPES,
+    filter_connectors_for_user,
+    get_access_map,
+    is_connector_access_policy_enforced,
+    is_connector_allowed_for_request,
+    list_access_for_admin,
+    set_connector_access_bulk,
 )
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+async def _connector_access_denied(
+    request: Request,
+    session: AsyncSession,
+    connector_type: str,
+) -> JSONResponse | None:
+    """Return 403 when workspace policy blocks this connector type."""
+    if connector_type not in CONNECTOR_TYPES:
+        return None
+    if not is_connector_access_policy_enforced():
+        return None
+    if await is_connector_allowed_for_request(session, connector_type):
+        return None
+    return JSONResponse(
+        {"error": f"Connector not available: {connector_type}"},
+        status_code=403,
+    )
+
+
+async def _allowed_connector_types_for_request(
+    request: Request,
+    session: AsyncSession,
+    connector_types: list[str],
+) -> list[str]:
+    """Drop connector types blocked by workspace policy (sync-all style endpoints)."""
+    if not is_connector_access_policy_enforced():
+        return connector_types
+    access_map = await get_access_map(session)
+    return [t for t in connector_types if access_map.get(t, True)]
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -355,11 +396,16 @@ class ConnectorCheckDuplicatesBody(BaseModel):
 async def connector_check_duplicates(
     connector_type: str,
     body: ConnectorCheckDuplicatesBody,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Check if any of the selected files or folders contain files that already exist in the index"""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     selected_files_raw = body.selected_files
     if not selected_files_raw:
         return JSONResponse({"duplicate_names": []})
@@ -498,28 +544,110 @@ async def connector_check_duplicates(
 
 
 async def list_connectors(
+    request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """List available connector types with metadata"""
     try:
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
         )
+        if is_connector_access_policy_enforced():
+            access_map = await get_access_map(session)
+            connector_types = filter_connectors_for_user(connector_types, access_map)
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
         logger.error("[CONNECTOR] Error listing connectors", error=str(e))
         return JSONResponse({"connectors": []})
 
 
+class UpdateConnectorAccessBody(BaseModel):
+    access: dict[str, bool]
+
+
+def _connector_access_client_error(exc: ValueError) -> str:
+    """Safe client message for set_connector_access_bulk validation failures."""
+    detail = str(exc)
+    if detail.startswith("Unknown connector type:"):
+        return "Unknown connector type"
+    return "Invalid request data"
+
+
+async def get_connector_workspace_policy(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Read-only stored workspace connector overrides for Connectors tab filtering.
+
+    Returns only explicit admin saves (missing types default to allowed server-side
+    but still follow deployment visibility rules on the client).
+    """
+    from db.repositories import WorkspaceConfigRepo
+    from services.connector_access_service import CONNECTOR_ACCESS_SECTION
+
+    stored = await WorkspaceConfigRepo(session).get_section(CONNECTOR_ACCESS_SECTION) or {}
+    return JSONResponse({"access": stored})
+
+
+async def get_connector_user_access(
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List connector types and whether they are enabled for this workspace."""
+    metadata = connector_service.connection_manager.get_available_connector_types(
+        user_id=user.user_id
+    )
+    connectors = await list_access_for_admin(session, metadata)
+    return JSONResponse({"connectors": connectors})
+
+
+async def update_connector_user_access(
+    body: UpdateConnectorAccessBody,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+    connector_service=Depends(get_connector_service),
+):
+    """Save workspace connector availability policy."""
+    try:
+        await set_connector_access_bulk(
+            session,
+            body.access,
+            user.db_user_id or user.user_id,
+        )
+        await session.commit()
+    except ValueError as e:
+        logger.error(
+            "[CONNECTOR] Invalid connector access update",
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": _connector_access_client_error(e)},
+            status_code=400,
+        )
+
+    metadata = connector_service.connection_manager.get_available_connector_types(
+        user_id=user.user_id
+    )
+    connectors = await list_access_for_admin(session, metadata)
+    return JSONResponse({"connectors": connectors})
+
+
 async def connector_sync(
     connector_type: str,
     body: ConnectorSyncBody,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Sync files from all active connections of a connector type"""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     max_files = body.max_files
     selected_files_raw = body.selected_files
     selected_files = None
@@ -764,10 +892,14 @@ async def connector_sync(
 
 async def connector_status(
     connector_type: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get connector status for authenticated user"""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
 
     # Get connections for this connector type and user
     connections = await connector_service.connection_manager.list_connections(
@@ -862,8 +994,12 @@ async def connector_webhook(
     request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Handle webhook notifications from any connector type"""
+
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
 
     # Handle webhook validation (connector-specific)
     temp_config = {"token_file": "temp.json"}
@@ -1015,10 +1151,14 @@ async def connector_webhook(
 
 async def connector_disconnect(
     connector_type: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("connectors:delete:own")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Disconnect a connector by deleting its connection"""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
 
     try:
         # Get connections for this connector type and user
@@ -1094,9 +1234,11 @@ async def connector_disconnect(
 
 
 async def sync_all_connectors(
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
     Sync files from all active cloud connector connections.
@@ -1107,16 +1249,16 @@ async def sync_all_connectors(
         )
         jwt_token = user.jwt_token
 
-        # Cloud connector types to sync
-        cloud_connector_types = _cloud_connector_types()
-
         all_task_ids = []
         synced_connectors = []
         skipped_connectors = []
         deleted_only_connectors = []
         errors = []
 
-        for connector_type in cloud_connector_types:
+        connector_types = await _allowed_connector_types_for_request(
+            request, session, _cloud_connector_types()
+        )
+        for connector_type in connector_types:
             try:
                 # First, get existing file IDs/filenames from OpenSearch for this connector type
                 (
@@ -1346,14 +1488,19 @@ async def _preview_orphans_for_connector_type(
 
 async def connector_sync_preview(
     connector_type: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of syncing a connector type without performing any
     deletion or ingest. Returns the list of orphan files (present in OpenSearch
     but no longer at the source) by filename, plus the total synced count.
     """
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     try:
         orphans, synced_count = await _preview_orphans_for_connector_type(
             connector_type=connector_type,
@@ -1377,9 +1524,11 @@ async def connector_sync_preview(
 
 
 async def connectors_sync_all_preview(
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of sync-all-connectors across every cloud connector
     type. Returns orphan filenames grouped by connector_type plus a per-type
@@ -1390,7 +1539,10 @@ async def connectors_sync_all_preview(
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
 
-        for connector_type in _cloud_connector_types():
+        connector_types = await _allowed_connector_types_for_request(
+            request, session, _cloud_connector_types()
+        )
+        for connector_type in connector_types:
             try:
                 orphans, synced_count = await _preview_orphans_for_connector_type(
                     connector_type=connector_type,
@@ -1434,8 +1586,12 @@ async def connector_token(
     request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get access token for connector API calls (e.g., Pickers)."""
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     url_connector_type = connector_type
 
     try:
@@ -1550,9 +1706,11 @@ async def connector_token(
 async def browse_connection_files(
     connector_type: str,
     connection_id: str,
+    request: Request,
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     bucket: str | None = None,
     search: str | None = None,
     page_token: str | None = None,
@@ -1564,6 +1722,9 @@ async def browse_connection_files(
     Lists files from the remote source (e.g., S3 bucket) and marks each
     as ingested or not by cross-referencing with OpenSearch.
     """
+    if denied := await _connector_access_denied(request, session, connector_type):
+        return denied
+
     try:
         connector = await connector_service.get_connector(connection_id)
         if not connector:
