@@ -8,6 +8,7 @@ not just that the parameter is accepted.
 import uuid
 
 from harness import Check, Context
+
 from checks.common import make_doc, register_doc_cleanup
 
 
@@ -38,9 +39,7 @@ async def crud(ctx: Context) -> None:
     assert fetched.name == name
 
     updated_desc = "Updated description from SDK smoke tests"
-    ok = await ctx.client.knowledge_filters.update(
-        filter_id, {"description": updated_desc}
-    )
+    ok = await ctx.client.knowledge_filters.update(filter_id, {"description": updated_desc})
     assert ok is True, "update returned False"
     refetched = await ctx.client.knowledge_filters.get(filter_id)
     assert refetched.description == updated_desc, "updated description not persisted"

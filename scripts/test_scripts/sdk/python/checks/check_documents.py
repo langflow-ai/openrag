@@ -4,6 +4,7 @@ import io
 import uuid
 
 from harness import Check, Context, Skip
+
 from checks.common import (
     make_doc,
     register_doc_cleanup,
@@ -13,9 +14,7 @@ from checks.common import (
 
 async def ingest_wait(ctx: Context) -> None:
     """Ingest the shared document used by the search/chat checks downstream."""
-    path, token = make_doc(
-        ctx, "shared", "The flamingo named Zephyr lives on planet Xylox-7."
-    )
+    path, token = make_doc(ctx, "shared", "The flamingo named Zephyr lives on planet Xylox-7.")
     register_doc_cleanup(ctx, path.name)
 
     result = await ctx.client.documents.ingest(file_path=str(path))
@@ -49,9 +48,7 @@ async def ingest_file_object(ctx: Context) -> None:
     content = f"# File Object Check\n\nToken: {token}\n".encode()
     register_doc_cleanup(ctx, filename)
 
-    result = await ctx.client.documents.ingest(
-        file=io.BytesIO(content), filename=filename
-    )
+    result = await ctx.client.documents.ingest(file=io.BytesIO(content), filename=filename)
     assert result.status is not None, "file-object ingest returned no status"
 
 

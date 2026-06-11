@@ -23,12 +23,10 @@ import re
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 import httpx
-from openrag_sdk import OpenRAGClient
-
 from checks import ALL_SUITES, SUITE_NAMES
 from harness import (
     FAIL,
@@ -42,6 +40,7 @@ from harness import (
     summarize,
     write_reports,
 )
+from openrag_sdk import OpenRAGClient
 
 HERE = Path(__file__).resolve().parent
 
@@ -114,8 +113,7 @@ def parse_config(argv: list[str]) -> Config:
         unknown = [s for s in only if s not in SUITE_NAMES]
         if unknown:
             parser.error(
-                f"unknown suite(s): {', '.join(unknown)} "
-                f"(choices: {', '.join(SUITE_NAMES)})"
+                f"unknown suite(s): {', '.join(unknown)} (choices: {', '.join(SUITE_NAMES)})"
             )
 
     return Config(
@@ -166,12 +164,10 @@ async def amain(cfg: Config) -> int:
             print("Continuing; each check will report its own result.")
 
         suites = [
-            (name, checks)
-            for name, checks in ALL_SUITES
-            if cfg.only is None or name in cfg.only
+            (name, checks) for name, checks in ALL_SUITES if cfg.only is None or name in cfg.only
         ]
 
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         start = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="openrag-sdk-smoke-") as tmpdir:
             ctx = Context(client=client, cfg=cfg, shared={"tmpdir": tmpdir})
@@ -217,7 +213,7 @@ class _TeeStream:
 def main() -> None:
     cfg = parse_config(sys.argv[1:])
     cfg.report_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_path = cfg.report_dir / f"run_{stamp}.log"
 
     with log_path.open("w") as log:

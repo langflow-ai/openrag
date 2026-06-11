@@ -3,9 +3,9 @@
 import io
 import uuid
 
+from harness import Check, Context, Skip
 from openrag_sdk.exceptions import NotFoundError, OpenRAGError
 
-from harness import Check, Context, Skip
 from checks.common import supports_delete_by_filter_id
 
 
@@ -58,9 +58,7 @@ async def delete_with_filename_and_filter_id(ctx: Context) -> None:
 
 async def bogus_filter_id_in_search(ctx: Context) -> None:
     try:
-        await ctx.client.search.query(
-            "anything", filter_id=f"does-not-exist-{uuid.uuid4().hex}"
-        )
+        await ctx.client.search.query("anything", filter_id=f"does-not-exist-{uuid.uuid4().hex}")
     except OpenRAGError:
         return
     raise AssertionError("search with a bogus filter_id did not raise OpenRAGError")
@@ -68,9 +66,7 @@ async def bogus_filter_id_in_search(ctx: Context) -> None:
 
 async def bogus_filter_id_in_chat(ctx: Context) -> None:
     try:
-        await ctx.client.chat.create(
-            message="hi", filter_id=f"does-not-exist-{uuid.uuid4().hex}"
-        )
+        await ctx.client.chat.create(message="hi", filter_id=f"does-not-exist-{uuid.uuid4().hex}")
     except OpenRAGError:
         return
     raise AssertionError("chat with a bogus filter_id did not raise OpenRAGError")
