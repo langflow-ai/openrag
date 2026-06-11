@@ -6,9 +6,7 @@ from pathlib import Path
 import sqlalchemy as sa
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-MIGRATION_PATH = (
-    ROOT / "alembic" / "versions" / "0007_add_knowledge_delete_anonymous.py"
-)
+MIGRATION_PATH = ROOT / "alembic" / "versions" / "0007_add_knowledge_delete_anonymous.py"
 
 
 def _load_migration():
