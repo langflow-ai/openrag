@@ -80,6 +80,7 @@ export interface SearchResult {
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
 export { EMPTY_SEARCH_RESULT };
 
 export const useGetSearchQuery = (
