@@ -22,7 +22,8 @@ from session_manager import User  # noqa: E402
 
 
 @pytest_asyncio.fixture
-async def setup():
+async def setup(monkeypatch):
+    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -59,6 +60,28 @@ async def test_admin_has_all_perms(setup):
     assert "config:write" in perms
     assert "users:list" in perms
     assert "agent:prompt:global" in perms
+    assert "connectors:manage:access" in perms
+
+
+@pytest.mark.asyncio
+async def test_connectors_manage_access_is_admin_only(setup):
+    SessionLocal, _, user_id = setup
+    rbac = RBACService(SessionLocal)
+
+    # Default "user" role lacks it.
+    user_perms = await rbac.get_user_permissions(user_id)
+    assert "connectors:manage:access" not in user_perms
+
+    # developer and viewer lack it too (checked via role override).
+    async with SessionLocal() as s:
+        role_repo = RoleRepo(s)
+        developer_role = await role_repo.get_by_name("developer")
+        viewer_role = await role_repo.get_by_name("viewer")
+
+    dev_perms = await rbac.get_user_permissions(user_id, role_override=[developer_role.id])
+    viewer_perms = await rbac.get_user_permissions(user_id, role_override=[viewer_role.id])
+    assert "connectors:manage:access" not in dev_perms
+    assert "connectors:manage:access" not in viewer_perms
 
 
 @pytest.mark.asyncio

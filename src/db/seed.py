@@ -1,8 +1,13 @@
 """Idempotent seed for built-in roles and permissions.
 
-The full permission catalog and the role-permission default mapping live here
-so adding a permission or a role is a one-file change followed by an Alembic
-data migration. See plan §1.2 / §1.3 / §10.
+The full permission catalog and the role-permission default mapping live here.
+To add a permission, role, or default role grant: edit this file only —
+``seed_roles_and_permissions`` runs on application startup (after Alembic)
+and backfills missing rows on existing installs.
+
+To revoke a permission from a role on existing installs, add an explicit
+Alembic data migration (see ``0006_revoke_provider_override_nonadmin``);
+the seeder is additive-only and never removes rows.
 
 Built-in role IDs are stable, deterministic strings so cross-environment
 references (e.g. tests, docs) do not depend on UUIDs.
@@ -46,6 +51,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("connectors", "delete:own", "Delete own connectors"),
     ("connectors", "delete:any", "Delete any connector"),
     ("connectors", "use", "Use connector OAuth and browse"),
+    ("connectors", "manage:access", "Manage workspace connector availability"),
     # Knowledge
     ("knowledge", "upload", "Upload documents"),
     ("knowledge", "delete:own", "Delete own documents"),
@@ -174,8 +180,8 @@ ROLE_PERMISSION_MAP: dict[str, set[str]] = {
 async def seed_roles_and_permissions(session: AsyncSession) -> None:
     """Insert any missing roles/permissions/role_permissions. Safe to call repeatedly.
 
-    Used by the second Alembic data migration AND from tests against an
-    in-memory SQLite. Does not commit — caller commits.
+    Alembic ``0002`` bootstraps greenfield installs; startup and tests call
+    this for additive catalog sync. Does not commit — caller commits.
     """
 
     # Permissions

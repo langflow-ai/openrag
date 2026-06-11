@@ -387,6 +387,10 @@ type DoclingSpec struct {
 	// +optional
 	// +kubebuilder:default="http"
 	Scheme string `json:"scheme,omitempty"`
+
+	// +optional
+	// +kubebuilder:default=false
+	VerifySsl *bool `json:"verifySsl,omitempty"`
 }
 
 // DoclingServeSpec configures the Docling serve component (API server).
