@@ -1,8 +1,7 @@
 """Checks for client.models — list models per provider."""
 
-from openrag_sdk.exceptions import OpenRAGError
-
 from harness import Check, Context, Skip
+from openrag_sdk.exceptions import OpenRAGError
 
 PROVIDERS = ["openai", "anthropic", "ollama", "watsonx"]
 

@@ -18,8 +18,7 @@ async def query_basic(ctx: Context) -> None:
         await asyncio.sleep(_RETRY_DELAY_S)
     else:
         raise Skip(
-            f"ingested document not findable after {_RETRIES} retries "
-            "(index refresh latency?)"
+            f"ingested document not findable after {_RETRIES} retries (index refresh latency?)"
         )
 
     for result in results.results:
@@ -39,9 +38,7 @@ async def query_score_threshold(ctx: Context) -> None:
 
 
 async def query_no_results(ctx: Context) -> None:
-    results = await ctx.client.search.query(
-        "zzz_xyzzy_nonexistent_content_abc123_qwerty_999"
-    )
+    results = await ctx.client.search.query("zzz_xyzzy_nonexistent_content_abc123_qwerty_999")
     assert isinstance(results.results, list), "nonsense query did not return a list"
 
 

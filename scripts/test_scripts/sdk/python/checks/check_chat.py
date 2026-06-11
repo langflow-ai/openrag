@@ -39,9 +39,7 @@ async def create_stream(ctx: Context) -> None:
 
 
 async def stream_context_manager(ctx: Context) -> None:
-    async with ctx.client.chat.stream(
-        message="Say 'hello' and nothing else."
-    ) as stream:
+    async with ctx.client.chat.stream(message="Say 'hello' and nothing else.") as stream:
         collected = ""
         async for text in stream.text_stream:
             collected += text
@@ -60,17 +58,13 @@ async def multi_turn(ctx: Context) -> None:
         message="What number did I ask you to remember?", chat_id=r1.chat_id
     )
     assert r2.response, "second turn returned an empty response"
-    assert r2.chat_id == r1.chat_id, (
-        f"chat_id changed across turns: {r1.chat_id} -> {r2.chat_id}"
-    )
+    assert r2.chat_id == r1.chat_id, f"chat_id changed across turns: {r1.chat_id} -> {r2.chat_id}"
 
 
 async def list_conversations(ctx: Context) -> None:
     result = await ctx.client.chat.list()
     assert isinstance(result.conversations, list), "conversations is not a list"
-    assert len(result.conversations) >= 1, (
-        "no conversations listed despite earlier chat checks"
-    )
+    assert len(result.conversations) >= 1, "no conversations listed despite earlier chat checks"
 
 
 async def get_conversation(ctx: Context) -> None:

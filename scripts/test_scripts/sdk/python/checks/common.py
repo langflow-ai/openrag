@@ -22,11 +22,7 @@ def make_doc(ctx: Context, label: str, body: str) -> tuple[Path, str]:
     """
     token = uuid.uuid4().hex
     path = Path(ctx.shared["tmpdir"]) / f"sdk_smoke_{label}_{token[:8]}.md"
-    path.write_text(
-        f"# SDK Smoke Test ({label})\n\n"
-        f"Token: {token}\n\n"
-        f"{body}\n"
-    )
+    path.write_text(f"# SDK Smoke Test ({label})\n\nToken: {token}\n\n{body}\n")
     return path, token
 
 

@@ -12,10 +12,11 @@ import json
 import sys
 import time
 import traceback
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 PASS = "pass"
 FAIL = "fail"
@@ -39,7 +40,7 @@ class Config:
 @dataclass
 class Check:
     name: str  # e.g. "documents.ingest_wait"
-    fn: Callable[["Context"], Awaitable[None]]
+    fn: Callable[[Context], Awaitable[None]]
     requires: list[str] = field(default_factory=list)
 
 
@@ -82,9 +83,8 @@ def _status_label(status: str) -> str:
 
 # --- runner ------------------------------------------------------------------
 
-async def run_suites(
-    suites: list[tuple[str, list[Check]]], ctx: Context
-) -> list[CheckResult]:
+
+async def run_suites(suites: list[tuple[str, list[Check]]], ctx: Context) -> list[CheckResult]:
     """Run all checks sequentially; always run registered cleanups at the end."""
     results: list[CheckResult] = []
     passed: set[str] = set()
@@ -95,9 +95,7 @@ async def run_suites(
             for check in checks:
                 missing = [r for r in check.requires if r not in passed]
                 if missing:
-                    result = CheckResult(
-                        check.name, SKIP, 0.0, f"requires {', '.join(missing)}"
-                    )
+                    result = CheckResult(check.name, SKIP, 0.0, f"requires {', '.join(missing)}")
                     results.append(result)
                     _print_result(result)
                     continue
@@ -108,9 +106,7 @@ async def run_suites(
                     result = CheckResult(check.name, PASS, time.perf_counter() - start)
                     passed.add(check.name)
                 except Skip as e:
-                    result = CheckResult(
-                        check.name, SKIP, time.perf_counter() - start, str(e)
-                    )
+                    result = CheckResult(check.name, SKIP, time.perf_counter() - start, str(e))
                 except Exception:
                     result = CheckResult(
                         check.name,
@@ -148,6 +144,7 @@ async def _run_cleanup(ctx: Context) -> None:
 
 # --- reporting ---------------------------------------------------------------
 
+
 def mask_api_key(key: str) -> str:
     return "****" + key[-4:] if len(key) >= 8 else "****"
 
@@ -184,8 +181,8 @@ def write_reports(
     total_duration_s: float,
 ) -> list[Path]:
     totals = summarize(results)
-    timestamp = started_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    stamp = started_at.astimezone(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = started_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = started_at.astimezone(UTC).strftime("%Y%m%d_%H%M%S")
 
     payload = {
         "timestamp": timestamp,
@@ -224,9 +221,7 @@ def write_reports(
         detail = ""
         if r.status != PASS and r.error:
             detail = r.error.strip().splitlines()[-1][:100].replace("|", "\\|")
-        md_lines.append(
-            f"| {r.name} | {r.status.upper()} | {r.duration_s:.1f}s | {detail} |"
-        )
+        md_lines.append(f"| {r.name} | {r.status.upper()} | {r.duration_s:.1f}s | {detail} |")
 
     failures = [r for r in results if r.status == FAIL]
     if failures:
