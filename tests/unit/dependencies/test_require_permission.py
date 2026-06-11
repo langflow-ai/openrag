@@ -116,9 +116,7 @@ async def app(monkeypatch):
         s.add(delete_any_role)
         await s.flush()
         delete_any_permission = (
-            await s.execute(
-                select(Permission).where(Permission.name == "knowledge:delete:any")
-            )
+            await s.execute(select(Permission).where(Permission.name == "knowledge:delete:any"))
         ).scalar_one()
         s.add(
             RolePermission(
