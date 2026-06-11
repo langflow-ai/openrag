@@ -95,7 +95,9 @@ def test_build_chunk_document_omits_owner_key_when_none():
 def test_build_chunk_document_shared_has_anonymous_metadata():
     """Shared docs: owner key absent for DLS, owner_name/email set to anonymous values."""
     writer = DocumentIndexWriter()
-    context = _make_context(owner=None, owner_name="Anonymous User", owner_email="anonymous@localhost")
+    context = _make_context(
+        owner=None, owner_name="Anonymous User", owner_email="anonymous@localhost"
+    )
     chunk = _make_chunk()
     doc = writer._build_chunk_document(
         context=context, chunk=chunk, embedding_field="vector", indexed_time="2026-01-01T00:00:00"
