@@ -41,7 +41,7 @@ func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *o
 			message = "All components scaled to 0 replicas"
 		} else {
 			// Desired state is scaled down but backend condition is not true, treat as scaled down but not ready
-			message = "All components are set to be scaled to 0 replicas but waiting to scale down to be complete"
+			message = "Scaling down all components to 0 replicas (in progress)"
 		}
 	} else if backendConditionStatus == metav1.ConditionTrue {
 		phase = phaseRunning
