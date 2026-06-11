@@ -309,7 +309,11 @@ async def update_settings(
         # Provider changes are admin-only. The outer gate only requires
         # config:write; require providers:write specifically when any
         # provider field is being touched (defends custom roles too).
-        if (should_validate or vlm_update) and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+        if (
+            (should_validate or vlm_update)
+            and is_rbac_enforced()
+            and hasattr(rbac, "has_permission")
+        ):
             uid = user.db_user_id or user.user_id
             if not await rbac.has_permission(uid, "providers:write"):
                 await rbac.audit_denied(uid, "providers:write")
@@ -602,15 +606,14 @@ async def update_settings(
         # from the providers config; these fields carry no secrets and are
         # intentionally NOT synced into the Langflow flow JSON.
         if body.vlm_enabled:
-            effective_vlm_provider = (
-                body.vlm_provider or current_config.knowledge.vlm_provider
-            )
+            effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
             vlm_provider_config = current_config.providers.get_provider_config(
                 effective_vlm_provider
             )
-            vlm_provider_missing = not getattr(
-                vlm_provider_config, "api_key", ""
-            ) or not vlm_provider_config.configured
+            vlm_provider_missing = (
+                not getattr(vlm_provider_config, "api_key", "")
+                or not vlm_provider_config.configured
+            )
             if effective_vlm_provider == "watsonx":
                 vlm_provider_missing = (
                     vlm_provider_missing

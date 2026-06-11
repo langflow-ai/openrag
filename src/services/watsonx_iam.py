@@ -55,8 +55,7 @@ async def get_iam_token(api_key: str, http_timeout: float = 15.0) -> str:
 
         if response.status_code != 200:
             raise WatsonxIamError(
-                f"IBM IAM token exchange failed: HTTP {response.status_code} "
-                f"{response.text[:200]}"
+                f"IBM IAM token exchange failed: HTTP {response.status_code} {response.text[:200]}"
             )
 
         data = response.json()
