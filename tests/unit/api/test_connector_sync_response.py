@@ -78,9 +78,11 @@ async def test_connector_sync_reports_one_connection_with_multiple_active(monkey
     response = await connectors_api.connector_sync(
         "google_drive",
         connectors_api.ConnectorSyncBody(),
+        request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
         user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
     )
 
     assert response.status_code == 201
