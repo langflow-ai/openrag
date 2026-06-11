@@ -76,7 +76,21 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 # pointed at the router instead of the backend internal URL, so Langflow's
 # reachable surface narrows to that single endpoint.
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+
+
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas                 -> "true" (the platform requires the narrowed surface)
+#   * anything else        -> "false" (today's behaviour preserved)
+# An explicit OPENRAG_BACKEND_ROUTER_ENABLE value always wins.
+def _resolve_backend_router_enable_default() -> str:
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return "true" if is_run_mode_saas() else "false"
+
+
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
+    "OPENRAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
+).lower() in (
     "true",
     "1",
     "yes",
@@ -304,10 +318,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
 # An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
 # operator can force-enable the setup in SaaS for a one-off bootstrap.
 def _resolve_skip_os_security_default() -> str:
-    run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
-    if run_mode in ("saas", "on_prem"):
-        return "true"
-    return "false"
+    from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
+
+    return "true" if is_run_mode_saas() or is_run_mode_on_prem() else "false"
 
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(

@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from config.settings import (
+    DOCLING_SERVE_VERIFY_SSL,
     LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
@@ -434,6 +435,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
             if docling_task_id
             else "",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
 
         # Serialize ACL lists as JSON strings for Langflow global vars
@@ -608,6 +610,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-FILENAME": str(docs_url),
             "X-Langflow-Global-Var-MIMETYPE": "text/html",
             "X-Langflow-Global-Var-FILESIZE": "0",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
         ingest_token, ingest_run_id = self._configure_ingest_callback(
             document_id=resolved_document_id,
