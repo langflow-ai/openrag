@@ -56,6 +56,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("knowledge", "upload", "Upload documents"),
     ("knowledge", "delete:own", "Delete own documents"),
     ("knowledge", "delete:any", "Delete any document"),
+    ("knowledge", "delete:anonymous", "Delete anonymous shared documents"),
     ("knowledge", "read:own", "Read own documents"),
     ("knowledge", "read:all", "Read all documents"),
     ("kf", "create", "Create knowledge filters"),

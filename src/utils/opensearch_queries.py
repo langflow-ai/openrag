@@ -45,6 +45,18 @@ def build_owned_filename_query(filename: str, owner: str) -> dict:
     }
 
 
+def build_anonymous_filename_query(filename: str) -> dict:
+    """Build a query for ownerless chunks with a specific filename."""
+    return {
+        "bool": {
+            "filter": [
+                build_filename_query(filename),
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ]
+        }
+    }
+
+
 def build_replace_filename_query(filename: str, owner: str) -> dict:
     """Build a delete-scope query for replace_duplicates that covers both private
     and shared (ownerless) chunks with this filename.
