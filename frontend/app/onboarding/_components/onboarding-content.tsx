@@ -204,7 +204,7 @@ export function OnboardingContent({
   const displayMessage = streamingMessage || assistantMessage;
 
   useEffect(() => {
-    if (currentStep === 2 && !isLoading && !!displayMessage) {
+    if (currentStep === 2 && !isLoading && displayMessage) {
       handleStepComplete();
     }
   }, [isLoading, displayMessage, handleStepComplete, currentStep]);
