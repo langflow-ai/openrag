@@ -43,12 +43,12 @@ export const useCancelTaskMutation = (
   return useMutation({
     mutationFn: cancelTask,
     ...restOptions,
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, context, meta) => {
       queryClient.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY] });
       queryClient.invalidateQueries({
         queryKey: taskDetailQueryKey(variables.taskId),
       });
-      onSuccess?.(data, variables, context);
+      onSuccess?.(data, variables, context, meta);
     },
     onError,
     onSettled,
