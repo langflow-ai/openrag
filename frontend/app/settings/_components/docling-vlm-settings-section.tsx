@@ -3,6 +3,10 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  useGetIBMModelsQuery,
+  useGetOpenAIModelsQuery,
+} from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { ModelSelector } from "../../onboarding/_components/model-selector";
+import { getModelLogo } from "../_helpers/model-helpers";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_WATSONX_API_VERSION = "2023-05-29";
@@ -61,6 +67,52 @@ export function DoclingVlmSettingsSection() {
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+
+  // VLM supports OpenAI and IBM watsonx.ai only.
+  const { data: openaiModels, isLoading: openaiLoading } =
+    useGetOpenAIModelsQuery(
+      { apiKey: "" },
+      { enabled: settings?.providers?.openai?.configured === true },
+    );
+  const { data: watsonxModels, isLoading: watsonxLoading } =
+    useGetIBMModelsQuery(
+      {
+        endpoint: settings?.providers?.watsonx?.endpoint,
+        apiKey: "",
+        projectId: settings?.providers?.watsonx?.project_id,
+      },
+      {
+        enabled:
+          settings?.providers?.watsonx?.configured === true &&
+          !!settings?.providers?.watsonx?.endpoint &&
+          !!settings?.providers?.watsonx?.project_id,
+      },
+    );
+
+  const groupedVlmModels = [
+    {
+      group: "OpenAI",
+      provider: "openai",
+      icon: getModelLogo("", "openai"),
+      models: openaiModels?.language_models || [],
+      configured: settings.providers?.openai?.configured === true,
+    },
+    {
+      group: "IBM watsonx.ai",
+      provider: "watsonx",
+      icon: getModelLogo("", "watsonx"),
+      models: watsonxModels?.language_models || [],
+      configured: settings.providers?.watsonx?.configured === true,
+    },
+  ]
+    .filter((p) => p.configured)
+    .map((p) => ({
+      group: p.group,
+      icon: p.icon,
+      options: p.models.map((m) => ({ ...m, provider: p.provider })),
+    }));
+
+  const isLoadingAnyVlmModels = openaiLoading || watsonxLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -129,6 +181,12 @@ export function DoclingVlmSettingsSection() {
         : settings.providers.openai?.configured === true;
   const providerWarning = vlmEnabled && providerConfigured === false;
   const providerLabel = vlmProvider === "watsonx" ? "IBM watsonx.ai" : "OpenAI";
+
+  const handleVlmModelChange = (newModel: string, provider?: string) => {
+    setVlmModel(newModel);
+    if (provider) setVlmProvider(provider);
+    setValidationError(null);
+  };
 
   const handleSave = () => {
     if (vlmEnabled && !vlmModel.trim()) {
@@ -206,45 +264,31 @@ export function DoclingVlmSettingsSection() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <LabelWrapper id="vlm-provider" label="Provider">
-                <Select value={vlmProvider} onValueChange={setVlmProvider}>
-                  <SelectTrigger id="vlm-provider">
-                    <SelectValue placeholder="Select a provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="watsonx">IBM watsonx.ai</SelectItem>
-                  </SelectContent>
-                </Select>
-              </LabelWrapper>
-              {providerWarning && (
-                <p className="text-sm text-destructive" role="alert">
-                  {providerLabel} is not configured. Configure it in Settings
-                  &gt; Providers first.
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <LabelWrapper id="vlm-model" label="Model" required={vlmEnabled}>
-                <Input
-                  id="vlm-model"
-                  type="text"
-                  placeholder={
-                    vlmProvider === "watsonx"
-                      ? "e.g. meta-llama/llama-3-2-11b-vision-instruct"
-                      : "e.g. gpt-4o"
-                  }
-                  value={vlmModel}
-                  onChange={(e) => {
-                    setVlmModel(e.target.value);
-                    setValidationError(null);
-                  }}
-                  className={validationError ? "border-destructive" : ""}
-                />
-              </LabelWrapper>
-            </div>
+          <div className="space-y-2">
+            <LabelWrapper
+              id="vlm-model"
+              label="Vision model"
+              helperText="Pick a vision-capable model; the provider is set from your selection"
+              required={vlmEnabled}
+            >
+              <ModelSelector
+                groupedOptions={groupedVlmModels}
+                noOptionsPlaceholder={
+                  isLoadingAnyVlmModels
+                    ? "Loading models..."
+                    : "No models detected. Configure OpenAI or IBM watsonx.ai first."
+                }
+                value={vlmModel}
+                onValueChange={handleVlmModelChange}
+                hasError={!!validationError}
+              />
+            </LabelWrapper>
+            {providerWarning && (
+              <p className="text-sm text-destructive" role="alert">
+                {providerLabel} is not configured. Configure it in Settings &gt;
+                Providers first.
+              </p>
+            )}
           </div>
 
           {vlmProvider === "openai" ? (

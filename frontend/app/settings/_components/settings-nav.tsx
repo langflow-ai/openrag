@@ -18,7 +18,7 @@ const TABS = [
   // Agent + ingest settings write workspace config (admin-only).
   { value: "langflow", label: "Langflow", perm: "config:write" },
   // Docling VLM ingestion settings also write workspace config.
-  { value: "ingestion", label: "Ingestion", perm: "config:write" },
+  { value: "ingestion", label: "Docling", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",
