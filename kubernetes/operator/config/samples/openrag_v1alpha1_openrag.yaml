@@ -105,6 +105,13 @@ spec:
   #       app.kubernetes.io/component: "document-processor"
   #     podAnnotations:
   #       sidecar.istio.io/inject: "true"
+  #     config:
+  #       # Required for OpenRAG's Docling VLM pipeline (remote vision models)
+  #       extraEnv:
+  #         - name: "DOCLING_SERVE_ENABLE_REMOTE_SERVICES"
+  #           value: "true"
+  #         - name: "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"
+  #           value: "true"
   #     hpa:
   #       enabled: true
   #       minReplicas: 1

@@ -19,6 +19,16 @@ export interface KnowledgeSettings {
   ocr?: boolean;
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
+  vlm_enabled?: boolean;
+  vlm_provider?: string;
+  vlm_model?: string;
+  vlm_prompt?: string;
+  vlm_response_format?: string;
+  vlm_max_tokens?: number;
+  vlm_concurrency?: number;
+  vlm_timeout?: number;
+  vlm_openai_url?: string;
+  vlm_watsonx_api_version?: string;
 }
 
 export interface ProviderSettings {

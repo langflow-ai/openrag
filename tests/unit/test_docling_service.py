@@ -130,13 +130,14 @@ async def test_upload_success(docling_service, mock_httpx_client):
         mock_config.knowledge.table_structure = False
         mock_config.knowledge.ocr = False
         mock_config.knowledge.picture_descriptions = False
+        mock_config.knowledge.vlm_enabled = False
         mock_get_config.return_value = mock_config
-        
+
         task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
-        
+
     assert task_id == "new-task-id"
     assert mock_httpx_client.post.call_count == 1
-    
+
     # Verify boolean serialization (bool -> "true"/"false")
     _, kwargs = mock_httpx_client.post.call_args
     data = kwargs.get("data", {})
@@ -146,8 +147,14 @@ async def test_upload_success(docling_service, mock_httpx_client):
 async def test_upload_http_error(docling_service, mock_httpx_client):
     """Raises exception if upload returns non-200."""
     mock_httpx_client.post.return_value = _make_response(400)
-    
-    with patch("services.docling_service.get_openrag_config"):
+
+    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+        mock_config = MagicMock()
+        mock_config.knowledge.table_structure = False
+        mock_config.knowledge.ocr = False
+        mock_config.knowledge.picture_descriptions = False
+        mock_config.knowledge.vlm_enabled = False
+        mock_get_config.return_value = mock_config
         with pytest.raises(httpx.HTTPStatusError):
             await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
 
@@ -187,3 +194,89 @@ def test_init_default_url():
     with patch("api.docling.DOCLING_SERVICE_URL", "http://default:5001"):
         service = DoclingService()
         assert service.docling_url == "http://default:5001"
+
+# ── VLM Pipeline Options ────────────────────────────────────────────
+
+def _vlm_mock_config(provider: str) -> MagicMock:
+    mock_config = MagicMock()
+    k = mock_config.knowledge
+    k.vlm_enabled = True
+    k.vlm_provider = provider
+    k.vlm_model = "gpt-4o" if provider == "openai" else "meta-llama/llama-vision"
+    k.vlm_prompt = "Extract all text."
+    k.vlm_response_format = "markdown"
+    k.vlm_max_tokens = 5000
+    k.vlm_concurrency = 4
+    k.vlm_timeout = 120
+    k.vlm_openai_url = "https://api.openai.com/v1/chat/completions"
+    k.vlm_watsonx_api_version = "2023-05-29"
+    mock_config.providers.openai.api_key = "sk-test"
+    mock_config.providers.watsonx.api_key = "wx-key"
+    mock_config.providers.watsonx.endpoint = "https://us-south.ml.cloud.ibm.com/"
+    mock_config.providers.watsonx.project_id = "proj-123"
+    return mock_config
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_openai(docling_service):
+    """OpenAI VLM options carry the provider key and chat-completions params."""
+    mock_config = _vlm_mock_config("openai")
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_vlm_options()
+
+    assert options["pipeline"] == "vlm"
+    assert options["to_formats"] == "json"
+    api = options["vlm_pipeline_model_api"]
+    assert api["url"] == "https://api.openai.com/v1/chat/completions"
+    assert api["headers"]["Authorization"] == "Bearer sk-test"
+    assert api["params"] == {"model": "gpt-4o", "max_completion_tokens": 5000}
+    assert api["response_format"] == "markdown"
+    assert "do_ocr" not in options
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_watsonx(docling_service):
+    """watsonx VLM options exchange the API key for an IAM bearer token."""
+    mock_config = _vlm_mock_config("watsonx")
+    with (
+        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch("services.watsonx_iam.get_iam_token", new_callable=AsyncMock) as mock_token,
+    ):
+        mock_token.return_value = "iam-token"
+        options = await docling_service._build_vlm_options()
+
+    mock_token.assert_awaited_once_with("wx-key")
+    api = options["vlm_pipeline_model_api"]
+    assert api["url"] == "https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29"
+    assert api["headers"]["Authorization"] == "Bearer iam-token"
+    assert api["params"] == {
+        "model_id": "meta-llama/llama-vision",
+        "project_id": "proj-123",
+        "max_tokens": 5000,
+    }
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_watsonx_unconfigured(docling_service):
+    """Raises DoclingServeError when watsonx provider is incomplete."""
+    mock_config = _vlm_mock_config("watsonx")
+    mock_config.providers.watsonx.project_id = ""
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        with pytest.raises(DoclingServeError, match="watsonx provider is not fully"):
+            await docling_service._build_vlm_options()
+
+@pytest.mark.asyncio
+async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_httpx_client):
+    """VLM upload sends pipeline=vlm and JSON-encoded vlm_pipeline_model_api."""
+    import json as json_lib
+
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "vlm-task"})
+    mock_config = _vlm_mock_config("openai")
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+    assert task_id == "vlm-task"
+    _, kwargs = mock_httpx_client.post.call_args
+    data = kwargs.get("data", {})
+    assert data["pipeline"] == "vlm"
+    assert "do_ocr" not in data
+    api = json_lib.loads(data["vlm_pipeline_model_api"])
+    assert api["params"]["model"] == "gpt-4o"
+    assert api["concurrency"] == 4

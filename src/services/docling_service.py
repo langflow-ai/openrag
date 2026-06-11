@@ -120,6 +120,71 @@ class DoclingService:
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
         return options
 
+    async def _build_vlm_options(self) -> dict[str, Any]:
+        """Build options for the docling VLM pipeline backed by a remote API.
+
+        Credentials are taken from the providers config (OpenAI key or watsonx
+        key/endpoint/project). `to_formats` stays "json" so the result is the
+        same DoclingDocument json_content the rest of the pipeline expects.
+        """
+        from services.watsonx_iam import WatsonxIamError, get_iam_token
+
+        config = get_openrag_config()
+        knowledge_config = config.knowledge
+
+        if knowledge_config.vlm_provider == "watsonx":
+            watsonx = config.providers.watsonx
+            if not (watsonx.api_key and watsonx.endpoint and watsonx.project_id):
+                raise DoclingServeError(
+                    "Docling VLM is enabled but the watsonx provider is not fully "
+                    "configured (api key, endpoint, and project id are required)"
+                )
+            try:
+                token = await get_iam_token(watsonx.api_key)
+            except httpx.RequestError as e:
+                raise DoclingTransientError(
+                    f"watsonx IAM token exchange network error: {str(e)}"
+                ) from e
+            except WatsonxIamError as e:
+                raise DoclingServeError(str(e)) from e
+            url = (
+                f"{watsonx.endpoint.rstrip('/')}/ml/v1/text/chat"
+                f"?version={knowledge_config.vlm_watsonx_api_version}"
+            )
+            params = {
+                "model_id": knowledge_config.vlm_model,
+                "project_id": watsonx.project_id,
+                "max_tokens": knowledge_config.vlm_max_tokens,
+            }
+            auth_header = f"Bearer {token}"
+        else:
+            openai = config.providers.openai
+            if not openai.api_key:
+                raise DoclingServeError(
+                    "Docling VLM is enabled but the OpenAI provider is not configured"
+                )
+            url = knowledge_config.vlm_openai_url
+            params = {
+                "model": knowledge_config.vlm_model,
+                "max_completion_tokens": knowledge_config.vlm_max_tokens,
+            }
+            auth_header = f"Bearer {openai.api_key}"
+
+        return {
+            "pipeline": "vlm",
+            "to_formats": "json",
+            "image_export_mode": "placeholder",
+            "vlm_pipeline_model_api": {
+                "url": url,
+                "headers": {"Authorization": auth_header},
+                "params": params,
+                "prompt": knowledge_config.vlm_prompt,
+                "response_format": knowledge_config.vlm_response_format,
+                "timeout": knowledge_config.vlm_timeout,
+                "concurrency": knowledge_config.vlm_concurrency,
+            },
+        }
+
     def _get_auth_headers(
         self, user_id: str | None = None, auth_header: str | None = None
     ) -> dict[str, str]:
@@ -143,19 +208,23 @@ class DoclingService:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
-        options = self._build_docling_options()
+        if get_openrag_config().knowledge.vlm_enabled:
+            options = await self._build_vlm_options()
+        else:
+            options = self._build_docling_options()
         headers = self._get_auth_headers(user_id, auth_header)
 
         # Docling serve async multipart endpoint /v1/convert/file/async
-        # Options are passed as form data
+        # Options are passed as form data; dict-valued options (e.g.
+        # picture_description_local, vlm_pipeline_model_api) go as JSON strings.
         data = {
-            k: str(v).lower() if isinstance(v, bool) else v
+            k: json.dumps(v)
+            if isinstance(v, dict)
+            else str(v).lower()
+            if isinstance(v, bool)
+            else v
             for k, v in options.items()
-            if not isinstance(v, dict)
-        }  # picture_description_local needs to be JSON if it's a dict
-
-        if "picture_description_local" in options:
-            data["picture_description_local"] = json.dumps(options["picture_description_local"])
+        }
 
         files = {"files": (filename, file_content)}
 

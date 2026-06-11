@@ -224,6 +224,16 @@ async def get_settings(
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
+                vlm_enabled=knowledge_config.vlm_enabled,
+                vlm_provider=knowledge_config.vlm_provider,
+                vlm_model=knowledge_config.vlm_model,
+                vlm_prompt=knowledge_config.vlm_prompt,
+                vlm_response_format=knowledge_config.vlm_response_format,
+                vlm_max_tokens=knowledge_config.vlm_max_tokens,
+                vlm_concurrency=knowledge_config.vlm_concurrency,
+                vlm_timeout=knowledge_config.vlm_timeout,
+                vlm_openai_url=knowledge_config.vlm_openai_url,
+                vlm_watsonx_api_version=knowledge_config.vlm_watsonx_api_version,
             ),
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
@@ -571,6 +581,60 @@ async def update_settings(
                 # Don't fail the entire settings update if flow update fails
 
                 # The config will still be saved
+
+        # Update Docling VLM settings (knowledge.vlm_*). Credentials are reused
+        # from the providers config; these fields carry no secrets and are
+        # intentionally NOT synced into the Langflow flow JSON.
+        if body.vlm_enabled:
+            effective_vlm_provider = (
+                body.vlm_provider or current_config.knowledge.vlm_provider
+            )
+            vlm_provider_config = current_config.providers.get_provider_config(
+                effective_vlm_provider
+            )
+            vlm_provider_missing = not getattr(
+                vlm_provider_config, "api_key", ""
+            ) or not vlm_provider_config.configured
+            if effective_vlm_provider == "watsonx":
+                vlm_provider_missing = (
+                    vlm_provider_missing
+                    or not vlm_provider_config.endpoint
+                    or not vlm_provider_config.project_id
+                )
+            if vlm_provider_missing:
+                return JSONResponse(
+                    {
+                        "error": (
+                            f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
+                            "is not configured. Configure it in Settings > Providers first."
+                        )
+                    },
+                    status_code=400,
+                )
+            effective_vlm_model = body.vlm_model or current_config.knowledge.vlm_model
+            if not effective_vlm_model.strip():
+                return JSONResponse(
+                    {"error": "Cannot enable Docling VLM: model name is required."},
+                    status_code=400,
+                )
+
+        vlm_fields = (
+            "vlm_enabled",
+            "vlm_provider",
+            "vlm_model",
+            "vlm_prompt",
+            "vlm_response_format",
+            "vlm_max_tokens",
+            "vlm_concurrency",
+            "vlm_timeout",
+            "vlm_openai_url",
+            "vlm_watsonx_api_version",
+        )
+        for vlm_field in vlm_fields:
+            value = getattr(body, vlm_field)
+            if value is not None:
+                setattr(current_config.knowledge, vlm_field, value)
+                config_updated = True
 
         # Update provider-specific settings
         provider_updated = False

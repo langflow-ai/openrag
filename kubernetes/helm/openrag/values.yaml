@@ -34,6 +34,11 @@ global:
     port: 5001
     scheme: "http"
     verifySsl: false
+    # Note: this chart does not deploy docling-serve. To use OpenRAG's Docling
+    # VLM pipeline (remote OpenAI/watsonx vision models), the external
+    # docling-serve deployment must set:
+    #   DOCLING_SERVE_ENABLE_REMOTE_SERVICES=true
+    #   DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG=true
 
   # Shared OAuth credentials (same across all tenants)
   oauth:

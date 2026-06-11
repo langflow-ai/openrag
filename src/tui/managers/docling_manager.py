@@ -340,6 +340,13 @@ class DoclingManager:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
                 start_new_session=True,  # Detach from parent process group
+                env={
+                    **os.environ,
+                    # Required for the VLM pipeline backed by remote APIs
+                    # (OpenAI / watsonx). Harmless when VLM is not used.
+                    "DOCLING_SERVE_ENABLE_REMOTE_SERVICES": "true",
+                    "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG": "true",
+                },
             )
             # Close parent's copy of the fd; the child has its own
             log_file.close()

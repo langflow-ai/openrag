@@ -22,6 +22,16 @@ class SettingsUpdateBody(BaseModel):
     ocr: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
+    vlm_enabled: bool | None = None
+    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx)$")
+    vlm_model: str | None = Field(None, min_length=1)
+    vlm_prompt: str | None = None
+    vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")
+    vlm_max_tokens: int | None = Field(None, gt=0)
+    vlm_concurrency: int | None = Field(None, gt=0)
+    vlm_timeout: int | None = Field(None, gt=0)
+    vlm_openai_url: str | None = Field(None, min_length=1)
+    vlm_watsonx_api_version: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: str | None = Field(None, min_length=1)
@@ -130,6 +140,16 @@ class KnowledgeConfig(BaseModel):
     picture_descriptions: bool | None
     index_name: str | None
     disable_ingest_with_langflow: bool | None
+    vlm_enabled: bool | None = None
+    vlm_provider: str | None = None
+    vlm_model: str | None = None
+    vlm_prompt: str | None = None
+    vlm_response_format: str | None = None
+    vlm_max_tokens: int | None = None
+    vlm_concurrency: int | None = None
+    vlm_timeout: int | None = None
+    vlm_openai_url: str | None = None
+    vlm_watsonx_api_version: str | None = None
 
 
 class AgentConfig(BaseModel):
