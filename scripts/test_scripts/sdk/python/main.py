@@ -19,16 +19,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from openrag_sdk import OpenRAGClient
 
 from checks import ALL_SUITES, SUITE_NAMES
 from harness import (
+    FAIL,
+    PASS,
+    CheckResult,
     Config,
     Context,
     mask_api_key,
@@ -135,13 +140,30 @@ async def amain(cfg: Config) -> int:
             f"(user: {mask_username(cfg.username)}, key: {mask_api_key(cfg.api_key)})"
         )
 
+        # Preflight is non-fatal: an HTTP error (auth, permissions, 5xx) is
+        # logged and recorded in the report, and the run continues so every
+        # endpoint gets its own pass/fail verdict. Only an unreachable host
+        # aborts — every check would just time out against it.
+        preflight_start = time.perf_counter()
         try:
             await client.settings.get()
-        except Exception as e:
+            preflight = CheckResult(
+                "preflight.settings_get", PASS, time.perf_counter() - preflight_start
+            )
+            print("Preflight OK — instance reachable and credentials accepted.")
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.UnsupportedProtocol) as e:
             print(f"\nPreflight failed — cannot reach {cfg.url}: {e}", file=sys.stderr)
-            print("Check the URL, username, and API key.", file=sys.stderr)
+            print("Check the URL.", file=sys.stderr)
             return 2
-        print("Preflight OK — instance reachable and credentials accepted.")
+        except Exception as e:
+            preflight = CheckResult(
+                "preflight.settings_get",
+                FAIL,
+                time.perf_counter() - preflight_start,
+                f"{type(e).__name__}: {e}",
+            )
+            print(f"Preflight warning — GET /api/v1/settings failed: {e}")
+            print("Continuing; each check will report its own result.")
 
         suites = [
             (name, checks)
@@ -153,7 +175,7 @@ async def amain(cfg: Config) -> int:
         start = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="openrag-sdk-smoke-") as tmpdir:
             ctx = Context(client=client, cfg=cfg, shared={"tmpdir": tmpdir})
-            results = await run_suites(suites, ctx)
+            results = [preflight] + await run_suites(suites, ctx)
         total_duration = time.perf_counter() - start
 
         written = write_reports(results, cfg, started_at, total_duration)
@@ -170,13 +192,46 @@ async def amain(cfg: Config) -> int:
         await client.close()
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class _TeeStream:
+    """Mirror console output into a log file (with ANSI colors stripped)."""
+
+    def __init__(self, console, logfile):
+        self._console = console
+        self._log = logfile
+
+    def write(self, text: str) -> None:
+        self._console.write(text)
+        self._log.write(_ANSI_RE.sub("", text))
+
+    def flush(self) -> None:
+        self._console.flush()
+        self._log.flush()
+
+    def isatty(self) -> bool:
+        return self._console.isatty()
+
+
 def main() -> None:
     cfg = parse_config(sys.argv[1:])
-    try:
-        sys.exit(asyncio.run(amain(cfg)))
-    except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr)
-        sys.exit(130)
+    cfg.report_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    log_path = cfg.report_dir / f"run_{stamp}.log"
+
+    with log_path.open("w") as log:
+        sys.stdout = _TeeStream(sys.__stdout__, log)
+        sys.stderr = _TeeStream(sys.__stderr__, log)
+        try:
+            code = asyncio.run(amain(cfg))
+            print(f"Run log: {log_path}")
+        except KeyboardInterrupt:
+            print("\nInterrupted.", file=sys.stderr)
+            code = 130
+        finally:
+            sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
+    sys.exit(code)
 
 
 if __name__ == "__main__":
