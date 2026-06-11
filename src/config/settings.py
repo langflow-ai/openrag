@@ -523,6 +523,9 @@ def is_no_auth_mode():
 # Webhook configuration - must be set to enable webhooks
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
 
+# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL)
+GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
+
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
 # actual frontend origin that is carried in the OAuth state parameter.

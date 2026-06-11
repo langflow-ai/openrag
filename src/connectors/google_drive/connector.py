@@ -409,6 +409,12 @@ class GoogleDriveConnector(BaseConnector):
                     )
                     continue
 
+                if meta.get("trashed"):
+                    logger.debug(
+                        "[GoogleDrive] _iter_selected_items: file_id=%s is trashed, skipping", fid
+                    )
+                    continue
+
                 if meta.get("mimeType") == "application/vnd.google-apps.folder":
                     logger.debug(
                         "[GoogleDrive] _iter_selected_items: %s (%s) is a folder, will expand",
@@ -857,30 +863,57 @@ class GoogleDriveConnector(BaseConnector):
         )
         return doc
 
+    def _resolve_webhook_address(self) -> str | None:
+        """Resolve the Drive push notification URL from connection config or env."""
+        webhook_url = self.config.get("webhook_url")
+        if isinstance(webhook_url, str) and webhook_url.strip():
+            return webhook_url.strip()
+
+        from config.settings import GOOGLE_DRIVE_WEBHOOK_URL, WEBHOOK_BASE_URL
+
+        legacy = GOOGLE_DRIVE_WEBHOOK_URL
+        if legacy and legacy.strip():
+            return legacy.strip()
+
+        if WEBHOOK_BASE_URL:
+            return f"{WEBHOOK_BASE_URL.rstrip('/')}/connectors/{self.CONNECTOR_TYPE}/webhook"
+
+        webhook_address = getattr(self.cfg, "webhook_address", None)
+        if isinstance(webhook_address, str) and webhook_address.strip():
+            return webhook_address.strip()
+
+        return None
+
+    def extract_webhook_channel_id(
+        self, payload: dict[str, Any], headers: dict[str, str]
+    ) -> str | None:
+        """Extract Google Drive channel ID from push notification headers."""
+        normalized = {k.lower(): v for k, v in headers.items()}
+        channel_id = normalized.get("x-goog-channel-id")
+        if isinstance(channel_id, str) and channel_id.strip():
+            return channel_id.strip()
+        return None
+
     async def setup_subscription(self) -> str:
         """
         Start a Google Drive Changes API watch (webhook).
         Returns the channel ID (subscription ID) as a string.
 
-        Requires a webhook URL to be configured. This implementation looks for:
-        1) self.cfg.webhook_address (preferred if you have it in your config dataclass)
-        2) os.environ["GOOGLE_DRIVE_WEBHOOK_URL"]
+        Webhook URL resolution order:
+        1) connection config ``webhook_url`` (from ``WEBHOOK_BASE_URL`` at connect time)
+        2) ``GOOGLE_DRIVE_WEBHOOK_URL`` env var (legacy override)
+        3) ``WEBHOOK_BASE_URL`` + ``/connectors/google_drive/webhook``
         """
-        import os
-
         # 1) Ensure we are authenticated and have a live Drive service
         ok = await self.authenticate()
         if not ok:
             raise RuntimeError("GoogleDriveConnector.setup_subscription: not authenticated")
 
-        # 2) Resolve webhook address (no param in ABC, so pull from config/env)
-        webhook_address = getattr(self.cfg, "webhook_address", None) or os.getenv(
-            "GOOGLE_DRIVE_WEBHOOK_URL"
-        )
+        webhook_address = self._resolve_webhook_address()
         if not webhook_address:
             raise RuntimeError(
                 "GoogleDriveConnector.setup_subscription: webhook URL not configured. "
-                "Set cfg.webhook_address or GOOGLE_DRIVE_WEBHOOK_URL."
+                "Set WEBHOOK_BASE_URL or GOOGLE_DRIVE_WEBHOOK_URL."
             )
 
         # 3) Ensure we have a starting page token (checkpoint)
