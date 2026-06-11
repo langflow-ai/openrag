@@ -409,6 +409,12 @@ class GoogleDriveConnector(BaseConnector):
                     )
                     continue
 
+                if meta.get("trashed"):
+                    logger.debug(
+                        "[GoogleDrive] _iter_selected_items: file_id=%s is trashed, skipping", fid
+                    )
+                    continue
+
                 if meta.get("mimeType") == "application/vnd.google-apps.folder":
                     logger.debug(
                         "[GoogleDrive] _iter_selected_items: %s (%s) is a folder, will expand",
