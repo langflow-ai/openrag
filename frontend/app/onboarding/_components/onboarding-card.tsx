@@ -741,8 +741,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : !!settings.llm_model &&
-                          !!settings.embedding_model &&
+                      : settings.llm_model &&
+                          settings.embedding_model &&
                           !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}
