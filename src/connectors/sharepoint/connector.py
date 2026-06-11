@@ -452,6 +452,7 @@ class SharePointConnector(BaseConnector):
     ) -> dict[str, Any]:
         """List all files using Microsoft Graph API - BaseConnector interface"""
         try:
+            logger.info(f"Listing files with config: {self.cfg}")
             # Ensure authentication
             if not await self.authenticate():
                 raise RuntimeError("SharePoint authentication failed during file listing")
@@ -466,8 +467,10 @@ class SharePointConnector(BaseConnector):
             # Build Graph API URL for the site or fallback to user's OneDrive
             site_info = self._parse_sharepoint_url()
             if site_info:
+                logger.info(f"Using site info: {site_info}")
                 base_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/root/children"
             else:
+                logger.info("No site info, using user's OneDrive")
                 base_url = f"{self._graph_base_url}/me/drive/root/children"
 
             params = dict(self._default_params)
@@ -735,7 +738,7 @@ class SharePointConnector(BaseConnector):
             # Parse dates
             modified_time = self._parse_graph_date(file_metadata.get("modified"))
             created_time = self._parse_graph_date(file_metadata.get("created"))
-
+            logger.info(f"File Name: {file_metadata.get('name')}, source url: {file_metadata.get('url')},sharepoint url: {self.sharepoint_url}")
             return ConnectorDocument(
                 id=file_id,
                 filename=file_metadata.get("name", ""),
