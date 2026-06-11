@@ -1,6 +1,7 @@
 """Router endpoints that automatically route based on configuration settings."""
 
 import json
+import mimetypes
 import os
 import tempfile
 
@@ -108,6 +109,11 @@ async def _traditional_upload_ingest_task(
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
+                if not suffix and upload_file.content_type:
+                    from utils.file_utils import get_file_extension
+                    suffix = get_file_extension(upload_file.content_type)
+                    if not suffix:
+                        suffix = mimetypes.guess_extension(upload_file.content_type)
                 if not suffix:
                     suffix = ".tmp"
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -212,6 +218,11 @@ async def _langflow_upload_ingest_task(
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
+                if not suffix and upload_file.content_type:
+                    from utils.file_utils import get_file_extension
+                    suffix = get_file_extension(upload_file.content_type)
+                    if not suffix:
+                        suffix = mimetypes.guess_extension(upload_file.content_type)
                 if not suffix:
                     suffix = ".tmp"
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
