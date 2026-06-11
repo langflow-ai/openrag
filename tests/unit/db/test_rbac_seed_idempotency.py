@@ -48,6 +48,9 @@ async def test_seed_creates_expected_rows(session):
 
     assert len(perms) == len(PERMISSIONS)
     assert {r.name for r in roles} == {n for _, n, _ in BUILTIN_ROLES}
+    perm_id_by_name = {p.name: p.id for p in perms}
+    assert "knowledge:delete:any" in perm_id_by_name
+    assert "knowledge:delete:anonymous" in perm_id_by_name
 
     # admin gets every permission
     admin_role = next(r for r in roles if r.name == "admin")
@@ -62,6 +65,23 @@ async def test_seed_creates_expected_rows(session):
         .all()
     }
     assert len(admin_perm_ids) == len(PERMISSIONS)
+    assert perm_id_by_name["knowledge:delete:any"] in admin_perm_ids
+    assert perm_id_by_name["knowledge:delete:anonymous"] in admin_perm_ids
+
+    for role_name in ("developer", "user"):
+        role = next(r for r in roles if r.name == role_name)
+        role_perm_ids = {
+            rp.permission_id
+            for rp in (
+                await session.execute(
+                    select(RolePermission).where(RolePermission.role_id == role.id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        assert perm_id_by_name["knowledge:delete:own"] in role_perm_ids
+        assert perm_id_by_name["knowledge:delete:anonymous"] not in role_perm_ids
 
 
 @pytest.mark.asyncio
