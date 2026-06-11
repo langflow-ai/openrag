@@ -63,6 +63,11 @@ retrieval has content to find):
 | `filters` | full CRUD; filter_id actually scopes search and chat results |
 | `errors` | NotFoundError on missing conversation; invalid settings rejected; client-side ValueErrors; bogus filter_id rejected |
 
+A preflight `GET /api/v1/settings` runs first. It is **non-fatal**: an HTTP
+error (e.g. `permission_denied`) is logged, recorded in the report as
+`preflight.settings_get`, and the run continues so every endpoint gets its own
+verdict. Only an unreachable host aborts the run (exit 2).
+
 Checks that depend on earlier ones (e.g. search needs an ingested document)
 are auto-skipped — not failed — when their prerequisite didn't pass.
 
@@ -80,6 +85,7 @@ Each run prints live results to the console and writes:
 
 - `reports/report.json` / `reports/report.md` — latest run
 - `reports/report_<UTC timestamp>.json` / `.md` — per-run history
+- `reports/run_<UTC timestamp>.log` — full console log of the run
 
 Reports include the timestamp, target URL, masked credentials, SDK version,
 and per-check status / duration / error. Exit code: `0` all passed (skips
