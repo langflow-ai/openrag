@@ -123,6 +123,7 @@ async def test_traditional_upload_ingest_task(monkeypatch):
     assert len(file_paths) == 1
     assert file_paths[0].endswith(".txt")
     import os
+
     for path in file_paths:
         if os.path.exists(path):
             os.unlink(path)
@@ -184,6 +185,7 @@ async def test_langflow_upload_ingest_task(monkeypatch):
     assert len(file_paths) == 1
     assert file_paths[0].endswith(".pptx")
     import os
+
     for path in file_paths:
         if os.path.exists(path):
             os.unlink(path)
