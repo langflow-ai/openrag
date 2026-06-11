@@ -167,6 +167,14 @@ class BaseConnector(ABC):
         """Clean up subscription"""
         pass
 
+    async def renew_subscription(self, subscription_id: str) -> str | None:
+        """Extend an existing subscription in place.
+
+        Returns the new expiration (ISO-8601) on success, or None if the
+        connector does not support in-place renewal — the caller then falls
+        back to cleanup_subscription + setup_subscription."""
+        return None
+
     @property
     def is_authenticated(self) -> bool:
         return self._authenticated
