@@ -23,12 +23,12 @@ def test_resolve_shared_owner_fields_private():
 
 def test_resolve_shared_owner_fields_shared():
     result = resolve_shared_owner_fields("user-1", "Alice", "alice@example.com", shared=True)
-    assert result == (None, None, None)
+    assert result == (None, "Anonymous User", "anonymous@localhost")
 
 
 def test_resolve_shared_owner_fields_shared_none_inputs():
     result = resolve_shared_owner_fields(None, None, None, shared=True)
-    assert result == (None, None, None)
+    assert result == (None, "Anonymous User", "anonymous@localhost")
 
 
 def test_resolve_shared_owner_fields_private_none_inputs():
@@ -90,6 +90,19 @@ def test_build_chunk_document_omits_owner_key_when_none():
     assert "owner" not in doc
     assert "owner_name" not in doc
     assert "owner_email" not in doc
+
+
+def test_build_chunk_document_shared_has_anonymous_metadata():
+    """Shared docs: owner key absent for DLS, owner_name/email set to anonymous values."""
+    writer = DocumentIndexWriter()
+    context = _make_context(owner=None, owner_name="Anonymous User", owner_email="anonymous@localhost")
+    chunk = _make_chunk()
+    doc = writer._build_chunk_document(
+        context=context, chunk=chunk, embedding_field="vector", indexed_time="2026-01-01T00:00:00"
+    )
+    assert "owner" not in doc
+    assert doc["owner_name"] == "Anonymous User"
+    assert doc["owner_email"] == "anonymous@localhost"
 
 
 def test_build_chunk_document_allowed_users_always_present():

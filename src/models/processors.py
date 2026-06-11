@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
     process_text_file,
@@ -47,12 +48,15 @@ def resolve_shared_owner_fields(
 ) -> tuple[str | None, str | None, str | None]:
     """Return (owner, owner_name, owner_email) for indexing.
 
-    When shared=True, all three are None so the indexed chunk omits the owner
-    field entirely, triggering the OpenSearch DLS must_not-exists-owner clause
-    that makes the document visible to all users in the instance.
+    When shared=True, owner is None so the indexed chunk omits the owner field
+    entirely, triggering the OpenSearch DLS must_not-exists-owner clause that
+    makes the document visible to all users in the instance. owner_name and
+    owner_email are set to AnonymousUser values, matching how default/sample
+    documents are loaded.
     """
     if shared:
-        return None, None, None
+        _anon = AnonymousUser()
+        return None, _anon.name, _anon.email
     return user_id, owner_name, owner_email
 
 
