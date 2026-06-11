@@ -17,8 +17,8 @@ const TABS = [
   { value: "providers", label: "Providers", perm: "providers:write" },
   // Agent + ingest settings write workspace config (admin-only).
   { value: "langflow", label: "Langflow", perm: "config:write" },
-  // Docling VLM ingestion settings also write workspace config.
-  { value: "ingestion", label: "Docling", perm: "config:write" },
+  // Docling VLM settings reuse provider credentials, so gate like Providers.
+  { value: "ingestion", label: "Docling", perm: "providers:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",

@@ -290,10 +290,26 @@ async def update_settings(
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
+        # Docling VLM settings reuse provider credentials, so they are gated
+        # like the Providers page. They don't trigger provider validation.
+        vlm_update_fields = [
+            "vlm_enabled",
+            "vlm_provider",
+            "vlm_model",
+            "vlm_prompt",
+            "vlm_response_format",
+            "vlm_max_tokens",
+            "vlm_concurrency",
+            "vlm_timeout",
+            "vlm_openai_url",
+            "vlm_watsonx_api_version",
+        ]
+        vlm_update = any(getattr(body, field) is not None for field in vlm_update_fields)
+
         # Provider changes are admin-only. The outer gate only requires
         # config:write; require providers:write specifically when any
         # provider field is being touched (defends custom roles too).
-        if should_validate and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+        if (should_validate or vlm_update) and is_rbac_enforced() and hasattr(rbac, "has_permission"):
             uid = user.db_user_id or user.user_id
             if not await rbac.has_permission(uid, "providers:write"):
                 await rbac.audit_denied(uid, "providers:write")
@@ -618,19 +634,7 @@ async def update_settings(
                     status_code=400,
                 )
 
-        vlm_fields = (
-            "vlm_enabled",
-            "vlm_provider",
-            "vlm_model",
-            "vlm_prompt",
-            "vlm_response_format",
-            "vlm_max_tokens",
-            "vlm_concurrency",
-            "vlm_timeout",
-            "vlm_openai_url",
-            "vlm_watsonx_api_version",
-        )
-        for vlm_field in vlm_fields:
+        for vlm_field in vlm_update_fields:
             value = getattr(body, vlm_field)
             if value is not None:
                 setattr(current_config.knowledge, vlm_field, value)

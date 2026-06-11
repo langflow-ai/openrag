@@ -111,7 +111,7 @@ export default async function SettingsTabPage({
   }
   if (
     tab === "ingestion" &&
-    !canShowRbacGatedSettingsTab("config:write", tabAccess)
+    !canShowRbacGatedSettingsTab("providers:write", tabAccess)
   ) {
     redirect("/settings/connectors");
   }
