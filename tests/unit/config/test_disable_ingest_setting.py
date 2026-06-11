@@ -195,7 +195,9 @@ async def test_langflow_upload_ingest_task(monkeypatch):
 async def test_traditional_upload_ingest_mime_fallback(monkeypatch):
     """Verify that if the filename has no extension, the temporary file suffix is resolved from content_type."""
     from unittest.mock import AsyncMock, MagicMock
+
     from fastapi import UploadFile
+
     from api.router import _traditional_upload_ingest_task
     from session_manager import User
 
@@ -238,6 +240,7 @@ async def test_traditional_upload_ingest_mime_fallback(monkeypatch):
     assert file_paths[0].endswith(".pdf")
 
     import os
+
     for path in file_paths:
         if os.path.exists(path):
             os.unlink(path)
