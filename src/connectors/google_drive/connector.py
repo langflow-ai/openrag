@@ -863,11 +863,11 @@ class GoogleDriveConnector(BaseConnector):
         if isinstance(webhook_url, str) and webhook_url.strip():
             return webhook_url.strip()
 
-        legacy = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
+        from config.settings import GOOGLE_DRIVE_WEBHOOK_URL, WEBHOOK_BASE_URL
+
+        legacy = GOOGLE_DRIVE_WEBHOOK_URL
         if legacy and legacy.strip():
             return legacy.strip()
-
-        from config.settings import WEBHOOK_BASE_URL
 
         if WEBHOOK_BASE_URL:
             return f"{WEBHOOK_BASE_URL.rstrip('/')}/connectors/{self.CONNECTOR_TYPE}/webhook"
