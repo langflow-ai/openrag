@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from dependencies import (
-    get_current_user,
     get_knowledge_filter_service,
     get_monitor_service,
     get_session_manager,
@@ -271,7 +270,7 @@ async def subscribe_to_knowledge_filter(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     monitor_service=Depends(get_monitor_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Create a subscription to a knowledge filter"""
     jwt_token = user.jwt_token
@@ -330,7 +329,7 @@ async def list_knowledge_filter_subscriptions(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """List subscriptions for a knowledge filter"""
     jwt_token = user.jwt_token
@@ -356,7 +355,7 @@ async def cancel_knowledge_filter_subscription(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     monitor_service=Depends(get_monitor_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Cancel a subscription to a knowledge filter"""
     jwt_token = user.jwt_token
