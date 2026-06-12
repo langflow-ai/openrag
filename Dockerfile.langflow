@@ -55,7 +55,8 @@ RUN pip install --no-cache-dir \
     torch \
     torchvision \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
-    uv
+    uv \
+    && pip uninstall -y ragstack-ai-knowledge-store
 
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
