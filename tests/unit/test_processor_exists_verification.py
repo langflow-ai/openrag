@@ -23,15 +23,15 @@ from models.processors import TaskProcessor, _verification_client
 
 def _failing_client() -> MagicMock:
     client = MagicMock()
-    client.search = AsyncMock(side_effect=ConnectionError("AuthenticationException(401, 'Unauthorized')"))
+    client.search = AsyncMock(
+        side_effect=ConnectionError("AuthenticationException(401, 'Unauthorized')")
+    )
     return client
 
 
 def _hit_client(has_hit: bool) -> MagicMock:
     client = MagicMock()
-    client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_id": "x"}] if has_hit else []}}
-    )
+    client.search = AsyncMock(return_value={"hits": {"hits": [{"_id": "x"}] if has_hit else []}})
     return client
 
 
