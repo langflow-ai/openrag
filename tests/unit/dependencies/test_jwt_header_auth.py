@@ -196,26 +196,31 @@ _CLAIMS = {"sub": "s1", "username": "alice", "openrag_roles": ["admin"]}
 
 
 class _FakeConnectionManager:
-    def __init__(self, stored_credentials: str | None = None):
+    def __init__(self, stored_credentials: str | None = None, broken: bool = False):
         self.stored_credentials = stored_credentials
+        self.broken = broken
         self.upserts: list[dict] = []
 
     async def upsert_ibm_credentials(self, user_id, basic_credentials, username):
+        if self.broken:
+            raise RuntimeError("connections store unavailable")
         self.upserts.append(
             {"user_id": user_id, "basic_credentials": basic_credentials, "username": username}
         )
 
     async def list_connections(self, user_id, connector_type):
+        if self.broken:
+            raise RuntimeError("connections store unavailable")
         if self.stored_credentials is None:
             return []
         return [SimpleNamespace(config={"basic_credentials": self.stored_credentials})]
 
 
-def _ibm_setup(monkeypatch, stored_credentials=None):
+def _ibm_setup(monkeypatch, stored_credentials=None, broken=False):
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
     monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", True)
     _patch_verify(monkeypatch, dict(_CLAIMS))
-    manager = _FakeConnectionManager(stored_credentials)
+    manager = _FakeConnectionManager(stored_credentials, broken=broken)
     services = {"connector_service": SimpleNamespace(connection_manager=manager)}
     return manager, services
 
@@ -268,6 +273,35 @@ async def test_jwt_header_beats_connections_store(monkeypatch, _patch_attach):
 async def test_jwt_without_credentials_keeps_bearer(monkeypatch, _patch_attach):
     """No lakehouse creds anywhere -> degrade to the JWT (same as _get_ibm_user)."""
     _, services = _ibm_setup(monkeypatch)
+    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.jwt_token == "Bearer tok"
+    assert user.opensearch_credentials is None
+
+
+@pytest.mark.asyncio
+async def test_broken_store_does_not_fail_auth_header_path(monkeypatch, _patch_attach):
+    """A connections-store failure must not 500 the request: header credentials
+    are still returned even when persisting them fails."""
+    manager, services = _ibm_setup(monkeypatch, broken=True)
+    req = _FakeRequest(
+        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
+        services=services,
+    )
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.jwt_token == f"Basic {_B64}"
+    assert user.opensearch_credentials == _B64
+
+
+@pytest.mark.asyncio
+async def test_broken_store_degrades_to_bearer(monkeypatch, _patch_attach):
+    """A connections-store failure during the fallback read degrades to the
+    JWT instead of raising (the helper promises 'never raises')."""
+    _, services = _ibm_setup(monkeypatch, broken=True)
     req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)

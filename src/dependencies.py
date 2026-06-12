@@ -527,17 +527,32 @@ async def _resolve_lakehouse_credentials(
         upsert_user_id = user_id or opensearch_username
         if connector_service and upsert_user_id:
             logger.debug("[AUTH] Upserting IBM LH credentials to connections store")
-            await connector_service.connection_manager.upsert_ibm_credentials(
-                user_id=upsert_user_id,
-                basic_credentials=lh_credentials,
-                username=upsert_user_id,
-            )
+            try:
+                await connector_service.connection_manager.upsert_ibm_credentials(
+                    user_id=upsert_user_id,
+                    basic_credentials=lh_credentials,
+                    username=upsert_user_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — persistence is best-effort
+                logger.warning(
+                    "[AUTH] Failed to persist IBM LH credentials to connections store",
+                    user_id=upsert_user_id,
+                    error=str(exc),
+                )
         return opensearch_username, lh_credentials
 
     if connector_service and user_id:
-        connections = await connector_service.connection_manager.list_connections(
-            user_id=user_id, connector_type="ibm_credentials"
-        )
+        try:
+            connections = await connector_service.connection_manager.list_connections(
+                user_id=user_id, connector_type="ibm_credentials"
+            )
+        except Exception as exc:  # noqa: BLE001 — auth must degrade, not 500
+            logger.warning(
+                "[AUTH] Failed to read IBM LH credentials from connections store",
+                user_id=user_id,
+                error=str(exc),
+            )
+            connections = []
         if connections:
             lh_credentials = connections[0].config.get("basic_credentials")
             if lh_credentials and lh_credentials.strip() != "":
