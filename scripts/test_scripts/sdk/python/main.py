@@ -34,7 +34,6 @@ from harness import (
     CheckResult,
     Config,
     Context,
-    mask_api_key,
     mask_username,
     run_suites,
     summarize,
@@ -135,7 +134,7 @@ async def amain(cfg: Config) -> int:
     try:
         print(
             f"Target: {cfg.url}  "
-            f"(user: {mask_username(cfg.username)}, key: {mask_api_key(cfg.api_key)})"
+            f"(user: {mask_username(cfg.username)}, key: [REDACTED])"
         )
 
         # Preflight is non-fatal: an HTTP error (auth, permissions, 5xx) is
