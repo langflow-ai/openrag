@@ -29,7 +29,6 @@ class _FakeResponse:
     status_code = 200
     text = ""
 
-
     def __init__(self, payload: dict):
         self._payload = payload
 
