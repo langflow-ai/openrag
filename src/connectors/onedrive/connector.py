@@ -115,6 +115,11 @@ class OneDriveConnector(BaseConnector):
         # Track subscription ID for webhooks (note: change notifications might not be available for personal accounts)
         self._subscription_id: str | None = None
 
+        # Set by setup_subscription/renew_subscription; read by the
+        # connection manager to persist
+        self.webhook_resource_id: str | None = None
+        self.webhook_expiration: str | None = None
+
         # Graph API defaults
         self._graph_api_version = "v1.0"
         self._default_params: dict[str, Any] = {
@@ -379,6 +384,7 @@ class OneDriveConnector(BaseConnector):
 
                 if subscription_id:
                     self._subscription_id = subscription_id
+                    self.webhook_expiration = result.get("expirationDateTime")
                     logger.info(f"OneDrive subscription created: {subscription_id}")
                     return subscription_id
                 else:
@@ -1119,3 +1125,45 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to cleanup OneDrive subscription {subscription_id}: {e}")
             return False
+
+    async def renew_subscription(self, subscription_id: str) -> str | None:
+        """Extend the Graph subscription in place (PATCH avoids re-validation).
+
+        Returns the new expirationDateTime, or None to signal the caller to
+        fall back to delete + recreate."""
+        if subscription_id == "no-webhook-configured":
+            return None
+
+        try:
+            if not await self.authenticate():
+                logger.error("OneDrive authentication failed during subscription renewal")
+                return None
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+            url = f"{self._graph_base_url}/subscriptions/{subscription_id}"
+            body = {"expirationDateTime": self._get_subscription_expiry()}
+
+            async with httpx.AsyncClient() as client:
+                response = await client.patch(url, json=body, headers=headers, timeout=30)
+
+                if response.status_code == 404:
+                    # Subscription already expired/deleted at Graph; recreate.
+                    logger.info(f"OneDrive subscription {subscription_id} not found, will recreate")
+                    return None
+                if response.status_code not in [200, 201]:
+                    logger.warning(
+                        f"Unexpected response renewing OneDrive subscription: "
+                        f"{response.status_code}"
+                    )
+                    return None
+
+                expiration = response.json().get("expirationDateTime")
+                self.webhook_expiration = expiration
+                logger.info(f"OneDrive subscription {subscription_id} renewed until {expiration}")
+                return expiration
+
+        except Exception as e:
+            logger.error(f"Failed to renew OneDrive subscription {subscription_id}: {e}")
+            return None

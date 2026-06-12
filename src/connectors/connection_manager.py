@@ -1,8 +1,9 @@
 import json
 import os
+import re
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,53 @@ class ConnectionConfig:
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
+
+
+def _parse_webhook_expiration(value: Any) -> datetime | None:
+    """Parse a stored webhook expiration into an aware UTC datetime.
+
+    Accepts ISO-8601 strings (Microsoft Graph, including 7-digit fractional
+    seconds and trailing 'Z') and epoch-milliseconds (legacy raw Google Drive
+    values). Returns None for missing/unparseable values, which callers treat
+    as unknown expiry (renew now).
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value) / 1000, tz=UTC)
+        except (ValueError, OSError, OverflowError):
+            return None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.isdigit():
+        try:
+            return datetime.fromtimestamp(int(text) / 1000, tz=UTC)
+        except (ValueError, OSError, OverflowError):
+            return None
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    # Graph returns 7-digit fractional seconds; fromisoformat needs <= 6
+    text = re.sub(r"(\.\d{6})\d+", r"\1", text)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _stored_webhook_subscription_id(config: dict[str, Any]) -> Any:
+    """Return the persisted webhook id, honoring legacy config aliases."""
+    channel_id = config.get("webhook_channel_id")
+    if channel_id and channel_id != "no-webhook-configured":
+        return channel_id
+    subscription_id = config.get("subscription_id")
+    if subscription_id and subscription_id != "no-webhook-configured":
+        return subscription_id
+    return None
 
 
 class ConnectionManager:
@@ -543,15 +591,8 @@ class ConnectionManager:
             logger.info("Setting up webhook subscription", connection_id=connection_id)
             subscription_id = await connector.setup_subscription()
 
-            # Store the subscription and resource IDs in connection config
-            connection_config.config["webhook_channel_id"] = subscription_id
-            connection_config.config["subscription_id"] = subscription_id  # Alternative field
-            resource_id = getattr(connector, "webhook_resource_id", None)
-            if resource_id:
-                connection_config.config["resource_id"] = resource_id
-
-            # Save updated connection config
-            await self.save_connections()
+            # Store the subscription state in connection config and save
+            await self._persist_subscription_state(connection_config, connector, subscription_id)
 
             logger.info(
                 "Successfully set up webhook subscription",
@@ -589,15 +630,8 @@ class ConnectionManager:
             # Setup subscription
             subscription_id = await connector.setup_subscription()
 
-            # Store the subscription and resource IDs in connection config
-            connection_config.config["webhook_channel_id"] = subscription_id
-            connection_config.config["subscription_id"] = subscription_id
-            resource_id = getattr(connector, "webhook_resource_id", None)
-            if resource_id:
-                connection_config.config["resource_id"] = resource_id
-
-            # Save updated connection config
-            await self.save_connections()
+            # Store the subscription state in connection config and save
+            await self._persist_subscription_state(connection_config, connector, subscription_id)
 
             logger.info(
                 "Successfully set up webhook subscription",
@@ -612,3 +646,129 @@ class ConnectionManager:
                 error=str(e),
             )
             # Don't fail the connection setup if webhook fails
+
+    async def _persist_subscription_state(
+        self,
+        connection_config: ConnectionConfig,
+        connector: BaseConnector,
+        subscription_id: str,
+    ) -> None:
+        """Store subscription identifiers/expiration on the connection and save."""
+        cfg = connection_config.config
+        cfg["webhook_channel_id"] = subscription_id
+        cfg["subscription_id"] = subscription_id  # Alternative field
+        resource_id = getattr(connector, "webhook_resource_id", None)
+        if resource_id:
+            cfg["resource_id"] = resource_id
+        expiration = getattr(connector, "webhook_expiration", None)
+        if expiration:
+            cfg["webhook_expiration"] = expiration
+        # Google Drive: keep the changes cursor across restarts (the connector
+        # reads it from config at construction time)
+        page_token = getattr(getattr(connector, "cfg", None), "changes_page_token", None)
+        if page_token:
+            cfg["changes_page_token"] = page_token
+        await self.save_connections()
+
+    async def renew_expiring_subscriptions(self, threshold_seconds: int) -> dict[str, int]:
+        """Renew webhook subscriptions that are expired, near expiry, or missing.
+
+        Connections with a webhook_url but no live subscription (failed initial
+        setup) are healed here too. Failures are per-connection; one bad
+        connection never blocks the rest. Returns counters for logging.
+        """
+        stats = {"checked": 0, "renewed": 0, "failed": 0, "skipped": 0}
+        now = datetime.now(UTC)
+
+        for connection in list(self.connections.values()):
+            if not connection.is_active or not connection.config.get("webhook_url"):
+                continue
+
+            stats["checked"] += 1
+
+            channel_id = _stored_webhook_subscription_id(connection.config)
+            has_subscription = bool(channel_id)
+            if has_subscription:
+                expiration = _parse_webhook_expiration(connection.config.get("webhook_expiration"))
+                if expiration and (expiration - now).total_seconds() > threshold_seconds:
+                    stats["skipped"] += 1
+                    continue
+
+            try:
+                renewed = await self._renew_subscription(connection)
+            except Exception as e:
+                logger.error(
+                    "Webhook subscription renewal failed",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
+                renewed = False
+            stats["renewed" if renewed else "failed"] += 1
+
+        return stats
+
+    async def _renew_subscription(self, connection: ConnectionConfig) -> bool:
+        """Renew (extend or recreate) the webhook subscription for one connection."""
+        connector = await self.get_connector(connection.connection_id)
+        if not connector:
+            logger.warning(
+                "Cannot renew webhook subscription: connector authentication failed",
+                connection_id=connection.connection_id,
+            )
+            return False
+
+        old_id = _stored_webhook_subscription_id(connection.config)
+        has_old = bool(old_id)
+
+        if has_old:
+            # Cheap path: extend in place (Microsoft Graph PATCH). Connectors
+            # without in-place renewal (Google Drive) return None.
+            new_expiration = await connector.renew_subscription(old_id)
+            if new_expiration:
+                connection.config["webhook_expiration"] = new_expiration
+                await self.save_connections()
+                logger.info(
+                    "Webhook subscription extended",
+                    connection_id=connection.connection_id,
+                    expiration=new_expiration,
+                )
+                return True
+
+            # Recreate only after the old subscription is confirmed stopped.
+            # Google Drive requires both channel id and resource_id to stop a
+            # channel; if either is missing, creating a replacement would leak
+            # duplicate notifications until the old channel expires.
+            try:
+                cleanup_ok = await connector.cleanup_subscription(old_id)
+            except Exception as e:
+                logger.warning(
+                    "Old webhook subscription cleanup failed; skipping recreation",
+                    connection_id=connection.connection_id,
+                    subscription_id=old_id,
+                    error=str(e),
+                )
+                return False
+
+            if not cleanup_ok:
+                logger.warning(
+                    "Old webhook subscription cleanup was not confirmed; skipping recreation",
+                    connection_id=connection.connection_id,
+                    subscription_id=old_id,
+                )
+                return False
+
+        subscription_id = await connector.setup_subscription()
+        if not subscription_id or subscription_id == "no-webhook-configured":
+            logger.warning(
+                "Webhook subscription recreation returned no subscription",
+                connection_id=connection.connection_id,
+            )
+            return False
+
+        await self._persist_subscription_state(connection, connector, subscription_id)
+        logger.info(
+            "Webhook subscription recreated",
+            connection_id=connection.connection_id,
+            subscription_id=subscription_id,
+        )
+        return True

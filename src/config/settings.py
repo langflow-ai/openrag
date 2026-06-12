@@ -526,6 +526,15 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explici
 # Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL)
 GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
 
+# Webhook subscription renewal: how often to check, and how close to expiry a
+# subscription must be before it is renewed. Google Drive channels live ~24h,
+# Microsoft Graph subscriptions 3 days; 6h checks with a 12h threshold give at
+# least two renewal opportunities before either expires.
+_raw_webhook_renewal_interval = get_env_int("WEBHOOK_RENEWAL_INTERVAL_SECONDS", 6 * 3600)
+WEBHOOK_RENEWAL_INTERVAL_SECONDS = max(60, _raw_webhook_renewal_interval)
+_raw_webhook_renewal_threshold = get_env_int("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", 12 * 3600)
+WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
+
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
 # actual frontend origin that is carried in the OAuth state parameter.
