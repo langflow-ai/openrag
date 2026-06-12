@@ -110,9 +110,7 @@ async def app(monkeypatch):
     fastapi_app.add_api_route("/v1/documents", delete_document_endpoint, methods=["DELETE"])
     # Real KF search handler — proves the kf:read gate is wired on /v1.
     fastapi_app.dependency_overrides[get_knowledge_filter_service] = lambda: object()
-    fastapi_app.add_api_route(
-        "/v1/knowledge-filters/search", kf_search_endpoint, methods=["POST"]
-    )
+    fastapi_app.add_api_route("/v1/knowledge-filters/search", kf_search_endpoint, methods=["POST"])
 
     yield fastapi_app, personas
     await engine.dispose()

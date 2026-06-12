@@ -235,9 +235,7 @@ async def test_jwt_with_credentials_header_gets_basic_token(monkeypatch, _patch_
     assert user.opensearch_username == "alice"
     assert user.opensearch_credentials == _B64
     # Credentials persisted for background processes, keyed by the JWT identity.
-    assert manager.upserts == [
-        {"user_id": "alice", "basic_credentials": _B64, "username": "alice"}
-    ]
+    assert manager.upserts == [{"user_id": "alice", "basic_credentials": _B64, "username": "alice"}]
 
 
 @pytest.mark.asyncio

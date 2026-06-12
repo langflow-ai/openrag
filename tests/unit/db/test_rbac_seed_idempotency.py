@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -54,7 +54,13 @@ async def test_seed_creates_expected_rows(session):
     admin_role = next(r for r in roles if r.name == "admin")
     admin_perm_ids = {
         rp.permission_id
-        for rp in (await session.execute(select(RolePermission).where(RolePermission.role_id == admin_role.id))).scalars().all()
+        for rp in (
+            await session.execute(
+                select(RolePermission).where(RolePermission.role_id == admin_role.id)
+            )
+        )
+        .scalars()
+        .all()
     }
     assert len(admin_perm_ids) == len(PERMISSIONS)
 
