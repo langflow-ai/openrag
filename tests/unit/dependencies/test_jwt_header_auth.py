@@ -187,9 +187,11 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
 
 # ── get_api_key_user_async — lakehouse credential resolution (IBM auth) ─
 #
-# In SaaS, Traefik authenticates X-Username/X-Api-Key and injects the JWT;
-# the JWT branch must then resolve lakehouse Basic credentials the same way
-# the session-cookie path (_get_ibm_user) does — never from the X-* headers.
+# In SaaS, Traefik authenticates X-Username/X-Api-Key and injects the JWT.
+# When the JWT is present it is primary for ALL operations (identity, roles,
+# OpenSearch via OIDC) — credential resolution is skipped entirely. Only when
+# the JWT is absent do lakehouse Basic credentials (credentials header)
+# become the jwt_token, mirroring _get_ibm_user's header branch.
 
 _B64 = base64.b64encode(b"alice:secret").decode()
 _CLAIMS = {"sub": "s1", "username": "alice", "openrag_roles": ["admin"]}
@@ -226,7 +228,11 @@ def _ibm_setup(monkeypatch, stored_credentials=None, broken=False):
 
 
 @pytest.mark.asyncio
-async def test_jwt_with_credentials_header_gets_basic_token(monkeypatch, _patch_attach):
+async def test_jwt_present_keeps_bearer_and_skips_credential_resolution(
+    monkeypatch, _patch_attach
+):
+    """JWT present -> it is primary for everything; the credentials header is
+    ignored and nothing is persisted."""
     manager, services = _ibm_setup(monkeypatch)
     req = _FakeRequest(
         {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
@@ -236,42 +242,28 @@ async def test_jwt_with_credentials_header_gets_basic_token(monkeypatch, _patch_
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
     assert user.user_id == "alice"  # identity stays JWT-derived
-    assert user.jwt_token == f"Basic {_B64}"
-    assert user.opensearch_username == "alice"
-    assert user.opensearch_credentials == _B64
-    # Credentials persisted for background processes, keyed by the JWT identity.
-    assert manager.upserts == [{"user_id": "alice", "basic_credentials": _B64, "username": "alice"}]
+    assert user.jwt_token == "Bearer tok"
+    assert user.opensearch_username is None
+    assert user.opensearch_credentials is None
+    assert manager.upserts == []
 
 
 @pytest.mark.asyncio
-async def test_jwt_falls_back_to_connections_store(monkeypatch, _patch_attach):
-    manager, services = _ibm_setup(monkeypatch, stored_credentials=_B64)
+async def test_jwt_present_never_queries_connections_store(monkeypatch, _patch_attach):
+    """A broken connections store cannot affect a JWT-authenticated request
+    because the store is never consulted when the JWT is present."""
+    _, services = _ibm_setup(monkeypatch, stored_credentials=_B64, broken=True)
     req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
-    assert user.jwt_token == f"Basic {_B64}"
-    assert user.opensearch_username == "alice"
-    assert manager.upserts == []  # nothing new to persist
-
-
-@pytest.mark.asyncio
-async def test_jwt_header_beats_connections_store(monkeypatch, _patch_attach):
-    header_creds = base64.b64encode(b"alice:rotated").decode()
-    manager, services = _ibm_setup(monkeypatch, stored_credentials=_B64)
-    req = _FakeRequest(
-        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": header_creds},
-        services=services,
-    )
-
-    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
-
-    assert user.opensearch_credentials == header_creds
+    assert user.jwt_token == "Bearer tok"
+    assert user.opensearch_credentials is None
 
 
 @pytest.mark.asyncio
 async def test_jwt_without_credentials_keeps_bearer(monkeypatch, _patch_attach):
-    """No lakehouse creds anywhere -> degrade to the JWT (same as _get_ibm_user)."""
+    """No lakehouse creds anywhere -> the JWT is the token (primary path)."""
     _, services = _ibm_setup(monkeypatch)
     req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
 
@@ -282,14 +274,27 @@ async def test_jwt_without_credentials_keeps_bearer(monkeypatch, _patch_attach):
 
 
 @pytest.mark.asyncio
-async def test_broken_store_does_not_fail_auth_header_path(monkeypatch, _patch_attach):
+async def test_no_jwt_uses_lh_credentials_as_token(monkeypatch, _patch_attach):
+    """No JWT -> lakehouse credentials from the header become the Basic
+    jwt_token and the identity, mirroring _get_ibm_user's header branch."""
+    manager, services = _ibm_setup(monkeypatch)
+    req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.user_id == "alice"  # from the decoded credentials
+    assert user.jwt_token == f"Basic {_B64}"
+    assert user.opensearch_username == "alice"
+    assert user.opensearch_credentials == _B64
+    assert manager.upserts == [{"user_id": "alice", "basic_credentials": _B64, "username": "alice"}]
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_broken_store_still_returns_header_credentials(monkeypatch, _patch_attach):
     """A connections-store failure must not 500 the request: header credentials
-    are still returned even when persisting them fails."""
-    manager, services = _ibm_setup(monkeypatch, broken=True)
-    req = _FakeRequest(
-        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
-        services=services,
-    )
+    are still used even when persisting them fails."""
+    _, services = _ibm_setup(monkeypatch, broken=True)
+    req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
@@ -298,16 +303,57 @@ async def test_broken_store_does_not_fail_auth_header_path(monkeypatch, _patch_a
 
 
 @pytest.mark.asyncio
-async def test_broken_store_degrades_to_bearer(monkeypatch, _patch_attach):
-    """A connections-store failure during the fallback read degrades to the
-    JWT instead of raising (the helper promises 'never raises')."""
-    _, services = _ibm_setup(monkeypatch, broken=True)
-    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+async def test_no_jwt_saas_rbac_on_logs_error(monkeypatch, _patch_attach):
+    """saas + RBAC enabled + no JWT header -> a clear error is logged and the
+    request still proceeds via the credentials-header fallback."""
+    manager, services = _ibm_setup(monkeypatch)
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    errors: list[str] = []
+    monkeypatch.setattr(
+        deps.logger, "error", lambda msg, **kw: errors.append(msg)
+    )
+    req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
-    assert user.jwt_token == "Bearer tok"
-    assert user.opensearch_credentials is None
+    assert user.jwt_token == f"Basic {_B64}"
+    assert any("JWT not found" in m for m in errors)
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_saas_rbac_off_no_error_log(monkeypatch):
+    """saas + RBAC off + no JWT -> no error log (legacy API-key behavior)."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", False)
+    errors: list[str] = []
+    monkeypatch.setattr(
+        deps.logger, "error", lambda msg, **kw: errors.append(msg)
+    )
+    req = _FakeRequest({})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+    assert exc.value.status_code == 401  # API key required
+    assert errors == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_jwt_rbac_on_logs_error(monkeypatch, _patch_attach):
+    """Header present but unverifiable under RBAC -> 401 plus a clear
+    'failed verification' error log (distinct from the not-found case)."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    _patch_verify(monkeypatch, None)
+    errors: list[str] = []
+    monkeypatch.setattr(
+        deps.logger, "error", lambda msg, **kw: errors.append(msg)
+    )
+    req = _FakeRequest({"X-OpenRAG-JWT": "garbage"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+    assert exc.value.status_code == 401
+    assert any("failed verification" in m for m in errors)
 
 
 @pytest.mark.asyncio

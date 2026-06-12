@@ -869,38 +869,58 @@ async def get_api_key_user_async(
                 jwt_token=f"Bearer {token}",
             )
             _stage_jwt_roles(request, claims, user.user_id)
-            if IBM_AUTH_ENABLED:
-                # Lakehouse OpenSearch only accepts Basic credentials, not the
-                # gateway-forwarded JWT. Resolve them exactly like the
-                # session-cookie path (_get_ibm_user) so user-scoped
-                # OpenSearch operations (search, knowledge filters, document
-                # delete) work for MCP/SDK callers behind Traefik.
-                # NOTE (gateway requirement): under RBAC this JWT is also the
-                # authoritative role source. Traefik must mint it with the
-                # user's real OpenRAG role claims (same as the UI session
-                # JWT), otherwise every /v1 call re-syncs the user down to
-                # whatever the claim carries.
-                os_username, lh_credentials = await _resolve_lakehouse_credentials(
-                    request, user.user_id
-                )
-                if lh_credentials:
-                    user = dataclasses.replace(
-                        user,
-                        jwt_token=f"Basic {lh_credentials}",
-                        opensearch_username=os_username,
-                        opensearch_credentials=lh_credentials,
-                    )
-                else:
-                    logger.warning(
-                        "[AUTH] IBM LH credentials not found in header or connections store. Using JWT token instead."
-                    )
+            # The forwarded JWT is primary for ALL operations (identity, roles,
+            # and downstream OpenSearch calls, which validate it via OIDC) —
+            # same as the session surface (_get_ibm_user). NOTE (gateway
+            # requirement): under RBAC this JWT is also the authoritative role
+            # source. Traefik must mint it with the user's real OpenRAG role
+            # claims (same as the UI session JWT), otherwise every /v1 call
+            # re-syncs the user down to whatever the claim carries.
             request.state.user = user
             return await _attach_request_user(request, user, session_manager)
         if jwt_roles_enabled():
             # A JWT was asserted but failed verification/decode. Under RBAC we
             # must not silently downgrade to the API-key identity.
+            logger.error(
+                "[AUTH] JWT in request header failed verification/decode",
+                header_name=get_jwt_auth_header(),
+            )
             raise HTTPException(status_code=401, detail="Invalid or unverifiable JWT")
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
+    else:
+        from utils.run_mode_utils import is_run_mode_saas
+
+        if is_run_mode_saas() and jwt_roles_enabled():
+            # In saas the gateway is responsible for forwarding the end-user
+            # JWT on every API/MCP request; its absence is a gateway
+            # misconfiguration, not a normal client state.
+            logger.error(
+                "[AUTH] JWT not found in request header — run_mode=saas with "
+                "RBAC enabled requires the gateway to forward the user JWT",
+                header_name=get_jwt_auth_header(),
+            )
+        if IBM_AUTH_ENABLED:
+            # No JWT — fall back to lakehouse Basic credentials (credentials
+            # header, upserted to the connections store), mirroring the
+            # session surface's header branch in _get_ibm_user.
+            os_username, lh_credentials = await _resolve_lakehouse_credentials(request, None)
+            if lh_credentials:
+                logger.info(
+                    "[AUTH] Using IBM LH credentials as JWT token",
+                    username=os_username,
+                )
+                user = User(
+                    user_id=os_username,
+                    email=os_username,
+                    name=os_username,
+                    picture=None,
+                    provider="ibm_ams",
+                    jwt_token=f"Basic {lh_credentials}",
+                    opensearch_username=os_username,
+                    opensearch_credentials=lh_credentials,
+                )
+                request.state.user = user
+                return await _attach_request_user(request, user, session_manager)
 
     # Upstream auth path: X-Username + X-Api-Key sent directly by an MCP/SDK
     # client. Not the SaaS path — there, Traefik consumes these headers for
