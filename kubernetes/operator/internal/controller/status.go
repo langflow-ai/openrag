@@ -20,6 +20,10 @@ import (
 func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG, targetNS string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	scaledDown := ((instance.Spec.Backend.Replicas != nil && *instance.Spec.Backend.Replicas == 0) &&
+		(instance.Spec.Frontend.Replicas != nil && *instance.Spec.Frontend.Replicas == 0) &&
+		(instance.Spec.Langflow.Replicas != nil && *instance.Spec.Langflow.Replicas == 0))
+
 	// Update backend condition first
 	backendConditionStatus, err := r.updateBackendCondition(ctx, instance, targetNS)
 	if err != nil {
@@ -27,10 +31,19 @@ func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *o
 		// Continue anyway, don't fail reconciliation
 	}
 
-	// Determine phase based on backend readiness
+	// Determine phase based on scale state and backend readiness
 	phase := phaseReconciled
 	message := "All resources reconciled successfully, waiting for backend pod to be ready"
-	if backendConditionStatus == metav1.ConditionTrue {
+	if scaledDown {
+		if backendConditionStatus == metav1.ConditionTrue {
+			// Desired state is scaled down and backend is healthy (scaled to 0), treat as running
+			phase = phaseScaledDown
+			message = "All components scaled to 0 replicas"
+		} else {
+			// Desired state is scaled down but backend condition is not true, treat as scaled down but not ready
+			message = "Scaling down all components to 0 replicas (in progress)"
+		}
+	} else if backendConditionStatus == metav1.ConditionTrue {
 		phase = phaseRunning
 		message = "All resources reconciled successfully and backend is running"
 	}
@@ -91,6 +104,30 @@ func (r *OpenRAGReconciler) updateBackendCondition(ctx context.Context, instance
 			return metav1.ConditionUnknown, nil
 		}
 		return metav1.ConditionUnknown, fmt.Errorf("failed to get backend deployment: %w", err)
+	}
+
+	// Backend intentionally scaled to 0 — desired state, treat as healthy
+	if instance.Spec.Backend.Replicas != nil && *instance.Spec.Backend.Replicas == 0 {
+		if deployment.Status.Replicas == 0 {
+			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+				Type:               conditionBackendReady,
+				Status:             metav1.ConditionTrue,
+				Reason:             "ScaledDown",
+				Message:            "Backend is scaled to 0 replicas",
+				ObservedGeneration: instance.Generation,
+			})
+			return metav1.ConditionTrue, nil
+		} else {
+			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+				Type:               conditionBackendReady,
+				Status:             metav1.ConditionFalse,
+				Reason:             "ScaledDownNotReady",
+				Message:            "Backend is scaled to 0 replicas but deployment has non-zero replicas",
+				ObservedGeneration: instance.Generation,
+			})
+			logger.Info("Backend scaled to 0 but deployment has non-zero replicas", "desiredReplicas", *instance.Spec.Backend.Replicas, "deploymentReplicas", deployment.Status.Replicas)
+			return metav1.ConditionFalse, nil
+		}
 	}
 
 	reportedStatus := metav1.ConditionFalse
