@@ -43,6 +43,7 @@ const (
 
 	// Phase values
 	phaseReconciled = "Reconciled"
+	phaseScaledDown = "ScaledDown"
 	phaseRunning    = "Running"
 	phaseError      = "Error"
 )
