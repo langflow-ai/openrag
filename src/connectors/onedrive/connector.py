@@ -1,4 +1,3 @@
-import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -7,6 +6,7 @@ from urllib.parse import urlparse
 import httpx
 
 from utils.group_acl import unique_acl_principal_labels
+from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
 from ..microsoft_graph_acl import (
@@ -21,7 +21,7 @@ from ..microsoft_graph_acl import (
 )
 from .oauth import OneDriveOAuth
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OneDriveConnector(BaseConnector):
