@@ -2,7 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from utils.document_processing import (
@@ -36,8 +36,6 @@ def _verification_client(fallback_client):
     trust chain that user-scoped clients need (OpenSearch loads the backend's
     JWKS lazily, so the first user-JWT queries after a cold start can 401).
     Falls back to the caller's client when the writer is unavailable."""
-    from config.settings import clients
-
     return clients.opensearch if clients.opensearch is not None else fallback_client
 
 
@@ -53,7 +51,7 @@ class TaskProcessor:
         self,
         file_hash: str,
         opensearch_client,
-        on_error: str = "assume_missing",
+        on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.

@@ -37,8 +37,12 @@ def _hit_client(has_hit: bool) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _fast_retries(monkeypatch):
-    """Skip the exponential-backoff sleeps so retry exhaustion is instant."""
-    monkeypatch.setattr(processors_module.asyncio, "sleep", AsyncMock())
+    """Skip the exponential-backoff sleeps so retry exhaustion is instant.
+
+    Returns the sleep mock so tests can assert on the retry count."""
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(processors_module.asyncio, "sleep", sleep_mock)
+    return sleep_mock
 
 
 @pytest.mark.asyncio
@@ -55,6 +59,23 @@ async def test_exists_check_error_assume_exists_for_verification():
         "hash", _failing_client(), on_error="assume_exists"
     )
     assert exists is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("on_error", "expected"),
+    [("assume_missing", False), ("assume_exists", True)],
+)
+async def test_exists_check_exhausts_retries_before_error_fallback(
+    _fast_retries, on_error, expected
+):
+    """Both modes must still exhaust all retries before giving up — the
+    error fallback only fires on the final attempt."""
+    client = _failing_client()
+    exists = await TaskProcessor().check_document_exists("hash", client, on_error=on_error)
+    assert exists is expected
+    assert client.search.await_count == 3  # all attempts used
+    assert _fast_retries.await_count == 2  # 3 attempts -> 2 backoff sleeps
 
 
 @pytest.mark.asyncio
