@@ -1,6 +1,6 @@
-import hashlib
 import os
 from collections import defaultdict
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -17,11 +17,10 @@ def process_text_file(file_path: str) -> dict:
     Returns:
         dict with keys: id, filename, mimetype, chunks
     """
-    import os
     from utils.hash_utils import hash_id
 
     # Read the file
-    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+    with open(file_path, encoding='utf-8', errors='replace') as f:
         content = f.read()
 
     # Compute hash
@@ -99,8 +98,9 @@ def extract_relevant(doc_dict: dict) -> dict:
     for txt in doc_dict.get("texts", []):
         prov = txt.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
-        if page_no is not None:
-            page_texts[page_no].append(txt.get("text", "").strip())
+        if page_no is None:
+            page_no = 1
+        page_texts[page_no].append(txt.get("text", "").strip())
 
     for page in sorted(page_texts):
         chunks.append(
@@ -111,6 +111,8 @@ def extract_relevant(doc_dict: dict) -> dict:
     for t_idx, table in enumerate(doc_dict.get("tables", [])):
         prov = table.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
+        if page_no is None:
+            page_no = 1
 
         # group cells by their row index
         rows = defaultdict(list)
