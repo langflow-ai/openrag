@@ -242,7 +242,7 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
     )
     # Legacy-style call
     cfg = tmp_config_manager.load_config()
-    cfg.agent.llm_model = "claude-3-opus"
+    cfg.agent.llm_model = "claude-sonnet-4-6"
     tmp_config_manager.save_config_file(cfg)
 
     # Wait briefly for the async DB mirror
@@ -250,7 +250,7 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
     for _ in range(20):
         async with session_factory() as session:
             agent = await WorkspaceConfigRepo(session).get_section("agent")
-            if agent and agent.get("llm_model") == "claude-3-opus":
+            if agent and agent.get("llm_model") == "claude-sonnet-4-6":
                 break
         await asyncio.sleep(0.05)
     else:
