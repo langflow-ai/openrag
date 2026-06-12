@@ -20,7 +20,7 @@ def process_text_file(file_path: str) -> dict:
     from utils.hash_utils import hash_id
 
     # Read the file
-    with open(file_path, encoding='utf-8', errors='replace') as f:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
         content = f.read()
 
     # Compute hash
@@ -33,7 +33,7 @@ def process_text_file(file_path: str) -> dict:
     chunks = []
 
     # Split by paragraphs first (double newline)
-    paragraphs = content.split('\n\n')
+    paragraphs = content.split("\n\n")
     current_chunk = ""
     chunk_index = 0
 
@@ -44,11 +44,13 @@ def process_text_file(file_path: str) -> dict:
 
         # If adding this paragraph would exceed chunk size, save current chunk
         if len(current_chunk) + len(para) + 2 > chunk_size and current_chunk:
-            chunks.append({
-                "page": chunk_index + 1,  # Use chunk_index + 1 as "page" number
-                "type": "text",
-                "text": current_chunk.strip()
-            })
+            chunks.append(
+                {
+                    "page": chunk_index + 1,  # Use chunk_index + 1 as "page" number
+                    "type": "text",
+                    "text": current_chunk.strip(),
+                }
+            )
             chunk_index += 1
             current_chunk = para
         else:
@@ -59,19 +61,11 @@ def process_text_file(file_path: str) -> dict:
 
     # Add the last chunk if any
     if current_chunk.strip():
-        chunks.append({
-            "page": chunk_index + 1,
-            "type": "text",
-            "text": current_chunk.strip()
-        })
+        chunks.append({"page": chunk_index + 1, "type": "text", "text": current_chunk.strip()})
 
     # If no chunks were created (empty file), create a single empty chunk
     if not chunks:
-        chunks.append({
-            "page": 1,
-            "type": "text",
-            "text": ""
-        })
+        chunks.append({"page": 1, "type": "text", "text": ""})
 
     return {
         "id": file_hash,
@@ -103,9 +97,7 @@ def extract_relevant(doc_dict: dict) -> dict:
         page_texts[page_no].append(txt.get("text", "").strip())
 
     for page in sorted(page_texts):
-        chunks.append(
-            {"page": page, "type": "text", "text": "\n".join(page_texts[page])}
-        )
+        chunks.append({"page": page, "type": "text", "text": "\n".join(page_texts[page])})
 
     # 2) process tables
     for t_idx, table in enumerate(doc_dict.get("tables", [])):

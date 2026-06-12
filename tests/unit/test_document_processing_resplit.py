@@ -39,27 +39,23 @@ def test_long_text_windows_with_overlap():
 
 def test_extract_relevant_with_missing_page_no():
     from src.utils.document_processing import extract_relevant
-    
+
     # Docling JSON representation where page_no is missing in prov (e.g. for asciidoc/html)
     doc_dict = {
-        "origin": {
-            "binary_hash": "hash123",
-            "filename": "test.adoc",
-            "mimetype": "text/asciidoc"
-        },
+        "origin": {"binary_hash": "hash123", "filename": "test.adoc", "mimetype": "text/asciidoc"},
         "texts": [
             {
                 "text": "Hello Asciidoc World!",
-                "prov": [] # empty prov
+                "prov": [],  # empty prov
             },
             {
                 "text": "Second paragraph of text.",
-                "prov": [{"some_other_key": "val"}] # prov present but no page_no
-            }
+                "prov": [{"some_other_key": "val"}],  # prov present but no page_no
+            },
         ],
-        "tables": []
+        "tables": [],
     }
-    
+
     result = extract_relevant(doc_dict)
     assert result["id"] == "hash123"
     assert result["filename"] == "test.adoc"
