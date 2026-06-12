@@ -129,7 +129,7 @@ async def search_knowledge_filters(
     body: SearchFiltersBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Search for knowledge filters by name, description, or query content"""
     jwt_token = user.jwt_token
@@ -151,7 +151,7 @@ async def get_knowledge_filter(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Get a specific knowledge filter by ID"""
     jwt_token = user.jwt_token

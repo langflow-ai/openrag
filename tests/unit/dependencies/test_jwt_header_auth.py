@@ -22,6 +22,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import base64  # noqa: E402
+
+import config.settings as app_settings  # noqa: E402
 import config.utils as config_utils  # noqa: E402
 import dependencies as deps  # noqa: E402
 from dependencies import _stage_jwt_roles, get_api_key_user_async  # noqa: E402
@@ -30,10 +33,12 @@ from dependencies import _stage_jwt_roles, get_api_key_user_async  # noqa: E402
 class _FakeRequest:
     """Minimal stand-in for starlette Request used by the auth dependency."""
 
-    def __init__(self, headers: dict | None = None):
+    def __init__(self, headers: dict | None = None, services: dict | None = None):
         self.headers = headers or {}
         self.cookies: dict[str, str] = {}
         self.state = SimpleNamespace()
+        if services is not None:
+            self.app = SimpleNamespace(state=SimpleNamespace(services=services))
 
 
 @pytest.fixture(autouse=True)
@@ -78,15 +83,15 @@ def test_stage_roles_rbac_on_no_role_401(monkeypatch):
 
 @pytest.fixture
 def _patch_attach(monkeypatch):
-    """Replace _attach_db_user_id with a passthrough that records state."""
+    """Replace _attach_request_user with a passthrough that records state."""
     captured = {}
 
-    async def _fake_attach(request, user):
+    async def _fake_attach(request, user, session_manager, token_hint=None):
         captured["jwt_roles"] = getattr(request.state, "jwt_roles", "UNSET")
         captured["user"] = user
         return user
 
-    monkeypatch.setattr(deps, "_attach_db_user_id", _fake_attach)
+    monkeypatch.setattr(deps, "_attach_request_user", _fake_attach)
     return captured
 
 
@@ -178,3 +183,117 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
     assert exc.value.status_code == 401
     assert exc.value.detail["error"] == "API key required"
+
+
+# ── get_api_key_user_async — lakehouse credential resolution (IBM auth) ─
+#
+# In SaaS, Traefik authenticates X-Username/X-Api-Key and injects the JWT;
+# the JWT branch must then resolve lakehouse Basic credentials the same way
+# the session-cookie path (_get_ibm_user) does — never from the X-* headers.
+
+_B64 = base64.b64encode(b"alice:secret").decode()
+_CLAIMS = {"sub": "s1", "username": "alice", "openrag_roles": ["admin"]}
+
+
+class _FakeConnectionManager:
+    def __init__(self, stored_credentials: str | None = None):
+        self.stored_credentials = stored_credentials
+        self.upserts: list[dict] = []
+
+    async def upsert_ibm_credentials(self, user_id, basic_credentials, username):
+        self.upserts.append(
+            {"user_id": user_id, "basic_credentials": basic_credentials, "username": username}
+        )
+
+    async def list_connections(self, user_id, connector_type):
+        if self.stored_credentials is None:
+            return []
+        return [SimpleNamespace(config={"basic_credentials": self.stored_credentials})]
+
+
+def _ibm_setup(monkeypatch, stored_credentials=None):
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", True)
+    _patch_verify(monkeypatch, dict(_CLAIMS))
+    manager = _FakeConnectionManager(stored_credentials)
+    services = {"connector_service": SimpleNamespace(connection_manager=manager)}
+    return manager, services
+
+
+@pytest.mark.asyncio
+async def test_jwt_with_credentials_header_gets_basic_token(monkeypatch, _patch_attach):
+    manager, services = _ibm_setup(monkeypatch)
+    req = _FakeRequest(
+        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
+        services=services,
+    )
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.user_id == "alice"  # identity stays JWT-derived
+    assert user.jwt_token == f"Basic {_B64}"
+    assert user.opensearch_username == "alice"
+    assert user.opensearch_credentials == _B64
+    # Credentials persisted for background processes, keyed by the JWT identity.
+    assert manager.upserts == [
+        {"user_id": "alice", "basic_credentials": _B64, "username": "alice"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_jwt_falls_back_to_connections_store(monkeypatch, _patch_attach):
+    manager, services = _ibm_setup(monkeypatch, stored_credentials=_B64)
+    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.jwt_token == f"Basic {_B64}"
+    assert user.opensearch_username == "alice"
+    assert manager.upserts == []  # nothing new to persist
+
+
+@pytest.mark.asyncio
+async def test_jwt_header_beats_connections_store(monkeypatch, _patch_attach):
+    header_creds = base64.b64encode(b"alice:rotated").decode()
+    manager, services = _ibm_setup(monkeypatch, stored_credentials=_B64)
+    req = _FakeRequest(
+        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": header_creds},
+        services=services,
+    )
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.opensearch_credentials == header_creds
+
+
+@pytest.mark.asyncio
+async def test_jwt_without_credentials_keeps_bearer(monkeypatch, _patch_attach):
+    """No lakehouse creds anywhere -> degrade to the JWT (same as _get_ibm_user)."""
+    _, services = _ibm_setup(monkeypatch)
+    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.jwt_token == "Bearer tok"
+    assert user.opensearch_credentials is None
+
+
+@pytest.mark.asyncio
+async def test_x_username_headers_never_become_credentials(monkeypatch, _patch_attach):
+    """X-Username/X-Api-Key are Traefik's login concern — when the JWT is
+    present the backend must not build OpenSearch credentials from them."""
+    _, services = _ibm_setup(monkeypatch)
+    req = _FakeRequest(
+        {
+            "X-OpenRAG-JWT": "Bearer tok",
+            "X-Username": "alice",
+            "X-Api-Key": "lakehouse-api-key",
+        },
+        services=services,
+    )
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.user_id == "alice"
+    assert user.jwt_token == "Bearer tok"  # not a Basic token minted from X-*
+    assert user.opensearch_credentials is None

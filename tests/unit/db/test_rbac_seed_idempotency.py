@@ -85,3 +85,10 @@ async def test_role_permission_map_references_known_perms(session):
     for role_name, expected in ROLE_PERMISSION_MAP.items():
         missing = expected - perm_names
         assert not missing, f"role {role_name} references unknown perms: {missing}"
+
+
+def test_every_builtin_role_grants_kf_read():
+    """Knowledge-filter read is gated (require_*_permission("kf:read")) on both
+    API surfaces; every built-in role must hold it or KF search/get breaks."""
+    for role_name, expected in ROLE_PERMISSION_MAP.items():
+        assert "kf:read" in expected, f"role {role_name} lacks kf:read"
