@@ -158,6 +158,28 @@ async def test_missing_subscription_is_healed(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_legacy_subscription_id_is_renewed(tmp_path):
+    """Legacy configs may only have subscription_id; renew that id instead of duplicating."""
+    new_expiration = _iso_in(72)
+    connection = _make_connection(
+        webhook_channel_id=None,
+        subscription_id="legacy-subscription",
+        webhook_expiration=_iso_in(1),
+    )
+    connector = _make_connector(renew_result=new_expiration)
+    manager = _make_manager(tmp_path, [connection])
+    manager.get_connector = AsyncMock(return_value=connector)
+
+    stats = await manager.renew_expiring_subscriptions(THRESHOLD)
+
+    assert stats["renewed"] == 1
+    connector.renew_subscription.assert_awaited_once_with("legacy-subscription")
+    connector.cleanup_subscription.assert_not_awaited()
+    connector.setup_subscription.assert_not_awaited()
+    assert connection.config["webhook_expiration"] == new_expiration
+
+
+@pytest.mark.asyncio
 async def test_connection_without_webhook_url_is_ignored(tmp_path):
     connection = _make_connection(webhook_url=None)
     manager = _make_manager(tmp_path, [connection])
@@ -236,6 +258,39 @@ async def test_recreate_path_cleans_up_and_persists(tmp_path):
     assert cfg["webhook_expiration"] == new_expiration
     assert cfg["changes_page_token"] == "page-token-42"
     manager.save_connections.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recreate_skips_setup_when_cleanup_returns_false(tmp_path):
+    """Avoid duplicate/leaked provider webhooks when the old one cannot be stopped."""
+    connection = _make_connection()
+    connector = _make_connector(renew_result=None)
+    connector.cleanup_subscription = AsyncMock(return_value=False)
+    manager = _make_manager(tmp_path, [connection])
+    manager.get_connector = AsyncMock(return_value=connector)
+
+    stats = await manager.renew_expiring_subscriptions(THRESHOLD)
+
+    assert stats["failed"] == 1
+    connector.cleanup_subscription.assert_awaited_once_with("old-channel")
+    connector.setup_subscription.assert_not_awaited()
+    assert connection.config["webhook_channel_id"] == "old-channel"
+
+
+@pytest.mark.asyncio
+async def test_recreate_skips_setup_when_cleanup_raises(tmp_path):
+    connection = _make_connection()
+    connector = _make_connector(renew_result=None)
+    connector.cleanup_subscription = AsyncMock(side_effect=RuntimeError("missing resource id"))
+    manager = _make_manager(tmp_path, [connection])
+    manager.get_connector = AsyncMock(return_value=connector)
+
+    stats = await manager.renew_expiring_subscriptions(THRESHOLD)
+
+    assert stats["failed"] == 1
+    connector.cleanup_subscription.assert_awaited_once_with("old-channel")
+    connector.setup_subscription.assert_not_awaited()
+    assert connection.config["webhook_channel_id"] == "old-channel"
 
 
 @pytest.mark.asyncio

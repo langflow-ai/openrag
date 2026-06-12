@@ -71,6 +71,17 @@ def _parse_webhook_expiration(value: Any) -> datetime | None:
     return parsed
 
 
+def _stored_webhook_subscription_id(config: dict[str, Any]) -> Any:
+    """Return the persisted webhook id, honoring legacy config aliases."""
+    channel_id = config.get("webhook_channel_id")
+    if channel_id and channel_id != "no-webhook-configured":
+        return channel_id
+    subscription_id = config.get("subscription_id")
+    if subscription_id and subscription_id != "no-webhook-configured":
+        return subscription_id
+    return None
+
+
 class ConnectionManager:
     """Manages multiple connector connections with persistence"""
 
@@ -675,8 +686,8 @@ class ConnectionManager:
 
             stats["checked"] += 1
 
-            channel_id = connection.config.get("webhook_channel_id")
-            has_subscription = bool(channel_id) and channel_id != "no-webhook-configured"
+            channel_id = _stored_webhook_subscription_id(connection.config)
+            has_subscription = bool(channel_id)
             if has_subscription:
                 expiration = _parse_webhook_expiration(connection.config.get("webhook_expiration"))
                 if expiration and (expiration - now).total_seconds() > threshold_seconds:
@@ -706,8 +717,8 @@ class ConnectionManager:
             )
             return False
 
-        old_id = connection.config.get("webhook_channel_id")
-        has_old = bool(old_id) and old_id != "no-webhook-configured"
+        old_id = _stored_webhook_subscription_id(connection.config)
+        has_old = bool(old_id)
 
         if has_old:
             # Cheap path: extend in place (Microsoft Graph PATCH). Connectors
@@ -723,17 +734,28 @@ class ConnectionManager:
                 )
                 return True
 
-            # Recreate: stop the old subscription best-effort first. For
-            # Google Drive the gap loses nothing — change tracking is
-            # cursor-based, so gap events land on the next notification.
+            # Recreate only after the old subscription is confirmed stopped.
+            # Google Drive requires both channel id and resource_id to stop a
+            # channel; if either is missing, creating a replacement would leak
+            # duplicate notifications until the old channel expires.
             try:
-                await connector.cleanup_subscription(old_id)
+                cleanup_ok = await connector.cleanup_subscription(old_id)
             except Exception as e:
-                logger.debug(
-                    "Old webhook subscription cleanup failed (continuing)",
+                logger.warning(
+                    "Old webhook subscription cleanup failed; skipping recreation",
                     connection_id=connection.connection_id,
+                    subscription_id=old_id,
                     error=str(e),
                 )
+                return False
+
+            if not cleanup_ok:
+                logger.warning(
+                    "Old webhook subscription cleanup was not confirmed; skipping recreation",
+                    connection_id=connection.connection_id,
+                    subscription_id=old_id,
+                )
+                return False
 
         subscription_id = await connector.setup_subscription()
         if not subscription_id or subscription_id == "no-webhook-configured":

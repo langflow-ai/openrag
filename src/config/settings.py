@@ -530,10 +530,10 @@ GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
 # subscription must be before it is renewed. Google Drive channels live ~24h,
 # Microsoft Graph subscriptions 3 days; 6h checks with a 12h threshold give at
 # least two renewal opportunities before either expires.
-WEBHOOK_RENEWAL_INTERVAL_SECONDS = int(os.getenv("WEBHOOK_RENEWAL_INTERVAL_SECONDS", str(6 * 3600)))
-WEBHOOK_RENEWAL_THRESHOLD_SECONDS = int(
-    os.getenv("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", str(12 * 3600))
-)
+_raw_webhook_renewal_interval = get_env_int("WEBHOOK_RENEWAL_INTERVAL_SECONDS", 6 * 3600)
+WEBHOOK_RENEWAL_INTERVAL_SECONDS = max(60, _raw_webhook_renewal_interval)
+_raw_webhook_renewal_threshold = get_env_int("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", 12 * 3600)
+WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
