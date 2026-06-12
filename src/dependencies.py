@@ -885,7 +885,17 @@ async def get_api_key_user_async(
                 "[AUTH] JWT in request header failed verification/decode",
                 header_name=get_jwt_auth_header(),
             )
-            raise HTTPException(status_code=401, detail="Invalid or unverifiable JWT")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "invalid_jwt",
+                    "message": (
+                        f"The JWT in the '{get_jwt_auth_header()}' header could not be "
+                        "verified or decoded. Ensure the gateway forwards a valid, "
+                        "unexpired user JWT issued by a trusted identity provider."
+                    ),
+                },
+            )
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
     else:
         from utils.run_mode_utils import is_run_mode_saas

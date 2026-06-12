@@ -149,7 +149,8 @@ async def test_invalid_jwt_rbac_on_401(monkeypatch, _patch_attach):
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
     assert exc.value.status_code == 401
-    assert exc.value.detail == "Invalid or unverifiable JWT"
+    assert exc.value.detail["error"] == "invalid_jwt"
+    assert "could not be verified" in exc.value.detail["message"]
 
 
 @pytest.mark.asyncio
