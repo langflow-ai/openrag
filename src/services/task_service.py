@@ -972,7 +972,9 @@ class TaskService:
             # Image files that produced no text almost certainly failed because OCR
             # is disabled — not because the file is corrupted. Give a targeted tip.
             filename = file_task.filename or file_task.file_path or ""
-            if "no text content could be extracted" in error.lower() and _is_ocr_required_file(filename):
+            if "no text content could be extracted" in error.lower() and _is_ocr_required_file(
+                filename
+            ):
                 return {
                     "component": "docling",
                     "failure_phase": "parsing",
