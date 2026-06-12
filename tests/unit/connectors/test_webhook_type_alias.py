@@ -13,6 +13,7 @@ another replica or before a restart).
 
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -158,6 +159,197 @@ async def test_webhook_unknown_type_is_ignored_not_500():
     assert response.status_code == 200
     body = json.loads(response.body)
     assert body == {"status": "ignored", "reason": "no_channel_id"}
+
+
+# ---------------------------------------------------------------------------
+# SharePoint/OneDrive handle_webhook — delta query for changed files
+# ---------------------------------------------------------------------------
+
+
+GRAPH_CONNECTORS = [
+    ("connectors.sharepoint.connector", "SharePointConnector", "sharepoint"),
+    ("connectors.onedrive.connector", "OneDriveConnector", "onedrive"),
+]
+
+
+class _FakeOAuth:
+    def get_access_token(self) -> str:
+        return "access-token"
+
+
+def _graph_connector(module_path: str, cls_name: str, tmp_path, webhook_url: str | None):
+    import importlib
+
+    cls = getattr(importlib.import_module(module_path), cls_name)
+    config = {"token_file": str(tmp_path / "token.json")}
+    if webhook_url:
+        config["webhook_url"] = webhook_url
+    connector = cls(config)
+    connector.authenticate = AsyncMock(return_value=True)
+    connector.oauth = _FakeOAuth()
+    return connector
+
+
+class _FakeDeltaClient:
+    """Stands in for httpx.AsyncClient; serves Graph delta GET responses."""
+
+    def __init__(self, pages: list[dict]):
+        self._pages = pages
+        self.requested_urls: list[str] = []
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url, headers=None, timeout=None):
+        self.requested_urls.append(url)
+
+        class _Resp:
+            status_code = 200
+
+            def __init__(self, payload):
+                self._payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self._payload
+
+        return _Resp(self._pages[len(self.requested_urls) - 1])
+
+
+GRAPH_NOTIFICATION = {"value": [{"resource": "me/drive/root", "changeType": "updated"}]}
+
+
+def _recent_iso():
+    from datetime import datetime
+
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
+async def test_graph_webhook_runs_delta_query(
+    tmp_path, monkeypatch, module_path, cls_name, connector_type
+):
+    """Graph notifications don't name the changed items; the connector must
+    discover them via a drive delta query."""
+    import httpx
+
+    connector = _graph_connector(module_path, cls_name, tmp_path, webhook_url=None)
+
+    delta_page = {
+        "value": [
+            {"id": "file-recent", "file": {}, "lastModifiedDateTime": _recent_iso()},
+            {"id": "file-old", "file": {}, "lastModifiedDateTime": "2020-01-01T00:00:00Z"},
+            {"id": "folder-1", "folder": {}, "lastModifiedDateTime": _recent_iso()},
+            {"id": "file-gone", "file": {}, "deleted": {}, "lastModifiedDateTime": _recent_iso()},
+        ],
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?token=abc",
+    }
+    fake_client = _FakeDeltaClient([delta_page])
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+
+    affected = await connector.handle_webhook(GRAPH_NOTIFICATION)
+
+    # First sweep: only recently-modified, non-deleted files count.
+    assert affected == ["file-recent"]
+    assert connector._delta_link == "https://graph.microsoft.com/v1.0/delta?token=abc"
+    assert fake_client.requested_urls[0].endswith("/delta")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
+async def test_graph_webhook_uses_stored_delta_link(
+    tmp_path, monkeypatch, module_path, cls_name, connector_type
+):
+    import httpx
+
+    connector = _graph_connector(module_path, cls_name, tmp_path, webhook_url=None)
+    connector._delta_link = "https://graph.microsoft.com/v1.0/delta?token=prev"
+
+    delta_page = {
+        # With a delta link the results ARE the changes — no recency filter.
+        "value": [{"id": "file-old", "file": {}, "lastModifiedDateTime": "2020-01-01T00:00:00Z"}],
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?token=next",
+    }
+    fake_client = _FakeDeltaClient([delta_page])
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+
+    affected = await connector.handle_webhook(GRAPH_NOTIFICATION)
+
+    assert affected == ["file-old"]
+    assert fake_client.requested_urls == ["https://graph.microsoft.com/v1.0/delta?token=prev"]
+    assert connector._delta_link == "https://graph.microsoft.com/v1.0/delta?token=next"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
+async def test_graph_webhook_empty_payload_skips_delta(
+    tmp_path, module_path, cls_name, connector_type
+):
+    connector = _graph_connector(module_path, cls_name, tmp_path, webhook_url=None)
+
+    assert await connector.handle_webhook({"value": []}) == []
+    connector.authenticate.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# _handle_data_source_auth — subscription registration on connect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_data_source_auth_registers_webhook_subscription():
+    """Data-source connections don't go through update_connection, so the OAuth
+    callback must register the change-notification subscription itself."""
+    from services.auth_service import AuthService
+
+    manager = MagicMock()
+    connector = MagicMock()
+    manager.get_connector = AsyncMock(return_value=connector)
+    manager._setup_webhook_if_needed = AsyncMock()
+
+    connector_service = MagicMock()
+    connector_service.connection_manager = manager
+    service = AuthService(session_manager=MagicMock(), connector_service=connector_service)
+
+    connection_config = MagicMock()
+    connection_config.connector_type = "google_drive"
+
+    result = await service._handle_data_source_auth("conn-1", connection_config)
+
+    assert result["status"] == "authenticated"
+    manager._setup_webhook_if_needed.assert_awaited_once_with(
+        "conn-1", connection_config, connector
+    )
+
+
+@pytest.mark.asyncio
+async def test_data_source_auth_survives_subscription_failure():
+    """Webhook registration failure must not fail the OAuth connect itself."""
+    from services.auth_service import AuthService
+
+    manager = MagicMock()
+    manager.get_connector = AsyncMock(return_value=MagicMock())
+    manager._setup_webhook_if_needed = AsyncMock(side_effect=RuntimeError("graph down"))
+
+    connector_service = MagicMock()
+    connector_service.connection_manager = manager
+    service = AuthService(session_manager=MagicMock(), connector_service=connector_service)
+
+    connection_config = MagicMock()
+    connection_config.connector_type = "google_drive"
+
+    result = await service._handle_data_source_auth("conn-1", connection_config)
+
+    assert result["status"] == "authenticated"
 
 
 # ---------------------------------------------------------------------------
