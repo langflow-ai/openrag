@@ -229,9 +229,7 @@ def _ibm_setup(monkeypatch, stored_credentials=None, broken=False):
 
 
 @pytest.mark.asyncio
-async def test_jwt_present_keeps_bearer_and_skips_credential_resolution(
-    monkeypatch, _patch_attach
-):
+async def test_jwt_present_keeps_bearer_and_skips_credential_resolution(monkeypatch, _patch_attach):
     """JWT present -> it is primary for everything; the credentials header is
     ignored and nothing is persisted."""
     manager, services = _ibm_setup(monkeypatch)
@@ -310,9 +308,7 @@ async def test_no_jwt_saas_rbac_on_logs_error(monkeypatch, _patch_attach):
     manager, services = _ibm_setup(monkeypatch)
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     errors: list[str] = []
-    monkeypatch.setattr(
-        deps.logger, "error", lambda msg, **kw: errors.append(msg)
-    )
+    monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
     req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
@@ -328,9 +324,7 @@ async def test_no_jwt_saas_rbac_off_no_error_log(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", False)
     errors: list[str] = []
-    monkeypatch.setattr(
-        deps.logger, "error", lambda msg, **kw: errors.append(msg)
-    )
+    monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
     req = _FakeRequest({})
 
     with pytest.raises(HTTPException) as exc:
@@ -346,9 +340,7 @@ async def test_invalid_jwt_rbac_on_logs_error(monkeypatch, _patch_attach):
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
     _patch_verify(monkeypatch, None)
     errors: list[str] = []
-    monkeypatch.setattr(
-        deps.logger, "error", lambda msg, **kw: errors.append(msg)
-    )
+    monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
     req = _FakeRequest({"X-OpenRAG-JWT": "garbage"})
 
     with pytest.raises(HTTPException) as exc:
