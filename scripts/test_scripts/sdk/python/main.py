@@ -132,7 +132,10 @@ async def amain(cfg: Config) -> int:
         timeout=cfg.timeout,
     )
     try:
-        print(f"Target: {cfg.url}  (user: {mask_username(cfg.username)}, key: [REDACTED])")
+        print(
+            f"Target: {cfg.url}  "
+            f"(user: {mask_username(cfg.username)}, key: [REDACTED])"
+        )
 
         # Preflight is non-fatal: an HTTP error (auth, permissions, 5xx) is
         # logged and recorded in the report, and the run continues so every
