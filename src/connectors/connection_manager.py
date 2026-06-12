@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,7 @@ def _parse_webhook_expiration(value: Any) -> datetime | None:
         return None
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(float(value) / 1000, tz=timezone.utc)
+            return datetime.fromtimestamp(float(value) / 1000, tz=UTC)
         except (ValueError, OSError, OverflowError):
             return None
     if not isinstance(value, str) or not value.strip():
@@ -55,7 +55,7 @@ def _parse_webhook_expiration(value: Any) -> datetime | None:
     text = value.strip()
     if text.isdigit():
         try:
-            return datetime.fromtimestamp(int(text) / 1000, tz=timezone.utc)
+            return datetime.fromtimestamp(int(text) / 1000, tz=UTC)
         except (ValueError, OSError, OverflowError):
             return None
     if text.endswith(("Z", "z")):
@@ -67,7 +67,7 @@ def _parse_webhook_expiration(value: Any) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -667,7 +667,7 @@ class ConnectionManager:
         connection never blocks the rest. Returns counters for logging.
         """
         stats = {"checked": 0, "renewed": 0, "failed": 0, "skipped": 0}
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for connection in list(self.connections.values()):
             if not connection.is_active or not connection.config.get("webhook_url"):

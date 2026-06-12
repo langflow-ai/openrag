@@ -10,7 +10,7 @@ the Graph PATCH `renew_subscription` on SharePoint/OneDrive.
 """
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -26,7 +26,7 @@ THRESHOLD = 12 * 3600
 
 
 def _iso_in(hours: float) -> str:
-    return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -38,21 +38,19 @@ def test_parse_expiration_formats():
     from connectors.connection_manager import _parse_webhook_expiration as parse
 
     # ISO with offset
-    assert parse("2026-06-14T12:00:00+00:00") == datetime(
-        2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc
-    )
+    assert parse("2026-06-14T12:00:00+00:00") == datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC)
     # ISO with trailing Z
-    assert parse("2026-06-14T12:00:00Z") == datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
+    assert parse("2026-06-14T12:00:00Z") == datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC)
     # Graph 7-digit fractional seconds
     assert parse("2026-06-14T12:00:00.9356913Z") == datetime(
-        2026, 6, 14, 12, 0, 0, 935691, tzinfo=timezone.utc
+        2026, 6, 14, 12, 0, 0, 935691, tzinfo=UTC
     )
     # Naive ISO assumed UTC
     assert parse("2026-06-14T12:00:00").tzinfo is not None
     # Epoch-milliseconds (legacy raw Google Drive value), string and int
-    epoch_ms = int(datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
-    assert parse(str(epoch_ms)) == datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
-    assert parse(epoch_ms) == datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
+    epoch_ms = int(datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC).timestamp() * 1000)
+    assert parse(str(epoch_ms)) == datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC)
+    assert parse(epoch_ms) == datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC)
     # Missing / garbage -> None (treated as unknown -> renew)
     assert parse(None) is None
     assert parse("") is None
@@ -339,7 +337,9 @@ async def test_graph_renew_patches_subscription(tmp_path, monkeypatch, module_pa
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
-        _FakePatchClient(captured, _FakeResponse(200, {"expirationDateTime": "2026-06-17T00:00:00Z"})),
+        _FakePatchClient(
+            captured, _FakeResponse(200, {"expirationDateTime": "2026-06-17T00:00:00Z"})
+        ),
     )
 
     expiration = await connector.renew_subscription("sub-123")

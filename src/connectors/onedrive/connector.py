@@ -1150,9 +1150,7 @@ class OneDriveConnector(BaseConnector):
 
                 if response.status_code == 404:
                     # Subscription already expired/deleted at Graph; recreate.
-                    logger.info(
-                        f"OneDrive subscription {subscription_id} not found, will recreate"
-                    )
+                    logger.info(f"OneDrive subscription {subscription_id} not found, will recreate")
                     return None
                 if response.status_code not in [200, 201]:
                     logger.warning(
@@ -1163,9 +1161,7 @@ class OneDriveConnector(BaseConnector):
 
                 expiration = response.json().get("expirationDateTime")
                 self.webhook_expiration = expiration
-                logger.info(
-                    f"OneDrive subscription {subscription_id} renewed until {expiration}"
-                )
+                logger.info(f"OneDrive subscription {subscription_id} renewed until {expiration}")
                 return expiration
 
         except Exception as e:

@@ -5,6 +5,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -972,7 +973,7 @@ class GoogleDriveConnector(BaseConnector):
 
                 try:
                     self.webhook_expiration = datetime.fromtimestamp(
-                        int(expiration) / 1000, tz=timezone.utc
+                        int(expiration) / 1000, tz=UTC
                     ).isoformat()
                 except (TypeError, ValueError):
                     pass

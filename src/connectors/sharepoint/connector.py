@@ -1106,9 +1106,7 @@ class SharePointConnector(BaseConnector):
 
                 expiration = response.json().get("expirationDateTime")
                 self.webhook_expiration = expiration
-                logger.info(
-                    f"SharePoint subscription {subscription_id} renewed until {expiration}"
-                )
+                logger.info(f"SharePoint subscription {subscription_id} renewed until {expiration}")
                 return expiration
 
         except Exception as e:
