@@ -126,6 +126,15 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     });
   });
 
+  describe("Models", () => {
+    it("should list models for a provider", async () => {
+      const models = await client.models.list("openai");
+
+      expect(Array.isArray(models.language_models)).toBe(true);
+      expect(Array.isArray(models.embedding_models)).toBe(true);
+    });
+  });
+
   describe("Knowledge Filters", () => {
     let createdFilterId: string;
 

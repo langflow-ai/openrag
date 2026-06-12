@@ -38,6 +38,7 @@ export { ChatClient, ChatStream } from "./chat";
 export { SearchClient } from "./search";
 export { DocumentsClient } from "./documents";
 export { KnowledgeFiltersClient } from "./knowledge-filters";
+export { ModelsClient } from "./models";
 
 export {
   // Error types
@@ -76,6 +77,9 @@ export {
   SettingsUpdateResponse,
   AgentSettings,
   KnowledgeSettings,
+  // Models types
+  ModelOption,
+  ModelsResponse,
   // Knowledge filter types
   KnowledgeFilter,
   KnowledgeFilterQueryData,
