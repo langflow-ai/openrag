@@ -29,7 +29,7 @@ class _FakeRequest:
     def __init__(self, headers: dict[str, str]):
         self.method = "POST"
         self.headers = headers
-        self.query_params = {}
+        self.query_params: dict[str, str] = {}
 
     async def json(self):
         return {}
