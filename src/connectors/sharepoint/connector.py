@@ -1069,7 +1069,14 @@ class SharePointConnector(BaseConnector):
                     data = response.json()
 
                     for item in data.get("value", []):
-                        if "file" not in item or "deleted" in item:
+                        if "deleted" in item:
+                            # Deleted at source: propagate the id so the processor
+                            # runs its deleted-at-source cleanup
+                            # (get_file_content -> 404 -> delete indexed chunks).
+                            if "folder" not in item:
+                                affected_files.append(item["id"])
+                            continue
+                        if "file" not in item:
                             continue
                         if first_sweep:
                             modified = item.get("lastModifiedDateTime")

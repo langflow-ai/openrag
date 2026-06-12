@@ -249,7 +249,8 @@ async def test_graph_webhook_runs_delta_query(
             {"id": "file-recent", "file": {}, "lastModifiedDateTime": _recent_iso()},
             {"id": "file-old", "file": {}, "lastModifiedDateTime": "2020-01-01T00:00:00Z"},
             {"id": "folder-1", "folder": {}, "lastModifiedDateTime": _recent_iso()},
-            {"id": "file-gone", "file": {}, "deleted": {}, "lastModifiedDateTime": _recent_iso()},
+            {"id": "file-gone", "deleted": {}},
+            {"id": "folder-gone", "folder": {}, "deleted": {}},
         ],
         "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?token=abc",
     }
@@ -258,8 +259,10 @@ async def test_graph_webhook_runs_delta_query(
 
     affected = await connector.handle_webhook(GRAPH_NOTIFICATION)
 
-    # First sweep: only recently-modified, non-deleted files count.
-    assert affected == ["file-recent"]
+    # First sweep: recently-modified files count regardless of the cutoff applied
+    # to live files; deleted files propagate so indexed chunks get cleaned up,
+    # deleted folders don't.
+    assert affected == ["file-recent", "file-gone"]
     assert connector._delta_link == "https://graph.microsoft.com/v1.0/delta?token=abc"
     assert fake_client.requested_urls[0].endswith("/delta")
 
