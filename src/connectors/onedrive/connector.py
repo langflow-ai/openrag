@@ -353,7 +353,9 @@ class OneDriveConnector(BaseConnector):
 
             subscription_data = {
                 "changeType": "created,updated,deleted",
-                "notificationUrl": f"{webhook_url}/webhook/onedrive",
+                # webhook_url is already the full endpoint
+                # ({WEBHOOK_BASE_URL}/connectors/onedrive/webhook, set at connect time)
+                "notificationUrl": webhook_url,
                 "resource": resource,
                 "expirationDateTime": self._get_subscription_expiry(),
                 "clientState": "onedrive_personal",

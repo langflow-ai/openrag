@@ -391,7 +391,9 @@ class SharePointConnector(BaseConnector):
 
             subscription_data = {
                 "changeType": "created,updated,deleted",
-                "notificationUrl": f"{webhook_url}/webhook/sharepoint",
+                # webhook_url is already the full endpoint
+                # ({WEBHOOK_BASE_URL}/connectors/sharepoint/webhook, set at connect time)
+                "notificationUrl": webhook_url,
                 "resource": resource,
                 "expirationDateTime": self._get_subscription_expiry(),
                 "clientState": f"sharepoint_{self.tenant_id}",
