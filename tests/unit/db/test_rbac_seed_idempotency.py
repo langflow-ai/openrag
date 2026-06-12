@@ -1,6 +1,5 @@
 """Verify db.seed.seed_roles_and_permissions is idempotent."""
 
-import os
 import sys
 from pathlib import Path
 
