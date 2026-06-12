@@ -26,6 +26,9 @@ if str(SRC) not in sys.path:
 
 
 class _FakeResponse:
+    status_code = 200
+    text = ""
+
     def __init__(self, payload: dict):
         self._payload = payload
 
@@ -109,6 +112,9 @@ async def test_graph_notification_url_is_config_webhook_url_verbatim(
     # Regression: must not re-append a /webhook/<type> segment to the
     # already-complete endpoint (yields a 404 route, Graph rejects it).
     assert f"/webhook/{connector_type}" not in body["notificationUrl"]
+    # Graph driveItem subscriptions only support "updated"; anything else
+    # (e.g. "created,updated,deleted") is rejected with 400 Bad Request.
+    assert body["changeType"] == "updated"
     # The Graph-reported expiration is exposed for persistence/renewal
     assert connector.webhook_expiration == "2026-06-14T00:00:00Z"
 

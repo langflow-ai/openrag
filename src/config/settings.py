@@ -523,7 +523,14 @@ def is_no_auth_mode():
 # Webhook configuration - must be set to enable webhooks
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
 
-# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL)
+# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL).
+# If set, it must end in /connectors/google_drive/webhook.
+#
+# Drive watch addresses resolve config webhook_url -> this var -> WEBHOOK_BASE_URL
+# (google_drive/connector.py _resolve_webhook_address). Watches registered against
+# the legacy /connectors/google/webhook path (e.g. via a stale webhook_url persisted
+# in connections.json) are tolerated by LEGACY_WEBHOOK_TYPE_ALIASES in api/connectors.py;
+# the real fix is correcting the stored webhook_url (e.g. reconnect the data source).
 GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
 
 # Webhook subscription renewal: how often to check, and how close to expiry a

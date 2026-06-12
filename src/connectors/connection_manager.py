@@ -555,6 +555,20 @@ class ConnectionManager:
 
     async def get_connection_by_webhook_id(self, webhook_id: str) -> ConnectionConfig | None:
         """Find a connection by its webhook/subscription ID"""
+        connection = self._find_connection_by_webhook_id(webhook_id)
+        if connection:
+            return connection
+
+        # The subscription may have been created by another replica or before a
+        # restart; re-read the persisted store once before giving up.
+        try:
+            await self.load_connections()
+        except Exception as e:
+            logger.error(f"Failed to reload connections for webhook lookup: {e}")
+            return None
+        return self._find_connection_by_webhook_id(webhook_id)
+
+    def _find_connection_by_webhook_id(self, webhook_id: str) -> ConnectionConfig | None:
         for connection in self.connections.values():
             # Check if the webhook ID is stored in the connection config
             if connection.config.get("webhook_channel_id") == webhook_id:

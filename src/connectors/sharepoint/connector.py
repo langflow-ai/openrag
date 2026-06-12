@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -67,6 +67,8 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
+        # Graph delta link for webhook change tracking (in-memory per instance)
+        self._delta_link: str | None = None
         # base_url is the generic field name, sharepoint_url is kept for backward compatibility
         self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
         logger.debug(
@@ -395,7 +397,9 @@ class SharePointConnector(BaseConnector):
                 resource = "/me/drive/root"
 
             subscription_data = {
-                "changeType": "created,updated,deleted",
+                # Graph driveItem subscriptions only support "updated"; creates and
+                # deletes still surface through the delta query the webhook triggers.
+                "changeType": "updated",
                 # webhook_url is already the full endpoint
                 # ({WEBHOOK_BASE_URL}/connectors/sharepoint/webhook, set at connect time)
                 "notificationUrl": webhook_url,
@@ -412,6 +416,10 @@ class SharePointConnector(BaseConnector):
                 response = await client.post(
                     url, json=subscription_data, headers=headers, timeout=30
                 )
+                if response.status_code >= 400:
+                    logger.error(
+                        f"Graph subscription request rejected: {response.status_code} {response.text}"
+                    )
                 response.raise_for_status()
 
                 result = response.json()
@@ -1021,18 +1029,79 @@ class SharePointConnector(BaseConnector):
         return None
 
     async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
-        """Handle webhook notification and return affected file IDs"""
-        affected_files = []
+        """Handle webhook notification and return affected file IDs.
 
-        # Process Microsoft Graph webhook payload
-        notifications = payload.get("value", [])
-        for notification in notifications:
-            resource = notification.get("resource")
-            if resource and "/drive/items/" in resource:
-                file_id = resource.split("/drive/items/")[-1]
-                affected_files.append(file_id)
+        Graph driveItem notifications never identify the changed items — the
+        notification resource is the subscribed drive root — so run a delta
+        query against the drive to discover what changed.
+        """
+        if not payload.get("value"):
+            return []
 
-        return affected_files
+        try:
+            if not await self.authenticate():
+                logger.error("SharePoint authentication failed during webhook handling")
+                return []
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}"}
+
+            site_info = self._parse_sharepoint_url()
+            if site_info:
+                resource = (
+                    f"sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/root"
+                )
+            else:
+                resource = "me/drive/root"
+
+            # Without a stored delta link (first notification for this instance)
+            # the delta query enumerates the whole drive, so only keep recently
+            # modified files instead of re-syncing everything.
+            first_sweep = self._delta_link is None
+            url = self._delta_link or f"{self._graph_base_url}/{resource}/delta"
+            cutoff = datetime.now(UTC) - timedelta(minutes=10)
+
+            affected_files: list[str] = []
+            async with httpx.AsyncClient() as client:
+                while url:
+                    response = await client.get(url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    for item in data.get("value", []):
+                        if "deleted" in item:
+                            # Deleted at source: propagate the id so the processor
+                            # runs its deleted-at-source cleanup
+                            # (get_file_content -> 404 -> delete indexed chunks).
+                            if "folder" not in item:
+                                affected_files.append(item["id"])
+                            continue
+                        if "file" not in item:
+                            continue
+                        if first_sweep:
+                            modified = item.get("lastModifiedDateTime")
+                            if not modified:
+                                continue
+                            try:
+                                modified_at = datetime.fromisoformat(
+                                    modified.replace("Z", "+00:00")
+                                )
+                            except ValueError:
+                                continue
+                            if modified_at < cutoff:
+                                continue
+                        affected_files.append(item["id"])
+
+                    delta_link = data.get("@odata.deltaLink")
+                    if delta_link:
+                        self._delta_link = delta_link
+                    url = data.get("@odata.nextLink")
+
+            return list(dict.fromkeys(affected_files))
+
+        except Exception as e:
+            logger.error(f"SharePoint webhook delta query failed: {e}")
+            return []
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:
         """Clean up subscription - BaseConnector interface"""
