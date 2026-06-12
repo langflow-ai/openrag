@@ -116,6 +116,14 @@ class TestDocumentsExtended:
         status = await client.documents.get_task_status(task_response.task_id)
         assert status.status is not None
 
+        enhanced_status = await client.documents.get_task_status_enhanced(
+            task_response.task_id
+        )
+        assert enhanced_status.status is not None
+
+        enhanced_tasks = await client.documents.list_tasks_enhanced()
+        assert isinstance(enhanced_tasks.tasks, list)
+
         final = await client.documents.wait_for_task(task_response.task_id)
         assert final.status in ("completed", "failed")
 
