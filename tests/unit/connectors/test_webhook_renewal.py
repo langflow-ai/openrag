@@ -10,7 +10,7 @@ the Graph PATCH `renew_subscription` on SharePoint/OneDrive.
 """
 
 import sys
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 

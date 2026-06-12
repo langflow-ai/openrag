@@ -969,7 +969,7 @@ class GoogleDriveConnector(BaseConnector):
             self.webhook_resource_id = resource_id
             self.webhook_expiration = None
             if expiration:
-                from datetime import datetime, timezone
+                from datetime import datetime
 
                 try:
                     self.webhook_expiration = datetime.fromtimestamp(
