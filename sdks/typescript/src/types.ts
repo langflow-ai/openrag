@@ -52,6 +52,8 @@ export interface SearchResponse {
 export interface SearchFilters {
   data_sources?: string[];
   document_types?: string[];
+  owners?: string[];
+  connector_types?: string[];
 }
 
 // Document types

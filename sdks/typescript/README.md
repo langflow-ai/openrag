@@ -160,6 +160,8 @@ const results = await client.search.query("API documentation", {
   filters: {
     data_sources: ["api-docs.pdf"],
     document_types: ["application/pdf"],
+    owners: ["user@example.com"],
+    connector_types: ["google_drive"],
   },
   limit: 5,
   scoreThreshold: 0.5,
