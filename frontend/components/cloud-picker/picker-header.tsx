@@ -22,6 +22,8 @@ const getProviderName = (provider: CloudProvider): string => {
       return "OneDrive";
     case "sharepoint":
       return "SharePoint";
+    case "dropbox":
+      return "Dropbox";
     default:
       return "Cloud Storage";
   }

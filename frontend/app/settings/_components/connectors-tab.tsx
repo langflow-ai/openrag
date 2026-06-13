@@ -30,8 +30,8 @@ export function ConnectorsTab() {
               Cloud connectors require authentication
             </CardTitle>
             <CardDescription className="text-sm">
-              Add the Google OAuth variables below to your <code>.env</code>{" "}
-              then restart the OpenRAG containers.
+              Add the OAuth variables for the connector you want to use to your{" "}
+              <code>.env</code> then restart the OpenRAG containers.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -59,6 +59,20 @@ export function ConnectorsTab() {
               <div>
                 <span className="mr-3 text-placeholder-foreground">31</span>
                 <span>GOOGLE_OAUTH_CLIENT_SECRET=</span>
+              </div>
+              <div className="text-muted-foreground mt-3">
+                <div>
+                  <span className="mr-3 text-placeholder-foreground">32</span>
+                  <span># Dropbox OAuth</span>
+                </div>
+              </div>
+              <div>
+                <span className="mr-3 text-placeholder-foreground">33</span>
+                <span>DROPBOX_OAUTH_CLIENT_ID=</span>
+              </div>
+              <div>
+                <span className="mr-3 text-placeholder-foreground">34</span>
+                <span>DROPBOX_OAUTH_CLIENT_SECRET=</span>
               </div>
             </div>
           </CardContent>

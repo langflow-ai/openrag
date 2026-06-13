@@ -11,7 +11,11 @@ export interface CloudFile {
   downloadUrl?: string;
 }
 
-export type CloudProvider = "google_drive" | "onedrive" | "sharepoint";
+export type CloudProvider =
+  | "google_drive"
+  | "onedrive"
+  | "sharepoint"
+  | "dropbox";
 
 export interface UnifiedCloudPickerProps {
   provider: CloudProvider;

@@ -2,6 +2,7 @@ import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import S3SettingsDialog from "@/app/settings/_components/s3-settings-dialog";
 import { S3BucketView } from "@/components/connectors/aws-s3/bucket-view";
 import AwsLogo from "@/components/icons/aws-logo";
+import DropboxLogo from "@/components/icons/dropbox-logo";
 import GoogleDriveLogo from "@/components/icons/google-drive-logo";
 import OneDriveLogo from "@/components/icons/one-drive-logo";
 import SharePointLogo from "@/components/icons/share-point-logo";
@@ -29,6 +30,13 @@ const BUILTIN_CONNECTORS: ConnectorUIDescriptor[] = [
     Icon: SharePointLogo,
     kind: "oauth",
     menuItem: { label: "SharePoint", route: "/upload/sharepoint" },
+  },
+  {
+    connectorType: "dropbox",
+    name: "Dropbox",
+    Icon: DropboxLogo,
+    kind: "oauth",
+    menuItem: { label: "Dropbox", route: "/upload/dropbox" },
   },
   {
     connectorType: "aws_s3",

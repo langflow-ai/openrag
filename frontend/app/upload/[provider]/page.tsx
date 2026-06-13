@@ -364,7 +364,11 @@ export default function UploadProviderPage() {
       <div className="max-w-3xl mx-auto">
         <UnifiedCloudPicker
           provider={
-            connector.type as "google_drive" | "onedrive" | "sharepoint"
+            connector.type as
+              | "google_drive"
+              | "onedrive"
+              | "sharepoint"
+              | "dropbox"
           }
           onFileSelected={handleFileSelected}
           selectedFiles={selectedFiles}
