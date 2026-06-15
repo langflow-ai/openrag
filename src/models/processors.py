@@ -665,7 +665,7 @@ class DocumentFileProcessor(TaskProcessor):
 
             if result.get("status") == "error":
                 file_task.status = TaskStatus.FAILED
-                file_task.error = result.get("error", "Failed to process document")
+                file_task.error = result.get("error") or "Failed to process document"
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
@@ -676,7 +676,7 @@ class DocumentFileProcessor(TaskProcessor):
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
@@ -1031,7 +1031,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
             if result.get("status") == "error":
                 file_task.status = TaskStatus.FAILED
-                file_task.error = result.get("error", "Failed to process document")
+                file_task.error = result.get("error") or "Failed to process document"
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
@@ -1042,7 +1042,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
@@ -1119,7 +1119,7 @@ class S3FileProcessor(TaskProcessor):
                 result["path"] = f"s3://{self.bucket}/{item}"
                 if result.get("status") == "error":
                     file_task.status = TaskStatus.FAILED
-                    file_task.error = result.get("error", "Failed to process document")
+                    file_task.error = result.get("error") or "Failed to process document"
                     upload_task.failed_files += 1
                 else:
                     file_task.status = TaskStatus.COMPLETED
@@ -1128,7 +1128,7 @@ class S3FileProcessor(TaskProcessor):
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             upload_task.failed_files += 1
         finally:
             file_task.updated_at = time.time()
@@ -1280,7 +1280,7 @@ class LangflowFileProcessor(TaskProcessor):
         except Exception as e:
             # Update task with failure
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
