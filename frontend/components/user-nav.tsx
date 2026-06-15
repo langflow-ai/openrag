@@ -133,7 +133,7 @@ export function UserNav() {
           type="button"
           onClick={async () => {
             await logout();
-            if (isCloudBrand) window.location.href = "/lhlogin";
+            if (isCloudBrand) window.location.href = "/logout";
           }}
           className="flex items-center hover:bg-muted w-full h-9 px-3"
         >

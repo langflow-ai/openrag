@@ -698,7 +698,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 "xhtml",
                 "webp",
             }
-            if file_task.filename:
+            # Only pre-validate when we have a real filename. When the filename
+            # falls back to the connector file_id (e.g. a deletion event re-added
+            # by sync_specific_files, where no name is known), skip this check so
+            # the deletion reaches the 404 -> chunk-cleanup path below. Files that
+            # still exist are re-validated after download (see below).
+            if file_task.filename and file_task.filename != file_id:
                 ext = file_task.filename.split(".")[-1].lower() if "." in file_task.filename else ""
                 if ext not in VALID_EXTENSIONS:
                     file_task.status = TaskStatus.FAILED

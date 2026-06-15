@@ -844,13 +844,33 @@ async def get_api_key_user_async(
     # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import IBM_AUTH_ENABLED, get_jwt_auth_header
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        get_api_jwt_header,
+        get_jwt_auth_header,
+    )
     from config.utils import resolve_jwt_claims
+    from utils.run_mode_utils import is_run_mode_saas
 
-    raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+    # SaaS/RBAC: the gateway MUST forward the end-user JWT on every /v1 request.
+    # When it doesn't, we must NOT silently degrade to lakehouse Basic creds —
+    # that path does DB user writes under a degraded identity and can clobber the
+    # shared users row the same person sees on UI login. Fail loud (401) with no
+    # DB side effects instead; explicit orag_ API-key auth still works.
+    saas_rbac = is_run_mode_saas() and jwt_roles_enabled()
+
+    # Primary: the gateway-forwarded JWT header (default Authorization).
+    # Fallback: the API/MCP add-on header — FastMCP strips Authorization before
+    # proxying an MCP tool call to this /v1 handler, so MCP/API callers supply
+    # the JWT in get_api_jwt_header() instead.
+    jwt_header = get_jwt_auth_header()
+    raw_jwt = request.headers.get(jwt_header, "")
+    if not (raw_jwt and raw_jwt.strip()):
+        jwt_header = get_api_jwt_header()
+        raw_jwt = request.headers.get(jwt_header, "")
     logger.debug(
         "[AUTH] API-key path JWT header lookup",
-        header_name=get_jwt_auth_header(),
+        header_name=jwt_header,
         jwt_present=bool(raw_jwt and raw_jwt.strip()),
     )
     if raw_jwt and raw_jwt.strip():
@@ -883,14 +903,14 @@ async def get_api_key_user_async(
             # must not silently downgrade to the API-key identity.
             logger.error(
                 "[AUTH] JWT in request header failed verification/decode",
-                header_name=get_jwt_auth_header(),
+                header_name=jwt_header,
             )
             raise HTTPException(
                 status_code=401,
                 detail={
                     "error": "invalid_jwt",
                     "message": (
-                        f"The JWT in the '{get_jwt_auth_header()}' header could not be "
+                        f"The JWT in the '{jwt_header}' header could not be "
                         "verified or decoded. Ensure the gateway forwards a valid, "
                         "unexpired user JWT issued by a trusted identity provider."
                     ),
@@ -898,16 +918,27 @@ async def get_api_key_user_async(
             )
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
     else:
-        from utils.run_mode_utils import is_run_mode_saas
-
-        if is_run_mode_saas() and jwt_roles_enabled():
+        if saas_rbac:
             # In saas the gateway is responsible for forwarding the end-user
             # JWT on every API/MCP request; its absence is a gateway
-            # misconfiguration, not a normal client state.
+            # misconfiguration, not a normal client state. Fail fast here —
+            # before any lakehouse / X-Username / API-key fallback — so no DB
+            # user/role write ever runs under a degraded (roles-less) identity.
             logger.error(
                 "[AUTH] JWT not found in request header — run_mode=saas with "
                 "RBAC enabled requires the gateway to forward the user JWT",
-                header_name=get_jwt_auth_header(),
+                header_name=jwt_header,
+            )
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "missing_user_jwt",
+                    "message": (
+                        "No user JWT was forwarded by the gateway. In SaaS/RBAC "
+                        "mode the gateway must forward the end-user JWT on every "
+                        "/v1 request."
+                    ),
+                },
             )
         if IBM_AUTH_ENABLED:
             # No JWT — fall back to lakehouse Basic credentials (credentials
@@ -965,6 +996,9 @@ async def get_api_key_user_async(
                 api_key = token
 
     if not api_key:
+        # saas_rbac is already handled by the fail-fast 401 above (no JWT ->
+        # missing_user_jwt), so reaching here means non-saas_rbac: prompt for
+        # an API key as before.
         raise HTTPException(
             status_code=401,
             detail={
