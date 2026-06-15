@@ -245,6 +245,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Handle task status changes and file updates
   useEffect(() => {
+    const currentTaskIds = new Set(tasks.map((task) => task.task_id));
+    for (const previousTask of previousTasksRef.current) {
+      if (!currentTaskIds.has(previousTask.task_id)) {
+        clearTaskConnectorType(previousTask.task_id);
+      }
+    }
+
     if (tasks.length === 0) {
       // Store current tasks as previous for next comparison
       previousTasksRef.current = tasks;
@@ -618,13 +625,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
-
-    const currentTaskIds = new Set(tasks.map((task) => task.task_id));
-    for (const previousTask of previousTasksRef.current) {
-      if (!currentTaskIds.has(previousTask.task_id)) {
-        clearTaskConnectorType(previousTask.task_id);
-      }
-    }
 
     // Store current tasks as previous for next comparison
     previousTasksRef.current = tasks;
