@@ -19,6 +19,7 @@ import {
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { queueKnowledgeIngestFocusForCloudFiles } from "@/lib/knowledge-grid-pagination";
 
 // CloudFile interface is now imported from the unified cloud picker
 
@@ -91,6 +92,7 @@ export default function UploadProviderPage() {
     files: CloudFile[],
     replaceDuplicates: boolean,
   ) => {
+    queueKnowledgeIngestFocusForCloudFiles(files, replaceDuplicates);
     syncMutation.mutate(
       {
         connectorType: connector.type,

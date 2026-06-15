@@ -39,6 +39,7 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
+import { dispatchKnowledgeIngestFocus } from "@/lib/knowledge-grid-pagination";
 import {
   duplicateCheck,
   uploadFiles,
@@ -335,6 +336,7 @@ export function KnowledgeDropdown() {
     setFileUploading(true);
 
     try {
+      dispatchKnowledgeIngestFocus(file.name, replace);
       await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {

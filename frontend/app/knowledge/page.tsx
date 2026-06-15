@@ -44,7 +44,12 @@ import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import {
   collectNewIngestFocusIdentities,
   collectProcessingFocusIdentities,
+  consumePersistedKnowledgeIngestFocus,
   focusPendingIngestRows,
+  type IngestFocusMode,
+  inferIngestFocusMode,
+  ingestFocusModeFromReplace,
+  KNOWLEDGE_INGEST_FOCUS_EVENT,
 } from "@/lib/knowledge-grid-pagination";
 import {
   buildKnowledgeTableRows,
@@ -458,10 +463,15 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const gridRowsRef = useRef(gridRows);
+  gridRowsRef.current = gridRows;
   const prevTaskFilesForPaginationRef = useRef<typeof taskFiles>([]);
   const prevGridRowsForPaginationRef = useRef<typeof gridRows>([]);
   const hasInitializedPaginationRefsRef = useRef(false);
   const pendingIngestFocusIdentitiesRef = useRef<Set<string>>(new Set());
+  const pendingIngestFocusModesRef = useRef<Map<string, IngestFocusMode>>(
+    new Map(),
+  );
 
   const tryFocusPendingIngestRows = useCallback(() => {
     const run = () => {
@@ -472,26 +482,61 @@ function SearchPage() {
       const resolved = focusPendingIngestRows(
         api,
         pendingIngestFocusIdentitiesRef.current,
+        gridRowsRef.current,
+        pendingIngestFocusModesRef.current,
       );
       for (const identity of resolved) {
         pendingIngestFocusIdentitiesRef.current.delete(identity);
+        pendingIngestFocusModesRef.current.delete(identity);
       }
     };
     requestAnimationFrame(() => requestAnimationFrame(run));
   }, []);
 
   const queueIngestFocusIdentities = useCallback(
-    (identities: string[]) => {
+    (identities: string[], mode?: IngestFocusMode) => {
       if (identities.length === 0) {
         return;
       }
       for (const identity of identities) {
         pendingIngestFocusIdentitiesRef.current.add(identity);
+        pendingIngestFocusModesRef.current.set(
+          identity,
+          mode ?? inferIngestFocusMode(identity, gridRowsRef.current),
+        );
       }
       tryFocusPendingIngestRows();
     },
     [tryFocusPendingIngestRows],
   );
+
+  useEffect(() => {
+    const stored = consumePersistedKnowledgeIngestFocus();
+    for (const target of stored) {
+      queueIngestFocusIdentities(
+        [target.filename],
+        ingestFocusModeFromReplace(target.replace),
+      );
+    }
+  }, [queueIngestFocusIdentities]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ filename: string; replace: boolean }>
+      ).detail;
+      if (!detail?.filename) {
+        return;
+      }
+      queueIngestFocusIdentities(
+        [detail.filename],
+        ingestFocusModeFromReplace(detail.replace),
+      );
+    };
+    window.addEventListener(KNOWLEDGE_INGEST_FOCUS_EVENT, handler);
+    return () =>
+      window.removeEventListener(KNOWLEDGE_INGEST_FOCUS_EVENT, handler);
+  }, [queueIngestFocusIdentities]);
 
   // Jump to the page where a file starts processing (new ingest or retry).
   useEffect(() => {

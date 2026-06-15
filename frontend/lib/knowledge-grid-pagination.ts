@@ -1,7 +1,10 @@
 import type { IRowNode } from "ag-grid-community";
 import type { AgGridReact } from "ag-grid-react";
 import type { TaskFile } from "@/contexts/task-context";
-import { getKnowledgeFileIdentity } from "@/lib/knowledge-table-state";
+import {
+  getKnowledgeFileAliasKeys,
+  getKnowledgeFileIdentity,
+} from "@/lib/knowledge-table-state";
 
 type GridApi = NonNullable<AgGridReact<unknown>["api"]>;
 
@@ -11,43 +14,269 @@ type GridRowLike = {
   status?: string;
 };
 
-type VisibleRowTarget = {
-  displayIndex: number;
-  node: IRowNode;
+export type IngestFocusMode = "existing" | "new";
+
+/**
+ * Maps an upload overwrite flag to grid pagination focus mode.
+ *
+ * Intentionally `replace ? "existing" : "new"` — not inverted:
+ * - Overwrite: file is already indexed; jump to its current row (first match).
+ * - New ingest: processing overlay is appended after indexed rows (last page).
+ */
+export function ingestFocusModeFromReplace(replace: boolean): IngestFocusMode {
+  return replace ? "existing" : "new";
+}
+
+export const KNOWLEDGE_INGEST_FOCUS_EVENT = "knowledgeIngestFocus";
+
+const INGEST_FOCUS_STORAGE_KEY = "openrag:knowledge-ingest-focus";
+
+export type KnowledgeIngestFocusTarget = {
+  filename: string;
+  replace: boolean;
 };
 
-/** Earliest visible row (after filter/sort) matching any identity. */
-function findFirstVisibleRowTarget(
+function readPersistedIngestFocusTargets(): KnowledgeIngestFocusTarget[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = sessionStorage.getItem(INGEST_FOCUS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (item): item is KnowledgeIngestFocusTarget =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as KnowledgeIngestFocusTarget).filename === "string" &&
+        typeof (item as KnowledgeIngestFocusTarget).replace === "boolean",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Persist focus targets across route changes (e.g. cloud upload → /knowledge). */
+export function persistKnowledgeIngestFocus(
+  targets: KnowledgeIngestFocusTarget[],
+): void {
+  if (typeof window === "undefined" || targets.length === 0) {
+    return;
+  }
+  const merged = [...readPersistedIngestFocusTargets(), ...targets];
+  sessionStorage.setItem(INGEST_FOCUS_STORAGE_KEY, JSON.stringify(merged));
+}
+
+export function consumePersistedKnowledgeIngestFocus(): KnowledgeIngestFocusTarget[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  const targets = readPersistedIngestFocusTargets();
+  sessionStorage.removeItem(INGEST_FOCUS_STORAGE_KEY);
+  return targets;
+}
+
+export function dispatchKnowledgeIngestFocus(
+  filename: string,
+  replace: boolean,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent(KNOWLEDGE_INGEST_FOCUS_EVENT, {
+      detail: { filename, replace },
+    }),
+  );
+}
+
+export function queueKnowledgeIngestFocusForCloudFiles(
+  files: Array<{ name: string }>,
+  replace: boolean,
+): void {
+  if (files.length === 0) {
+    return;
+  }
+  persistKnowledgeIngestFocus(
+    files.map((file) => ({ filename: file.name, replace })),
+  );
+}
+
+type VisibleRowTarget = {
+  displayIndex: number;
+  node: IRowNode | null;
+};
+
+function rowMatchesIdentitySet(
+  row: GridRowLike,
+  identitySet: Set<string>,
+): boolean {
+  return getKnowledgeFileAliasKeys(row).some((key) => identitySet.has(key));
+}
+
+/** Infer focus mode from current grid rows (task-poll path). */
+export function inferIngestFocusMode(
+  identity: string,
+  rowData: GridRowLike[],
+): IngestFocusMode {
+  const identitySet = new Set([identity]);
+  const hasMatch = rowData.some((row) =>
+    rowMatchesIdentitySet(row, identitySet),
+  );
+  return hasMatch ? "existing" : "new";
+}
+
+function hasActiveColumnSort(api: GridApi): boolean {
+  return api.getColumnState().some((column) => column.sort != null);
+}
+
+function findRowDataIndex(
+  identitySet: Set<string>,
+  rowData: GridRowLike[],
+  pick: "first" | "last",
+): number {
+  let targetIndex = -1;
+  rowData.forEach((row, index) => {
+    if (!rowMatchesIdentitySet(row, identitySet)) {
+      return;
+    }
+    if (targetIndex < 0) {
+      targetIndex = index;
+      return;
+    }
+    if (pick === "first") {
+      targetIndex = Math.min(targetIndex, index);
+    } else {
+      targetIndex = Math.max(targetIndex, index);
+    }
+  });
+  return targetIndex;
+}
+
+/** Earliest or latest visible row (after filter/sort) matching any identity. */
+function findVisibleRowTarget(
   api: GridApi,
   identitySet: Set<string>,
+  rowData: GridRowLike[] | undefined,
+  pick: "first" | "last",
 ): VisibleRowTarget | null {
   let target: VisibleRowTarget | null = null;
 
   api.forEachNodeAfterFilterAndSort((node, index) => {
-    const id = node.id;
-    if (id && identitySet.has(id)) {
-      if (!target || index < target.displayIndex) {
-        target = { displayIndex: index, node };
+    const data = node.data as GridRowLike | undefined;
+    const nodeId = node.id;
+    const matches =
+      (nodeId && identitySet.has(nodeId)) ||
+      (data != null && rowMatchesIdentitySet(data, identitySet));
+    if (!matches) {
+      return;
+    }
+    if (!target) {
+      target = { displayIndex: index, node };
+      return;
+    }
+    if (
+      pick === "first"
+        ? index < target.displayIndex
+        : index > target.displayIndex
+    ) {
+      target = { displayIndex: index, node };
+    }
+  });
+
+  if (target) {
+    return target;
+  }
+
+  for (const id of identitySet) {
+    const node = api.getRowNode(id);
+    if (!node) {
+      continue;
+    }
+    let displayIndex = -1;
+    api.forEachNodeAfterFilterAndSort((current, index) => {
+      if (current === node || current.id === id) {
+        displayIndex = index;
+      }
+    });
+    if (displayIndex >= 0) {
+      return { displayIndex, node };
+    }
+  }
+
+  if (!rowData?.length || hasActiveColumnSort(api)) {
+    return null;
+  }
+
+  const displayIndex = findRowDataIndex(identitySet, rowData, pick);
+  if (displayIndex < 0) {
+    return null;
+  }
+
+  for (const id of identitySet) {
+    const node = api.getRowNode(id);
+    if (node) {
+      return { displayIndex, node };
+    }
+  }
+
+  return { displayIndex, node: null };
+}
+
+/** Identities from pending that appear in the grid model and/or current rowData. */
+function collectResolvableIdentities(
+  api: GridApi,
+  identities: Set<string>,
+  rowData?: GridRowLike[],
+): Set<string> {
+  const found = new Set<string>();
+
+  api.forEachNodeAfterFilterAndSort((node) => {
+    const data = node.data as GridRowLike | undefined;
+    const nodeId = node.id;
+    if (nodeId && identities.has(nodeId)) {
+      found.add(nodeId);
+    }
+    if (data) {
+      for (const key of getKnowledgeFileAliasKeys(data)) {
+        if (identities.has(key)) {
+          found.add(key);
+        }
       }
     }
   });
 
-  return target;
+  if (!rowData?.length || hasActiveColumnSort(api)) {
+    return found;
+  }
+
+  for (const row of rowData) {
+    for (const key of getKnowledgeFileAliasKeys(row)) {
+      if (identities.has(key)) {
+        found.add(key);
+      }
+    }
+  }
+
+  return found;
 }
 
-/** Identities visible in the grid after filter/sort. */
-function collectVisibleIdentities(
-  api: GridApi,
-  identities: Set<string>,
-): Set<string> {
-  const visible = new Set<string>();
-  api.forEachNodeAfterFilterAndSort((node) => {
-    const id = node.id;
-    if (id && identities.has(id)) {
-      visible.add(id);
+function resolveFocusMode(
+  identitySet: Set<string>,
+  modes: Map<string, IngestFocusMode> | undefined,
+): IngestFocusMode {
+  for (const id of identitySet) {
+    const mode = modes?.get(id);
+    if (mode) {
+      return mode;
     }
-  });
-  return visible;
+  }
+  return "existing";
 }
 
 /** Identities of task overlays that just started ingesting or were retried. */
@@ -55,27 +284,32 @@ export function collectNewIngestFocusIdentities(
   previous: TaskFile[],
   current: TaskFile[],
 ): string[] {
-  const prevByIdentity = new Map<string, TaskFile>();
+  const prevByAlias = new Map<string, TaskFile>();
   for (const file of previous) {
-    const identity = getKnowledgeFileIdentity(file);
-    if (identity) {
-      prevByIdentity.set(identity, file);
+    for (const key of getKnowledgeFileAliasKeys(file)) {
+      prevByAlias.set(key, file);
     }
   }
 
   const identities: string[] = [];
+  const seen = new Set<string>();
+
   for (const file of current) {
-    const identity = getKnowledgeFileIdentity(file);
-    if (!identity) {
+    const keys = getKnowledgeFileAliasKeys(file);
+    const identity = getKnowledgeFileIdentity(file) || keys[0];
+    if (!identity || seen.has(identity)) {
       continue;
     }
-    const prev = prevByIdentity.get(identity);
+
+    const prev = keys.map((key) => prevByAlias.get(key)).find(Boolean);
     if (!prev) {
       identities.push(identity);
+      seen.add(identity);
       continue;
     }
     if (prev.status !== "processing" && file.status === "processing") {
       identities.push(identity);
+      seen.add(identity);
     }
   }
   return identities;
@@ -86,27 +320,33 @@ export function collectProcessingFocusIdentities(
   previous: GridRowLike[],
   current: GridRowLike[],
 ): string[] {
-  const prevStatusByIdentity = new Map<string, string>();
+  const prevStatusByAlias = new Map<string, string>();
   for (const row of previous) {
-    const identity = getKnowledgeFileIdentity(row);
-    if (identity) {
-      prevStatusByIdentity.set(identity, row.status ?? "active");
+    const status = row.status ?? "active";
+    for (const key of getKnowledgeFileAliasKeys(row)) {
+      prevStatusByAlias.set(key, status);
     }
   }
 
   const identities: string[] = [];
+  const seen = new Set<string>();
+
   for (const row of current) {
-    const identity = getKnowledgeFileIdentity(row);
-    if (!identity) {
-      continue;
-    }
     const status = row.status ?? "active";
     if (status !== "processing") {
       continue;
     }
-    const prevStatus = prevStatusByIdentity.get(identity);
+    const keys = getKnowledgeFileAliasKeys(row);
+    const identity = getKnowledgeFileIdentity(row) || keys[0];
+    if (!identity || seen.has(identity)) {
+      continue;
+    }
+    const prevStatus = keys
+      .map((key) => prevStatusByAlias.get(key))
+      .find((value) => value !== undefined);
     if (prevStatus === undefined || prevStatus !== "processing") {
       identities.push(identity);
+      seen.add(identity);
     }
   }
   return identities;
@@ -117,7 +357,13 @@ function scrollToRowTarget(
   target: VisibleRowTarget,
   afterPageChange = false,
 ): void {
-  const scroll = () => api.ensureNodeVisible(target.node, "middle");
+  const scroll = () => {
+    if (target.node) {
+      api.ensureNodeVisible(target.node, "middle");
+      return;
+    }
+    api.ensureIndexVisible(target.displayIndex, "middle");
+  };
   if (afterPageChange) {
     requestAnimationFrame(() => requestAnimationFrame(scroll));
   } else {
@@ -125,17 +371,27 @@ function scrollToRowTarget(
   }
 }
 
-/** Jump to the first pagination page that contains any of the given row identities. */
+/** Jump to the pagination page that contains the target ingest row. */
 export function goToGridRowIdentities(
   api: GridApi,
   identities: Iterable<string>,
+  rowData?: GridRowLike[],
+  modes?: Map<string, IngestFocusMode>,
 ): boolean {
   const identitySet = new Set(identities);
   if (identitySet.size === 0) {
     return false;
   }
 
-  const target = findFirstVisibleRowTarget(api, identitySet);
+  const mode = resolveFocusMode(identitySet, modes);
+  const pick = mode === "new" ? "last" : "first";
+  const target = findVisibleRowTarget(api, identitySet, rowData, pick);
+
+  if (!target && mode === "new") {
+    api.paginationGoToLastPage();
+    return true;
+  }
+
   if (!target) {
     return false;
   }
@@ -159,16 +415,32 @@ export function goToGridRowIdentities(
 export function focusPendingIngestRows(
   api: GridApi,
   pending: Set<string>,
+  rowData?: GridRowLike[],
+  modes?: Map<string, IngestFocusMode>,
 ): string[] {
   if (pending.size === 0) {
     return [];
   }
 
-  const found = collectVisibleIdentities(api, pending);
-  if (found.size === 0) {
+  const resolvable = collectResolvableIdentities(api, pending, rowData);
+  const hasExistingTarget = resolvable.size > 0;
+  const hasNewOnlyPending = [...pending].some(
+    (id) => modes?.get(id) === "new" && !resolvable.has(id),
+  );
+
+  if (!hasExistingTarget && hasNewOnlyPending) {
+    api.paginationGoToLastPage();
     return [];
   }
 
-  const didJump = goToGridRowIdentities(api, found);
-  return didJump ? [...found] : [];
+  if (!hasExistingTarget) {
+    return [];
+  }
+
+  const didJump = goToGridRowIdentities(api, pending, rowData, modes);
+  if (!didJump) {
+    return [];
+  }
+
+  return [...pending].filter((id) => resolvable.has(id));
 }
