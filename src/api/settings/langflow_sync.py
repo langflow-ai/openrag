@@ -191,6 +191,16 @@ async def _update_langflow_model_values(
             )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
+
+            await flows_service.change_langflow_model_value(
+                config.agent.llm_provider.lower(),
+                llm_model=config.agent.llm_model,
+                force_llm_update=True,
+            )
+            logger.info(
+                f"Successfully updated Langflow flows for LLM provider {config.agent.llm_provider.lower()}"
+            )
+
             # 2. Update ALL configured embedding providers
             embedding_providers = []
             if config.providers.openai.configured:
