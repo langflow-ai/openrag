@@ -303,8 +303,10 @@ export function collectNewIngestFocusIdentities(
 
     const prev = keys.map((key) => prevByAlias.get(key)).find(Boolean);
     if (!prev) {
-      identities.push(identity);
-      seen.add(identity);
+      if (file.status === "processing") {
+        identities.push(identity);
+        seen.add(identity);
+      }
       continue;
     }
     if (prev.status !== "processing" && file.status === "processing") {
