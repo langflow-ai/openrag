@@ -2,7 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from utils.document_processing import (
@@ -29,6 +29,16 @@ if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
 
+def _verification_client(fallback_client):
+    """Client for post-ingestion verification ("did the chunks land in the
+    index?"). That is a system integrity check, not a user-visibility check,
+    so prefer the platform writer client: it does not depend on the JWT/JWKS
+    trust chain that user-scoped clients need (OpenSearch loads the backend's
+    JWKS lazily, so the first user-JWT queries after a cold start can 401).
+    Falls back to the caller's client when the writer is unavailable."""
+    return clients.opensearch if clients.opensearch is not None else fallback_client
+
+
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
@@ -41,10 +51,19 @@ class TaskProcessor:
         self,
         file_hash: str,
         opensearch_client,
+        on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
+
+        ``on_error`` picks the answer when OpenSearch stays unreachable after
+        retries — the check is ambiguous then, and the safe default differs by
+        caller:
+          * ``"assume_missing"`` (dedupe callers): safer to reprocess than skip.
+          * ``"assume_exists"`` (post-ingestion verification callers): an
+            infrastructure error must not fail a file that Langflow already
+            reported as ingested.
         """
         max_retries = 3
         retry_delay = 1.0
@@ -69,7 +88,14 @@ class TaskProcessor:
                         error=str(e),
                         attempt=attempt + 1,
                     )
-                    # On final failure, assume document doesn't exist (safer to reprocess than skip)
+                    if on_error == "assume_exists":
+                        logger.warning(
+                            "Exists check inconclusive due to connection issues; "
+                            "assuming document exists",
+                            file_hash=file_hash,
+                        )
+                        return True
+                    # Safer to reprocess than skip for dedupe callers.
                     logger.warning(
                         "Assuming document doesn't exist due to connection issues",
                         file_hash=file_hash,
@@ -85,7 +111,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
-        return False
+        return on_error == "assume_exists"
 
     async def check_filename_exists(
         self,
@@ -868,7 +894,11 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
                     # landed in OpenSearch before declaring success.
-                    if not await self.check_document_exists(document.id, opensearch_client):
+                    if not await self.check_document_exists(
+                        document.id,
+                        _verification_client(opensearch_client),
+                        on_error="assume_exists",
+                    ):
                         result = {
                             "status": "error",
                             "error": "No text content could be extracted from document",
@@ -1157,7 +1187,11 @@ class LangflowFileProcessor(TaskProcessor):
             # Langflow returns "success" even when no text was extracted.
             # Verify the document actually landed in OpenSearch.
             file_hash = hash_id(item)
-            if not await self.check_document_exists(file_hash, opensearch_client):
+            if not await self.check_document_exists(
+                file_hash,
+                _verification_client(opensearch_client),
+                on_error="assume_exists",
+            ):
                 file_task.status = TaskStatus.FAILED
                 file_task.error = "No text content could be extracted from document"
                 file_task.updated_at = time.time()

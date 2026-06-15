@@ -10,6 +10,12 @@ ANTHROPIC_VALIDATION_MODELS = [
 ]
 
 OPENAI_VALIDATION_MODELS = [
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-pro",
+    "gpt-5.3-codex",
+    "gpt-5.2",
+    "gpt-5.1",
     "gpt-5",
     "gpt-5-mini",
     "gpt-5-nano",
@@ -17,20 +23,12 @@ OPENAI_VALIDATION_MODELS = [
     "gpt-4o",
     "gpt-4.1",
     "gpt-4.1-mini",
-    "gpt-4.1-nano",
-    "gpt-4-turbo",
-    "gpt-4-turbo-preview",
-    "gpt-4",
-    "gpt-3.5-turbo",
-    "o1",
-    "o3-mini",
     "o3",
     "o3-pro",
-    "o4-mini",
     "o4-mini-high",
 ]
 
-OPENAI_DEFAULT_LANGUAGE_MODEL = "gpt-4o"
+OPENAI_DEFAULT_LANGUAGE_MODEL = "gpt-5.4-mini"
 
 ANTHROPIC_DEFAULT_LANGUAGE_MODEL = "claude-sonnet-4-5-20250929"
 

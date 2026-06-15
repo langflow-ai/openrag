@@ -5,6 +5,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -194,6 +195,10 @@ class GoogleDriveConnector(BaseConnector):
 
         # Authentication state
         self._authenticated: bool = False
+
+        # Set by setup_subscription; read by the connection manager to persist
+        self.webhook_resource_id: str | None = None
+        self.webhook_expiration: str | None = None
 
     # -------------------------
     # Helpers
@@ -959,6 +964,20 @@ class GoogleDriveConnector(BaseConnector):
                 "page_token": self.cfg.changes_page_token,
             }
 
+            # Expose for the connection manager to persist (Drive returns
+            # expiration as an epoch-ms string; normalize to ISO-8601 UTC).
+            self.webhook_resource_id = resource_id
+            self.webhook_expiration = None
+            if expiration:
+                from datetime import datetime
+
+                try:
+                    self.webhook_expiration = datetime.fromtimestamp(
+                        int(expiration) / 1000, tz=UTC
+                    ).isoformat()
+                except (TypeError, ValueError):
+                    pass
+
             if not isinstance(channel_id, str) or not channel_id:
                 raise RuntimeError(f"Drive watch returned invalid channel id: {channel_id!r}")
 
@@ -1099,7 +1118,7 @@ class GoogleDriveConnector(BaseConnector):
                         pageToken=page_token,
                         fields=(
                             "nextPageToken, newStartPageToken, "
-                            "changes(fileId, file(id, name, mimeType, trashed, parents, "
+                            "changes(fileId, removed, file(id, name, mimeType, trashed, parents, "
                             "shortcutDetails, driveId, modifiedTime, webViewLink))"
                         ),
                         supportsAllDrives=True,
@@ -1112,9 +1131,16 @@ class GoogleDriveConnector(BaseConnector):
                     fid = ch.get("fileId")
                     fobj = ch.get("file") or {}
 
-                    # Skip if no file or explicitly trashed (you can choose to still return these IDs)
-                    if not fid or fobj.get("trashed"):
-                        # If you want to *include* deletions, collect fid here instead of skipping.
+                    if not fid:
+                        continue
+
+                    if ch.get("removed") or fobj.get("trashed"):
+                        # Deletion/trash: include unconditionally so downstream
+                        # cleanup runs. Scope filtering is impossible here (a
+                        # removed file has no metadata; a trashed file is
+                        # excluded from the selected-scope set) and cleanup of
+                        # a never-indexed id is a harmless no-op.
+                        affected.append(fid)
                         continue
 
                     # Resolve shortcuts to target
