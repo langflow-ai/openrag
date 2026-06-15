@@ -54,25 +54,24 @@ export function ChatRenderer({
   } = useChat();
 
   // Initialize onboarding state from backend settings
-  const [currentStep, setCurrentStep] = useState<number>(() => {
-    return settings?.onboarding?.current_step ?? 0;
-  });
+  const [currentStep, setCurrentStep] = useState<number>(
+    settings?.onboarding?.current_step ?? 0,
+  );
+  const [showLayout, setShowLayout] = useState<boolean>(
+    (settings?.onboarding?.current_step ?? 0) >= TOTAL_ONBOARDING_STEPS,
+  );
 
-  const [showLayout, setShowLayout] = useState<boolean>(() => {
-    // Show layout only if onboarding is complete (current_step >= TOTAL_ONBOARDING_STEPS)
-    // This means onboarding will show even if edited=true, as long as it's not complete
-    const onboardingStep = settings?.onboarding?.current_step ?? 0;
-    return onboardingStep >= TOTAL_ONBOARDING_STEPS;
-  });
-
-  // Update currentStep and showLayout when settings change
-  useEffect(() => {
+  // Sync from settings without an extra render cycle
+  const [prevSettingsStep, setPrevSettingsStep] = useState(
+    settings?.onboarding?.current_step,
+  );
+  if (settings?.onboarding?.current_step !== prevSettingsStep) {
+    setPrevSettingsStep(settings?.onboarding?.current_step);
     if (settings?.onboarding?.current_step !== undefined) {
       setCurrentStep(settings.onboarding.current_step);
-      // Update showLayout based on whether onboarding is complete
       setShowLayout(settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS);
     }
-  }, [settings?.onboarding?.current_step]);
+  }
 
   useEffect(() => {
     if (!showLayout) {

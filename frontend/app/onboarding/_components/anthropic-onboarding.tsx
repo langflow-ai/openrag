@@ -29,6 +29,11 @@ export function AnthropicOnboarding({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [getFromEnv, setGetFromEnv] = useState(hasEnvApiKey);
+  const [prevHasEnvApiKey, setPrevHasEnvApiKey] = useState(hasEnvApiKey);
+  if (hasEnvApiKey !== prevHasEnvApiKey) {
+    setPrevHasEnvApiKey(hasEnvApiKey);
+    setGetFromEnv(hasEnvApiKey);
+  }
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
   // Fetch models from API when API key is provided

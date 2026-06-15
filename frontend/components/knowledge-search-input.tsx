@@ -1,11 +1,5 @@
 import { ArrowRight, Search, X } from "lucide-react";
-import {
-  type ChangeEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { cn } from "@/lib/utils";
@@ -21,6 +15,11 @@ export const KnowledgeSearchInput = () => {
   } = useKnowledgeFilter();
 
   const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
+  const [prevQueryOverride, setPrevQueryOverride] = useState(queryOverride);
+  if (queryOverride !== prevQueryOverride) {
+    setPrevQueryOverride(queryOverride);
+    setSearchQueryInput(queryOverride);
+  }
 
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
@@ -29,11 +28,6 @@ export const KnowledgeSearchInput = () => {
     },
     [searchQueryInput, setQueryOverride],
   );
-
-  // Reset the query text when the selected filter changes
-  useEffect(() => {
-    setSearchQueryInput(queryOverride);
-  }, [queryOverride]);
 
   return (
     <form
