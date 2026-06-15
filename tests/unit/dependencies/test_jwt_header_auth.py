@@ -138,6 +138,9 @@ async def test_valid_jwt_rbac_on_no_role_401(monkeypatch, _patch_attach):
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
     assert exc.value.status_code == 401
     assert exc.value.detail == "User has no OpenRAG roles assigned"
+    # 401 fires inside _stage_jwt_roles, before _attach_request_user -> no DB
+    # user/role write, so a roles-less JWT can never reach _sync_jwt_roles.
+    assert "user" not in _patch_attach
 
 
 @pytest.mark.asyncio
@@ -302,19 +305,57 @@ async def test_no_jwt_broken_store_still_returns_header_credentials(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_no_jwt_saas_rbac_on_logs_error(monkeypatch, _patch_attach):
-    """saas + RBAC enabled + no JWT header -> a clear error is logged and the
-    request still proceeds via the credentials-header fallback."""
+async def test_no_jwt_saas_rbac_on_fails_loud_no_db_write(monkeypatch, _patch_attach):
+    """saas + RBAC + no gateway JWT -> fail loud with 401 missing_user_jwt and
+    do NOT silently fall back to lakehouse creds (no DB user/role write).
+
+    A roles-less / wrong-identity LH fallback here is what corrupted the shared
+    users row the same person sees on UI login; under saas_rbac we must 401
+    before any _attach_request_user instead.
+    """
     manager, services = _ibm_setup(monkeypatch)
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
+    # Even with a valid LH-credentials header present, saas_rbac must not use it.
     req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
 
-    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
-    assert user.jwt_token == f"Basic {_B64}"
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "missing_user_jwt"
     assert any("JWT not found" in m for m in errors)
+    # No DB side effects: _attach_request_user was never reached, and the
+    # LH-credentials store was never written.
+    assert "user" not in _patch_attach
+    assert manager.upserts == []
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_saas_rbac_on_rejects_api_key_fail_fast(monkeypatch, _patch_attach):
+    """saas + RBAC + no gateway JWT -> fail fast even when a valid orag_ API key
+    is present. In SaaS the gateway JWT is mandatory; the API key must not be
+    consulted, and the key service must never be called (no DB side effects)."""
+    _ibm_setup(monkeypatch)
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+
+    calls: list[str] = []
+
+    class _KeySvc:
+        async def validate_key(self, key):
+            calls.append(key)
+            return {"user_id": "svc-user", "user_email": "svc@example.com", "key_id": "k1"}
+
+    req = _FakeRequest({"X-API-Key": "orag_live_key"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=_KeySvc(), session_manager=None)
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "missing_user_jwt"
+    assert calls == []  # API key never validated under saas_rbac
+    assert "user" not in _patch_attach  # no _attach_request_user / DB write
 
 
 @pytest.mark.asyncio
