@@ -271,20 +271,22 @@ def get_jwt_auth_header() -> str:
 
 
 def get_api_jwt_header() -> str:
-    """Secondary JWT header for the /v1 API/MCP surface only.
+    """Secondary, gateway-placed JWT header for the /v1 API/MCP surface only.
 
     The primary JWT header (``get_jwt_auth_header()``, default ``Authorization``)
     is stripped by FastMCP's get_http_headers() before an MCP tool call is
     proxied to the underlying /v1 route, so it never reaches the /v1 auth
-    dependency. API/MCP callers (or the gateway) supply the JWT in this
-    add-on header instead, which FastMCP forwards verbatim. Read per-call so
+    dependency. The gateway (Traefik) therefore authenticates the MCP/API caller
+    (who supplies X-Username + X-Api-Key) and injects the minted user JWT into
+    this add-on header instead, which FastMCP forwards verbatim. Read per-call so
     tests can override via monkeypatch.setenv.
 
     TRUST NOTE: this header is read in addition to Authorization on the /v1
-    surface. It must be gateway-managed — Traefik should inject it and strip
-    any client-supplied value — OR signature verification
-    (``OPENRAG_JWT_VERIFY_SIGNATURE``) must be enabled, otherwise a client can
-    forge identity/roles (claims are decode-only when verification is off)."""
+    surface and is trusted as an identity source. It is gateway-managed: Traefik
+    mints and injects it, and MUST strip any client-supplied value at the edge
+    (standard internal-trust-header hygiene) so callers cannot forge it —
+    important because claims are decode-only unless ``OPENRAG_JWT_VERIFY_SIGNATURE``
+    is enabled."""
     return os.getenv("OPENRAG_API_JWT_HEADER", "X-OpenRAG-API-JWT")
 
 
