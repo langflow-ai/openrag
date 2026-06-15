@@ -66,7 +66,9 @@ export function useKnowledgeIngestFocus(
         pending.identities.add(identity);
         pending.modes.set(
           identity,
-          mode ?? inferIngestFocusMode(identity, rows),
+          mode ??
+            pending.modes.get(identity) ??
+            inferIngestFocusMode(identity, rows),
         );
       }
       tryFocusPendingIngestRows(rows);
