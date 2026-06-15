@@ -20,7 +20,6 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-DOCLING_PICTURE_DESCRIPTION_PRESET = "default"
 DOCLING_ERROR_DETAIL_MAX_LENGTH = 500
 
 
@@ -30,8 +29,6 @@ class DoclingConfig(BaseModel):
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
-    picture_description_preset: str | None = None
-    picture_description_local: dict | None = None
 
 
 class DoclingServeError(Exception):
@@ -74,9 +71,6 @@ def get_docling_preset_configs(
         "do_picture_classification": picture_descriptions,
         "do_picture_description": picture_descriptions,
     }
-
-    if picture_descriptions:
-        config["picture_description_preset"] = DOCLING_PICTURE_DESCRIPTION_PRESET
 
     return config
 
