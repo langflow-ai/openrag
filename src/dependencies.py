@@ -844,13 +844,25 @@ async def get_api_key_user_async(
     # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import IBM_AUTH_ENABLED, get_jwt_auth_header
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        get_api_jwt_header,
+        get_jwt_auth_header,
+    )
     from config.utils import resolve_jwt_claims
 
-    raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+    # Primary: the gateway-forwarded JWT header (default Authorization).
+    # Fallback: the API/MCP add-on header — FastMCP strips Authorization before
+    # proxying an MCP tool call to this /v1 handler, so MCP/API callers supply
+    # the JWT in get_api_jwt_header() instead.
+    jwt_header = get_jwt_auth_header()
+    raw_jwt = request.headers.get(jwt_header, "")
+    if not (raw_jwt and raw_jwt.strip()):
+        jwt_header = get_api_jwt_header()
+        raw_jwt = request.headers.get(jwt_header, "")
     logger.debug(
         "[AUTH] API-key path JWT header lookup",
-        header_name=get_jwt_auth_header(),
+        header_name=jwt_header,
         jwt_present=bool(raw_jwt and raw_jwt.strip()),
     )
     if raw_jwt and raw_jwt.strip():
@@ -883,14 +895,14 @@ async def get_api_key_user_async(
             # must not silently downgrade to the API-key identity.
             logger.error(
                 "[AUTH] JWT in request header failed verification/decode",
-                header_name=get_jwt_auth_header(),
+                header_name=jwt_header,
             )
             raise HTTPException(
                 status_code=401,
                 detail={
                     "error": "invalid_jwt",
                     "message": (
-                        f"The JWT in the '{get_jwt_auth_header()}' header could not be "
+                        f"The JWT in the '{jwt_header}' header could not be "
                         "verified or decoded. Ensure the gateway forwards a valid, "
                         "unexpired user JWT issued by a trusted identity provider."
                     ),

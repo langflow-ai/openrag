@@ -270,6 +270,24 @@ def get_jwt_auth_header() -> str:
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
 
 
+def get_api_jwt_header() -> str:
+    """Secondary JWT header for the /v1 API/MCP surface only.
+
+    The primary JWT header (``get_jwt_auth_header()``, default ``Authorization``)
+    is stripped by FastMCP's get_http_headers() before an MCP tool call is
+    proxied to the underlying /v1 route, so it never reaches the /v1 auth
+    dependency. API/MCP callers (or the gateway) supply the JWT in this
+    add-on header instead, which FastMCP forwards verbatim. Read per-call so
+    tests can override via monkeypatch.setenv.
+
+    TRUST NOTE: this header is read in addition to Authorization on the /v1
+    surface. It must be gateway-managed — Traefik should inject it and strip
+    any client-supplied value — OR signature verification
+    (``OPENRAG_JWT_VERIFY_SIGNATURE``) must be enabled, otherwise a client can
+    forge identity/roles (claims are decode-only when verification is off)."""
+    return os.getenv("OPENRAG_API_JWT_HEADER", "X-OpenRAG-API-JWT")
+
+
 def get_jwt_issuer_verify_tls() -> bool:
     """Whether to verify TLS when fetching JWT signing keys from the token's
     ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
