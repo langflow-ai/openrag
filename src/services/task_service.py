@@ -64,9 +64,20 @@ _TRANSIENT_CONNECTIVITY_ERROR_MARKERS = (
 )
 
 
+# Raster image formats that require OCR to produce any text content.
+_OCR_REQUIRED_EXTENSIONS = frozenset({"bmp", "jpeg", "jpg", "png", "tiff", "webp"})
+
+
 def _is_non_retryable_file_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _NON_RETRYABLE_FILE_ERROR_MARKERS)
+
+
+def _is_ocr_required_file(filename: str) -> bool:
+    """Return True if the file is a raster image that requires OCR to produce text."""
+    if not filename or "." not in filename:
+        return False
+    return filename.rsplit(".", 1)[-1].lower() in _OCR_REQUIRED_EXTENSIONS
 
 
 _TASK_CANCELLATION_ERROR_MARKERS = (
@@ -958,6 +969,22 @@ class TaskService:
 
         # First, check if the error is non-retryable based on common markers
         if _is_non_retryable_file_error(error):
+            # Image files that produced no text almost certainly failed because OCR
+            # is disabled — not because the file is corrupted. Give a targeted tip.
+            filename = file_task.filename or file_task.file_path or ""
+            if "no text content could be extracted" in error.lower() and _is_ocr_required_file(
+                filename
+            ):
+                return {
+                    "component": "docling",
+                    "failure_phase": "parsing",
+                    "user_facing_message": (
+                        "No text content could be extracted from this image file. "
+                        "Enable OCR in Settings > Knowledge Base and retry ingestion."
+                    ),
+                    "actionable_by": "RETRYABLE",
+                }
+
             if phase == IngestionPhase.LANGFLOW:
                 component = "langflow"
                 failure_phase = "unknown"

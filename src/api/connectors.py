@@ -989,6 +989,11 @@ async def connector_status(
     )
 
 
+# Drive watches registered with a legacy webhook URL may point at
+# /connectors/google/webhook; accept them until those channels expire.
+LEGACY_WEBHOOK_TYPE_ALIASES = {"google": "google_drive"}
+
+
 async def connector_webhook(
     connector_type: str,
     request: Request,
@@ -997,6 +1002,15 @@ async def connector_webhook(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Handle webhook notifications from any connector type"""
+
+    canonical_type = LEGACY_WEBHOOK_TYPE_ALIASES.get(connector_type)
+    if canonical_type:
+        logger.warning(
+            "Legacy webhook connector type received, aliasing",
+            received=connector_type,
+            canonical=canonical_type,
+        )
+        connector_type = canonical_type
 
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
@@ -1091,12 +1105,15 @@ async def connector_webhook(
                 user = session_manager.get_user(connection.user_id)
                 jwt_token = user.jwt_token if user else None
 
-                # Trigger incremental sync for affected files
+                # Trigger incremental sync for affected files. The webhook fires
+                # because the file changed, so replace the indexed copy instead of
+                # tripping the duplicate-filename guard meant for manual uploads.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
                     affected_files,
                     jwt_token=jwt_token,
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
 
                 result = {
