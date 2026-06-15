@@ -782,7 +782,7 @@ class ConnectorFileProcessor(TaskProcessor):
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 self.user_id, self.jwt_token
             )
-            if await self.check_filename_exists(document.filename, opensearch_client):
+            if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
@@ -795,7 +795,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
                 await self.delete_document_by_filename(
-                    document.filename,
+                    file_task.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
                 )

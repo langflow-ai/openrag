@@ -28,29 +28,153 @@ export function getKnowledgeFileIdentity(file?: {
   return "";
 }
 
+const MIME_TO_EXTENSION: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    ".docx",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    ".pptx",
+  "application/vnd.ms-powerpoint": ".ppt",
+  "text/plain": ".txt",
+  "text/markdown": ".md",
+  "text/x-markdown": ".md",
+  "text/html": ".html",
+  "text/csv": ".csv",
+  "application/json": ".json",
+  "application/xml": ".xml",
+  "text/xml": ".xml",
+  "application/rtf": ".rtf",
+  "application/vnd.google-apps.document": ".pdf",
+  "application/vnd.google-apps.presentation": ".pdf",
+  "application/vnd.google-apps.spreadsheet": ".pdf",
+};
+
+/** Mirror backend `clean_connector_filename` for overlay/focus matching. */
+export function cleanConnectorFilename(
+  filename: string,
+  mimetype?: string,
+): string {
+  const trimmed = filename.trim();
+  if (!trimmed || !mimetype) {
+    return trimmed;
+  }
+  const suffix = MIME_TO_EXTENSION[mimetype];
+  if (!suffix) {
+    return trimmed;
+  }
+  if (!trimmed.toLowerCase().endsWith(suffix.toLowerCase())) {
+    return trimmed + suffix;
+  }
+  return trimmed;
+}
+
+/** Mirror backend `get_filename_aliases` so overlays match indexed connector names. */
+function getKnowledgeFilenameAliases(filename?: string): string[] {
+  const normalized = filename?.trim() ?? "";
+  if (!normalized) {
+    return [];
+  }
+  const aliases = [normalized];
+  const lower = normalized.toLowerCase();
+  if (lower.endsWith(".txt")) {
+    aliases.push(`${normalized.slice(0, -4)}.md`);
+  } else if (lower.endsWith(".md")) {
+    aliases.push(`${normalized.slice(0, -3)}.txt`);
+  }
+  for (const name of [...aliases]) {
+    aliases.push(name.replace(/ /g, "_").replace(/\//g, "_"));
+  }
+  return [...new Set(aliases)];
+}
+
+function addFilenameAliasKeys(keys: Set<string>, filename?: string): void {
+  for (const alias of getKnowledgeFilenameAliases(filename)) {
+    keys.add(alias);
+  }
+}
+
 /** Lookup keys for matching task overlays to indexed rows (filename, path, basename). */
 export function getKnowledgeFileAliasKeys(file?: {
   filename?: string;
   source_url?: string;
+  mimetype?: string;
 }): string[] {
   const keys = new Set<string>();
-  const identity = getKnowledgeFileIdentity(file);
-  if (identity) {
-    keys.add(identity);
-  }
-  const filename = file?.filename?.trim();
-  if (filename) {
-    keys.add(filename);
-  }
+  addFilenameAliasKeys(
+    keys,
+    cleanConnectorFilename(file?.filename ?? "", file?.mimetype),
+  );
   const sourceUrl = file?.source_url?.trim();
   if (sourceUrl) {
     keys.add(sourceUrl);
-    const basename = sourceUrl.split("/").pop()?.trim();
-    if (basename) {
-      keys.add(basename);
+    addFilenameAliasKeys(keys, sourceUrl.split("/").pop());
+  }
+  addFilenameAliasKeys(keys, getKnowledgeFileIdentity(file));
+  return [...keys];
+}
+
+function isMeaningfulConnectorType(connectorType?: string): boolean {
+  const normalized = connectorType?.trim();
+  return Boolean(normalized && normalized !== "local");
+}
+
+function looksLikeHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+/** Infer connector_type for task overlays when the API does not return it. */
+export function inferTaskFileConnectorType(
+  filePath: string,
+  fileName?: string,
+  taskConnectorType?: string,
+): string {
+  if (isMeaningfulConnectorType(taskConnectorType)) {
+    return taskConnectorType!.trim();
+  }
+
+  for (const candidate of [filePath, fileName ?? ""]) {
+    const normalized = candidate.trim();
+    if (!normalized) {
+      continue;
+    }
+    if (looksLikeHttpUrl(normalized)) {
+      return normalized.includes("openr.ag") ? "openrag_docs" : "url";
     }
   }
-  return [...keys];
+
+  if (filePath.includes("/") && !filePath.startsWith("/")) {
+    return "aws_s3";
+  }
+
+  return "local";
+}
+
+/** Pick the connector icon source when merging backend rows with task overlays. */
+export function resolveKnowledgeRowConnectorType(
+  backendType?: string,
+  taskType?: string,
+  status: SearchFile["status"] = "active",
+): string {
+  const rowStatus = status ?? "active";
+
+  if (rowStatus === "active") {
+    if (isMeaningfulConnectorType(backendType)) {
+      return backendType!.trim();
+    }
+    if (isMeaningfulConnectorType(taskType)) {
+      return taskType!.trim();
+    }
+    return backendType?.trim() || taskType?.trim() || "local";
+  }
+
+  if (isMeaningfulConnectorType(taskType)) {
+    return taskType!.trim();
+  }
+  if (isMeaningfulConnectorType(backendType)) {
+    return backendType!.trim();
+  }
+  return taskType?.trim() || backendType?.trim() || "local";
 }
 
 function taskOverlayPriority(status?: string): number {
@@ -103,10 +227,11 @@ export function buildKnowledgeTableRows(
   hasActiveFilter = false,
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
-    const normalizedFilename =
-      taskFile.filename?.trim() ||
-      taskFile.source_url?.trim() ||
-      "Untitled source";
+    const rawFilename =
+      taskFile.filename?.trim() || taskFile.source_url?.trim() || "";
+    const normalizedFilename = rawFilename
+      ? cleanConnectorFilename(rawFilename, taskFile.mimetype)
+      : "Untitled source";
 
     return {
       filename: normalizedFilename,
@@ -136,9 +261,16 @@ export function buildKnowledgeTableRows(
           : backendStatus;
       return {
         ...file,
-        filename: taskFile.filename || file.filename,
-        source_url: taskFile.source_url || file.source_url,
-        connector_type: taskFile.connector_type,
+        // Indexed row identity: prefer backend fields so filename and source_url stay paired.
+        filename: file.filename || taskFile.filename,
+        source_url: file.source_url || taskFile.source_url,
+        connector_type: isMeaningfulConnectorType(file.connector_type)
+          ? file.connector_type!.trim()
+          : resolveKnowledgeRowConnectorType(
+              file.connector_type,
+              taskFile.connector_type,
+              status,
+            ),
         status,
         error: taskFile.error,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,

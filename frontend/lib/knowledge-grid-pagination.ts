@@ -3,6 +3,7 @@ import type { AgGridReact } from "ag-grid-react";
 import type { File } from "@/app/api/queries/useGetSearchQuery";
 import type { TaskFile } from "@/contexts/task-context";
 import {
+  cleanConnectorFilename,
   getKnowledgeFileAliasKeys,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
@@ -104,14 +105,17 @@ export function dispatchKnowledgeIngestFocus(
 }
 
 export function queueKnowledgeIngestFocusForCloudFiles(
-  files: Array<{ name: string }>,
+  files: Array<{ name: string; mimeType?: string }>,
   replace: boolean,
 ): void {
   if (files.length === 0) {
     return;
   }
   persistKnowledgeIngestFocus(
-    files.map((file) => ({ filename: file.name, replace })),
+    files.map((file) => ({
+      filename: cleanConnectorFilename(file.name, file.mimeType),
+      replace,
+    })),
   );
 }
 
