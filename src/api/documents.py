@@ -178,14 +178,14 @@ async def delete_chunks_by_document_ids(
 
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
-    from config.settings import IBM_AUTH_ENABLED
     from config.settings import clients as app_clients
     from main import init_index
 
-    opensearch_client = None
-    if IBM_AUTH_ENABLED and jwt_token:
-        opensearch_client = app_clients.create_user_opensearch_client(jwt_token)
-
+    # Index administration needs more privileges than the per-user client has
+    # in SaaS (the end-user JWT can search/write documents but not run admin
+    # calls like HEAD /<index> or index creation) — pick the admin-capable
+    # client for the run mode.
+    opensearch_client = app_clients.create_index_admin_opensearch_client(jwt_token)
     await init_index(opensearch_client)
 
 

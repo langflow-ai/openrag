@@ -39,6 +39,8 @@ def _make_service():
     langflow_service.merge_ui_ingest_settings_into_tweaks = MagicMock(return_value={})
     service.langflow_service = langflow_service
     service.task_service = None
+    # _get_effective_sync_jwt passes jwt_token through when no session manager
+    service.session_manager = None
 
     return service, langflow_service
 

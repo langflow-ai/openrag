@@ -2,6 +2,7 @@
 
 import { Bell } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -51,6 +52,7 @@ export function Header() {
           {process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true" && (
             <>
               <BrandSwitcher />
+              <DevRoleToggle />
               {/* Separator */}
               <div className="w-px h-6 bg-border mx-3" />
             </>

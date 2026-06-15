@@ -1,6 +1,11 @@
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
+import { useBrand } from "@/contexts/brand-context";
+import {
+  buildSettingsTabAccess,
+  type SettingsTabAccessContext,
+} from "@/lib/brand";
 
 export interface UsePermissionsResult {
   /** All permission strings granted to the current user. */
@@ -59,4 +64,24 @@ export function usePermissions(): UsePermissionsResult {
     isLoading,
     rbacEnforced,
   };
+}
+
+/** Settings nav + tab guards — bundles auth, brand, and permissions. */
+export function useSettingsTabAccess(): SettingsTabAccessContext {
+  const {
+    isNoAuthMode,
+    isIbmAuthMode,
+    cloudContext,
+    permissions,
+    rbacEnforced,
+  } = useAuth();
+  const { brand } = useBrand();
+  return buildSettingsTabAccess({
+    isIbmAuthMode,
+    cloudContext,
+    isNoAuthMode,
+    rbacEnforced,
+    permissions,
+    brand,
+  });
 }

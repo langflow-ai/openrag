@@ -76,7 +76,7 @@ const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
     >
       <title>Dog Icon</title>
       <defs>
-        <style dangerouslySetInnerHTML={{ __html: animationCSS }} />
+        <style>{animationCSS}</style>
       </defs>
 
       {/* State 1 - Add 14px left padding to align with state 3 */}

@@ -103,7 +103,7 @@ export default function ConnectorCard({
               >
                 {isConnected || connector?.available
                   ? `${connector.name} is configured.`
-                  : "Not configured."}
+                  : "Allowed for this workspace — OAuth credentials not configured yet."}
               </CardDescription>
             </div>
           </div>

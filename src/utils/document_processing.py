@@ -1,6 +1,6 @@
-import hashlib
 import os
 from collections import defaultdict
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -17,11 +17,10 @@ def process_text_file(file_path: str) -> dict:
     Returns:
         dict with keys: id, filename, mimetype, chunks
     """
-    import os
     from utils.hash_utils import hash_id
 
     # Read the file
-    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
         content = f.read()
 
     # Compute hash
@@ -34,7 +33,7 @@ def process_text_file(file_path: str) -> dict:
     chunks = []
 
     # Split by paragraphs first (double newline)
-    paragraphs = content.split('\n\n')
+    paragraphs = content.split("\n\n")
     current_chunk = ""
     chunk_index = 0
 
@@ -45,11 +44,13 @@ def process_text_file(file_path: str) -> dict:
 
         # If adding this paragraph would exceed chunk size, save current chunk
         if len(current_chunk) + len(para) + 2 > chunk_size and current_chunk:
-            chunks.append({
-                "page": chunk_index + 1,  # Use chunk_index + 1 as "page" number
-                "type": "text",
-                "text": current_chunk.strip()
-            })
+            chunks.append(
+                {
+                    "page": chunk_index + 1,  # Use chunk_index + 1 as "page" number
+                    "type": "text",
+                    "text": current_chunk.strip(),
+                }
+            )
             chunk_index += 1
             current_chunk = para
         else:
@@ -60,19 +61,11 @@ def process_text_file(file_path: str) -> dict:
 
     # Add the last chunk if any
     if current_chunk.strip():
-        chunks.append({
-            "page": chunk_index + 1,
-            "type": "text",
-            "text": current_chunk.strip()
-        })
+        chunks.append({"page": chunk_index + 1, "type": "text", "text": current_chunk.strip()})
 
     # If no chunks were created (empty file), create a single empty chunk
     if not chunks:
-        chunks.append({
-            "page": 1,
-            "type": "text",
-            "text": ""
-        })
+        chunks.append({"page": 1, "type": "text", "text": ""})
 
     return {
         "id": file_hash,
@@ -99,18 +92,19 @@ def extract_relevant(doc_dict: dict) -> dict:
     for txt in doc_dict.get("texts", []):
         prov = txt.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
-        if page_no is not None:
-            page_texts[page_no].append(txt.get("text", "").strip())
+        if page_no is None:
+            page_no = 1
+        page_texts[page_no].append(txt.get("text", "").strip())
 
     for page in sorted(page_texts):
-        chunks.append(
-            {"page": page, "type": "text", "text": "\n".join(page_texts[page])}
-        )
+        chunks.append({"page": page, "type": "text", "text": "\n".join(page_texts[page])})
 
     # 2) process tables
     for t_idx, table in enumerate(doc_dict.get("tables", [])):
         prov = table.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
+        if page_no is None:
+            page_no = 1
 
         # group cells by their row index
         rows = defaultdict(list)
