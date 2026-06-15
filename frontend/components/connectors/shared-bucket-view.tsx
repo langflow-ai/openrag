@@ -19,7 +19,7 @@ export interface SharedBucketViewProps {
   onRefetch: () => void;
   invalidateQueryKey: readonly unknown[];
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string) => void;
+  addTask: (id: string, options?: { connectorType?: string }) => void;
   onBack: () => void;
   onDone: () => void;
 }
@@ -82,7 +82,7 @@ export function SharedBucketView({
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0]);
+            addTask(result.task_ids[0], { connectorType: connector.type });
             onDone();
           } else {
             toast.info("No files found in the selected buckets.");

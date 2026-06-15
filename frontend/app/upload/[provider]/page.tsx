@@ -112,7 +112,7 @@ export default function UploadProviderPage() {
         onSuccess: (result) => {
           const taskIds = result.task_ids;
           if (taskIds && taskIds.length > 0) {
-            addTask(taskIds[0]);
+            addTask(taskIds[0], { connectorType: connector.type });
             router.push("/knowledge");
           }
         },
