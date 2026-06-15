@@ -48,7 +48,7 @@ RUN mkdir -p /app/src/backend/base/langflow/frontend && \
 # Return to app directory and install the project
 WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
-RUN uv pip uninstall litellm
+RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
 # Expose ports
 EXPOSE 7860

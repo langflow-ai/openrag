@@ -446,6 +446,20 @@ class AuthService:
             except Exception:
                 logger.exception("[AUTH] Auto-detect base URL failed")
 
+        # Register the change-notification subscription now that the connection is
+        # authenticated. Data-source connections don't go through update_connection
+        # (which handles this for the app-auth flow), so without this no webhook
+        # subscription is ever created for them.
+        try:
+            connection_manager = self.connector_service.connection_manager
+            connector = await connection_manager.get_connector(connection_id)
+            if connector:
+                await connection_manager._setup_webhook_if_needed(
+                    connection_id, connection_config, connector
+                )
+        except Exception:
+            logger.exception("[AUTH] Webhook subscription setup failed")
+
         return result
 
     async def get_user_info(self, request) -> dict | None:

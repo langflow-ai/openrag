@@ -496,6 +496,73 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
     request.state.jwt_roles = jwt_roles
 
 
+async def _resolve_lakehouse_credentials(
+    request: Request, user_id: str | None
+) -> tuple[str | None, str | None]:
+    """Resolve the lakehouse Basic credentials used for the user-scoped
+    OpenSearch client. Shared by the session-cookie surface (``_get_ibm_user``)
+    and the /v1 JWT-in-header surface (``get_api_key_user_async``):
+
+      1. The configured credentials header (Traefik production). Also
+         persisted to the connections store so background processes and
+         later header-less requests can reuse them.
+      2. The user's stored ``ibm_credentials`` connection.
+
+    Returns ``(opensearch_username, base64_basic_credentials)`` or
+    ``(None, None)``. Never raises — callers degrade to the user's JWT.
+    """
+    from auth.ibm_auth import extract_ibm_credentials
+    from config.settings import IBM_CREDENTIALS_HEADER
+
+    connector_service = None
+    app_state = getattr(getattr(request, "app", None), "state", None)
+    services = getattr(app_state, "services", None)
+    if services:
+        connector_service = services.get("connector_service")
+
+    lh_credentials = request.headers.get(IBM_CREDENTIALS_HEADER, "")
+    if lh_credentials and lh_credentials.strip() != "":
+        logger.debug("[AUTH] IBM LH credentials found in request headers")
+        opensearch_username, _ = extract_ibm_credentials(lh_credentials)
+        upsert_user_id = user_id or opensearch_username
+        if connector_service and upsert_user_id:
+            logger.debug("[AUTH] Upserting IBM LH credentials to connections store")
+            try:
+                await connector_service.connection_manager.upsert_ibm_credentials(
+                    user_id=upsert_user_id,
+                    basic_credentials=lh_credentials,
+                    username=upsert_user_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — persistence is best-effort
+                logger.warning(
+                    "[AUTH] Failed to persist IBM LH credentials to connections store",
+                    user_id=upsert_user_id,
+                    error=str(exc),
+                )
+        return opensearch_username, lh_credentials
+
+    if connector_service and user_id:
+        try:
+            connections = await connector_service.connection_manager.list_connections(
+                user_id=user_id, connector_type="ibm_credentials"
+            )
+        except Exception as exc:  # noqa: BLE001 — auth must degrade, not 500
+            logger.warning(
+                "[AUTH] Failed to read IBM LH credentials from connections store",
+                user_id=user_id,
+                error=str(exc),
+            )
+            connections = []
+        if connections:
+            lh_credentials = connections[0].config.get("basic_credentials")
+            if lh_credentials and lh_credentials.strip() != "":
+                logger.debug("[AUTH] IBM LH credentials found in connections store")
+                opensearch_username, _ = extract_ibm_credentials(lh_credentials)
+                return opensearch_username, lh_credentials
+
+    return None, None
+
+
 async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     """Authenticate via upstream auth.
 
@@ -512,7 +579,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     from auth.ibm_auth import extract_ibm_credentials
     from auth.jwt_roles import jwt_roles_enabled
     from config.settings import (
-        IBM_CREDENTIALS_HEADER,
         IBM_SESSION_COOKIE_NAME,
         PLATFORM_PASSWORD,
         PLATFORM_USERNAME,
@@ -541,9 +607,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = user
         return user
 
-    # ── Option 0: Configurable credentials header (Traefik production) ───
-
-    lh_credentials = request.headers.get(IBM_CREDENTIALS_HEADER, "")
     # When RBAC/JWT-role sync is on, the gateway forwards the end-user JWT in the
     # configured header; use it as the source of identity and roles. When RBAC is
     # off, preserve the existing ibm-openrag-session cookie flow.
@@ -592,25 +655,12 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 # existing DB roles untouched). RBAC on -> extract + 401 if none.
                 _stage_jwt_roles(request, claims, user_id)
 
-    if lh_credentials and lh_credentials.strip() != "":
-        logger.debug("[AUTH] IBM LH credentials found in request headers")
-        opensearch_username, _ = extract_ibm_credentials(lh_credentials)
-        logger.debug("[AUTH] IBM LH credentials extracted successfully")
+    opensearch_username, lh_credentials = await _resolve_lakehouse_credentials(request, user_id)
+
+    if lh_credentials:
         user_id = user_id or opensearch_username
         email = email or opensearch_username
         name = name or opensearch_username
-
-        # Persist credentials to connections.json for reuse by background processes
-        connector_service = request.app.state.services.get("connector_service")
-        if connector_service and user_id:
-            logger.debug("[AUTH] Upserting IBM LH credentials to connections.json")
-            await connector_service.connection_manager.upsert_ibm_credentials(
-                user_id=user_id,
-                basic_credentials=lh_credentials,
-                username=user_id,
-            )
-            logger.debug("[AUTH] IBM LH credentials upserted successfully")
-
         user = User(
             user_id=user_id,
             email=email,
@@ -626,39 +676,18 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         return user
 
     if ibm_token and user_id:
-        logger.debug("[AUTH] IBM JWT cookie present and user_id found")
-        logger.debug("[AUTH] LH credentials not available in header, reading from connections.json")
-        # lh credentials not available in header, read from connections service
-        connector_service = request.app.state.services.get("connector_service")
-        if connector_service:
-            connections = await connector_service.connection_manager.list_connections(
-                user_id=user_id, connector_type="ibm_credentials"
-            )
-            if connections:
-                lh_credentials = connections[0].config.get("basic_credentials")
-        opensearch_username = None
-        opensearch_credentials = None
-        jwt_token = f"Bearer {ibm_token}"
-        if lh_credentials and lh_credentials.strip() != "":
-            logger.debug("[AUTH] IBM LH credentials found in connections.json")
-            opensearch_username, _ = extract_ibm_credentials(lh_credentials)
-            logger.debug("[AUTH] IBM LH credentials extracted successfully")
-            opensearch_credentials = lh_credentials
-            logger.debug("[AUTH] IBM LH credentials set successfully")
-            jwt_token = f"Basic {lh_credentials}"
-        else:
-            logger.warning(
-                "[AUTH] IBM LH credentials not found in header or connections store. Using JWT token instead."
-            )
+        logger.warning(
+            "[AUTH] IBM LH credentials not found in header or connections store. Using JWT token instead."
+        )
         user = User(
             user_id=user_id,
             email=email,
             name=name,
             picture=None,
             provider="ibm_ams",
-            jwt_token=jwt_token,
-            opensearch_username=opensearch_username,
-            opensearch_credentials=opensearch_credentials,
+            jwt_token=f"Bearer {ibm_token}",
+            opensearch_username=None,
+            opensearch_credentials=None,
         )
         logger.debug("[AUTH] User created successfully")
         request.state.user = user
@@ -815,7 +844,7 @@ async def get_api_key_user_async(
     # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import get_jwt_auth_header
+    from config.settings import IBM_AUTH_ENABLED, get_jwt_auth_header
     from config.utils import resolve_jwt_claims
 
     raw_jwt = request.headers.get(get_jwt_auth_header(), "")
@@ -840,17 +869,72 @@ async def get_api_key_user_async(
                 jwt_token=f"Bearer {token}",
             )
             _stage_jwt_roles(request, claims, user.user_id)
+            # The forwarded JWT is primary for ALL operations (identity, roles,
+            # and downstream OpenSearch calls, which validate it via OIDC) —
+            # same as the session surface (_get_ibm_user). NOTE (gateway
+            # requirement): under RBAC this JWT is also the authoritative role
+            # source. Traefik must mint it with the user's real OpenRAG role
+            # claims (same as the UI session JWT), otherwise every /v1 call
+            # re-syncs the user down to whatever the claim carries.
             request.state.user = user
-            return await _attach_db_user_id(request, user)
+            return await _attach_request_user(request, user, session_manager)
         if jwt_roles_enabled():
             # A JWT was asserted but failed verification/decode. Under RBAC we
             # must not silently downgrade to the API-key identity.
-            raise HTTPException(status_code=401, detail="Invalid or unverifiable JWT")
+            logger.error(
+                "[AUTH] JWT in request header failed verification/decode",
+                header_name=get_jwt_auth_header(),
+            )
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "invalid_jwt",
+                    "message": (
+                        f"The JWT in the '{get_jwt_auth_header()}' header could not be "
+                        "verified or decoded. Ensure the gateway forwards a valid, "
+                        "unexpired user JWT issued by a trusted identity provider."
+                    ),
+                },
+            )
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
+    else:
+        from utils.run_mode_utils import is_run_mode_saas
 
-    from config.settings import IBM_AUTH_ENABLED
+        if is_run_mode_saas() and jwt_roles_enabled():
+            # In saas the gateway is responsible for forwarding the end-user
+            # JWT on every API/MCP request; its absence is a gateway
+            # misconfiguration, not a normal client state.
+            logger.error(
+                "[AUTH] JWT not found in request header — run_mode=saas with "
+                "RBAC enabled requires the gateway to forward the user JWT",
+                header_name=get_jwt_auth_header(),
+            )
+        if IBM_AUTH_ENABLED:
+            # No JWT — fall back to lakehouse Basic credentials (credentials
+            # header, upserted to the connections store), mirroring the
+            # session surface's header branch in _get_ibm_user.
+            os_username, lh_credentials = await _resolve_lakehouse_credentials(request, None)
+            if lh_credentials:
+                logger.info(
+                    "[AUTH] Using IBM LH credentials as JWT token",
+                    username=os_username,
+                )
+                user = User(
+                    user_id=os_username,
+                    email=os_username,
+                    name=os_username,
+                    picture=None,
+                    provider="ibm_ams",
+                    jwt_token=f"Basic {lh_credentials}",
+                    opensearch_username=os_username,
+                    opensearch_credentials=lh_credentials,
+                )
+                request.state.user = user
+                return await _attach_request_user(request, user, session_manager)
 
-    # Upstream auth path: X-Username + X-Api-Key forwarded by the MCP via the SDK.
+    # Upstream auth path: X-Username + X-Api-Key sent directly by an MCP/SDK
+    # client. Not the SaaS path — there, Traefik consumes these headers for
+    # login and injects the JWT handled by the branch above.
     if IBM_AUTH_ENABLED:
         ibm_username = request.headers.get("X-Username")
         ibm_api_key = request.headers.get("X-Api-Key")
