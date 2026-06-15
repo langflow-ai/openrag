@@ -44,7 +44,7 @@ export function isSaasPolicyContext({
 }
 
 /** False when the admin explicitly disabled this connector for the workspace. */
-export function isConnectorAllowedByWorkspace(
+function isConnectorAllowedByWorkspace(
   type: string,
   storedAccess: Record<string, boolean>,
 ): boolean {

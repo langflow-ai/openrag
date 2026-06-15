@@ -46,7 +46,6 @@
     "motion": "^12.23.12",
     "next": "^16.2.6",
     "next-themes": "^0.4.6",
-    "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
@@ -60,8 +59,7 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "use-stick-to-bottom": "^1.1.1",
-    "zustand": "^5.0.8"
+    "use-stick-to-bottom": "^1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.5",
