@@ -228,6 +228,26 @@ function findVisibleRowTarget(
   return { displayIndex, node: null };
 }
 
+/** Map row alias hits back to the canonical pending ids that were queued. */
+function addResolvablePendingIdsForRowKeys(
+  found: Set<string>,
+  identities: Set<string>,
+  rowKeys: Iterable<string>,
+): void {
+  const keys = new Set(rowKeys);
+  for (const pendingId of identities) {
+    for (const alias of getKnowledgeFileAliasKeys({
+      filename: pendingId,
+      source_url: pendingId,
+    })) {
+      if (keys.has(alias)) {
+        found.add(pendingId);
+        break;
+      }
+    }
+  }
+}
+
 /** Identities from pending that appear in the grid model and/or current rowData. */
 function collectResolvableIdentities(
   api: GridApi,
@@ -238,17 +258,11 @@ function collectResolvableIdentities(
 
   api.forEachNodeAfterFilterAndSort((node) => {
     const data = node.data as GridRowLike | undefined;
-    const nodeId = node.id;
-    if (nodeId && identities.has(nodeId)) {
-      found.add(nodeId);
+    const rowKeys = new Set(getKnowledgeFileAliasKeys(data));
+    if (node.id) {
+      rowKeys.add(node.id);
     }
-    if (data) {
-      for (const key of getKnowledgeFileAliasKeys(data)) {
-        if (identities.has(key)) {
-          found.add(key);
-        }
-      }
-    }
+    addResolvablePendingIdsForRowKeys(found, identities, rowKeys);
   });
 
   if (!rowData?.length || hasActiveColumnSort(api)) {
@@ -256,11 +270,11 @@ function collectResolvableIdentities(
   }
 
   for (const row of rowData) {
-    for (const key of getKnowledgeFileAliasKeys(row)) {
-      if (identities.has(key)) {
-        found.add(key);
-      }
-    }
+    addResolvablePendingIdsForRowKeys(
+      found,
+      identities,
+      getKnowledgeFileAliasKeys(row),
+    );
   }
 
   return found;

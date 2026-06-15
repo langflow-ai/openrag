@@ -150,7 +150,7 @@ export function buildKnowledgeTableRows(
   });
 
   const backendIdentityKeys = new Set<string>();
-  for (const file of backendFiles) {
+  for (const file of searchData) {
     for (const key of getKnowledgeFileAliasKeys(file)) {
       backendIdentityKeys.add(key);
     }
