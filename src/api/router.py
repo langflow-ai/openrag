@@ -1,6 +1,8 @@
 """Router endpoints that automatically route based on configuration settings."""
 
 import json
+import mimetypes
+import os
 import tempfile
 
 from fastapi import Depends, File, Form, UploadFile
@@ -105,8 +107,17 @@ async def _traditional_upload_ingest_task(
             for upload_file in upload_files:
                 content = await upload_file.read()
                 original_filenames.append(upload_file.filename)
-                # Generate unique temp file to avoid collisions
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
+                # Generate unique temp file with the original extension to assist docling/format detection
+                suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
+                if not suffix and upload_file.content_type:
+                    from utils.file_utils import get_file_extension
+
+                    suffix = get_file_extension(upload_file.content_type)
+                    if not suffix:
+                        suffix = mimetypes.guess_extension(upload_file.content_type)
+                if not suffix:
+                    suffix = ".tmp"
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                 temp_path = temp_file.name
                 temp_file.close()
                 with open(temp_path, "wb") as f:
@@ -206,8 +217,17 @@ async def _langflow_upload_ingest_task(
             for upload_file in upload_files:
                 content = await upload_file.read()
                 original_filenames.append(upload_file.filename)
-                # Generate unique temp file to avoid collisions
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
+                # Generate unique temp file with the original extension to assist docling/format detection
+                suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
+                if not suffix and upload_file.content_type:
+                    from utils.file_utils import get_file_extension
+
+                    suffix = get_file_extension(upload_file.content_type)
+                    if not suffix:
+                        suffix = mimetypes.guess_extension(upload_file.content_type)
+                if not suffix:
+                    suffix = ".tmp"
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                 temp_path = temp_file.name
                 temp_file.close()
                 with open(temp_path, "wb") as f:

@@ -10,7 +10,6 @@ from fastapi import Depends
 
 from api import knowledge_filter
 from dependencies import (
-    get_api_key_user_async,
     get_knowledge_filter_service,
     get_session_manager,
     require_api_key_permission,
@@ -41,7 +40,7 @@ async def search_endpoint(
     body: knowledge_filter.SearchFiltersBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("kf:read")),
 ):
     """
     Search knowledge filters.
@@ -60,7 +59,7 @@ async def get_endpoint(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("kf:read")),
 ):
     """
     Get a specific knowledge filter by ID.

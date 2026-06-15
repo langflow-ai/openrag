@@ -141,6 +141,7 @@ async def test_connector_check_duplicates():
     response = await connector_check_duplicates(
         connector_type="onedrive",
         body=body,
+        request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
         user=user,

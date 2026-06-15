@@ -208,6 +208,24 @@ def register_internal_routes(app: FastAPI):
 
     # Connector endpoints
     app.add_api_route("/connectors", connectors.list_connectors, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/connectors/workspace-policy",
+        connectors.get_connector_workspace_policy,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/user-access",
+        connectors.get_connector_user_access,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/user-access",
+        connectors.update_connector_user_access,
+        methods=["PUT"],
+        tags=["internal"],
+    )
     # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before
     # the generic /{connector_type}/... routes to avoid path shadowing.
     for cls in get_connector_classes():

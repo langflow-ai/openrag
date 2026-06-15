@@ -45,7 +45,7 @@ def _request(cookies: dict[str, str] | None = None):
 def _auth_settings(monkeypatch):
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
-    async def _resolve_db_user_id(user):
+    async def _resolve_db_user_id(user, jwt_roles=None):
         return user.user_id
 
     monkeypatch.setattr(dependencies, "_resolve_db_user_id", _resolve_db_user_id)
