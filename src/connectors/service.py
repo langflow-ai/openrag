@@ -520,6 +520,27 @@ class ConnectorService:
                 for f in expanded_files:
                     expanded_files_info.append(f)
 
+                # Requested IDs that vanished during expansion are either
+                # folders (replaced by their children) or gone at the source
+                # (deleted/trashed). Re-add the non-folder ones so the
+                # processor can run its deleted-at-source cleanup
+                # (get_file_content -> 404 -> delete indexed chunks).
+                expanded_set = set(expanded_file_ids)
+                known_folder_ids = {
+                    f["id"] for f in (file_infos or []) if f.get("isFolder") and f.get("id")
+                }
+                missing_ids = [
+                    fid
+                    for fid in file_ids
+                    if fid not in expanded_set and fid not in known_folder_ids
+                ]
+                if missing_ids:
+                    logger.info(
+                        f"Re-adding {len(missing_ids)} file id(s) missing after expansion "
+                        f"(possibly deleted at source)"
+                    )
+                    expanded_file_ids = expanded_file_ids + missing_ids
+
             if not expanded_file_ids:
                 logger.warning(
                     f"No files found after expanding file_ids. "

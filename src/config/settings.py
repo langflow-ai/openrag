@@ -76,7 +76,21 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 # pointed at the router instead of the backend internal URL, so Langflow's
 # reachable surface narrows to that single endpoint.
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+
+
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas                 -> "true" (the platform requires the narrowed surface)
+#   * anything else        -> "false" (today's behaviour preserved)
+# An explicit OPENRAG_BACKEND_ROUTER_ENABLE value always wins.
+def _resolve_backend_router_enable_default() -> str:
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return "true" if is_run_mode_saas() else "false"
+
+
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
+    "OPENRAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
+).lower() in (
     "true",
     "1",
     "yes",
@@ -304,10 +318,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
 # An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
 # operator can force-enable the setup in SaaS for a one-off bootstrap.
 def _resolve_skip_os_security_default() -> str:
-    run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
-    if run_mode in ("saas", "on_prem"):
-        return "true"
-    return "false"
+    from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
+
+    return "true" if is_run_mode_saas() or is_run_mode_on_prem() else "false"
 
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
@@ -509,6 +522,25 @@ def is_no_auth_mode():
 
 # Webhook configuration - must be set to enable webhooks
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
+
+# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL).
+# If set, it must end in /connectors/google_drive/webhook.
+#
+# Drive watch addresses resolve config webhook_url -> this var -> WEBHOOK_BASE_URL
+# (google_drive/connector.py _resolve_webhook_address). Watches registered against
+# the legacy /connectors/google/webhook path (e.g. via a stale webhook_url persisted
+# in connections.json) are tolerated by LEGACY_WEBHOOK_TYPE_ALIASES in api/connectors.py;
+# the real fix is correcting the stored webhook_url (e.g. reconnect the data source).
+GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
+
+# Webhook subscription renewal: how often to check, and how close to expiry a
+# subscription must be before it is renewed. Google Drive channels live ~24h,
+# Microsoft Graph subscriptions 3 days; 6h checks with a 12h threshold give at
+# least two renewal opportunities before either expires.
+_raw_webhook_renewal_interval = get_env_int("WEBHOOK_RENEWAL_INTERVAL_SECONDS", 6 * 3600)
+WEBHOOK_RENEWAL_INTERVAL_SECONDS = max(60, _raw_webhook_renewal_interval)
+_raw_webhook_renewal_threshold = get_env_int("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", 12 * 3600)
+WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
