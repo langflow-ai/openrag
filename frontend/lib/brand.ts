@@ -53,8 +53,8 @@ export function isConnectorAllowedByWorkspace(
 
 /**
  * Connectors tab visibility: workspace policy first, then deployment rules.
- * Explicit `storedAccess[type] === true` (saved in Connectors Permission) overrides
- * deployment filters so admins can re-enable types like OneDrive on cloud brand.
+ * Explicit `storedAccess[type] === true` overrides deployment filters except
+ * OneDrive outside OSS brand (hidden in SaaS/cloud UI).
  */
 export function isConnectorShownInWorkspace(
   type: string,
@@ -65,7 +65,9 @@ export function isConnectorShownInWorkspace(
   }: { isCloudBrand: boolean; isIbmAuthMode: boolean },
 ): boolean {
   if (!isConnectorAllowedByWorkspace(type, storedAccess)) return false;
-  if (storedAccess[type] === true) return true;
+  if (storedAccess[type] === true && !(type === "onedrive" && cloudBrand)) {
+    return true;
+  }
   return isConnectorTypeVisible(type, {
     isCloudBrand: cloudBrand,
     isIbmAuthMode,

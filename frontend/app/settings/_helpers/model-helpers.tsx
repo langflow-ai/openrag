@@ -71,9 +71,22 @@ export function getFallbackModels(provider: ModelProvider) {
     case "openai":
       return {
         language: [
-          { value: "gpt-4", label: "GPT-4" },
-          { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-          { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+          { value: "gpt-5.4", label: "GPT-5.4" },
+          { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+          { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+          { value: "gpt-5.2", label: "GPT-5.2" },
+          { value: "gpt-5.1", label: "GPT-5.1" },
+          { value: "gpt-5", label: "GPT-5" },
+          { value: "gpt-5-mini", label: "GPT-5 Mini" },
+          { value: "gpt-5-nano", label: "GPT-5 Nano" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+          { value: "gpt-4o", label: "GPT-4o" },
+          { value: "gpt-4.1", label: "GPT-4.1" },
+          { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+          { value: "o3", label: "o3" },
+          { value: "o3-pro", label: "o3 Pro" },
+          { value: "o4-mini-high", label: "o4 Mini High" },
         ],
         embedding: [
           { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
@@ -84,9 +97,9 @@ export function getFallbackModels(provider: ModelProvider) {
     case "anthropic":
       return {
         language: [
+          { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+          { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
           { value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-          { value: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
-          { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
         ],
       };
     case "ollama":
@@ -120,9 +133,22 @@ export function getFallbackModels(provider: ModelProvider) {
     default:
       return {
         language: [
-          { value: "gpt-4", label: "GPT-4" },
-          { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-          { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+          { value: "gpt-5.4", label: "GPT-5.4" },
+          { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+          { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+          { value: "gpt-5.2", label: "GPT-5.2" },
+          { value: "gpt-5.1", label: "GPT-5.1" },
+          { value: "gpt-5", label: "GPT-5" },
+          { value: "gpt-5-mini", label: "GPT-5 Mini" },
+          { value: "gpt-5-nano", label: "GPT-5 Nano" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+          { value: "gpt-4o", label: "GPT-4o" },
+          { value: "gpt-4.1", label: "GPT-4.1" },
+          { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+          { value: "o3", label: "o3" },
+          { value: "o3-pro", label: "o3 Pro" },
+          { value: "o4-mini-high", label: "o4 Mini High" },
         ],
         embedding: [
           { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },

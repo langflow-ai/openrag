@@ -1,20 +1,20 @@
-from typing import Optional, Any, List
+import json
+import uuid
+from datetime import datetime
+from typing import Any
 
 from fastapi import Depends, Request
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-import uuid
-import json
-from datetime import datetime
-from utils.logging_config import get_logger
+from pydantic import BaseModel
+
 from dependencies import (
     get_knowledge_filter_service,
     get_monitor_service,
     get_session_manager,
-    get_current_user,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -55,9 +55,9 @@ def normalize_query_data(query_data: str | dict) -> str:
 class CreateFilterBody(BaseModel):
     name: str
     description: str = ""
-    queryData: Optional[Any] = None
-    allowedUsers: List[str] = []
-    allowedGroups: List[str] = []
+    queryData: Any | None = None
+    allowedUsers: list[str] = []
+    allowedGroups: list[str] = []
 
 
 class SearchFiltersBody(BaseModel):
@@ -66,15 +66,15 @@ class SearchFiltersBody(BaseModel):
 
 
 class UpdateFilterBody(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    queryData: Optional[Any] = None
-    allowedUsers: Optional[List[str]] = None
-    allowedGroups: Optional[List[str]] = None
+    name: str | None = None
+    description: str | None = None
+    queryData: Any | None = None
+    allowedUsers: list[str] | None = None
+    allowedGroups: list[str] | None = None
 
 
 class SubscribeBody(BaseModel):
-    notification_config: Optional[dict] = None
+    notification_config: dict | None = None
 
 
 async def create_knowledge_filter(
@@ -129,7 +129,7 @@ async def search_knowledge_filters(
     body: SearchFiltersBody,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Search for knowledge filters by name, description, or query content"""
     jwt_token = user.jwt_token
@@ -151,7 +151,7 @@ async def get_knowledge_filter(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Get a specific knowledge filter by ID"""
     jwt_token = user.jwt_token
@@ -185,7 +185,9 @@ async def update_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not existing_result.get("success"):
-        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
+        return JSONResponse(
+            {"error": "Knowledge filter not found or access denied"}, status_code=404
+        )
 
     existing_filter = existing_result["filter"]
 
@@ -193,7 +195,9 @@ async def update_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not delete_result.get("success"):
-        return JSONResponse({"error": "Failed to delete existing knowledge filter"}, status_code=500)
+        return JSONResponse(
+            {"error": "Failed to delete existing knowledge filter"}, status_code=500
+        )
 
     query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
     try:
@@ -205,11 +209,17 @@ async def update_knowledge_filter(
     updated_filter = {
         "id": filter_id,
         "name": body.name if body.name is not None else existing_filter["name"],
-        "description": body.description if body.description is not None else existing_filter["description"],
+        "description": body.description
+        if body.description is not None
+        else existing_filter["description"],
         "query_data": normalized_query_data,
         "owner": existing_filter["owner"],
-        "allowed_users": body.allowedUsers if body.allowedUsers is not None else existing_filter.get("allowed_users", []),
-        "allowed_groups": body.allowedGroups if body.allowedGroups is not None else existing_filter.get("allowed_groups", []),
+        "allowed_users": body.allowedUsers
+        if body.allowedUsers is not None
+        else existing_filter.get("allowed_users", []),
+        "allowed_groups": body.allowedGroups
+        if body.allowedGroups is not None
+        else existing_filter.get("allowed_groups", []),
         "created_at": existing_filter["created_at"],
         "updated_at": datetime.utcnow().isoformat(),
     }
@@ -246,7 +256,9 @@ async def delete_knowledge_filter(
         error_msg = result.get("error", "")
         if "not found" in error_msg.lower() or "already deleted" in error_msg.lower():
             return JSONResponse(result, status_code=404)
-        elif "access denied" in error_msg.lower() or "insufficient permissions" in error_msg.lower():
+        elif (
+            "access denied" in error_msg.lower() or "insufficient permissions" in error_msg.lower()
+        ):
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
@@ -258,7 +270,7 @@ async def subscribe_to_knowledge_filter(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     monitor_service=Depends(get_monitor_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Create a subscription to a knowledge filter"""
     jwt_token = user.jwt_token
@@ -267,7 +279,9 @@ async def subscribe_to_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not filter_result.get("success"):
-        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
+        return JSONResponse(
+            {"error": "Knowledge filter not found or access denied"}, status_code=404
+        )
 
     filter_doc = filter_result["filter"]
 
@@ -315,7 +329,7 @@ async def list_knowledge_filter_subscriptions(
     filter_id: str,
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """List subscriptions for a knowledge filter"""
     jwt_token = user.jwt_token
@@ -341,7 +355,7 @@ async def cancel_knowledge_filter_subscription(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
     monitor_service=Depends(get_monitor_service),
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("kf:read")),
 ):
     """Cancel a subscription to a knowledge filter"""
     jwt_token = user.jwt_token
@@ -350,7 +364,9 @@ async def cancel_knowledge_filter_subscription(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not subscriptions_result.get("success"):
-        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
+        return JSONResponse(
+            {"error": "Knowledge filter not found or access denied"}, status_code=404
+        )
 
     subscription = None
     for sub in subscriptions_result.get("subscriptions", []):
@@ -368,7 +384,9 @@ async def cancel_knowledge_filter_subscription(
     )
 
     if remove_result.get("success"):
-        return JSONResponse({"success": True, "message": "Subscription cancelled successfully"}, status_code=200)
+        return JSONResponse(
+            {"success": True, "message": "Subscription cancelled successfully"}, status_code=200
+        )
     else:
         return JSONResponse({"error": "Failed to cancel subscription"}, status_code=500)
 
