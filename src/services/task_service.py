@@ -969,7 +969,7 @@ class TaskService:
 
         # First, check if the error is non-retryable based on common markers
         if _is_non_retryable_file_error(error):
-                        # Image files that produced no text almost certainly failed because OCR
+            # Image files that produced no text almost certainly failed because OCR
             # is disabled — not because the file is corrupted. Give a targeted tip.
             filename = file_task.filename or file_task.file_path or ""
             if "no text content could be extracted" in error.lower() and _is_ocr_required_file(
@@ -984,7 +984,6 @@ class TaskService:
                     ),
                     "actionable_by": "RETRYABLE",
                 }
-
 
             if phase == IngestionPhase.LANGFLOW:
                 component = "langflow"
