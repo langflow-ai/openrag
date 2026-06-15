@@ -411,6 +411,40 @@ async def test_graph_webhook_uses_stored_delta_link(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
+async def test_graph_webhook_emits_composite_drive_item_id(
+    tmp_path, monkeypatch, module_path, cls_name, connector_type
+):
+    """The webhook must return the SAME composite ``driveId!itemId`` id that
+    selected-file listing/ingestion stores as connector_file_id — otherwise the
+    change can't be correlated with the indexed file and is dropped as
+    out-of-scope (the SharePoint webhook bug)."""
+    import httpx
+
+    connector = _graph_connector(module_path, cls_name, tmp_path, webhook_url=None)
+    connector._delta_link = "https://graph.microsoft.com/v1.0/delta?token=prev"
+
+    delta_page = {
+        "value": [
+            {
+                "id": "01ITEM",
+                "file": {},
+                "parentReference": {"driveId": "b!DRIVE"},
+                "lastModifiedDateTime": "2020-01-01T00:00:00Z",
+            },
+            # A deleted item with a drive-scoped parent also gets the prefix.
+            {"id": "01GONE", "deleted": {}, "parentReference": {"driveId": "b!DRIVE"}},
+        ],
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?token=next",
+    }
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeDeltaClient([delta_page]))
+
+    affected = await connector.handle_webhook(GRAPH_NOTIFICATION)
+
+    assert affected == ["b!DRIVE!01ITEM", "b!DRIVE!01GONE"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
 async def test_graph_webhook_empty_payload_skips_delta(
     tmp_path, module_path, cls_name, connector_type
 ):

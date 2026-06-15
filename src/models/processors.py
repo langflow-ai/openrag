@@ -232,6 +232,69 @@ class TaskProcessor:
             logger.error("Failed to delete existing document", filename=filename, error=str(e))
             raise
 
+    async def _delete_connector_chunks(
+        self,
+        file_id: str,
+        opensearch_client,
+        owner_user_id: str,
+        keep_filenames: list[str] | None = None,
+    ) -> int:
+        """Delete indexed chunks for a connector file by its STABLE id.
+
+        Matches both ``connector_file_id`` (standard path, where ``document_id``
+        holds the content hash) and ``document_id`` (Langflow path, where it
+        holds the connector id). When ``keep_filenames`` is given, chunks whose
+        filename is one of those names are preserved — used to drop only the
+        stale OLD-name chunks left behind by a rename, since a connector file
+        keeps the same id across renames. Best-effort: logs and returns 0 on
+        failure so a cleanup miss never fails the task.
+        """
+        from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+        if not file_id:
+            return 0
+        try:
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
+
+            query: dict[str, Any] = {
+                "bool": {
+                    "filter": [
+                        {
+                            "bool": {
+                                "should": [
+                                    {"term": {"document_id": file_id}},
+                                    {"term": {"connector_file_id": file_id}},
+                                ],
+                                "minimum_should_match": 1,
+                            }
+                        },
+                        {"term": {"owner": owner_user_id}},
+                    ]
+                }
+            }
+            if keep_filenames:
+                query["bool"]["must_not"] = [{"terms": {"filename": keep_filenames}}]
+
+            chunk_ids = await collect_visible_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                query=query,
+            )
+            return await delete_document_ids(
+                write_client,
+                index=get_index_name(),
+                document_ids=chunk_ids,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to delete connector chunks",
+                file_id=file_id,
+                error=str(e),
+            )
+            return 0
+
     async def process_document_standard(
         self,
         file_path: str,
@@ -718,28 +781,17 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
-                    # File gone at source — remove indexed chunks by document_id
-                    # (= connector file_id) so it stops appearing in search/chat.
-                    # Filename rename (e.g. .txt → .md) is irrelevant here.
-                    deleted_chunks = 0
-                    try:
-                        from api.documents import delete_chunks_by_document_ids
-
-                        opensearch_client = (
-                            self.document_service.session_manager.get_user_opensearch_client(
-                                self.user_id, self.jwt_token
-                            )
+                    # File gone at source — remove its indexed chunks by the
+                    # stable connector id (matches both connector_file_id and
+                    # document_id) so it stops appearing in search/chat.
+                    opensearch_client = (
+                        self.document_service.session_manager.get_user_opensearch_client(
+                            self.user_id, self.jwt_token
                         )
-                        deleted_chunks = await delete_chunks_by_document_ids(
-                            [file_id], opensearch_client, get_index_name()
-                        )
-                    except Exception as cleanup_err:
-                        logger.error(
-                            "Failed to clean up chunks for deleted source file",
-                            file_id=file_id,
-                            connection_id=self.connection_id,
-                            error=str(cleanup_err),
-                        )
+                    )
+                    deleted_chunks = await self._delete_connector_chunks(
+                        file_id, opensearch_client, self.user_id
+                    )
 
                     logger.warning(
                         "File no longer exists at source — removed from index",
@@ -778,6 +830,23 @@ class ConnectorFileProcessor(TaskProcessor):
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 self.user_id, self.jwt_token
             )
+
+            # Rename cleanup: a connector file keeps a stable id across renames,
+            # but chunks are keyed by filename/content-hash, so a renamed file
+            # leaves its OLD-name chunks orphaned. Drop chunks for this id whose
+            # filename differs from the current one. If any were removed (a real
+            # rename), force a re-ingest below so the file is re-indexed under
+            # the new name instead of short-circuiting as "unchanged".
+            renamed = (
+                await self._delete_connector_chunks(
+                    document.id,
+                    opensearch_client,
+                    self.user_id,
+                    keep_filenames=get_filename_aliases(document.filename),
+                )
+                > 0
+            )
+
             if await self.check_filename_exists(document.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
@@ -808,7 +877,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                if await self.check_document_exists(file_hash, opensearch_client):
+                if not renamed and await self.check_document_exists(file_hash, opensearch_client):
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()

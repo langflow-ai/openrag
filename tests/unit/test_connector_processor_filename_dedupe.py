@@ -14,6 +14,22 @@ import pytest
 from connectors.base import ConnectorDocument, DocumentACL
 from models.processors import ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
+from utils.file_utils import get_filename_aliases
+
+
+@pytest.fixture(autouse=True)
+def backend_write_client(monkeypatch):
+    """Provide a backend OpenSearch write client (clients.opensearch).
+
+    Chunk deletion (delete_document_by_filename, _delete_connector_chunks) writes
+    through this singleton; it is None in unit tests, so patch it to a mock whose
+    per-id delete reports success."""
+    import config.settings as cfg
+
+    client = AsyncMock()
+    client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(cfg.clients, "opensearch", client)
+    return client
 
 
 def _make_document(filename: str = "My Report.pdf") -> ConnectorDocument:
@@ -65,15 +81,20 @@ def _wire_connector_processor(
     document: ConnectorDocument,
     filename_exists: bool,
     hash_exists: bool = False,
+    rename_stale_exists: bool = False,
 ):
     opensearch_client = AsyncMock()
 
     async def mock_search(index, body, **kwargs):
         query_str = str(body)
+        # Rename-cleanup query is the only one referencing connector_file_id
+        # (dual-id should clause); check it first since it also mentions
+        # document_id.
+        if "connector_file_id" in query_str:
+            return _make_search_response(rename_stale_exists)
         if "document_id" in query_str:
             return _make_search_response(hash_exists)
-        else:
-            return _make_search_response(filename_exists)
+        return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 3})
@@ -122,11 +143,13 @@ async def test_connector_processor_skips_when_filename_exists_and_replace_false(
 
 
 @pytest.mark.asyncio
-async def test_connector_processor_deletes_then_ingests_when_replace_true(monkeypatch):
+async def test_connector_processor_deletes_then_ingests_when_replace_true(
+    monkeypatch, backend_write_client
+):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
     processor = _build_connector_processor(replace_duplicates=True)
     document = _make_document()
-    opensearch_client = _wire_connector_processor(processor, document, filename_exists=True)
+    _wire_connector_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -139,7 +162,9 @@ async def test_connector_processor_deletes_then_ingests_when_replace_true(monkey
         await processor.process_item(upload_task, "file-id-1", file_task)
 
     assert file_task.status == TaskStatus.COMPLETED
-    opensearch_client.delete_by_query.assert_awaited()
+    # The existing same-name chunks are removed via the backend write client's
+    # per-id delete before re-ingest.
+    backend_write_client.delete.assert_awaited()
     mock_process.assert_awaited_once()
     # The processed filename must be the original (with space), not a
     # sanitized variant.
@@ -147,11 +172,14 @@ async def test_connector_processor_deletes_then_ingests_when_replace_true(monkey
 
 
 @pytest.mark.asyncio
-async def test_connector_processor_deletes_chunks_when_source_returns_404(monkeypatch):
+async def test_connector_processor_deletes_chunks_when_source_returns_404(
+    monkeypatch, backend_write_client
+):
     """When the source connector reports the file is gone (404), the processor
-    must remove the already-indexed chunks queried by connector_file_id — NOT
-    document_id. Chunks are indexed with document_id=file_hash (SHA of content)
-    which differs from file_id, so querying document_id would find nothing.
+    must remove the already-indexed chunks by the stable connector id, matching
+    BOTH connector_file_id (standard path; document_id holds the content hash)
+    and document_id (Langflow path). Querying document_id alone would miss
+    standard-path chunks.
     """
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
     processor = _build_connector_processor(replace_duplicates=False)
@@ -161,8 +189,6 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(monkey
     opensearch_client.search = AsyncMock(
         return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
     )
-    # delete_document_ids issues individual deletes per _id
-    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
     )
@@ -186,17 +212,17 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(monkey
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
     assert upload_task.successful_files == 1
-    opensearch_client.delete.assert_awaited_once()
+    # Concrete chunk deletes go through the backend write client.
+    backend_write_client.delete.assert_awaited_once()
 
-    # The search must target connector_file_id, not document_id.
-    # document_id holds a SHA content hash that won't match the connector file ID.
+    # The cleanup must match BOTH id fields (a single document_id terms query
+    # would miss standard-path chunks whose document_id is the content hash).
     search_call = opensearch_client.search.await_args
     query = search_call.kwargs["body"]["query"]
-    assert "terms" in query, f"expected a terms query, got: {query}"
-    assert "connector_file_id" in query["terms"], (
-        f"cleanup must query connector_file_id, not document_id. Query: {query}"
-    )
-    assert query["terms"]["connector_file_id"] == ["file-id-1"]
+    shoulds = query["bool"]["filter"][0]["bool"]["should"]
+    fields = {next(iter(c["term"])): next(iter(c["term"].values())) for c in shoulds}
+    assert fields["connector_file_id"] == "file-id-1"
+    assert fields["document_id"] == "file-id-1"
 
 
 @pytest.mark.asyncio
@@ -244,15 +270,17 @@ def _wire_langflow_processor(
     document: ConnectorDocument,
     filename_exists: bool,
     hash_exists: bool = False,
+    rename_stale_exists: bool = False,
 ):
     opensearch_client = AsyncMock()
 
     async def mock_search(index, body, **kwargs):
         query_str = str(body)
+        if "connector_file_id" in query_str:
+            return _make_search_response(rename_stale_exists)
         if "document_id" in query_str:
             return _make_search_response(hash_exists)
-        else:
-            return _make_search_response(filename_exists)
+        return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 2})
@@ -301,11 +329,13 @@ async def test_langflow_connector_processor_skips_on_filename_collision(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_langflow_connector_processor_overwrites_when_replace_true(monkeypatch):
+async def test_langflow_connector_processor_overwrites_when_replace_true(
+    monkeypatch, backend_write_client
+):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
-    opensearch_client = _wire_langflow_processor(processor, document, filename_exists=True)
+    _wire_langflow_processor(processor, document, filename_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -313,12 +343,16 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(monkeyp
     await processor.process_item(upload_task, "file-id-1", file_task)
 
     assert file_task.status == TaskStatus.COMPLETED
-    opensearch_client.delete_by_query.assert_awaited()
+    # The existing same-name chunks are removed (per-id delete via the backend
+    # write client) before re-uploading to Langflow.
+    backend_write_client.delete.assert_awaited()
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_langflow_connector_processor_deletes_chunks_when_source_returns_404(monkeypatch):
+async def test_langflow_connector_processor_deletes_chunks_when_source_returns_404(
+    monkeypatch, backend_write_client
+):
     """When the source connector reports the file is gone (404), the Langflow
     processor must remove the already-indexed chunks instead of surfacing
     'File not found: <id>' as a task error. Regression test for SharePoint
@@ -331,7 +365,6 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
     opensearch_client.search = AsyncMock(
         return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
     )
-    opensearch_client.delete = AsyncMock(return_value={"result": "deleted"})
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
     )
@@ -361,7 +394,7 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
-    opensearch_client.delete.assert_awaited_once()
+    backend_write_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -381,3 +414,128 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("status") == "unchanged"
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Rename cleanup: a connector file keeps a stable id across renames, so the
+# OLD-name chunks must be removed when it is re-ingested under a new name.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pure_rename_deletes_old_chunks_and_reingests(monkeypatch, backend_write_client):
+    """Unchanged content + new name (standard path): the stale old-name chunks
+    are deleted and the file is re-ingested under the new name, instead of
+    short-circuiting as 'unchanged' and leaving the old name behind."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=True)
+    document = _make_document(filename="Renamed.pdf")
+    # hash_exists=True (content unchanged) but a stale-name chunk exists.
+    _wire_connector_processor(
+        processor, document, filename_exists=False, hash_exists=True, rename_stale_exists=True
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch.object(
+        processor,
+        "process_document_standard",
+        new=AsyncMock(return_value={"status": "indexed", "id": "hash-1"}),
+    ) as mock_process:
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    # Old-name chunks removed, and the unchanged short-circuit was bypassed.
+    backend_write_client.delete.assert_awaited()
+    mock_process.assert_awaited_once()
+    assert file_task.status == TaskStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_no_rename_unchanged_still_short_circuits(monkeypatch, backend_write_client):
+    """No rename + unchanged content: nothing is deleted and the file is
+    reported 'unchanged' (no needless re-ingest)."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=True)
+    document = _make_document()
+    _wire_connector_processor(
+        processor, document, filename_exists=False, hash_exists=True, rename_stale_exists=False
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch.object(processor, "process_document_standard", new=AsyncMock()) as mock_process:
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert (file_task.result or {}).get("status") == "unchanged"
+    mock_process.assert_not_called()
+    backend_write_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_client):
+    """The rename-cleanup query must match BOTH document_id and
+    connector_file_id, and exclude the current filename (and its aliases)."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=True)
+    document = _make_document(filename="Renamed.pdf")
+
+    captured = {}
+    opensearch_client = AsyncMock()
+
+    async def mock_search(index, body, **kwargs):
+        query_str = str(body)
+        if "connector_file_id" in query_str:
+            captured["query"] = body["query"]
+            return {"hits": {"hits": []}}
+        return {"hits": {"hits": []}}
+
+    opensearch_client.search = mock_search
+    processor.document_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(return_value=document)
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    with patch.object(
+        processor,
+        "process_document_standard",
+        new=AsyncMock(return_value={"status": "indexed", "id": "hash-1"}),
+    ):
+        await processor.process_item(
+            upload_task=_make_upload_task(), item="file-id-1", file_task=_make_file_task()
+        )
+
+    shoulds = captured["query"]["bool"]["filter"][0]["bool"]["should"]
+    fields = {next(iter(c["term"])) for c in shoulds}
+    assert fields == {"document_id", "connector_file_id"}
+    excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
+    assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))
+
+
+@pytest.mark.asyncio
+async def test_rename_cleanup_is_best_effort(monkeypatch, backend_write_client):
+    """A failure during rename cleanup must not fail the task."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=True)
+    document = _make_document()
+    _wire_connector_processor(processor, document, filename_exists=False, hash_exists=True)
+    # Make the chunk delete blow up; cleanup swallows it and returns 0.
+    backend_write_client.delete = AsyncMock(side_effect=RuntimeError("opensearch down"))
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch.object(processor, "process_document_standard", new=AsyncMock()):
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    # Task still finishes (unchanged short-circuit, since cleanup found/deleted nothing).
+    assert file_task.status == TaskStatus.COMPLETED
