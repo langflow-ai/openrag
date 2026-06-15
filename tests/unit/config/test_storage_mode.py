@@ -215,7 +215,7 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
     """A legacy caller that hits config_manager.save_config_file()
     directly should NOT create a yaml file in db mode."""
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
+    WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # Legacy-style call
     cfg = tmp_config_manager.load_config()
     cfg.agent.llm_model = "claude-sonnet-4-6"
