@@ -805,6 +805,13 @@ class ConnectorFileProcessor(TaskProcessor):
                         "status": "skipped",
                         "reason": "deleted_at_source",
                         "deleted_chunks": deleted_chunks,
+                        # Human-readable message so the tasks view shows this
+                        # successful cleanup instead of falling back to
+                        # "Unknown error" for a skip with no message.
+                        "warning": (
+                            f"File no longer exists at source; removed from index "
+                            f"({deleted_chunks} chunk(s) deleted)."
+                        ),
                     }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
