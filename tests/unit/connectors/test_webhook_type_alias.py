@@ -105,8 +105,19 @@ async def test_webhook_accepts_legacy_google_type(path_type):
     assert body["connection_id"] == "conn-1"
 
 
+def _mock_indexed_files(monkeypatch, indexed_ids: list[str]):
+    """Stub the already-indexed file set the webhook scope-guard intersects against."""
+    import api.connectors as api_connectors
+
+    monkeypatch.setattr(
+        api_connectors,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(indexed_ids, [], "connector_file_id")),
+    )
+
+
 @pytest.mark.asyncio
-async def test_webhook_sync_replaces_existing_files():
+async def test_webhook_sync_replaces_existing_files(monkeypatch):
     """A webhook fires because the file changed, so the triggered sync must
     replace the indexed copy instead of failing the duplicate-filename guard."""
     from api.connectors import connector_webhook
@@ -121,6 +132,7 @@ async def test_webhook_sync_replaces_existing_files():
     handler.handle_webhook = AsyncMock(return_value=["file-1"])
     service._get_connector = AsyncMock(return_value=handler)
     service.sync_specific_files = AsyncMock(return_value="task-1")
+    _mock_indexed_files(monkeypatch, ["file-1"])
 
     request = _FakeRequest({"content-type": "application/json", "x-goog-channel-id": "chan-1"})
     response = await connector_webhook(
@@ -136,6 +148,111 @@ async def test_webhook_sync_replaces_existing_files():
     assert body["task_id"] == "task-1"
     sync_kwargs = service.sync_specific_files.await_args.kwargs
     assert sync_kwargs["replace_duplicates"] is True
+
+
+# ---------------------------------------------------------------------------
+# connector_webhook — scope guard (only ingest files already indexed)
+# ---------------------------------------------------------------------------
+
+
+def _scope_guard_service(connection):
+    service = _webhook_service("chan-1", connection)
+    service.sync_specific_files = AsyncMock(return_value="task-1")
+    return service
+
+
+def _scope_guard_connection():
+    connection = MagicMock()
+    connection.connection_id = "conn-1"
+    connection.user_id = "user-1"
+    connection.is_active = True
+    return connection
+
+
+@pytest.mark.asyncio
+async def test_webhook_ignores_files_outside_indexed_scope(monkeypatch):
+    """A change to a file the user never selected (not in the index) must NOT
+    be auto-ingested."""
+    from api.connectors import connector_webhook
+
+    connection = _scope_guard_connection()
+    service = _scope_guard_service(connection)
+    service._get_connector = AsyncMock(
+        return_value=MagicMock(handle_webhook=AsyncMock(return_value=["unselected-file"]))
+    )
+    _mock_indexed_files(monkeypatch, ["indexed-file"])
+
+    request = _FakeRequest({"content-type": "application/json", "x-goog-channel-id": "chan-1"})
+    response = await connector_webhook(
+        "google_drive",
+        request,
+        connector_service=service,
+        session_manager=MagicMock(),
+        session=MagicMock(),
+    )
+
+    body = json.loads(response.body)
+    assert body["status"] == "processed"
+    assert body["reason"] == "out_of_scope"
+    service.sync_specific_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_webhook_syncs_only_indexed_intersection(monkeypatch):
+    """Of several changed files, only those already indexed are synced."""
+    from api.connectors import connector_webhook
+
+    connection = _scope_guard_connection()
+    service = _scope_guard_service(connection)
+    service._get_connector = AsyncMock(
+        return_value=MagicMock(
+            handle_webhook=AsyncMock(return_value=["indexed-file", "unselected-file"])
+        )
+    )
+    _mock_indexed_files(monkeypatch, ["indexed-file", "other-indexed"])
+
+    request = _FakeRequest({"content-type": "application/json", "x-goog-channel-id": "chan-1"})
+    response = await connector_webhook(
+        "google_drive",
+        request,
+        connector_service=service,
+        session_manager=MagicMock(),
+        session=MagicMock(),
+    )
+
+    body = json.loads(response.body)
+    assert body["status"] == "processed"
+    assert body["affected_files"] == 1
+    synced_ids = service.sync_specific_files.await_args.args[2]
+    assert synced_ids == ["indexed-file"]
+
+
+@pytest.mark.asyncio
+async def test_webhook_deletion_of_indexed_file_still_syncs(monkeypatch):
+    """A deleted file is still indexed at webhook time, so it passes the scope
+    guard and reaches sync (which then runs chunk-cleanup via the 404 path)."""
+    from api.connectors import connector_webhook
+
+    connection = _scope_guard_connection()
+    service = _scope_guard_service(connection)
+    service._get_connector = AsyncMock(
+        return_value=MagicMock(handle_webhook=AsyncMock(return_value=["deleted-file"]))
+    )
+    _mock_indexed_files(monkeypatch, ["deleted-file"])
+
+    request = _FakeRequest({"content-type": "application/json", "x-goog-channel-id": "chan-1"})
+    response = await connector_webhook(
+        "google_drive",
+        request,
+        connector_service=service,
+        session_manager=MagicMock(),
+        session=MagicMock(),
+    )
+
+    body = json.loads(response.body)
+    assert body["task_id"] == "task-1"
+    synced_ids = service.sync_specific_files.await_args.args[2]
+    assert synced_ids == ["deleted-file"]
 
 
 @pytest.mark.asyncio
