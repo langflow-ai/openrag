@@ -63,12 +63,16 @@ export function buildKnowledgeTableRows(
     const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
     if (taskFile) {
       const backendStatus = file.status ?? "active";
+      const status =
+        taskFile.status === "processing" || taskFile.status === "failed"
+          ? taskFile.status
+          : backendStatus;
       return {
         ...file,
         filename: taskFile.filename,
         source_url: taskFile.source_url,
         connector_type: taskFile.connector_type,
-        status: backendStatus,
+        status,
         error: taskFile.error,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:

@@ -42,6 +42,11 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import {
+  collectNewIngestFocusIdentities,
+  collectProcessingFocusIdentities,
+  focusPendingIngestRows,
+} from "@/lib/knowledge-grid-pagination";
+import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
@@ -453,6 +458,71 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const prevTaskFilesForPaginationRef = useRef<typeof taskFiles>([]);
+  const prevGridRowsForPaginationRef = useRef<typeof gridRows>([]);
+  const hasInitializedPaginationRefsRef = useRef(false);
+  const pendingIngestFocusIdentitiesRef = useRef<Set<string>>(new Set());
+
+  const tryFocusPendingIngestRows = useCallback(() => {
+    const run = () => {
+      const api = gridRef.current?.api;
+      if (!api) {
+        return;
+      }
+      const resolved = focusPendingIngestRows(
+        api,
+        pendingIngestFocusIdentitiesRef.current,
+      );
+      for (const identity of resolved) {
+        pendingIngestFocusIdentitiesRef.current.delete(identity);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }, []);
+
+  const queueIngestFocusIdentities = useCallback(
+    (identities: string[]) => {
+      if (identities.length === 0) {
+        return;
+      }
+      for (const identity of identities) {
+        pendingIngestFocusIdentitiesRef.current.add(identity);
+      }
+      tryFocusPendingIngestRows();
+    },
+    [tryFocusPendingIngestRows],
+  );
+
+  // Jump to the page where a file starts processing (new ingest or retry).
+  useEffect(() => {
+    if (!hasInitializedPaginationRefsRef.current) {
+      prevTaskFilesForPaginationRef.current = taskFiles;
+      prevGridRowsForPaginationRef.current = gridRows;
+      hasInitializedPaginationRefsRef.current = true;
+      return;
+    }
+
+    const fromTasks = collectNewIngestFocusIdentities(
+      prevTaskFilesForPaginationRef.current,
+      taskFiles,
+    );
+    const fromGrid = collectProcessingFocusIdentities(
+      prevGridRowsForPaginationRef.current,
+      gridRows,
+    );
+    prevTaskFilesForPaginationRef.current = taskFiles;
+    prevGridRowsForPaginationRef.current = gridRows;
+
+    queueIngestFocusIdentities([...new Set([...fromTasks, ...fromGrid])]);
+  }, [taskFiles, gridRows, queueIngestFocusIdentities]);
+
+  const onKnowledgeGridReady = useCallback(() => {
+    tryFocusPendingIngestRows();
+  }, [tryFocusPendingIngestRows]);
+
+  const onKnowledgeRowDataUpdated = useCallback(() => {
+    tryFocusPendingIngestRows();
+  }, [tryFocusPendingIngestRows]);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
   const gridRowsSelectionKey = useMemo(
@@ -476,6 +546,10 @@ function SearchPage() {
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow]);
+
+  useEffect(() => {
+    tryFocusPendingIngestRows();
+  }, [gridRowsSelectionKey, tryFocusPendingIngestRows]);
 
   const columnDefs: ColDef<File>[] = [
     {
@@ -1011,6 +1085,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={onKnowledgeGridReady}
+            onRowDataUpdated={onKnowledgeRowDataUpdated}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -1045,6 +1121,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={onKnowledgeGridReady}
+            onRowDataUpdated={onKnowledgeRowDataUpdated}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
