@@ -635,6 +635,7 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        connector_type: str | None = None,
     ):
         super().__init__(
             document_service=document_service,
@@ -650,6 +651,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
+        self.connector_type = connector_type
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -666,6 +668,8 @@ class ConnectorFileProcessor(TaskProcessor):
             )
             if not connector or not connection:
                 raise ValueError(f"Connection '{self.connection_id}' not found")
+
+            connector_type = self.connector_type or connection.connector_type
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {
@@ -886,7 +890,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         owner=self.user_id,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
                         else None,
@@ -936,7 +940,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
                         file_size=len(document.content),
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
                         **standard_kwargs,
@@ -947,7 +951,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         await self.connector_service._update_connector_metadata(
                             document,
                             self.user_id,
-                            connection.connector_type,
+                            connector_type,
                             self.jwt_token,
                             id_field="connector_file_id",
                         )

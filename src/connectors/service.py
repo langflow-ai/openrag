@@ -421,6 +421,7 @@ class ConnectorService:
             ),
             models_service=self.models_service,
             replace_duplicates=replace_duplicates,
+            connector_type=getattr(connector, "CONNECTOR_TYPE", None) or "local",
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -603,6 +604,7 @@ class ConnectorService:
             models_service=self.models_service,
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
+            connector_type=getattr(connector, "CONNECTOR_TYPE", None) or "local",
         )
 
         # Create custom task using TaskService
