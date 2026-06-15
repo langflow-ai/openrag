@@ -560,10 +560,16 @@ class DocumentFileProcessor(TaskProcessor):
                 **standard_kwargs,
             )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error", "Failed to process document")
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -844,6 +850,14 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
                     )
+                    # Langflow returns "success" even when no text was extracted
+                    # (e.g. image files without OCR). Verify the document actually
+                    # landed in OpenSearch before declaring success.
+                    if not await self.check_document_exists(document.id, opensearch_client):
+                        result = {
+                            "status": "error",
+                            "error": "No text content could be extracted from document",
+                        }
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -892,10 +906,16 @@ class ConnectorFileProcessor(TaskProcessor):
                         }
                     )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error", "Failed to process document")
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -970,9 +990,14 @@ class S3FileProcessor(TaskProcessor):
                 )
 
                 result["path"] = f"s3://{self.bucket}/{item}"
-                file_task.status = TaskStatus.COMPLETED
-                file_task.result = result
-                upload_task.successful_files += 1
+                if result.get("status") == "error":
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = result.get("error", "Failed to process document")
+                    upload_task.failed_files += 1
+                else:
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.result = result
+                    upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -1106,11 +1131,20 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
             )
 
-            # Update task with success
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            # Langflow returns "success" even when no text was extracted.
+            # Verify the document actually landed in OpenSearch.
+            file_hash = hash_id(item)
+            if not await self.check_document_exists(file_hash, opensearch_client):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = "No text content could be extracted from document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                # Update task with success
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             # Update task with failure
