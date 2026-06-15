@@ -57,6 +57,7 @@ def _redact_header(name: str, value: str) -> str:
         return f"<redacted len={len(value)} sha={digest}>"
     return value
 
+
 # Maps composite "{provider}:{subject}" -> SQL users.id. Doubles as the
 # "we've already ensured a DB row for this user" cache so we don't pay
 # the round-trip on every authenticated request. Cleared on user/role
