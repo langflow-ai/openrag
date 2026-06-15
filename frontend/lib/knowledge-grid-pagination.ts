@@ -1,18 +1,26 @@
 import type { IRowNode } from "ag-grid-community";
 import type { AgGridReact } from "ag-grid-react";
+import type { File } from "@/app/api/queries/useGetSearchQuery";
 import type { TaskFile } from "@/contexts/task-context";
 import {
   getKnowledgeFileAliasKeys,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
 
-type GridApi = NonNullable<AgGridReact<unknown>["api"]>;
+type GridApi = NonNullable<AgGridReact<File>["api"]>;
 
 type GridRowLike = {
   filename?: string;
   source_url?: string;
   status?: string;
 };
+
+/** Stable key for row identity/status changes (avoids reacting to array reference churn). */
+export function buildGridRowsSelectionKey(rows: GridRowLike[]): string {
+  return rows
+    .map((row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`)
+    .join("\0");
+}
 
 export type IngestFocusMode = "existing" | "new";
 

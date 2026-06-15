@@ -40,17 +40,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useKnowledgeIngestFocus } from "@/hooks/useKnowledgeIngestFocus";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import {
-  collectNewIngestFocusIdentities,
-  collectProcessingFocusIdentities,
-  consumePersistedKnowledgeIngestFocus,
-  focusPendingIngestRows,
-  type IngestFocusMode,
-  inferIngestFocusMode,
-  ingestFocusModeFromReplace,
-  KNOWLEDGE_INGEST_FOCUS_EVENT,
-} from "@/lib/knowledge-grid-pagination";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -463,122 +454,13 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
-  const gridRowsRef = useRef(gridRows);
-  gridRowsRef.current = gridRows;
-  const prevTaskFilesForPaginationRef = useRef<typeof taskFiles>([]);
-  const prevGridRowsForPaginationRef = useRef<typeof gridRows>([]);
-  const hasInitializedPaginationRefsRef = useRef(false);
-  const pendingIngestFocusIdentitiesRef = useRef<Set<string>>(new Set());
-  const pendingIngestFocusModesRef = useRef<Map<string, IngestFocusMode>>(
-    new Map(),
-  );
-
-  const tryFocusPendingIngestRows = useCallback(() => {
-    const run = () => {
-      const api = gridRef.current?.api;
-      if (!api) {
-        return;
-      }
-      const resolved = focusPendingIngestRows(
-        api,
-        pendingIngestFocusIdentitiesRef.current,
-        gridRowsRef.current,
-        pendingIngestFocusModesRef.current,
-      );
-      for (const identity of resolved) {
-        pendingIngestFocusIdentitiesRef.current.delete(identity);
-        pendingIngestFocusModesRef.current.delete(identity);
-      }
-    };
-    requestAnimationFrame(() => requestAnimationFrame(run));
-  }, []);
-
-  const queueIngestFocusIdentities = useCallback(
-    (identities: string[], mode?: IngestFocusMode) => {
-      if (identities.length === 0) {
-        return;
-      }
-      for (const identity of identities) {
-        pendingIngestFocusIdentitiesRef.current.add(identity);
-        pendingIngestFocusModesRef.current.set(
-          identity,
-          mode ?? inferIngestFocusMode(identity, gridRowsRef.current),
-        );
-      }
-      tryFocusPendingIngestRows();
-    },
-    [tryFocusPendingIngestRows],
-  );
-
-  useEffect(() => {
-    const stored = consumePersistedKnowledgeIngestFocus();
-    for (const target of stored) {
-      queueIngestFocusIdentities(
-        [target.filename],
-        ingestFocusModeFromReplace(target.replace),
-      );
-    }
-  }, [queueIngestFocusIdentities]);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ filename: string; replace: boolean }>
-      ).detail;
-      if (!detail?.filename) {
-        return;
-      }
-      queueIngestFocusIdentities(
-        [detail.filename],
-        ingestFocusModeFromReplace(detail.replace),
-      );
-    };
-    window.addEventListener(KNOWLEDGE_INGEST_FOCUS_EVENT, handler);
-    return () =>
-      window.removeEventListener(KNOWLEDGE_INGEST_FOCUS_EVENT, handler);
-  }, [queueIngestFocusIdentities]);
-
-  // Jump to the page where a file starts processing (new ingest or retry).
-  useEffect(() => {
-    if (!hasInitializedPaginationRefsRef.current) {
-      prevTaskFilesForPaginationRef.current = taskFiles;
-      prevGridRowsForPaginationRef.current = gridRows;
-      hasInitializedPaginationRefsRef.current = true;
-      return;
-    }
-
-    const fromTasks = collectNewIngestFocusIdentities(
-      prevTaskFilesForPaginationRef.current,
-      taskFiles,
-    );
-    const fromGrid = collectProcessingFocusIdentities(
-      prevGridRowsForPaginationRef.current,
-      gridRows,
-    );
-    prevTaskFilesForPaginationRef.current = taskFiles;
-    prevGridRowsForPaginationRef.current = gridRows;
-
-    queueIngestFocusIdentities([...new Set([...fromTasks, ...fromGrid])]);
-  }, [taskFiles, gridRows, queueIngestFocusIdentities]);
-
-  const onKnowledgeGridReady = useCallback(() => {
-    tryFocusPendingIngestRows();
-  }, [tryFocusPendingIngestRows]);
-
-  const onKnowledgeRowDataUpdated = useCallback(() => {
-    tryFocusPendingIngestRows();
-  }, [tryFocusPendingIngestRows]);
+  const {
+    gridRowsSelectionKey,
+    onKnowledgeGridReady,
+    onKnowledgeRowDataUpdated,
+  } = useKnowledgeIngestFocus(gridRef, gridRows, taskFiles);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
-  const gridRowsSelectionKey = useMemo(
-    () =>
-      gridRows
-        .map(
-          (row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`,
-        )
-        .join("\0"),
-    [gridRows],
-  );
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -591,10 +473,6 @@ function SearchPage() {
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow]);
-
-  useEffect(() => {
-    tryFocusPendingIngestRows();
-  }, [gridRowsSelectionKey, tryFocusPendingIngestRows]);
 
   const columnDefs: ColDef<File>[] = [
     {

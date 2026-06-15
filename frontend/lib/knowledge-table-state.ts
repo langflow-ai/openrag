@@ -137,7 +137,7 @@ export function buildKnowledgeTableRows(
       return {
         ...file,
         filename: taskFile.filename || file.filename,
-        source_url: file.source_url || taskFile.source_url,
+        source_url: taskFile.source_url || file.source_url,
         connector_type: taskFile.connector_type,
         status,
         error: taskFile.error,
