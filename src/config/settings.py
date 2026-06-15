@@ -270,6 +270,18 @@ def get_jwt_auth_header() -> str:
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
 
 
+def get_mcp_forwarded_jwt_header() -> str:
+    """Header into which the /mcp ASGI shim copies the inbound JWT.
+
+    FastMCP's get_http_headers() strips 'authorization' from the headers it
+    forwards to the underlying /v1 handler when an MCP tool is invoked, so a
+    JWT arriving on /mcp in the Authorization header never reaches the /v1
+    auth dependency. The shim copies it into this (non-excluded) header so it
+    survives the proxy; get_api_key_user_async reads it as a fallback.
+    Read per-call so tests can override via monkeypatch.setenv."""
+    return os.getenv("OPENRAG_MCP_JWT_HEADER", "X-OpenRAG-JWT")
+
+
 def get_jwt_issuer_verify_tls() -> bool:
     """Whether to verify TLS when fetching JWT signing keys from the token's
     ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal

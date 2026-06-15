@@ -844,10 +844,19 @@ async def get_api_key_user_async(
     # the user's roles (synced via request.state.jwt_roles ->
     # _attach_db_user_id), with a 401 when no recognized role is present.
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import IBM_AUTH_ENABLED, get_jwt_auth_header
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        get_jwt_auth_header,
+        get_mcp_forwarded_jwt_header,
+    )
     from config.utils import resolve_jwt_claims
 
-    raw_jwt = request.headers.get(get_jwt_auth_header(), "")
+    # Primary: the gateway-forwarded JWT header (default Authorization). Fallback:
+    # the header the /mcp shim copies the JWT into, because FastMCP strips
+    # Authorization before proxying an MCP tool call to this /v1 handler.
+    raw_jwt = request.headers.get(get_jwt_auth_header(), "") or request.headers.get(
+        get_mcp_forwarded_jwt_header(), ""
+    )
     logger.debug(
         "[AUTH] API-key path JWT header lookup",
         header_name=get_jwt_auth_header(),
