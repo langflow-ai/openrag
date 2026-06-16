@@ -48,7 +48,9 @@ _AUTH_ERROR_INDICATORS = [
     "authentication failed",
 ]
 
-AUTH_ERROR_MESSAGE = "Authentication failed: OpenSearch rejected the credential. Please sign in again."
+AUTH_ERROR_MESSAGE = (
+    "Authentication failed: OpenSearch rejected the credential. Please sign in again."
+)
 
 
 def is_opensearch_auth_error(error: Exception | str) -> bool:
