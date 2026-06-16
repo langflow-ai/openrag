@@ -58,18 +58,28 @@ def google_drive_user_principal(user_email: str | None) -> str | None:
 
 
 def _email_from_id_token(id_token: str | None) -> str | None:
+    """Extract email from Google ID token with signature verification."""
     if not id_token:
         return None
     try:
-        claims = jwt.decode(
-            id_token,
-            options={"verify_signature": False, "verify_aud": False},
-        )
+        from config.settings import GOOGLE_OAUTH_CLIENT_ID
+        from utils.jwt_verification import verify_google_id_token, JWTVerificationError
+
+        if not GOOGLE_OAUTH_CLIENT_ID:
+            logger.error("GOOGLE_OAUTH_CLIENT_ID not configured - cannot verify ID token")
+            return None
+
+        # Verify token with FULL validation
+        claims = verify_google_id_token(id_token, GOOGLE_OAUTH_CLIENT_ID)
         email = claims.get("email")
         if email:
             return str(email)
+
+    except JWTVerificationError as e:
+        logger.warning("Google ID token verification failed", error=str(e))
     except Exception as e:
-        logger.debug("Could not decode Google id_token email", error=str(e))
+        logger.error("Unexpected error verifying Google ID token", error=str(e))
+
     return None
 
 

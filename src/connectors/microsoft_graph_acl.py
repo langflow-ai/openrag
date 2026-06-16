@@ -23,19 +23,33 @@ MICROSOFT_GRAPH_GROUP_PROVIDER = "m365"
 
 
 def tenant_id_from_access_token(access_token: str | None, fallback: str | None = None) -> str:
-    """Read the tenant id from a Microsoft access token without validating it."""
+    """Extract tenant ID from Microsoft access token with signature verification."""
     if access_token:
         raw_token = access_token.removeprefix("Bearer ").strip()
         try:
-            claims = jwt.decode(
-                raw_token,
-                options={"verify_signature": False, "verify_aud": False},
+            from config.settings import MICROSOFT_GRAPH_OAUTH_CLIENT_ID
+            from utils.jwt_verification import (
+                verify_microsoft_access_token,
+                JWTVerificationError,
             )
+
+            if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
+                logger.error(
+                    "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - cannot verify access token"
+                )
+                return fallback or "common"
+
+            # Verify token with FULL validation
+            claims = verify_microsoft_access_token(raw_token, MICROSOFT_GRAPH_OAUTH_CLIENT_ID)
             token_tenant = claims.get("tid")
             if token_tenant:
                 return token_tenant
+
+        except JWTVerificationError as e:
+            logger.warning("Microsoft access token verification failed", error=str(e))
         except Exception as e:
-            logger.debug("Could not decode Microsoft access token tenant", error=str(e))
+            logger.error("Unexpected error verifying Microsoft access token", error=str(e))
+
     return fallback or "common"
 
 
@@ -204,14 +218,31 @@ async def get_current_user_microsoft_group_roles(
 
 
 def _decode_microsoft_user_identifiers(access_token: str, tenant_id: str | None) -> list[str]:
+    """Extract user identifiers from Microsoft access token with signature verification."""
     raw_token = access_token.removeprefix("Bearer ").strip()
     try:
-        claims = jwt.decode(
-            raw_token,
-            options={"verify_signature": False, "verify_aud": False},
+        from config.settings import MICROSOFT_GRAPH_OAUTH_CLIENT_ID
+        from utils.jwt_verification import (
+            verify_microsoft_access_token,
+            JWTVerificationError,
         )
+
+        if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
+            logger.error(
+                "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - cannot verify access token"
+            )
+            return []
+
+        # Verify token with FULL validation
+        claims = verify_microsoft_access_token(
+            raw_token, MICROSOFT_GRAPH_OAUTH_CLIENT_ID, tenant_id=tenant_id
+        )
+
+    except JWTVerificationError as e:
+        logger.warning("Microsoft access token verification failed", error=str(e))
+        return []
     except Exception as e:
-        logger.debug("Could not decode Microsoft access token user identifiers", error=str(e))
+        logger.error("Unexpected error verifying Microsoft access token", error=str(e))
         return []
 
     identifiers: list[str] = []
