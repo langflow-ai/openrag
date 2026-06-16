@@ -513,7 +513,6 @@ DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5
 DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH", 500)
 
 
-
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     if IBM_AUTH_ENABLED:
