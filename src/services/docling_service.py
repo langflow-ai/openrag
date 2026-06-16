@@ -10,6 +10,7 @@ import httpx
 from pydantic import BaseModel
 
 from config.settings import (
+    DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
     IBM_AUTH_ENABLED,
@@ -18,9 +19,6 @@ from config.settings import (
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-DOCLING_ERROR_DETAIL_MAX_LENGTH = 500
 
 
 class DoclingConfig(BaseModel):
@@ -108,12 +106,16 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
             messages.append(message)
 
     if messages:
-        return "; ".join(dict.fromkeys(messages))
+        result = "; ".join(dict.fromkeys(messages))
+    else:
+        result = json.dumps(payload, default=str)
 
-    fallback = json.dumps(payload, default=str)
-    if len(fallback) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
-        fallback = f"{fallback[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
-    return fallback or "Unknown Docling processing error"
+    if not result:
+        return "Unknown Docling processing error"
+
+    if len(result) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
+        return f"{result[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
+    return result
 
 
 class DoclingService:

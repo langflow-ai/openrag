@@ -83,7 +83,7 @@ async def test_poll_result_failure_status(docling_service, mock_httpx_client):
     """Raises DoclingServeError when status is 'failure'."""
     mock_httpx_client.get.return_value = _make_response(200, {"task_status": "failure"})
     
-    with pytest.raises(DoclingServeError, match="Docling conversion failed"):
+    with pytest.raises(DoclingServeError, match="Docling processing failed"):
         await docling_service._poll_result(mock_httpx_client, "task123", 1.0, 10.0)
 
 @pytest.mark.asyncio
@@ -183,7 +183,7 @@ def test_preset_configs_linux():
         assert preset["ocr_engine"] == "easyocr"
 
 def test_init_default_url():
-    """Uses DOCLING_SERVICE_URL from api.docling if not provided."""
-    with patch("api.docling.DOCLING_SERVICE_URL", "http://default:5001"):
+    """Uses DOCLING_SERVE_URL from config.settings if not provided."""
+    with patch("services.docling_service.DOCLING_SERVE_URL", "http://default:5001"):
         service = DoclingService()
         assert service.docling_url == "http://default:5001"
