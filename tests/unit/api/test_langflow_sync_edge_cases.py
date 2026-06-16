@@ -234,5 +234,3 @@ async def test_explicit_overrides_skip_fallback():
     assert llm_calls[0].args[0] == "openai"
     assert llm_calls[0].kwargs["llm_model"] == "gpt-4o"
 
-
-# Made with Bob
