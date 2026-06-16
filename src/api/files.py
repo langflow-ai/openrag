@@ -5,8 +5,6 @@ Provides server-side file-level views over the chunk-based OpenSearch index,
 replacing the client-side chunk-to-file aggregation pattern.
 """
 
-from typing import Optional
-
 from fastapi import Depends, Query
 from fastapi.responses import JSONResponse
 
