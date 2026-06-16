@@ -448,8 +448,12 @@ class DoclingService:
         path = Path(file_path)
         file_bytes = path.read_bytes()
         task_id = await self.upload_to_docling_direct_async(
-            path.name, file_bytes, user_id=user_id, auth_header=auth_header,
-            ocr=ocr, picture_descriptions=picture_descriptions,
+            path.name,
+            file_bytes,
+            user_id=user_id,
+            auth_header=auth_header,
+            ocr=ocr,
+            picture_descriptions=picture_descriptions,
         )
         return await self.get_docling_result_async(
             task_id, user_id=user_id, auth_header=auth_header
