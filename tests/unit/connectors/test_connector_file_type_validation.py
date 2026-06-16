@@ -49,6 +49,39 @@ async def test_sync_specific_files_does_not_raise_on_incompatible_type():
 
 
 @pytest.mark.asyncio
+async def test_connector_file_processor_fails_incompatible_file():
+    from models.processors import ConnectorFileProcessor
+    from models.tasks import FileTask, TaskStatus, UploadTask
+
+    connector_service = MagicMock()
+    connector = MagicMock()
+    connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "onedrive"
+    connector_service.connection_manager.get_connection = AsyncMock(return_value=connection)
+
+    processor = ConnectorFileProcessor(
+        connector_service=connector_service,
+        connection_id="conn-id",
+        files_to_process=[],
+        user_id="user-id",
+        jwt_token="jwt",
+        document_service=MagicMock(),
+        models_service=MagicMock(),
+    )
+
+    upload_task = UploadTask(task_id="task-id", total_files=1)
+    file_task = FileTask(file_path="file-2", filename="program.exe")
+
+    await processor.process_item(upload_task, "file-2", file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert "has an incompatible type" in file_task.error
+    assert "program.exe" in file_task.error
+    assert upload_task.failed_files == 1
+
+
+@pytest.mark.asyncio
 async def test_connector_check_duplicates():
     import json
 
