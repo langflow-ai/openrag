@@ -7,7 +7,7 @@ import { SharedBucketView } from "../shared-bucket-view";
 export interface S3BucketViewProps {
   connector: any;
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string) => void;
+  addTask: (id: string, options?: { connectorType?: string }) => void;
   onBack: () => void;
   onDone: () => void;
 }

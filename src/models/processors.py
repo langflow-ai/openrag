@@ -801,7 +801,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 )
 
             # Create temporary file from document content
-            suffix = os.path.splitext(document.filename)[1]
+            suffix = os.path.splitext(file_task.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -857,7 +857,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
                     langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
-                        document.filename, document.mimetype
+                        file_task.filename, document.mimetype
                     )
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
@@ -935,7 +935,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_path=tmp_path,
                         file_hash=file_hash,
                         owner_user_id=self.user_id,
-                        original_filename=document.filename,
+                        original_filename=file_task.filename,
                         jwt_token=self.jwt_token,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,

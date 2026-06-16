@@ -302,6 +302,27 @@ export function isTaskInProgressStatus(status: Task["status"]): boolean {
   );
 }
 
+export function isTerminalTaskStatus(status: Task["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "error" ||
+    status === "skipped"
+  );
+}
+
+/** True when a task has just entered a terminal status. */
+export function didTaskReachTerminalState(
+  previousTask: Task | undefined,
+  currentTask: Task,
+): boolean {
+  return (
+    !!previousTask &&
+    !isTerminalTaskStatus(previousTask.status) &&
+    isTerminalTaskStatus(currentTask.status)
+  );
+}
+
 /** True when a task has just transitioned to completed. */
 export function didTaskReachCompleted(
   previousTask: Task | undefined,

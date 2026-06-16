@@ -30,6 +30,7 @@ import {
 } from "@/lib/knowledge-table-state";
 import {
   didTaskReachCompleted,
+  didTaskReachTerminalState,
   finalizeProcessingOverlaysForEnhancedTask,
   findTaskFileOverlayIndex,
   getEnhancedListDisappearedFilePaths,
@@ -337,7 +338,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   filePath,
                   fileName,
                 );
-
                 const existingFile =
                   existingFileIndex >= 0
                     ? prevFiles[existingFileIndex]
@@ -487,7 +487,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               });
             }
           }
+        }
 
+        const taskJustReachedTerminal = didTaskReachTerminalState(
+          previousTask,
+          currentTask,
+        );
+
+        if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
           async function refetchKnowledgeAfterTaskCompletion() {
@@ -571,7 +578,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             }
           }
           void refetchKnowledgeAfterTaskCompletion();
-        } else if (
+        } else if (taskJustReachedTerminal) {
+          clearTaskConnectorType(currentTask.task_id);
+        }
+
+        if (
           shouldShowToast &&
           previousTask &&
           !isTerminalFailedTask(previousTask) &&
