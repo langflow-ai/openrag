@@ -238,6 +238,8 @@ class TaskProcessor:
         is_sample_data: bool = False,
         acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -250,6 +252,8 @@ class TaskProcessor:
                 chunks (non-Langflow path, e.g. connector UI ``chunkSize``).
             chunk_overlap: Overlap between windows; must be less than ``chunk_size``.
             acl: DocumentACL instance with access control information
+            ocr: Per-request OCR override (None = use global config).
+            picture_descriptions: Per-request picture descriptions override.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -287,7 +291,11 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
 
@@ -915,6 +923,10 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
+                        if "ocr" in s:
+                            standard_kwargs["ocr"] = bool(s["ocr"])
+                        if "pictureDescriptions" in s:
+                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
