@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -67,6 +67,8 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
+        # Graph delta link for webhook change tracking (in-memory per instance)
+        self._delta_link: str | None = None
         # base_url is the generic field name, sharepoint_url is kept for backward compatibility
         self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
         logger.debug(
@@ -124,6 +126,11 @@ class SharePointConnector(BaseConnector):
 
         # Track subscription ID for webhooks
         self._subscription_id: str | None = None
+
+        # Set by setup_subscription/renew_subscription; read by the
+        # connection manager to persist
+        self.webhook_resource_id: str | None = None
+        self.webhook_expiration: str | None = None
 
         # Add Graph API defaults similar to Google Drive flags
         self._graph_api_version = "v1.0"
@@ -390,8 +397,12 @@ class SharePointConnector(BaseConnector):
                 resource = "/me/drive/root"
 
             subscription_data = {
-                "changeType": "created,updated,deleted",
-                "notificationUrl": f"{webhook_url}/webhook/sharepoint",
+                # Graph driveItem subscriptions only support "updated"; creates and
+                # deletes still surface through the delta query the webhook triggers.
+                "changeType": "updated",
+                # webhook_url is already the full endpoint
+                # ({WEBHOOK_BASE_URL}/connectors/sharepoint/webhook, set at connect time)
+                "notificationUrl": webhook_url,
                 "resource": resource,
                 "expirationDateTime": self._get_subscription_expiry(),
                 "clientState": f"sharepoint_{self.tenant_id}",
@@ -405,6 +416,10 @@ class SharePointConnector(BaseConnector):
                 response = await client.post(
                     url, json=subscription_data, headers=headers, timeout=30
                 )
+                if response.status_code >= 400:
+                    logger.error(
+                        f"Graph subscription request rejected: {response.status_code} {response.text}"
+                    )
                 response.raise_for_status()
 
                 result = response.json()
@@ -412,6 +427,7 @@ class SharePointConnector(BaseConnector):
 
                 if subscription_id:
                     self._subscription_id = subscription_id
+                    self.webhook_expiration = result.get("expirationDateTime")
                     logger.info(f"SharePoint subscription created: {subscription_id}")
                     return subscription_id
                 else:
@@ -537,26 +553,43 @@ class SharePointConnector(BaseConnector):
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
                 return DocumentACL()
 
-            # Determine the correct path for permissions API call
-            # Use the same URL pattern as _get_file_metadata_by_id and list_files
-            site_info = self._parse_sharepoint_url()
-            if site_info:
-                permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
-            else:
-                # Fallback to user drive
-                permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
-
-            # Fetch permissions
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    permissions_url, headers={"Authorization": f"Bearer {access_token}"}
+            # Determine the correct path for permissions API call. Mirror
+            # _get_file_metadata_by_id: a composite "driveId!itemId" id must be
+            # split into /drives/{driveId}/items/{itemId}. Using the composite id
+            # verbatim against /drive/items/{id} yields a malformed URL → Graph
+            # error → empty ACL, which is why shared-user updates never landed.
+            if "!" in file_id and len(file_id.rsplit("!", 1)) == 2:
+                drive_id, item_id = file_id.rsplit("!", 1)
+                permissions_url = (
+                    f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/permissions"
                 )
+            else:
+                site_info = self._parse_sharepoint_url()
+                if site_info:
+                    permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
+                else:
+                    # Fallback to user drive
+                    permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
 
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
-                return DocumentACL()
+            # Fetch permissions, following pagination so large share lists are
+            # captured in full (not just the first page).
+            permissions: list[dict[str, Any]] = []
+            async with httpx.AsyncClient() as client:
+                url: str | None = permissions_url
+                while url:
+                    response = await client.get(
+                        url, headers={"Authorization": f"Bearer {access_token}"}
+                    )
+                    if response.status_code != 200:
+                        logger.warning(
+                            f"Failed to fetch permissions for {file_id}: {response.status_code}"
+                        )
+                        return DocumentACL()
+                    page = response.json()
+                    permissions.extend(page.get("value", []))
+                    url = page.get("@odata.nextLink")
 
-            permissions_data = response.json()
+            permissions_data = {"value": permissions}
 
             allowed_users = []
             allowed_groups = []
@@ -1012,19 +1045,94 @@ class SharePointConnector(BaseConnector):
             return notifications[0].get("subscriptionId")
         return None
 
+    @staticmethod
+    def _delta_item_file_id(item: dict[str, Any]) -> str:
+        """Return the composite ``{driveId}!{itemId}`` id used at ingest time.
+
+        Selected-file listing stores ids as ``driveId!itemId`` (see
+        _list_folder_contents), so the webhook delta must emit the same shape
+        or the change can't be correlated with the indexed connector_file_id.
+        """
+        item_id = item.get("id", "")
+        if item_id and "!" in item_id:
+            return item_id
+        drive_id = item.get("parentReference", {}).get("driveId")
+        return f"{drive_id}!{item_id}" if drive_id else item_id
+
     async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
-        """Handle webhook notification and return affected file IDs"""
-        affected_files = []
+        """Handle webhook notification and return affected file IDs.
 
-        # Process Microsoft Graph webhook payload
-        notifications = payload.get("value", [])
-        for notification in notifications:
-            resource = notification.get("resource")
-            if resource and "/drive/items/" in resource:
-                file_id = resource.split("/drive/items/")[-1]
-                affected_files.append(file_id)
+        Graph driveItem notifications never identify the changed items — the
+        notification resource is the subscribed drive root — so run a delta
+        query against the drive to discover what changed.
+        """
+        if not payload.get("value"):
+            return []
 
-        return affected_files
+        try:
+            if not await self.authenticate():
+                logger.error("SharePoint authentication failed during webhook handling")
+                return []
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}"}
+
+            site_info = self._parse_sharepoint_url()
+            if site_info:
+                resource = (
+                    f"sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/root"
+                )
+            else:
+                resource = "me/drive/root"
+
+            # Without a stored delta link (first notification for this instance)
+            # the delta query enumerates the whole drive, so only keep recently
+            # modified files instead of re-syncing everything.
+            first_sweep = self._delta_link is None
+            url = self._delta_link or f"{self._graph_base_url}/{resource}/delta"
+            cutoff = datetime.now(UTC) - timedelta(minutes=10)
+
+            affected_files: list[str] = []
+            async with httpx.AsyncClient() as client:
+                while url:
+                    response = await client.get(url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    for item in data.get("value", []):
+                        if "deleted" in item:
+                            # Deleted at source: propagate the id so the processor
+                            # runs its deleted-at-source cleanup
+                            # (get_file_content -> 404 -> delete indexed chunks).
+                            if "folder" not in item:
+                                affected_files.append(self._delta_item_file_id(item))
+                            continue
+                        if "file" not in item:
+                            continue
+                        if first_sweep:
+                            modified = item.get("lastModifiedDateTime")
+                            if not modified:
+                                continue
+                            try:
+                                modified_at = datetime.fromisoformat(
+                                    modified.replace("Z", "+00:00")
+                                )
+                            except ValueError:
+                                continue
+                            if modified_at < cutoff:
+                                continue
+                        affected_files.append(self._delta_item_file_id(item))
+
+                    delta_link = data.get("@odata.deltaLink")
+                    if delta_link:
+                        self._delta_link = delta_link
+                    url = data.get("@odata.nextLink")
+
+            return list(dict.fromkeys(affected_files))
+
+        except Exception as e:
+            logger.error(f"SharePoint webhook delta query failed: {e}")
+            return []
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:
         """Clean up subscription - BaseConnector interface"""
@@ -1060,3 +1168,47 @@ class SharePointConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to cleanup SharePoint subscription {subscription_id}: {e}")
             return False
+
+    async def renew_subscription(self, subscription_id: str) -> str | None:
+        """Extend the Graph subscription in place (PATCH avoids re-validation).
+
+        Returns the new expirationDateTime, or None to signal the caller to
+        fall back to delete + recreate."""
+        if subscription_id == "no-webhook-configured":
+            return None
+
+        try:
+            if not await self.authenticate():
+                logger.error("SharePoint authentication failed during subscription renewal")
+                return None
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+            url = f"{self._graph_base_url}/subscriptions/{subscription_id}"
+            body = {"expirationDateTime": self._get_subscription_expiry()}
+
+            async with httpx.AsyncClient() as client:
+                response = await client.patch(url, json=body, headers=headers, timeout=30)
+
+                if response.status_code == 404:
+                    # Subscription already expired/deleted at Graph; recreate.
+                    logger.info(
+                        f"SharePoint subscription {subscription_id} not found, will recreate"
+                    )
+                    return None
+                if response.status_code not in [200, 201]:
+                    logger.warning(
+                        f"Unexpected response renewing SharePoint subscription: "
+                        f"{response.status_code}"
+                    )
+                    return None
+
+                expiration = response.json().get("expirationDateTime")
+                self.webhook_expiration = expiration
+                logger.info(f"SharePoint subscription {subscription_id} renewed until {expiration}")
+                return expiration
+
+        except Exception as e:
+            logger.error(f"Failed to renew SharePoint subscription {subscription_id}: {e}")
+            return None

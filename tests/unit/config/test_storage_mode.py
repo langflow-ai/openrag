@@ -99,13 +99,9 @@ def test_invalid_value_falls_back_to_default(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_db_mode_does_not_create_yaml(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_db_mode_does_not_create_yaml(monkeypatch, tmp_config_manager, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "db-only test"
 
@@ -122,13 +118,9 @@ async def test_db_mode_does_not_create_yaml(
 
 
 @pytest.mark.asyncio
-async def test_files_mode_does_not_write_db(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_files_mode_does_not_write_db(monkeypatch, tmp_config_manager, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "files-only test"
 
@@ -145,13 +137,9 @@ async def test_files_mode_does_not_write_db(
 
 
 @pytest.mark.asyncio
-async def test_hybrid_mode_writes_both(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_hybrid_mode_writes_both(monkeypatch, tmp_config_manager, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "hybrid test"
 
@@ -170,9 +158,7 @@ async def test_hybrid_mode_writes_both(
 
 
 @pytest.mark.asyncio
-async def test_db_mode_ignores_yaml_fallback(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_db_mode_ignores_yaml_fallback(monkeypatch, tmp_config_manager, session_factory):
     """If yaml exists with edited=true but DB is empty, db mode must
     NOT report onboarded — it ignores yaml entirely."""
     # Seed yaml so the legacy ConfigManager would say edited=True
@@ -183,9 +169,7 @@ async def test_db_mode_ignores_yaml_fallback(
     assert tmp_config_manager.config_file.exists()
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # DB is empty → db mode must say NOT onboarded
     assert await svc.is_onboarded() is False
     # And current_step has nothing to report
@@ -193,9 +177,7 @@ async def test_db_mode_ignores_yaml_fallback(
 
 
 @pytest.mark.asyncio
-async def test_files_mode_reads_only_yaml(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_files_mode_reads_only_yaml(monkeypatch, tmp_config_manager, session_factory):
     """If DB has edited=true but yaml is empty, files mode must NOT
     report onboarded — DB is invisible to it."""
     async with session_factory() as session:
@@ -203,9 +185,7 @@ async def test_files_mode_reads_only_yaml(
         await session.commit()
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert await svc.is_onboarded() is False
 
 
@@ -219,9 +199,7 @@ async def test_hybrid_falls_back_to_yaml_when_db_empty(
     tmp_config_manager.save_config_file(cfg)
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert await svc.is_onboarded() is True
 
 
@@ -237,20 +215,19 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
     """A legacy caller that hits config_manager.save_config_file()
     directly should NOT create a yaml file in db mode."""
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # Legacy-style call
     cfg = tmp_config_manager.load_config()
-    cfg.agent.llm_model = "claude-3-opus"
+    cfg.agent.llm_model = "claude-sonnet-4-6"
     tmp_config_manager.save_config_file(cfg)
 
     # Wait briefly for the async DB mirror
     import asyncio
+
     for _ in range(20):
         async with session_factory() as session:
             agent = await WorkspaceConfigRepo(session).get_section("agent")
-            if agent and agent.get("llm_model") == "claude-3-opus":
+            if agent and agent.get("llm_model") == "claude-sonnet-4-6":
                 break
         await asyncio.sleep(0.05)
     else:
@@ -263,15 +240,11 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
 
 
 @pytest.mark.asyncio
-async def test_files_mode_does_not_install_hooks(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_files_mode_does_not_install_hooks(monkeypatch, tmp_config_manager, session_factory):
     """In files mode the monkey-patch must not be installed —
     legacy ``config_manager.save_config_file`` is left pristine."""
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
-    WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert not getattr(tmp_config_manager, "_db_mirror_installed", False)
 
     # And a direct legacy save creates yaml without scheduling a DB mirror.

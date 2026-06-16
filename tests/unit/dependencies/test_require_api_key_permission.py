@@ -25,10 +25,12 @@ if str(SRC) not in sys.path:
 
 import db.models  # noqa: E402,F401
 from api.v1.documents import delete_document_endpoint  # noqa: E402
+from api.v1.knowledge_filters import search_endpoint as kf_search_endpoint  # noqa: E402
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
     get_api_key_user_async,
+    get_knowledge_filter_service,
     get_rbac_service,
     get_session_manager,
     require_api_key_permission,
@@ -67,6 +69,15 @@ async def app(monkeypatch):
         personas["admin"] = await _persona("admin-sub", "admin")
         personas["user"] = await _persona("user-sub", "user")
         personas["viewer"] = await _persona("viewer-sub", "viewer")
+
+        # A user with no roles at all — every gated route must 403.
+        norole_row = await ensure_user_row(
+            s, User(user_id="norole-sub", email="norole@x", name="norole", provider="ibm_ams")
+        )
+        await role_repo.revoke_role(norole_row.id, user_role.id)
+        personas["norole"] = User(
+            user_id=norole_row.id, email="norole@x", name="norole", provider="ibm_ams"
+        )
         await s.commit()
 
     rbac = RBACService(SessionLocal)
@@ -89,10 +100,17 @@ async def app(monkeypatch):
     async def _probe_chat(user=Depends(require_api_key_permission("chat:use"))):
         return {"user_id": user.user_id}
 
+    @fastapi_app.get("/probe/kf-read")
+    async def _probe_kf_read(user=Depends(require_api_key_permission("kf:read"))):
+        return {"user_id": user.user_id}
+
     # A real gated /v1 handler. The gate runs as a dependency *before* the
     # handler body, so a denied request never reaches the delete core (no
     # service overrides needed for the 403 path).
     fastapi_app.add_api_route("/v1/documents", delete_document_endpoint, methods=["DELETE"])
+    # Real KF search handler — proves the kf:read gate is wired on /v1.
+    fastapi_app.dependency_overrides[get_knowledge_filter_service] = lambda: object()
+    fastapi_app.add_api_route("/v1/knowledge-filters/search", kf_search_endpoint, methods=["POST"])
 
     yield fastapi_app, personas
     await engine.dispose()
@@ -138,6 +156,34 @@ async def test_user_passes_perm_it_holds(app, monkeypatch):
     async with _client(fastapi_app) as c:
         r = await c.get("/probe/chat-use", headers={"X-Test-Persona": "user"})
     assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_kf_read_granted_to_every_builtin_role(app, monkeypatch):
+    """All built-in roles (even viewer) hold kf:read, so KF search/get keep
+    working for existing API consumers once the gate is enforced."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    fastapi_app, _ = app
+    async with _client(fastapi_app) as c:
+        for persona in ("admin", "user", "viewer"):
+            r = await c.get("/probe/kf-read", headers={"X-Test-Persona": persona})
+            assert r.status_code == 200, persona
+
+
+@pytest.mark.asyncio
+async def test_real_v1_kf_search_gated_on_kf_read(app, monkeypatch):
+    """End-to-end wiring: POST /v1/knowledge-filters/search now requires
+    kf:read instead of accepting any authenticated caller."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    fastapi_app, _ = app
+    async with _client(fastapi_app) as c:
+        r = await c.post(
+            "/v1/knowledge-filters/search",
+            json={"query": ""},
+            headers={"X-Test-Persona": "norole"},
+        )
+    assert r.status_code == 403
+    assert r.json()["detail"]["required"] == "kf:read"
 
 
 @pytest.mark.asyncio

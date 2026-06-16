@@ -28,6 +28,69 @@ export function getKnowledgeFileIdentity(file?: {
   return "";
 }
 
+function isMeaningfulConnectorType(connectorType?: string): boolean {
+  const normalized = connectorType?.trim();
+  return Boolean(normalized && normalized !== "local");
+}
+
+function looksLikeHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+/** Infer connector_type for task overlays when the API does not return it. */
+export function inferTaskFileConnectorType(
+  filePath: string,
+  fileName?: string,
+  taskConnectorType?: string,
+): string {
+  if (isMeaningfulConnectorType(taskConnectorType)) {
+    return taskConnectorType!.trim();
+  }
+
+  for (const candidate of [filePath, fileName ?? ""]) {
+    const normalized = candidate.trim();
+    if (!normalized) {
+      continue;
+    }
+    if (looksLikeHttpUrl(normalized)) {
+      return normalized.includes("openr.ag") ? "openrag_docs" : "url";
+    }
+  }
+
+  if (filePath.includes("/") && !filePath.startsWith("/")) {
+    return "aws_s3";
+  }
+
+  return "local";
+}
+
+/** Pick the connector icon source when merging backend rows with task overlays. */
+export function resolveKnowledgeRowConnectorType(
+  backendType?: string,
+  taskType?: string,
+  status: SearchFile["status"] = "active",
+): string {
+  const rowStatus = status ?? "active";
+
+  if (rowStatus === "active") {
+    if (isMeaningfulConnectorType(backendType)) {
+      return backendType!.trim();
+    }
+    if (isMeaningfulConnectorType(taskType)) {
+      return taskType!.trim();
+    }
+    return backendType?.trim() || taskType?.trim() || "local";
+  }
+
+  if (isMeaningfulConnectorType(taskType)) {
+    return taskType!.trim();
+  }
+  if (isMeaningfulConnectorType(backendType)) {
+    return backendType!.trim();
+  }
+  return taskType?.trim() || backendType?.trim() || "local";
+}
+
 export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
@@ -67,7 +130,11 @@ export function buildKnowledgeTableRows(
         ...file,
         filename: taskFile.filename,
         source_url: taskFile.source_url,
-        connector_type: taskFile.connector_type,
+        connector_type: resolveKnowledgeRowConnectorType(
+          file.connector_type,
+          taskFile.connector_type,
+          backendStatus,
+        ),
         status: backendStatus,
         error: taskFile.error,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,

@@ -206,16 +206,18 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Failed to delete knowledge filter"}
 
         except Exception as e:
+            from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
             error_str = str(e)
             if "not_found" in error_str or "NotFoundError" in error_str:
                 return {
                     "success": False,
                     "error": "Knowledge filter not found or already deleted",
                 }
-            elif "AuthenticationException" in error_str:
+            elif is_opensearch_auth_error(error_str):
                 return {
                     "success": False,
-                    "error": "Access denied: insufficient permissions",
+                    "error": AUTH_ERROR_MESSAGE,
                 }
             else:
                 return {
