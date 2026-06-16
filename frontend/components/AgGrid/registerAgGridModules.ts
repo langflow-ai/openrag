@@ -1,5 +1,6 @@
 import {
   CellStyleModule,
+  ClientSideRowModelApiModule,
   ClientSideRowModelModule,
   ColumnApiModule,
   ColumnAutoSizeModule,
@@ -9,7 +10,9 @@ import {
   ModuleRegistry,
   PaginationModule,
   QuickFilterModule,
+  RowApiModule,
   RowSelectionModule,
+  ScrollApiModule,
   TextFilterModule,
   ValidationModule,
 } from "ag-grid-community";
@@ -24,6 +27,9 @@ ModuleRegistry.registerModules([
   CellStyleModule,
   QuickFilterModule,
   ClientSideRowModelModule,
+  ClientSideRowModelApiModule,
+  RowApiModule,
+  ScrollApiModule,
   TextFilterModule,
   DateFilterModule,
   EventApiModule,

@@ -116,6 +116,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
     [],
   );
+
   const openTaskDialog = useCallback((taskId: string) => {
     setTaskDialogTaskId(taskId);
     setIsTaskDialogOpen(true);
@@ -587,6 +588,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
+          clearTaskConnectorType(currentTask.task_id);
+
           if (!isOnboardingActive) {
             selectTask(currentTask.task_id);
             setIsMenuOpen(true);

@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useKnowledgeIngestFocus } from "@/hooks/useKnowledgeIngestFocus";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import {
   buildKnowledgeTableRows,
@@ -453,17 +454,13 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const {
+    gridRowsSelectionKey,
+    onKnowledgeGridReady,
+    onKnowledgeRowDataUpdated,
+  } = useKnowledgeIngestFocus(gridRef, gridRows, taskFiles);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
-  const gridRowsSelectionKey = useMemo(
-    () =>
-      gridRows
-        .map(
-          (row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`,
-        )
-        .join("\0"),
-    [gridRows],
-  );
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -1011,6 +1008,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={onKnowledgeGridReady}
+            onRowDataUpdated={onKnowledgeRowDataUpdated}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -1045,6 +1044,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={onKnowledgeGridReady}
+            onRowDataUpdated={onKnowledgeRowDataUpdated}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
