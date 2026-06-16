@@ -17,6 +17,7 @@ Usage:
 
 import asyncio
 import dataclasses
+import hashlib
 from collections.abc import AsyncIterator, Sequence
 from typing import Optional
 
@@ -28,6 +29,34 @@ from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Header names whose values must never be logged verbatim. Logged as a
+# redacted fingerprint (length + sha prefix) so a value can be correlated
+# across hops without exposing the secret.
+_SENSITIVE_HEADERS = {
+    "authorization",
+    "x-openrag-api-jwt",
+    "x-api-key",
+    "x-username",
+    "cookie",
+    "x-ibm-lh-credentials",
+}
+
+
+def _redact_header(name: str, value: str) -> str:
+    """Redact a header value for logging — never emit the raw secret.
+
+    Sensitive headers become ``'<redacted len=NN sha=abcd1234>'`` so values
+    can be correlated across hops without exposing the token; non-sensitive
+    headers pass through unchanged.
+    """
+    if not value:
+        return ""
+    if name.lower() in _SENSITIVE_HEADERS:
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+        return f"<redacted len={len(value)} sha={digest}>"
+    return value
+
 
 # Maps composite "{provider}:{subject}" -> SQL users.id. Doubles as the
 # "we've already ensured a DB row for this user" cache so we don't pay
@@ -865,6 +894,10 @@ async def get_api_key_user_async(
     # the JWT in get_api_jwt_header() instead.
     jwt_header = get_jwt_auth_header()
     raw_jwt = request.headers.get(jwt_header, "")
+
+    safe_headers = {k: _redact_header(k, v) for k, v in request.headers.items()}
+    logger.debug("[AUTH] Incoming /v1 request headers (redacted)", headers=safe_headers)
+
     if not (raw_jwt and raw_jwt.strip()):
         jwt_header = get_api_jwt_header()
         raw_jwt = request.headers.get(jwt_header, "")
@@ -872,6 +905,7 @@ async def get_api_key_user_async(
         "[AUTH] API-key path JWT header lookup",
         header_name=jwt_header,
         jwt_present=bool(raw_jwt and raw_jwt.strip()),
+        jwt_preview=_redact_header(jwt_header, raw_jwt),
     )
     if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
@@ -889,6 +923,11 @@ async def get_api_key_user_async(
                 jwt_token=f"Bearer {token}",
             )
             _stage_jwt_roles(request, claims, user.user_id)
+            logger.debug(
+                "[AUTH] API user authenticated via JWT",
+                user_id=user.user_id,
+                roles=getattr(request.state, "jwt_roles", None),
+            )
             # The forwarded JWT is primary for ALL operations (identity, roles,
             # and downstream OpenSearch calls, which validate it via OIDC) —
             # same as the session surface (_get_ibm_user). NOTE (gateway
@@ -904,6 +943,7 @@ async def get_api_key_user_async(
             logger.error(
                 "[AUTH] JWT in request header failed verification/decode",
                 header_name=jwt_header,
+                jwt_preview=_redact_header(jwt_header, raw_jwt),
             )
             raise HTTPException(
                 status_code=401,
@@ -928,6 +968,13 @@ async def get_api_key_user_async(
                 "[AUTH] JWT not found in request header — run_mode=saas with "
                 "RBAC enabled requires the gateway to forward the user JWT",
                 header_name=jwt_header,
+                authorization_present=bool(request.headers.get("authorization")),
+                api_jwt_present=bool(request.headers.get(get_api_jwt_header())),
+                seen_auth_headers={
+                    k: _redact_header(k, v)
+                    for k, v in request.headers.items()
+                    if k.lower() in _SENSITIVE_HEADERS
+                },
             )
             raise HTTPException(
                 status_code=401,
