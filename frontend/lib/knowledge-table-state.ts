@@ -28,6 +28,47 @@ export function getKnowledgeFileIdentity(file?: {
   return "";
 }
 
+/** Filename variants for overlay matching (mirrors backend `get_filename_aliases`). */
+function getKnowledgeFilenameAliases(filename?: string): string[] {
+  const normalized = filename?.trim() ?? "";
+  if (!normalized) {
+    return [];
+  }
+  const aliases = [normalized];
+  const lower = normalized.toLowerCase();
+  if (lower.endsWith(".txt")) {
+    aliases.push(`${normalized.slice(0, -4)}.md`);
+  } else if (lower.endsWith(".md")) {
+    aliases.push(`${normalized.slice(0, -3)}.txt`);
+  }
+  for (const name of [...aliases]) {
+    aliases.push(name.replace(/ /g, "_").replace(/\//g, "_"));
+  }
+  return [...new Set(aliases)];
+}
+
+function addFilenameAliasKeys(keys: Set<string>, filename?: string): void {
+  for (const alias of getKnowledgeFilenameAliases(filename)) {
+    keys.add(alias);
+  }
+}
+
+/** Lookup keys for matching task overlays to indexed rows (filename, path, basename). */
+export function getKnowledgeFileAliasKeys(file?: {
+  filename?: string;
+  source_url?: string;
+}): string[] {
+  const keys = new Set<string>();
+  addFilenameAliasKeys(keys, file?.filename);
+  const sourceUrl = file?.source_url?.trim();
+  if (sourceUrl) {
+    keys.add(sourceUrl);
+    addFilenameAliasKeys(keys, sourceUrl.split("/").pop());
+  }
+  addFilenameAliasKeys(keys, getKnowledgeFileIdentity(file));
+  return [...keys];
+}
+
 function isMeaningfulConnectorType(connectorType?: string): boolean {
   const normalized = connectorType?.trim();
   return Boolean(normalized && normalized !== "local");
@@ -91,6 +132,50 @@ export function resolveKnowledgeRowConnectorType(
   return taskType?.trim() || backendType?.trim() || "local";
 }
 
+function taskOverlayPriority(status?: string): number {
+  switch (status) {
+    case "processing":
+      return 3;
+    case "failed":
+      return 2;
+    case "active":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function indexTaskFileOverlays(
+  taskFilesAsFiles: SearchFile[],
+): Map<string, SearchFile> {
+  const map = new Map<string, SearchFile>();
+  for (const file of taskFilesAsFiles) {
+    for (const key of getKnowledgeFileAliasKeys(file)) {
+      const existing = map.get(key);
+      if (
+        !existing ||
+        taskOverlayPriority(file.status) >= taskOverlayPriority(existing.status)
+      ) {
+        map.set(key, file);
+      }
+    }
+  }
+  return map;
+}
+
+function lookupTaskFileOverlay(
+  map: Map<string, SearchFile>,
+  file: SearchFile,
+): SearchFile | undefined {
+  for (const key of getKnowledgeFileAliasKeys(file)) {
+    const match = map.get(key);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
+}
+
 export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
@@ -115,27 +200,32 @@ export function buildKnowledgeTableRows(
     };
   });
 
-  const taskFileMap = new Map(
-    taskFilesAsFiles.map((file) => [getKnowledgeFileIdentity(file), file]),
-  );
+  const taskFileMap = indexTaskFileOverlays(taskFilesAsFiles);
 
   const backendFiles = searchData.map((file) => {
     if (file.connector_type === "openrag_docs") {
       return file;
     }
-    const taskFile = taskFileMap.get(getKnowledgeFileIdentity(file));
+    const taskFile = lookupTaskFileOverlay(taskFileMap, file);
     if (taskFile) {
       const backendStatus = file.status ?? "active";
+      const status =
+        taskFile.status === "processing" || taskFile.status === "failed"
+          ? taskFile.status
+          : backendStatus;
       return {
         ...file,
-        filename: taskFile.filename,
-        source_url: taskFile.source_url,
-        connector_type: resolveKnowledgeRowConnectorType(
-          file.connector_type,
-          taskFile.connector_type,
-          backendStatus,
-        ),
-        status: backendStatus,
+        // Indexed row identity: prefer backend fields so filename and source_url stay paired.
+        filename: file.filename || taskFile.filename,
+        source_url: file.source_url || taskFile.source_url,
+        connector_type: isMeaningfulConnectorType(file.connector_type)
+          ? file.connector_type!.trim()
+          : resolveKnowledgeRowConnectorType(
+              file.connector_type,
+              taskFile.connector_type,
+              status,
+            ),
+        status,
         error: taskFile.error,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
@@ -145,9 +235,12 @@ export function buildKnowledgeTableRows(
     return file;
   });
 
-  const backendIdentities = new Set(
-    backendFiles.map((f) => getKnowledgeFileIdentity(f)),
-  );
+  const backendIdentityKeys = new Set<string>();
+  for (const file of searchData) {
+    for (const key of getKnowledgeFileAliasKeys(file)) {
+      backendIdentityKeys.add(key);
+    }
+  }
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
@@ -159,8 +252,11 @@ export function buildKnowledgeTableRows(
     if (taskFile.connector_type === "openrag_docs") {
       return false;
     }
-    const identity = getKnowledgeFileIdentity(taskFile);
-    if (backendIdentities.has(identity)) {
+    if (
+      getKnowledgeFileAliasKeys(taskFile).some((key) =>
+        backendIdentityKeys.has(key),
+      )
+    ) {
       return false;
     }
     // Keep "active" overlays until the index lists the file (task drops key before refetch).

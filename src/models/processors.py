@@ -698,6 +698,7 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        connector_type: str | None = None,
     ):
         super().__init__(
             document_service=document_service,
@@ -713,6 +714,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
+        self.connector_type = connector_type
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -729,6 +731,8 @@ class ConnectorFileProcessor(TaskProcessor):
             )
             if not connector or not connection:
                 raise ValueError(f"Connection '{self.connection_id}' not found")
+
+            connector_type = self.connector_type or connection.connector_type
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {
@@ -844,17 +848,20 @@ class ConnectorFileProcessor(TaskProcessor):
             # filename differs from the current one. If any were removed (a real
             # rename), force a re-ingest below so the file is re-indexed under
             # the new name instead of short-circuiting as "unchanged".
+            # Match against file_task.filename — the cleaned name the file is
+            # actually indexed under — so duplicate/rename detection lines up
+            # with how chunks are keyed.
             renamed = (
                 await self._delete_connector_chunks(
                     document.id,
                     opensearch_client,
                     self.user_id,
-                    keep_filenames=get_filename_aliases(document.filename),
+                    keep_filenames=get_filename_aliases(file_task.filename),
                 )
                 > 0
             )
 
-            if await self.check_filename_exists(document.filename, opensearch_client):
+            if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
@@ -867,13 +874,13 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
                 await self.delete_document_by_filename(
-                    document.filename,
+                    file_task.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
                 )
 
             # Create temporary file from document content
-            suffix = os.path.splitext(document.filename)[1]
+            suffix = os.path.splitext(file_task.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -929,7 +936,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
                     langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
-                        document.filename, document.mimetype
+                        file_task.filename, document.mimetype
                     )
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
@@ -962,7 +969,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         owner=self.user_id,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
                         else None,
@@ -1007,12 +1014,12 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_path=tmp_path,
                         file_hash=file_hash,
                         owner_user_id=self.user_id,
-                        original_filename=document.filename,
+                        original_filename=file_task.filename,
                         jwt_token=self.jwt_token,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
                         file_size=len(document.content),
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
                         **standard_kwargs,
@@ -1023,7 +1030,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         await self.connector_service._update_connector_metadata(
                             document,
                             self.user_id,
-                            connection.connector_type,
+                            connector_type,
                             self.jwt_token,
                             id_field="connector_file_id",
                         )
