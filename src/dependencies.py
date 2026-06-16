@@ -714,9 +714,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # is also skipped. Mirrors the /v1 surface, which already treats the JWT as
     # primary.
     if saas_rbac and jwt_user:
-        logger.debug(
-            "[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)"
-        )
+        logger.debug("[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)")
         request.state.user = jwt_user
         return jwt_user
 
