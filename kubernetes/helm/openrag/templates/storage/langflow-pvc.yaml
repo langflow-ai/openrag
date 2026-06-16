@@ -1,0 +1,18 @@
+{{- if and .Values.langflow.enabled .Values.langflow.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openrag.fullname" . }}-langflow
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.langflow.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.langflow.persistence.accessMode }}
+  {{- if .Values.langflow.persistence.storageClass }}
+  storageClassName: {{ .Values.langflow.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.langflow.persistence.size }}
+{{- end }}

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: openrag-operator
+description: A Helm chart for the OpenRAG Kubernetes Operator
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openrag
+  - operator
+  - kubernetes
+home: https://github.com/langflow-ai/openrag
+sources:
+  - https://github.com/langflow-ai/openrag
+maintainers:
+  - name: OpenRAG Team
+    url: https://github.com/langflow-ai/openrag
+
