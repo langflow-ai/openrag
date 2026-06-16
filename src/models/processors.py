@@ -852,7 +852,16 @@ class ConnectorFileProcessor(TaskProcessor):
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
-                    # landed in OpenSearch before declaring success.
+                    # landed in OpenSearch before declaring success. Refresh first
+                    # so the just-indexed chunks are visible (OpenSearch's ~1s
+                    # near-real-time window would otherwise yield a false negative).
+                    try:
+                        await opensearch_client.indices.refresh(index=get_index_name())
+                    except Exception as refresh_error:
+                        logger.warning(
+                            "Failed to refresh index before verification",
+                            error=str(refresh_error),
+                        )
                     if not await self.check_document_exists(document.id, opensearch_client):
                         result = {
                             "status": "error",
@@ -1131,10 +1140,23 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
             )
 
-            # Langflow returns "success" even when no text was extracted.
-            # Verify the document actually landed in OpenSearch.
-            file_hash = hash_id(item)
-            if not await self.check_document_exists(file_hash, opensearch_client):
+            # Langflow returns "success" even when no text was extracted
+            # (e.g. image files without OCR). Verify the document actually
+            # landed in OpenSearch before declaring success. We key off the
+            # filename — the identifier this path already uses for dedup and
+            # delete (see check_filename_exists / delete_document_by_filename
+            # above) — because Langflow assigns its own document_id here, so
+            # hash_id(item) is not stored as document_id.
+            from config.settings import get_index_name
+
+            try:
+                await opensearch_client.indices.refresh(index=get_index_name())
+            except Exception as refresh_error:
+                logger.warning(
+                    "Failed to refresh index before verification",
+                    error=str(refresh_error),
+                )
+            if not await self.check_filename_exists(original_filename, opensearch_client):
                 file_task.status = TaskStatus.FAILED
                 file_task.error = "No text content could be extracted from document"
                 file_task.updated_at = time.time()
