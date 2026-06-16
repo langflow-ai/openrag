@@ -63,7 +63,7 @@ def _email_from_id_token(id_token: str | None) -> str | None:
         return None
     try:
         from config.settings import GOOGLE_OAUTH_CLIENT_ID
-        from utils.jwt_verification import verify_google_id_token, JWTVerificationError
+        from utils.jwt_verification import JWTVerificationError, verify_google_id_token
 
         if not GOOGLE_OAUTH_CLIENT_ID:
             logger.error("GOOGLE_OAUTH_CLIENT_ID not configured - cannot verify ID token")

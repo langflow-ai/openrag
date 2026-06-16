@@ -29,8 +29,8 @@ def tenant_id_from_access_token(access_token: str | None, fallback: str | None =
         try:
             from config.settings import MICROSOFT_GRAPH_OAUTH_CLIENT_ID
             from utils.jwt_verification import (
-                verify_microsoft_access_token,
                 JWTVerificationError,
+                verify_microsoft_access_token,
             )
 
             if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
@@ -223,8 +223,8 @@ def _decode_microsoft_user_identifiers(access_token: str, tenant_id: str | None)
     try:
         from config.settings import MICROSOFT_GRAPH_OAUTH_CLIENT_ID
         from utils.jwt_verification import (
-            verify_microsoft_access_token,
             JWTVerificationError,
+            verify_microsoft_access_token,
         )
 
         if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
