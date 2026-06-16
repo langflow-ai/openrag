@@ -10,6 +10,7 @@ import httpx
 from pydantic import BaseModel
 
 from config.settings import (
+    DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
     IBM_AUTH_ENABLED,
@@ -26,7 +27,6 @@ class DoclingConfig(BaseModel):
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
-    picture_description_local: dict | None = None
 
 
 class DoclingServeError(Exception):
@@ -68,13 +68,54 @@ def get_docling_preset_configs(
         "do_table_structure": table_structure,
         "do_picture_classification": picture_descriptions,
         "do_picture_description": picture_descriptions,
-        "picture_description_local": {
-            "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
-            "prompt": "Describe this image in a few sentences.",
-        },
     }
 
     return config
+
+
+def _stringify_docling_error_value(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("error_message", "message", "detail", "error"):
+            nested = _stringify_docling_error_value(value.get(key))
+            if nested:
+                return nested
+        return json.dumps(value, default=str)
+    if value:
+        return str(value)
+    return None
+
+
+def _format_docling_error(payload: dict[str, Any]) -> str:
+    messages = []
+    errors = payload.get("errors")
+    if isinstance(errors, list):
+        for error in errors:
+            message = _stringify_docling_error_value(error)
+            if message:
+                messages.append(message)
+    else:
+        message = _stringify_docling_error_value(errors)
+        if message:
+            messages.append(message)
+
+    for key in ("error_message", "message", "detail", "error"):
+        message = _stringify_docling_error_value(payload.get(key))
+        if message:
+            messages.append(message)
+
+    if messages:
+        result = "; ".join(dict.fromkeys(messages))
+    else:
+        result = json.dumps(payload, default=str)
+
+    if not result:
+        return "Unknown Docling processing error"
+
+    if len(result) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
+        return f"{result[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
+    return result
 
 
 class DoclingService:
@@ -268,21 +309,7 @@ class DoclingService:
         if status == "success":
             return DoclingStatusSnapshot(state=DoclingTaskState.SUCCESS, raw=payload)
         if status == "failure" or payload.get("errors") or payload.get("error"):
-            errors = payload.get("errors", [])
-            err_msg_list = []
-            for err in errors:
-                if isinstance(err, dict) and "error_message" in err:
-                    err_msg_list.append(err["error_message"])
-                elif isinstance(err, str):
-                    err_msg_list.append(err)
-
-            single_err = payload.get("error")
-            if isinstance(single_err, str):
-                err_msg_list.append(single_err)
-
-            err_details = (
-                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
-            )
+            err_details = _format_docling_error(payload)
             return DoclingStatusSnapshot(
                 state=DoclingTaskState.FAILED,
                 detail=f"Docling processing failed: {err_details}",
@@ -333,17 +360,7 @@ class DoclingService:
             raise DoclingServeError(f"Malformed docling result payload: {str(e)}") from e
 
         if payload.get("status") == "failure" or payload.get("errors"):
-            errors = payload.get("errors", [])
-            err_msg_list = []
-            for err in errors:
-                if isinstance(err, dict) and "error_message" in err:
-                    err_msg_list.append(err["error_message"])
-                elif isinstance(err, str):
-                    err_msg_list.append(err)
-            err_details = (
-                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
-            )
-            raise DoclingServeError(f"Docling processing failed: {err_details}")
+            raise DoclingServeError(f"Docling processing failed: {_format_docling_error(payload)}")
 
         doc_content = payload.get("document", {}).get("json_content")
         if doc_content is None:
@@ -389,17 +406,9 @@ class DoclingService:
 
                 return doc_content
             elif status == "failure" or status_data.get("errors"):
-                errors = status_data.get("errors", [])
-                err_msg_list = []
-                for err in errors:
-                    if isinstance(err, dict) and "error_message" in err:
-                        err_msg_list.append(err["error_message"])
-                    elif isinstance(err, str):
-                        err_msg_list.append(err)
-                err_details = (
-                    "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+                raise DoclingServeError(
+                    f"Docling processing failed: {_format_docling_error(status_data)}"
                 )
-                raise DoclingServeError(f"Docling processing failed: {err_details}")
 
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
