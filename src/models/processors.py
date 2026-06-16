@@ -365,8 +365,11 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token,
-                ocr=ocr, picture_descriptions=picture_descriptions,
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
 
@@ -1010,9 +1013,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         if "ocr" in s:
                             standard_kwargs["ocr"] = bool(s["ocr"])
                         if "pictureDescriptions" in s:
-                            standard_kwargs["picture_descriptions"] = bool(
-                                s["pictureDescriptions"]
-                            )
+                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,

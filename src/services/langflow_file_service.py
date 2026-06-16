@@ -834,8 +834,12 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token,
-                ocr=ocr, picture_descriptions=picture_descriptions,
+                filename,
+                content,
+                user_id=owner,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             logger.debug(
                 "[LF] Docling submission accepted",
@@ -909,8 +913,12 @@ class LangflowFileService:
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
         task_id = await self.submit_to_docling(
-            filename, content, owner=owner, jwt_token=jwt_token,
-            ocr=ocr_override, picture_descriptions=pic_desc_override,
+            filename,
+            content,
+            owner=owner,
+            jwt_token=jwt_token,
+            ocr=ocr_override,
+            picture_descriptions=pic_desc_override,
         )
 
         if file_task is not None:
@@ -982,9 +990,7 @@ class LangflowFileService:
         if file_task is not None:
             file_task.phase = IngestionPhase.LANGFLOW
 
-        selected_embedding = (
-            settings.get("embeddingModel") if isinstance(settings, dict) else None
-        )
+        selected_embedding = settings.get("embeddingModel") if isinstance(settings, dict) else None
 
         try:
             total_start_time = time.time()
