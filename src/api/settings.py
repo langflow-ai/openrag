@@ -391,10 +391,10 @@ async def get_settings(
             environment=ENVIRONMENT or None,
         )
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve settings: {str(e)}")
+    except Exception:
+        logger.exception("Failed to retrieve settings")
         return JSONResponse(
-            {"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500
+            {"error": "Failed to retrieve settings"}, status_code=500
         )
 
 
@@ -1003,14 +1003,14 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
-    except Exception as e:
-        logger.error("Failed to update settings", error=str(e))
+    except Exception:
+        logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS,
             MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
         return JSONResponse(
-            {"error": f"Failed to update settings: {str(e)}"}, status_code=500
+            {"error": "Failed to update settings"}, status_code=500
         )
 
 
@@ -1272,15 +1272,10 @@ async def onboarding(
                 admin_username = user.user_id if IBM_AUTH_ENABLED and user else None
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize OpenSearch index after onboarding",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to initialize OpenSearch index after onboarding")
                 return JSONResponse(
-                    {
-                        "error": str(e),
-                    },
+                    {"Failed to initialize OpenSearch index after onboarding"},
                     status_code=500,
                 )
 
@@ -1999,10 +1994,10 @@ async def rollback_onboarding(
             deleted_conversations=deleted_conversations_count
         )
 
-    except Exception as e:
-        logger.error("Failed to rollback onboarding configuration", error=str(e))
+    except Exception:
+        logger.error("Failed to rollback onboarding configuration")
         return JSONResponse(
-            {"error": f"Failed to rollback onboarding: {str(e)}"}, status_code=500
+            {"error": "Failed to rollback onboarding"}, status_code=500
         )
 
 
