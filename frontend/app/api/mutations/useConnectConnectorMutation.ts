@@ -19,6 +19,7 @@ interface ConnectResponse {
     client_id: string;
     scopes: string[];
     redirect_uri: string;
+    prompt?: string;
   };
 }
 
@@ -84,7 +85,7 @@ export const useConnectConnectorMutation = () => {
             result.oauth_config.redirect_uri,
           )}&` +
           `access_type=offline&` +
-          `prompt=consent&` +
+          `prompt=${result.oauth_config.prompt ?? "consent"}&` +
           `state=${encodeURIComponent(state)}`;
 
         window.location.href = authUrl;
