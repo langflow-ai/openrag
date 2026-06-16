@@ -982,8 +982,9 @@ class LangflowFileService:
         if file_task is not None:
             file_task.phase = IngestionPhase.LANGFLOW
 
+        _raw_em = settings.get("embeddingModel") if isinstance(settings, dict) else None
         selected_embedding = (
-            settings.get("embeddingModel") if isinstance(settings, dict) else None
+            _raw_em.strip() if isinstance(_raw_em, str) and _raw_em.strip() else None
         )
 
         try:
