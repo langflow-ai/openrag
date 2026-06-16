@@ -1,0 +1,40 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'tests/unit/**'
+      - 'tests/conftest.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/test-unit.yml'
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same PR when a new push lands.
+concurrency:
+  group: test-unit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dev dependencies
+        run: uv sync --group dev
+
+      - name: Run unit tests
+        run: make test-unit

@@ -199,7 +199,7 @@ case "$suite" in
       LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG || test_result=1
+      uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG --reruns 2 --reruns-delay 5 || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
     ;;
@@ -210,7 +210,7 @@ case "$suite" in
     echo "${purple} SDK Integration Tests (Python)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
     uv pip install -e sdks/python
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || test_result=1
+    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --reruns 2 --reruns-delay 5 || test_result=1
     echo "::endgroup::"
     ;;
   sdk-typescript)

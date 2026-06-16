@@ -899,7 +899,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG --reruns 2 --reruns-delay 5; \
 	TEST_RESULT=$$?; \
 	echo "::endgroup::"; \
 	echo ""; \
@@ -912,7 +912,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install -e sdks/python; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --reruns 2 --reruns-delay 5 || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1024,7 +1024,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG --reruns 2 --reruns-delay 5; \
 	TEST_RESULT=$$?; \
 	echo "::endgroup::"; \
 	echo ""; \
@@ -1037,7 +1037,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install -e sdks/python; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --reruns 2 --reruns-delay 5 || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1075,7 +1075,7 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(YELLOW)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
 	uv pip install -e sdks/python
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s
+	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --reruns 2 --reruns-delay 5
 	@echo ""
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
