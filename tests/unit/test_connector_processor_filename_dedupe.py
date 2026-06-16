@@ -254,6 +254,8 @@ async def test_connector_processor_indexes_cleaned_filename(monkeypatch):
 
     assert file_task.filename == "My Report.pdf"
     assert mock_process.await_args.kwargs["original_filename"] == "My Report.pdf"
+    metadata_call = processor.connector_service._update_connector_metadata.await_args
+    assert metadata_call.kwargs["indexed_filename"] == "My Report.pdf"
 
 
 @pytest.mark.asyncio

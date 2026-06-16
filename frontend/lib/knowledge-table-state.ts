@@ -28,11 +28,18 @@ export function getKnowledgeFileIdentity(file?: {
   return "";
 }
 
+function looksLikeHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
 /** Filename variants for overlay matching (mirrors backend `get_filename_aliases`). */
 function getKnowledgeFilenameAliases(filename?: string): string[] {
   const normalized = filename?.trim() ?? "";
   if (!normalized) {
     return [];
+  }
+  if (looksLikeHttpUrl(normalized)) {
+    return [normalized];
   }
   const aliases = [normalized];
   const lower = normalized.toLowerCase();
@@ -65,17 +72,12 @@ export function getKnowledgeFileAliasKeys(file?: {
     keys.add(sourceUrl);
     addFilenameAliasKeys(keys, sourceUrl.split("/").pop());
   }
-  addFilenameAliasKeys(keys, getKnowledgeFileIdentity(file));
   return [...keys];
 }
 
 function isMeaningfulConnectorType(connectorType?: string): boolean {
   const normalized = connectorType?.trim();
   return Boolean(normalized && normalized !== "local");
-}
-
-function looksLikeHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value.trim());
 }
 
 /** Infer connector_type for task overlays when the API does not return it. */
@@ -245,7 +247,7 @@ export function buildKnowledgeTableRows(
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
       taskFile.filename === "OpenRAG docs refresh" ||
-      taskFile.source_url.includes("openr.ag")
+      (taskFile.source_url ?? "").includes("openr.ag")
     ) {
       return false;
     }
