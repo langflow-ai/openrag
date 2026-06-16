@@ -713,12 +713,34 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     # `_resolve_lakehouse_credentials` so its connections-store upsert side effect
     # is also skipped. Mirrors the /v1 surface, which already treats the JWT as
     # primary.
-    if saas_rbac and jwt_user:
-        logger.debug(
-            "[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)"
-        )
-        request.state.user = jwt_user
-        return jwt_user
+    if saas_rbac:
+        if jwt_user:
+            logger.debug(
+                "[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)"
+            )
+            request.state.user = jwt_user
+            return jwt_user
+        # saas + RBAC but no valid forwarded JWT (missing header, undecodable, or no
+        # `sub`). Do NOT degrade to lakehouse Basic creds or the debug cookie — that
+        # would authenticate (and write DB user/role rows) under a roles-less
+        # identity. Fail loud, mirroring get_api_key_user_async's saas_rbac branch.
+        request.state.user = None
+        if required:
+            logger.error(
+                "[AUTH] No valid forwarded JWT under saas+RBAC; refusing lakehouse/basic fallback",
+                jwt_present=bool(ibm_token),
+            )
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "invalid_jwt" if ibm_token else "missing_user_jwt",
+                    "message": (
+                        "No valid user JWT was forwarded by the gateway. In SaaS/RBAC "
+                        "mode the gateway must forward the end-user JWT on every request."
+                    ),
+                },
+            )
+        return None
 
     # Other modes: lakehouse Basic creds take precedence when present.
     opensearch_username, lh_credentials = await _resolve_lakehouse_credentials(request, user_id)

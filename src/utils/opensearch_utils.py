@@ -46,7 +46,6 @@ _AUTH_ERROR_INDICATORS = [
     "authenticationexception",
     "unauthorized",
     "authentication failed",
-    "401",
 ]
 
 AUTH_ERROR_MESSAGE = "Authentication failed: OpenSearch rejected the credential. Please sign in again."
