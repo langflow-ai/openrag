@@ -47,6 +47,3 @@ async def test_none_llm_provider_handled_gracefully():
     assert len(llm_calls) == 2  # openai, anthropic
     for call in llm_calls:
         assert call.kwargs["llm_model"] is None
-
-
-# Made with Bob
