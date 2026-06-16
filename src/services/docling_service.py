@@ -147,15 +147,27 @@ class DoclingService:
             )
         return DoclingService._default_client
 
-    def _build_docling_options(self) -> dict[str, Any]:
-        """Build the options payload for docling from OpenRAG configs."""
+    def _build_docling_options(
+        self,
+        *,
+        ocr_override: bool | None = None,
+        picture_descriptions_override: bool | None = None,
+    ) -> dict[str, Any]:
+        """Build the options payload for docling from OpenRAG configs.
+
+        Per-request overrides take precedence over saved Knowledge settings.
+        """
         config = get_openrag_config()
         knowledge_config = config.knowledge
 
         preset = get_docling_preset_configs(
             table_structure=knowledge_config.table_structure,
-            ocr=knowledge_config.ocr,
-            picture_descriptions=knowledge_config.picture_descriptions,
+            ocr=ocr_override if ocr_override is not None else knowledge_config.ocr,
+            picture_descriptions=(
+                picture_descriptions_override
+                if picture_descriptions_override is not None
+                else knowledge_config.picture_descriptions
+            ),
         )
 
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
@@ -180,11 +192,17 @@ class DoclingService:
         file_content: bytes,
         user_id: str | None = None,
         auth_header: str | None = None,
+        *,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
-        options = self._build_docling_options()
+        options = self._build_docling_options(
+            ocr_override=ocr,
+            picture_descriptions_override=picture_descriptions,
+        )
         headers = self._get_auth_headers(user_id, auth_header)
 
         # Docling serve async multipart endpoint /v1/convert/file/async
@@ -416,7 +434,13 @@ class DoclingService:
         raise TimeoutError(f"Docling task {task_id} did not complete within {timeout} seconds")
 
     async def convert_file(
-        self, file_path: str, user_id: str | None = None, auth_header: str | None = None
+        self,
+        file_path: str,
+        user_id: str | None = None,
+        auth_header: str | None = None,
+        *,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ) -> dict[str, Any]:
         """
         Convert a local file via docling-serve async polling.
@@ -424,7 +448,12 @@ class DoclingService:
         path = Path(file_path)
         file_bytes = path.read_bytes()
         task_id = await self.upload_to_docling_direct_async(
-            path.name, file_bytes, user_id=user_id, auth_header=auth_header
+            path.name,
+            file_bytes,
+            user_id=user_id,
+            auth_header=auth_header,
+            ocr=ocr,
+            picture_descriptions=picture_descriptions,
         )
         return await self.get_docling_result_async(
             task_id, user_id=user_id, auth_header=auth_header
