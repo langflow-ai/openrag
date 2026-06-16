@@ -553,26 +553,43 @@ class SharePointConnector(BaseConnector):
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
                 return DocumentACL()
 
-            # Determine the correct path for permissions API call
-            # Use the same URL pattern as _get_file_metadata_by_id and list_files
-            site_info = self._parse_sharepoint_url()
-            if site_info:
-                permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
-            else:
-                # Fallback to user drive
-                permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
-
-            # Fetch permissions
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    permissions_url, headers={"Authorization": f"Bearer {access_token}"}
+            # Determine the correct path for permissions API call. Mirror
+            # _get_file_metadata_by_id: a composite "driveId!itemId" id must be
+            # split into /drives/{driveId}/items/{itemId}. Using the composite id
+            # verbatim against /drive/items/{id} yields a malformed URL → Graph
+            # error → empty ACL, which is why shared-user updates never landed.
+            if "!" in file_id and len(file_id.rsplit("!", 1)) == 2:
+                drive_id, item_id = file_id.rsplit("!", 1)
+                permissions_url = (
+                    f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/permissions"
                 )
+            else:
+                site_info = self._parse_sharepoint_url()
+                if site_info:
+                    permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
+                else:
+                    # Fallback to user drive
+                    permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
 
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
-                return DocumentACL()
+            # Fetch permissions, following pagination so large share lists are
+            # captured in full (not just the first page).
+            permissions: list[dict[str, Any]] = []
+            async with httpx.AsyncClient() as client:
+                url: str | None = permissions_url
+                while url:
+                    response = await client.get(
+                        url, headers={"Authorization": f"Bearer {access_token}"}
+                    )
+                    if response.status_code != 200:
+                        logger.warning(
+                            f"Failed to fetch permissions for {file_id}: {response.status_code}"
+                        )
+                        return DocumentACL()
+                    page = response.json()
+                    permissions.extend(page.get("value", []))
+                    url = page.get("@odata.nextLink")
 
-            permissions_data = response.json()
+            permissions_data = {"value": permissions}
 
             allowed_users = []
             allowed_groups = []
@@ -1028,6 +1045,20 @@ class SharePointConnector(BaseConnector):
             return notifications[0].get("subscriptionId")
         return None
 
+    @staticmethod
+    def _delta_item_file_id(item: dict[str, Any]) -> str:
+        """Return the composite ``{driveId}!{itemId}`` id used at ingest time.
+
+        Selected-file listing stores ids as ``driveId!itemId`` (see
+        _list_folder_contents), so the webhook delta must emit the same shape
+        or the change can't be correlated with the indexed connector_file_id.
+        """
+        item_id = item.get("id", "")
+        if item_id and "!" in item_id:
+            return item_id
+        drive_id = item.get("parentReference", {}).get("driveId")
+        return f"{drive_id}!{item_id}" if drive_id else item_id
+
     async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
         """Handle webhook notification and return affected file IDs.
 
@@ -1074,7 +1105,7 @@ class SharePointConnector(BaseConnector):
                             # runs its deleted-at-source cleanup
                             # (get_file_content -> 404 -> delete indexed chunks).
                             if "folder" not in item:
-                                affected_files.append(item["id"])
+                                affected_files.append(self._delta_item_file_id(item))
                             continue
                         if "file" not in item:
                             continue
@@ -1090,7 +1121,7 @@ class SharePointConnector(BaseConnector):
                                 continue
                             if modified_at < cutoff:
                                 continue
-                        affected_files.append(item["id"])
+                        affected_files.append(self._delta_item_file_id(item))
 
                     delta_link = data.get("@odata.deltaLink")
                     if delta_link:
