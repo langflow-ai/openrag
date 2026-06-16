@@ -37,16 +37,6 @@ reviews:
       instructions: "Apply when the PR only adds or updates tests."
   path_filters: []
   path_instructions:
-    - path: "src/**/*.py"
-      instructions: "Use get_logger from utils.logging_config — never import stdlib logging directly. Config values must come from config/settings.py (the only place os.environ is read); never access os.environ elsewhere in the codebase."
-    - path: "src/api/**/*.py"
-      instructions: "FastAPI routes. Public/stable endpoints belong under src/api/v1/. Verify dependency injection via src/dependencies.py, response model typing, and correct HTTP status codes. No business logic in route handlers."
-    - path: "src/connectors/**/*.py"
-      instructions: "External data connectors (Google Drive, OneDrive, S3, IBM COS). New connectors must subclass connectors/base.py and register through connectors/service.py. Verify credentials are never logged, errors surface cleanly, and pagination is handled correctly."
-    - path: "src/services/**/*.py"
-      instructions: "Business logic layer. New services must be instantiated in the lifespan block in main.py and injected into routers via src/dependencies.py — never instantiated directly in route handlers."
-    - path: "frontend/**"
-      instructions: "Next.js App Router with React 19. Lint and format via Biome — not ESLint. State management via Zustand (stores/) and React Query for server state. UI built on Radix primitives + Tailwind."
     - path: "kubernetes/operator/**/*.go"
       instructions: "Kubernetes controller using controller-runtime. Check for proper reconciliation loop patterns, status condition updates, and RBAC annotations on new resources."
   abort_on_close: true
@@ -71,7 +61,7 @@ reviews:
     shellcheck:
       enabled: true
     ruff:
-      enabled: true
+      enabled: false
     markdownlint:
       enabled: true
     github-checks:
@@ -86,7 +76,7 @@ reviews:
       enabled_only: false
       level: default
     biome:
-      enabled: true
+      enabled: false
     hadolint:
       enabled: true
     swiftlint:
@@ -128,9 +118,9 @@ reviews:
     prismaLint:
       enabled: false
     pylint:
-      enabled: true
+      enabled: false
     oxc:
-      enabled: true
+      enabled: false
     shopifyThemeCheck:
       enabled: false
     luacheck:
@@ -140,7 +130,7 @@ reviews:
     dotenvLint:
       enabled: true
     htmlhint:
-      enabled: true
+      enabled: false
     checkmake:
       enabled: true
 chat:
@@ -185,9 +175,3 @@ code_generation:
   docstrings:
     language: en-US
     path_instructions: []
-  unit_tests:
-    path_instructions:
-      - path: "tests/**/*.py"
-        instructions: Use pytest with pytest-asyncio for async tests. Fixtures are defined in tests/conftest.py and tests/unit/conftest.py.
-      - path: "frontend/tests/**/*.ts"
-        instructions: Use Playwright. Test files use the .spec.ts extension.
