@@ -6,7 +6,6 @@ import inspect
 from typing import Any
 
 import httpx
-import jwt
 
 from utils.group_acl import (
     acl_principal_label,

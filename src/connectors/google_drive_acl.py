@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import jwt
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
