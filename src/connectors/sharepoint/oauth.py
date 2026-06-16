@@ -37,6 +37,10 @@ class SharePointOAuth:
     ]
     SCOPES = AUTH_SCOPES  # Backward compatibility alias
 
+    # OAuth prompt for interactive auth. Use "select_account" (not "consent") so a
+    # one-time tenant admin consent is reused instead of re-prompting every user/login.
+    AUTH_PROMPT = "select_account"
+
     # Kept for reference; MSAL derives endpoints from `authority`
     AUTH_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
     TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
