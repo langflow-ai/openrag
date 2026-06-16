@@ -251,9 +251,7 @@ async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    upload_call = (
-        processor.connector_service.langflow_service.upload_and_ingest_file.await_args
-    )
+    upload_call = processor.connector_service.langflow_service.upload_and_ingest_file.await_args
     assert upload_call.kwargs["file_tuple"][0] == "My Report.pdf"
 
 
