@@ -425,6 +425,38 @@ def require_permission(perm: str):
     return _dep
 
 
+def require_any_permission(required_perms: Sequence[str]):
+    """Require at least one permission for a browser-authenticated request."""
+    required = tuple(required_perms)
+    if not required:
+        raise ValueError("require_any_permission requires at least one permission")
+
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_current_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            return await _attach_db_user_id(request, user)
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        db_user_id = await _resolve_db_user_id(user)
+        user = dataclasses.replace(user, db_user_id=db_user_id)
+        request.state.db_user_id = db_user_id
+        request.state.user = user
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        if not any(perm in perms for perm in required):
+            await rbac.audit_denied(db_user_id, "|".join(required))
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": list(required)},
+            )
+        return user
+
+    return _dep
+
+
 def require_api_key_permission(perm: str):
     """Like ``require_permission``, but for the /v1 (API-key / forwarded-JWT)
     surface: resolves identity via ``get_api_key_user_async`` instead of
@@ -457,6 +489,51 @@ def require_api_key_permission(perm: str):
         return user
 
     return _dep
+
+
+def require_api_key_any_permission(required_perms: Sequence[str]):
+    """Require at least one permission for an API-key or forwarded-JWT request."""
+    required = tuple(required_perms)
+    if not required:
+        raise ValueError("require_api_key_any_permission requires at least one permission")
+
+    from services.rbac_service import is_rbac_enforced
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_api_key_user_async),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if not is_rbac_enforced():
+            return user
+        db_user_id = user.db_user_id or user.user_id
+        role_override = getattr(request.state, "api_key_role_ids", None)
+        perms = await rbac.get_user_permissions(db_user_id, role_override=role_override)
+        if not any(perm in perms for perm in required):
+            await rbac.audit_denied(db_user_id, "|".join(required))
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "permission_denied", "required": list(required)},
+            )
+        return user
+
+    return _dep
+
+
+async def has_effective_permission(
+    request: Request,
+    user: User,
+    rbac,
+    perm: str,
+) -> bool:
+    """Check a permission using the same RBAC and API-key override semantics as route gates."""
+    from services.rbac_service import is_rbac_enforced
+
+    if not is_rbac_enforced():
+        return True
+    user_id = user.db_user_id or user.user_id
+    role_override = getattr(request.state, "api_key_role_ids", None)
+    return await rbac.has_permission(user_id, perm, role_override=role_override)
 
 
 def require_all_permissions(required_perms: Sequence[str]):
