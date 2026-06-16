@@ -522,6 +522,7 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
                 status_code=401,
                 detail="User has no OpenRAG roles assigned",
             )
+    logger.debug(f"JWT roles: {jwt_roles}")
     request.state.jwt_roles = jwt_roles
 
 
@@ -684,6 +685,64 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 # existing DB roles untouched). RBAC on -> extract + 401 if none.
                 _stage_jwt_roles(request, claims, user_id)
 
+    from utils.run_mode_utils import is_run_mode_saas
+
+    saas_rbac = is_run_mode_saas() and jwt_roles_enabled()
+
+    # The forwarded end-user JWT is the OpenSearch credential — OpenSearch's
+    # openid_auth_domain validates it via the backend JWKS. Build it once; it's
+    # used both as the saas+rbac authoritative credential and as the header-less
+    # fallback in other modes.
+    jwt_user = None
+    if ibm_token and user_id:
+        jwt_user = User(
+            user_id=user_id,
+            email=email,
+            name=name,
+            picture=None,
+            provider="ibm_ams",
+            jwt_token=f"Bearer {ibm_token}",
+            opensearch_username=None,
+            opensearch_credentials=None,
+        )
+
+    # In SaaS + RBAC the JWT is authoritative: the lakehouse `X-IBM-LH-Credentials`
+    # Basic credential must NOT override it (when the gateway began injecting that
+    # header, OpenSearch rejected the Basic cred with 401 and every data-plane call
+    # surfaced as a misleading 403 "insufficient permissions"). Return before
+    # `_resolve_lakehouse_credentials` so its connections-store upsert side effect
+    # is also skipped. Mirrors the /v1 surface, which already treats the JWT as
+    # primary.
+    if saas_rbac:
+        if jwt_user:
+            logger.debug(
+                "[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)"
+            )
+            request.state.user = jwt_user
+            return jwt_user
+        # saas + RBAC but no valid forwarded JWT (missing header, undecodable, or no
+        # `sub`). Do NOT degrade to lakehouse Basic creds or the debug cookie — that
+        # would authenticate (and write DB user/role rows) under a roles-less
+        # identity. Fail loud, mirroring get_api_key_user_async's saas_rbac branch.
+        request.state.user = None
+        if required:
+            logger.error(
+                "[AUTH] No valid forwarded JWT under saas+RBAC; refusing lakehouse/basic fallback",
+                jwt_present=bool(ibm_token),
+            )
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "invalid_jwt" if ibm_token else "missing_user_jwt",
+                    "message": (
+                        "No valid user JWT was forwarded by the gateway. In SaaS/RBAC "
+                        "mode the gateway must forward the end-user JWT on every request."
+                    ),
+                },
+            )
+        return None
+
+    # Other modes: lakehouse Basic creds take precedence when present.
     opensearch_username, lh_credentials = await _resolve_lakehouse_credentials(request, user_id)
 
     if lh_credentials:
@@ -704,23 +763,12 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
         request.state.user = user
         return user
 
-    if ibm_token and user_id:
+    if jwt_user:
         logger.warning(
             "[AUTH] IBM LH credentials not found in header or connections store. Using JWT token instead."
         )
-        user = User(
-            user_id=user_id,
-            email=email,
-            name=name,
-            picture=None,
-            provider="ibm_ams",
-            jwt_token=f"Bearer {ibm_token}",
-            opensearch_username=None,
-            opensearch_credentials=None,
-        )
-        logger.debug("[AUTH] User created successfully")
-        request.state.user = user
-        return user
+        request.state.user = jwt_user
+        return jwt_user
 
     if ibm_token and not user_id:
         logger.warning("IBM JWT cookie present but could not extract user_id from claims.")

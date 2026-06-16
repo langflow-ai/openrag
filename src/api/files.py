@@ -5,12 +5,10 @@ Provides server-side file-level views over the chunk-based OpenSearch index,
 replacing the client-side chunk-to-file aggregation pattern.
 """
 
-from typing import Optional
-
 from fastapi import Depends, Query
 from fastapi.responses import JSONResponse
 
-from dependencies import get_session_manager, get_current_user
+from dependencies import get_current_user, get_session_manager
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -28,10 +26,10 @@ async def list_files(
     page_size: int = Query(25, ge=1, le=100, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
     sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
-    connector_type: Optional[str] = Query(None, description="Filter by connector type"),
-    mimetype: Optional[str] = Query(None, description="Filter by MIME type"),
-    owner: Optional[str] = Query(None, description="Filter by owner"),
-    search: Optional[str] = Query(None, description="Search filename"),
+    connector_type: str | None = Query(None, description="Filter by connector type"),
+    mimetype: str | None = Query(None, description="Filter by MIME type"),
+    owner: str | None = Query(None, description="Filter by owner"),
+    search: str | None = Query(None, description="Search filename"),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
@@ -52,6 +50,10 @@ async def list_files(
         return JSONResponse(result)
     except Exception as e:
         logger.error("Failed to list files", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
             {"error": "Failed to list files", "detail": str(e)},
             status_code=500,
@@ -62,9 +64,9 @@ async def search_files(
     q: str = Query(..., min_length=1, description="Search query"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(25, ge=1, le=100, description="Items per page"),
-    connector_type: Optional[str] = Query(None, description="Filter by connector type"),
-    mimetype: Optional[str] = Query(None, description="Filter by MIME type"),
-    owner: Optional[str] = Query(None, description="Filter by owner"),
+    connector_type: str | None = Query(None, description="Filter by connector type"),
+    mimetype: str | None = Query(None, description="Filter by MIME type"),
+    owner: str | None = Query(None, description="Filter by owner"),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
@@ -83,6 +85,10 @@ async def search_files(
         return JSONResponse(result)
     except Exception as e:
         logger.error("Failed to search files", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
             {"error": "Failed to search files", "detail": str(e)},
             status_code=500,
