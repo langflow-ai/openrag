@@ -219,6 +219,7 @@ class ConnectorService:
         connector_type: str,
         jwt_token: str = None,
         id_field: str = "document_id",
+        indexed_filename: str | None = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
         from utils.acl_utils import update_document_acl
@@ -294,7 +295,7 @@ class ConnectorService:
                         "params": {
                             "source_url": document.source_url,
                             "connector_type": connector_type,
-                            "filename": document.filename,
+                            "filename": indexed_filename or document.filename,
                             "created_time": document.created_time.isoformat()
                             if document.created_time
                             else None,
@@ -421,6 +422,7 @@ class ConnectorService:
             ),
             models_service=self.models_service,
             replace_duplicates=replace_duplicates,
+            connector_type=connector.CONNECTOR_TYPE,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -603,6 +605,7 @@ class ConnectorService:
             models_service=self.models_service,
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
+            connector_type=connector.CONNECTOR_TYPE,
         )
 
         # Create custom task using TaskService
