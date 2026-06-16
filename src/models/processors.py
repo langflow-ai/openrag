@@ -936,6 +936,8 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Extract ACL information
                     allowed_users: list[str] = []
                     allowed_groups: list[str] = []
+                    allowed_principals: list[str] = []
+                    allowed_principal_labels: list[dict[str, Any]] = []
                     if document.acl:
                         try:
                             allowed_users = document.acl.allowed_users or []
@@ -943,8 +945,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             allowed_principals = document.acl.allowed_principals or []
                             allowed_principal_labels = document.acl.allowed_principal_labels or []
                         except AttributeError:
-                            allowed_principals = []
-                            allowed_principal_labels = []
+                            pass
 
                     # Prepare tweaks
                     connector_tweak_settings = None
