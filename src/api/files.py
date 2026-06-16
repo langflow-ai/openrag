@@ -52,6 +52,10 @@ async def list_files(
         return JSONResponse(result)
     except Exception as e:
         logger.error("Failed to list files", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
             {"error": "Failed to list files", "detail": str(e)},
             status_code=500,
@@ -83,6 +87,10 @@ async def search_files(
         return JSONResponse(result)
     except Exception as e:
         logger.error("Failed to search files", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
             {"error": "Failed to search files", "detail": str(e)},
             status_code=500,
