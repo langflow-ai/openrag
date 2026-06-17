@@ -180,17 +180,40 @@ class ConnectorService:
                     models_service=self.models_service,
                     docling_service=self.docling_service,
                 )
+                standard_kwargs: dict[str, Any] = {}
+                if isinstance(ingest_settings, dict):
+                    em = ingest_settings.get("embeddingModel")
+                    if isinstance(em, str) and em.strip():
+                        standard_kwargs["embedding_model"] = em.strip()
+                    for ui_key, param in (
+                        ("chunkSize", "chunk_size"),
+                        ("chunkOverlap", "chunk_overlap"),
+                    ):
+                        raw = ingest_settings.get(ui_key)
+                        if raw is not None:
+                            try:
+                                standard_kwargs[param] = int(raw)
+                            except (TypeError, ValueError):
+                                pass
+                    if "ocr" in ingest_settings:
+                        standard_kwargs["ocr"] = bool(ingest_settings["ocr"])
+                    if "pictureDescriptions" in ingest_settings:
+                        standard_kwargs["picture_descriptions"] = bool(
+                            ingest_settings["pictureDescriptions"]
+                        )
+
                 result = await processor.process_document_standard(
                     file_path=tmp_path,
-                    file_hash=document.id,  # Use connector document ID as hash
+                    file_hash=document.id,
                     owner_user_id=owner_user_id,
-                    original_filename=document.filename,  # Pass the original Google Doc title
+                    original_filename=document.filename,
                     jwt_token=jwt_token,
                     owner_name=owner_name,
                     owner_email=owner_email,
                     file_size=len(document.content) if document.content else 0,
                     connector_type=connector_type,
                     acl=document.acl,
+                    **standard_kwargs,
                 )
 
                 logger.info(
@@ -323,6 +346,7 @@ class ConnectorService:
         max_files: int = None,
         jwt_token: str = None,
         filename_filter: set = None,
+        ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
     ) -> str:
         """
@@ -336,6 +360,8 @@ class ConnectorService:
             filename_filter: Optional set of filenames to filter - only files with names
                            in this set will be synced. Used to prevent deleted files
                            from being re-synced.
+            ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …)
+                forwarded to ``ConnectorFileProcessor``.
         """
         jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
 
@@ -421,6 +447,7 @@ class ConnectorService:
                 else DocumentService(session_manager=self.session_manager)
             ),
             models_service=self.models_service,
+            ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
         )
