@@ -184,10 +184,8 @@ async def wait_for_opensearch(
                         coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
                         if (
                             data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
-                            or cluster_manager_count
-                            < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
-                            or coordinating_count
-                            < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
+                            or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
+                            or coordinating_count < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
                         ):
                             logger.warning(
                                 "OpenSearch healthy but cluster has not reached expected node count.",

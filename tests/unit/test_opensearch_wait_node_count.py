@@ -48,16 +48,10 @@ def _fake_os_client(
 
 
 def _patch_settings(monkeypatch, *, enabled=True, data=2, managers=2, coordinating=2):
-    monkeypatch.setattr(
-        "config.settings.OPENSEARCH_NODE_COUNT_CHECK_ENABLED", enabled
-    )
+    monkeypatch.setattr("config.settings.OPENSEARCH_NODE_COUNT_CHECK_ENABLED", enabled)
     monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_DATA_NODE_COUNT", data)
-    monkeypatch.setattr(
-        "config.settings.OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", managers
-    )
-    monkeypatch.setattr(
-        "config.settings.OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", coordinating
-    )
+    monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", managers)
+    monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", coordinating)
 
 
 @pytest.mark.asyncio
