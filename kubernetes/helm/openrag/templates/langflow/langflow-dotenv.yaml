@@ -107,6 +107,11 @@ stringData:
     {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
     DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
     {{- end }}
+    {{- if hasKey .Values.global.docling "verifySsl" }}
+    DOCLING_SERVE_VERIFY_SSL={{ ternary "true" "false" .Values.global.docling.verifySsl | quote }}
+    {{- else }}
+    DOCLING_SERVE_VERIFY_SSL="true"
+    {{- end }}
 
     # OpenSearch connection (for flows)
     OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}

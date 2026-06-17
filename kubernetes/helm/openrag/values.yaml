@@ -35,6 +35,7 @@ global:
     host: docling-serve.docling.svc.cluster.local
     port: 5001
     scheme: "http"
+    verifySsl: false
 
   # Shared OAuth credentials (same across all tenants)
   oauth:
@@ -75,9 +76,11 @@ langflow:
     requests:
       cpu: "500m"
       memory: "1Gi"
+      ephemeral-storage: "1Gi"
     limits:
       cpu: "4"
       memory: "8Gi"
+      ephemeral-storage: "2Gi"
 
   # Persistence for SQLite DB and flows
   persistence:
@@ -179,7 +182,7 @@ langflow:
     host: "https://cloud.langfuse.com"
 
   # Variables to expose to flows
-  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE"
+  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE"
 
   # Probes
   livenessProbe:
@@ -237,9 +240,11 @@ backend:
     requests:
       cpu: "500m"
       memory: "2Gi"
+      ephemeral-storage: "1Gi"
     limits:
       cpu: "4"
       memory: "16Gi"
+      ephemeral-storage: "2Gi"
   # Init container resource limits
   # Configure resource requests/limits for init containers that load default documents and flows
   # Adjust ephemeral-storage based on the size of documents/flows being downloaded

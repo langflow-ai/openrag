@@ -3,8 +3,10 @@
 `run_startup(app)` and `run_shutdown(app)` collapse what previously lived
 as three @app.on_event("startup") handlers and three @app.on_event("shutdown")
 handlers into one helper each. The factory registers these as on_event
-handlers so they fire under both Starlette's lifespan-from-on_event flow
-(production) and `app.router.startup()` / `app.router.shutdown()` (tests).
+handlers so they fire under FastAPI's lifespan-from-on_event flow, both in
+production (the ASGI server drives it) and in tests (which enter/exit
+`app.router.lifespan_context(app)` directly, since Starlette 1.x removed the
+`app.router.startup()` / `app.router.shutdown()` helpers).
 """
 
 import asyncio
@@ -25,7 +27,7 @@ from config.settings import (
     get_opensearch_username,
 )
 from services.startup_orchestrator import startup_tasks
-from utils.logging_config import get_logger
+from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
@@ -102,6 +104,41 @@ async def _periodic_backup(services):
             break
         except Exception as e:
             logger.error(f"Error in periodic backup task: {str(e)}")
+
+
+async def _periodic_webhook_renewal(services):
+    """Renew connector webhook subscriptions before they expire.
+
+    Checks immediately at startup (subscriptions may have lapsed while the
+    app was down), then on a fixed interval. Provider subscriptions are
+    short-lived (Google Drive ~24h, Microsoft Graph 3 days) and go silent
+    without renewal.
+    """
+    from config.settings import (
+        WEBHOOK_RENEWAL_INTERVAL_SECONDS,
+        WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
+    )
+
+    # Let startup_tasks finish loading connections before the first pass
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            connector_service = services.get("connector_service")
+            if connector_service:
+                stats = await connector_service.connection_manager.renew_expiring_subscriptions(
+                    WEBHOOK_RENEWAL_THRESHOLD_SECONDS
+                )
+                if stats["renewed"] or stats["failed"]:
+                    logger.info("Webhook subscription renewal pass completed", **stats)
+                else:
+                    logger.debug("Webhook subscription renewal pass completed", **stats)
+        except asyncio.CancelledError:
+            logger.info("Webhook renewal task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in webhook renewal task: {str(e)}")
+        await asyncio.sleep(WEBHOOK_RENEWAL_INTERVAL_SECONDS)
 
 
 async def run_startup(app: FastAPI):
@@ -203,12 +240,15 @@ async def run_startup(app: FastAPI):
         await mcp_lifespan_ctx.__aenter__()
         logger.info("FastMCP lifespan started")
 
+    log_bootstrap_env(logger, "startup")
+
     # One-shot OpenSearch security bootstrap driven by the platform's
     # service JWT. Runs synchronously (before startup_tasks) so the
     # admin role mapping is in place before any other startup work
     # talks to OpenSearch. The corresponding call inside startup_tasks
     # is suppressed when this flag is on.
     if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+        logger.info("OpenSearch security bootstrap enabled - starting")
         from utils.opensearch_init import wait_for_opensearch
         from utils.opensearch_utils import setup_opensearch_security
         from utils.run_mode_utils import (
@@ -251,12 +291,15 @@ async def run_startup(app: FastAPI):
                 admin_username=admin_username,
             )
         try:
+            logger.info("Verifying OpenSearch readiness before bootstrap")
             await wait_for_opensearch(opensearch_client)
             logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
             await setup_opensearch_security(opensearch_client, admin_username=admin_username)
             logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
         finally:
             await opensearch_client.close()
+    else:
+        logger.info("OpenSearch security bootstrap disabled - skipping (handled in startup_tasks)")
 
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))
@@ -270,6 +313,11 @@ async def run_startup(app: FastAPI):
     backup_task = asyncio.create_task(_periodic_backup(services))
     app.state.background_tasks.add(backup_task)
     backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Start periodic webhook subscription renewal task
+    renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))
+    app.state.background_tasks.add(renewal_task)
+    renewal_task.add_done_callback(app.state.background_tasks.discard)
 
 
 async def run_shutdown(app: FastAPI):

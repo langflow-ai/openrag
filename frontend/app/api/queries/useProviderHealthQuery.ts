@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 import { useGetTasksQuery } from "./useGetTasksQuery";
 
@@ -43,6 +44,12 @@ export const useProviderHealthQuery = (
 
   // Get chat error state and onboarding completion from context (ChatProvider wraps the entire app in layout.tsx)
   const { hasChatError, setChatError, isOnboardingComplete } = useChat();
+
+  // Provider health is admin-only (backend gates /provider/health on
+  // providers:read). Don't poll it for non-admins under enforced RBAC —
+  // it would only 403. When RBAC is off, behave exactly as before.
+  const { can, rbacEnforced } = usePermissions();
+  const providerHealthAllowed = !rbacEnforced || can("providers:read");
 
   const { data: settings = {} } = useGetSettingsQuery();
 
@@ -161,6 +168,7 @@ export const useProviderHealthQuery = (
         !!settings?.edited &&
         isOnboardingComplete &&
         !hasActiveIngestion && // Disable health checks when ingestion is happening
+        providerHealthAllowed && // Admin-only under enforced RBAC
         options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },

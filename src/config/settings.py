@@ -76,7 +76,21 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 # pointed at the router instead of the backend internal URL, so Langflow's
 # reachable surface narrows to that single endpoint.
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv("OPENRAG_BACKEND_ROUTER_ENABLE", "false").lower() in (
+
+
+# Default depends on OPENRAG_RUN_MODE:
+#   * saas                 -> "true" (the platform requires the narrowed surface)
+#   * anything else        -> "false" (today's behaviour preserved)
+# An explicit OPENRAG_BACKEND_ROUTER_ENABLE value always wins.
+def _resolve_backend_router_enable_default() -> str:
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return "true" if is_run_mode_saas() else "false"
+
+
+OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
+    "OPENRAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
+).lower() in (
     "true",
     "1",
     "yes",
@@ -197,6 +211,52 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def is_dev_role_toggle_enabled() -> bool:
+    """Allow POST /users/me/dev-role for local RBAC UI testing.
+
+    Requires ``OPENRAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
+    """
+    raw = os.getenv("OPENRAG_DEV_ROLE_TOGGLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_connector_policy_enabled() -> bool:
+    """Local OSS dev: enforce workspace connector policy (pair with IBM theme dev UI)."""
+    raw = os.getenv("OPENRAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_cloud_context() -> bool:
+    """True when connector policy and SaaS settings guards should apply."""
+    from utils.run_mode_utils import is_run_mode_saas
+
+    return IBM_AUTH_ENABLED or is_run_mode_saas() or is_dev_connector_policy_enabled()
+
+
+def get_default_user_role() -> str:
+    """Built-in role assigned to new users when JWT role sync is off."""
+    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+
+
+def get_noauth_user_role() -> str:
+    """Built-in role for the synthetic anonymous user in no-auth mode."""
+    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+
+
+def is_default_role_sync_enabled() -> bool:
+    """When true, sync eligible existing users if default-role env vars change.
+
+    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    via JWT sync; env-driven bulk migration is an OSS dev workflow.
+    """
+    from utils.run_mode_utils import is_run_mode_oss
+
+    if not is_run_mode_oss():
+        return False
+    raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
@@ -208,6 +268,48 @@ def get_jwt_auth_header() -> str:
     """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
     callers. Read per-call so tests can override via monkeypatch.setenv."""
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+
+
+def get_api_jwt_header() -> str:
+    """Secondary, gateway-placed JWT header for the /v1 API/MCP surface only.
+
+    The primary JWT header (``get_jwt_auth_header()``, default ``Authorization``)
+    is stripped by FastMCP's get_http_headers() before an MCP tool call is
+    proxied to the underlying /v1 route, so it never reaches the /v1 auth
+    dependency. The gateway (Traefik) therefore authenticates the MCP/API caller
+    (who supplies X-Username + X-Api-Key) and injects the minted user JWT into
+    this add-on header instead, which FastMCP forwards verbatim. Read per-call so
+    tests can override via monkeypatch.setenv.
+
+    TRUST NOTE: this header is read in addition to Authorization on the /v1
+    surface and is trusted as an identity source. It is gateway-managed: Traefik
+    mints and injects it, and MUST strip any client-supplied value at the edge
+    (standard internal-trust-header hygiene) so callers cannot forge it —
+    important because claims are decode-only unless ``OPENRAG_JWT_VERIFY_SIGNATURE``
+    is enabled."""
+    return os.getenv("OPENRAG_API_JWT_HEADER", "X-OpenRAG-API-JWT")
+
+
+def get_jwt_issuer_verify_tls() -> bool:
+    """Whether to verify TLS when fetching JWT signing keys from the token's
+    ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
+    issuers with cluster/self-signed certs; set true when the issuer uses a
+    public or pod-trusted CA."""
+    return os.getenv("OPENRAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
+def get_jwt_verify_signature() -> bool:
+    """When true, verify forwarded JWTs via issuer JWKS; when false, decode
+    claims only (upstream auth must have authenticated the caller)."""
+    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
@@ -236,10 +338,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
 # An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
 # operator can force-enable the setup in SaaS for a one-off bootstrap.
 def _resolve_skip_os_security_default() -> str:
-    run_mode = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
-    if run_mode in ("saas", "on_prem"):
-        return "true"
-    return "false"
+    from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
+
+    return "true" if is_run_mode_saas() or is_run_mode_on_prem() else "false"
 
 
 OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
@@ -429,6 +530,7 @@ DOCLING_POLL_MAX_SECONDS = get_env_int("DOCLING_POLL_MAX_SECONDS", 1800)
 DOCLING_POLL_MAX_INTERVAL_SECONDS = get_env_float("DOCLING_POLL_MAX_INTERVAL_SECONDS", 30.0)
 DOCLING_POLL_BACKOFF_FACTOR = get_env_float("DOCLING_POLL_BACKOFF_FACTOR", 1.5)
 DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5)
+DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH", 500)
 
 
 def is_no_auth_mode():
@@ -441,6 +543,25 @@ def is_no_auth_mode():
 
 # Webhook configuration - must be set to enable webhooks
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
+
+# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL).
+# If set, it must end in /connectors/google_drive/webhook.
+#
+# Drive watch addresses resolve config webhook_url -> this var -> WEBHOOK_BASE_URL
+# (google_drive/connector.py _resolve_webhook_address). Watches registered against
+# the legacy /connectors/google/webhook path (e.g. via a stale webhook_url persisted
+# in connections.json) are tolerated by LEGACY_WEBHOOK_TYPE_ALIASES in api/connectors.py;
+# the real fix is correcting the stored webhook_url (e.g. reconnect the data source).
+GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
+
+# Webhook subscription renewal: how often to check, and how close to expiry a
+# subscription must be before it is renewed. Google Drive channels live ~24h,
+# Microsoft Graph subscriptions 3 days; 6h checks with a 12h threshold give at
+# least two renewal opportunities before either expires.
+_raw_webhook_renewal_interval = get_env_int("WEBHOOK_RENEWAL_INTERVAL_SECONDS", 6 * 3600)
+WEBHOOK_RENEWAL_INTERVAL_SECONDS = max(60, _raw_webhook_renewal_interval)
+_raw_webhook_renewal_threshold = get_env_int("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", 12 * 3600)
+WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the
@@ -1333,6 +1454,54 @@ class AppClients:
     def create_user_opensearch_client(self, jwt_token: str):
         """Create OpenSearch client with user's auth token."""
         return self.create_opensearch_client_from_jwt(jwt_token)
+
+    def create_index_admin_opensearch_client(self, user_jwt_token: str = None):
+        """Create the OpenSearch client used for index administration
+        (init_index: index creation, mapping/settings updates), by run mode:
+
+          saas    -> platform service token — the end-user JWT identity can
+                     search/write documents but lacks index-admin privileges on
+                     managed OpenSearch, so admin calls (e.g. HEAD /<index>)
+                     fail. Falls back to the user's token for legacy
+                     deployments without OPENRAG_SERVICE_TOKEN.
+          on_prem -> OpenSearch basic auth
+          oss     -> OpenSearch basic auth
+
+        Returns None when no suitable credentials exist; callers should then
+        use the global writer client (clients.opensearch).
+        """
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+            is_run_mode_saas,
+        )
+
+        if is_run_mode_saas():
+            service_token = get_openrag_service_token()
+            if service_token:
+                logger.info(
+                    "Index admin OpenSearch client: saas mode, using platform service token"
+                )
+                return self.create_opensearch_client_from_jwt(service_token)
+            if user_jwt_token:
+                logger.warning(
+                    "Index admin OpenSearch client: saas mode without "
+                    "OPENRAG_SERVICE_TOKEN; falling back to the requesting "
+                    "user's token (backward-compatibility path)"
+                )
+                return self.create_opensearch_client_from_jwt(user_jwt_token)
+            logger.info(
+                "Index admin OpenSearch client: saas mode with no service or "
+                "user token; using the global writer client"
+            )
+            return None
+        if is_run_mode_on_prem() or is_run_mode_oss():
+            # Build a fresh basic-auth client so credentials updated after
+            # startup (e.g. during onboarding) take effect immediately.
+            return self.create_basic_opensearch_client(
+                get_opensearch_username(), get_opensearch_password()
+            )
+        return None
 
 
 # Component template paths — derived from the centralized flows directory

@@ -50,6 +50,12 @@ class FileService:
             )
         except Exception as e:
             logger.error("Failed to list files", error=str(e))
+            # An auth failure (OpenSearch rejected the credential) must not be
+            # masked as an empty result — surface it so the route returns 401.
+            from utils.opensearch_utils import is_opensearch_auth_error
+
+            if is_opensearch_auth_error(e):
+                raise
             return {"files": [], "total": 0, "page": page, "page_size": page_size}
 
         files = self._parse_aggregation_buckets(result)

@@ -1,10 +1,33 @@
 """Tests for the standalone ingestion-callback proxy router and the callback-URL
 selection helper that points Langflow at it."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import router_app
 from config import settings
+
+# --- run-mode-dependent enable default ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "run_mode, expected",
+    [
+        ("", "false"),  # unset -> default oss path
+        ("oss", "false"),
+        ("saas", "true"),
+        ("SaaS", "true"),
+        ("on_prem", "false"),
+        ("unknown-mode", "false"),
+    ],
+)
+def test_enable_default_resolves_from_run_mode(monkeypatch, run_mode, expected):
+    if run_mode:
+        monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
+    else:
+        monkeypatch.delenv("OPENRAG_RUN_MODE", raising=False)
+    assert settings._resolve_backend_router_enable_default() == expected
+
 
 # --- callback URL selection -------------------------------------------------
 

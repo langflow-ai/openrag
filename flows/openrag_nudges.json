@@ -1177,7 +1177,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "38bb3005-a7d5-4eac-8a7f-433d69e4ad1e"
               },
               "_type": "Component",
               "api_key": {
@@ -1410,81 +1410,6 @@
                     "provider": "OpenAI"
                   },
                   {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-4-h-small",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-8b-code-instruct",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "ibm/granite-guardian-3-8b",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "meta-llama/llama-3-2-11b-vision-instruct",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "meta-llama/llama-3-3-70b-instruct",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
                     "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
@@ -1492,8 +1417,7 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatOpenAI",
-                      "model_name_param": "model",
-                      "not_enabled_locally": true
+                      "model_name_param": "model"
                     },
                     "name": "gpt-4o",
                     "provider": "OpenAI"
@@ -1746,7 +1670,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "38bb3005-a7d5-4eac-8a7f-433d69e4ad1e"
               },
               "_type": "Component",
               "api_base": {
@@ -1906,7 +1830,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -2015,96 +1939,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -2120,6 +1954,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -2284,7 +2119,7 @@
           "x": -326.63616916760816,
           "y": 1367.3460258727496
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -2304,9 +2139,11 @@
             "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
             "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
             "documentation": "",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "docs_metadata",
+              "openrag_ingest_token",
+              "openrag_ingest_run_id",
               "opensearch_url",
               "index_name",
               "engine",
@@ -2331,30 +2168,38 @@
               "use_ssl",
               "verify_certs",
               "request_timeout",
-              "max_retries"
+              "max_retries",
+              "openrag_ingest_url",
+              "openrag_ingest_token",
+              "openrag_ingest_run_id",
+              "openrag_ingest_batch_size"
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-04-07T18:43:59.369Z",
+            "last_updated": "2026-06-03T19:37:14.327Z",
             "legacy": false,
             "metadata": {
-              "code_hash": "4a05432fb489",
+              "code_hash": "220fbf21a963",
               "dependencies": {
                 "dependencies": [
                   {
-                    "name": "opensearchpy",
-                    "version": "2.8.0"
+                    "name": "httpx",
+                    "version": "0.28.1"
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.4.6"
+                  },
+                  {
+                    "name": "opensearchpy",
+                    "version": "2.8.0"
                   },
                   {
                     "name": "tenacity",
                     "version": "8.5.0"
                   }
                 ],
-                "total_dependencies": 3
+                "total_dependencies": 4
               },
               "module": "custom_components.opensearch_multimodel_multiembedding"
             },
@@ -2422,7 +2267,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "3832f035-bbe8-40c4-ba61-8f760b613bdb"
+                "value": "38bb3005-a7d5-4eac-8a7f-433d69e4ad1e"
               },
               "_type": "Component",
               "auth_mode": {
@@ -2433,11 +2278,13 @@
                 "display_name": "Authentication Mode",
                 "dynamic": false,
                 "external_options": {},
-                "info": "Authentication method: 'basic' for username/password authentication, or 'jwt' for JSON Web Token (Bearer) authentication.",
+                "info": "Authentication method: 'basic' for username/password authentication, 'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to delegate writes to the OpenRAG backend ingest callback (no direct OpenSearch credentials required — only OPENRAG_* fields).",
+                "load_from_db": false,
                 "name": "auth_mode",
                 "options": [
                   "basic",
-                  "jwt"
+                  "jwt",
+                  "openrag"
                 ],
                 "options_metadata": [],
                 "override_skip": false,
@@ -2734,7 +2581,7 @@
                 "override_skip": false,
                 "password": true,
                 "placeholder": "",
-                "required": true,
+                "required": false,
                 "show": true,
                 "title_case": false,
                 "track_in_telemetry": false,
@@ -2821,6 +2668,101 @@
                 "track_in_telemetry": true,
                 "type": "int",
                 "value": 10
+              },
+              "openrag_ingest_batch_size": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "OpenRAG Ingest Batch Size",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "openrag_ingest_batch_size",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 100
+              },
+              "openrag_ingest_run_id": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "OpenRAG Ingest Run ID",
+                "dynamic": false,
+                "info": "",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_run_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_RUN_ID"
+              },
+              "openrag_ingest_token": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "OpenRAG Ingest Token",
+                "dynamic": false,
+                "info": "Short-lived token used only for OpenRAG ingest callbacks.",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_token",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_TOKEN"
+              },
+              "openrag_ingest_url": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "OpenRAG Ingest URL",
+                "dynamic": false,
+                "info": "Internal OpenRAG callback URL for backend-owned document indexing.",
+                "input_types": [
+                  "Text",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "openrag_ingest_url",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENRAG_INGEST_URL"
               },
               "opensearch_url": {
                 "_input_type": "StrInput",
@@ -3138,7 +3080,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "38bb3005-a7d5-4eac-8a7f-433d69e4ad1e"
               },
               "_type": "Component",
               "api_base": {
@@ -3298,7 +3240,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -3407,96 +3349,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -3512,6 +3364,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -3757,7 +3610,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "79f95013-41e9-4a4f-af49-f07ec1fac77a"
+                "value": "38bb3005-a7d5-4eac-8a7f-433d69e4ad1e"
               },
               "_type": "Component",
               "api_base": {
@@ -3917,7 +3770,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -4026,96 +3879,6 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "sentence-transformers/all-minilm-l6-v2",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -4131,6 +3894,7 @@
                 "type": "model",
                 "value": [
                   {
+                    "category": "OpenAI",
                     "icon": "OpenAI",
                     "metadata": {
                       "embedding_class": "OpenAIEmbeddings",
@@ -4656,7 +4420,7 @@
     ],
     "viewport": {
       "x": 219.98802613623758,
-      "y": -187.42019049039925,
+      "y": -149.42019049039925,
       "zoom": 0.4738353067326915
     }
   },
@@ -4664,7 +4428,7 @@
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
-  "last_tested_version": "1.9.0",
+  "last_tested_version": "1.9.6",
   "locked": true,
   "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [

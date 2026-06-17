@@ -6,13 +6,17 @@ import {
   CheckCircle,
   Clock,
   Loader2,
-  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
+import {
+  type TaskProgressDetailed,
+  TaskProgressDetails,
+} from "@/components/task-progress-details";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +29,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { Task, useTask } from "@/contexts/task-context";
 import {
-  hasFailedFileEntries,
+  hasIssueFileEntries,
   isCompletedTotalFailure,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
@@ -43,6 +47,7 @@ export function TaskNotificationMenu() {
     selectedTaskTrigger,
     cancelTask,
     closeMenu,
+    openTaskDialog,
   } = useTask();
   const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
@@ -244,7 +249,9 @@ export function TaskNotificationMenu() {
     }
   };
 
-  const formatTaskProgress = (task: Task) => {
+  const formatTaskProgress = (
+    task: Task,
+  ): { basic: string; detailed: TaskProgressDetailed } | null => {
     const total = task.total_files || 0;
     const processed = task.processed_files || 0;
     const successful = task.successful_files || 0;
@@ -324,6 +331,13 @@ export function TaskNotificationMenu() {
     return `${diffDays}d ago`;
   };
 
+  const cancelTaskButtonClass = cn(
+    "h-10 w-full shrink-0 shadow-none",
+    isCloudBrand
+      ? "justify-start rounded-none bg-border px-4 text-left text-muted-foreground hover:bg-accent hover:text-muted-foreground"
+      : "justify-center rounded-lg border border-muted-foreground bg-task-dialog-oss-selected py-2.5 px-3 text-foreground hover:!bg-accent hover:text-foreground",
+  );
+
   return (
     <div
       className={cn("h-full bg-background", isCloudBrand && "ibm-tasks-panel")}
@@ -345,7 +359,7 @@ export function TaskNotificationMenu() {
               </h4>
               {activeTasks.map((task) => {
                 const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasFailedFileEntries(task);
+                const hasFailedFiles = hasIssueFileEntries(task);
                 const showCancel =
                   task.status === "pending" ||
                   task.status === "running" ||
@@ -361,8 +375,8 @@ export function TaskNotificationMenu() {
                     className="bg-card/50 border-0 shadow-none py-mmd px-4"
                   >
                     <CardHeader className="p-0 pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm flex items-center gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-sm flex min-w-0 flex-1 items-center gap-2">
                           {showTaskIcon &&
                             getTaskIcon(
                               task.status,
@@ -371,6 +385,14 @@ export function TaskNotificationMenu() {
                             )}
                           Task {task.task_id.substring(0, 8)}...
                         </CardTitle>
+                        <button
+                          type="button"
+                          aria-label="Open task details"
+                          className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                          onClick={() => openTaskDialog(task.task_id)}
+                        >
+                          <IncidentReporterIcon className="size-4" />
+                        </button>
                       </div>
                       <CardDescription className="text-xs">
                         Started {formatRelativeTime(task.created_at)}
@@ -389,48 +411,24 @@ export function TaskNotificationMenu() {
                               Progress: {progress.basic}
                             </div>
                             {progress.detailed && (
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="flex items-center gap-1">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                  <span className="text-green-600">
-                                    {progress.detailed.successful} success
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                  <span className="text-red-600">
-                                    {progress.detailed.failed} failed
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                  <span className="text-blue-600">
-                                    {progress.detailed.running} running
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                  <span className="text-yellow-600">
-                                    {progress.detailed.pending} pending
-                                  </span>
-                                </div>
-                              </div>
+                              <TaskProgressDetails
+                                detailed={progress.detailed}
+                                isCloudBrand={isCloudBrand}
+                              />
                             )}
                           </div>
                         )}
                         {showCancel && (
-                          <div
-                            className={`flex justify-end ${progress ? "mt-3" : ""}`}
-                          >
+                          <div className={cn(progress && "mt-3")}>
                             <Button
-                              variant="destructive"
-                              size="sm"
+                              type="button"
+                              variant="ghost"
+                              ignoreTitleCase
                               onClick={() => cancelTask(task.task_id)}
-                              className="h-7 px-3 text-xs"
                               title="Cancel task"
+                              className={cancelTaskButtonClass}
                             >
-                              <X className="h-3 w-3 mr-1" />
-                              Cancel
+                              Cancel task
                             </Button>
                           </div>
                         )}
@@ -474,7 +472,7 @@ export function TaskNotificationMenu() {
               )}
               renderItem={(task) => {
                 const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasFailedFileEntries(task);
+                const hasFailedFiles = hasIssueFileEntries(task);
                 const isTotalFailure = isCompletedTotalFailure(task);
                 const shouldExpandDetails = selectedTaskId === task.task_id;
 

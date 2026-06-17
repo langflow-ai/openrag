@@ -56,7 +56,9 @@ async def test_returns_success_immediately_when_already_done(polling_service, mo
 
     assert result.outcome == PollOutcome.SUCCESS
     assert mock_docling_service.check_task_status.call_count == 1
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )
 
 
 @pytest.mark.asyncio
@@ -79,7 +81,9 @@ async def test_loops_through_processing_then_success(
     assert result.outcome == PollOutcome.SUCCESS
     assert mock_docling_service.check_task_status.call_count == 4
     assert no_sleep.call_count == 3
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )
 
 
 @pytest.mark.asyncio
@@ -95,7 +99,9 @@ async def test_success_status_requires_fetchable_result(polling_service, mock_do
 
     assert result.outcome == PollOutcome.FAILED
     assert "missing document.json_content" in (result.detail or "")
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )
 
 
 @pytest.mark.asyncio
@@ -133,7 +139,9 @@ async def test_tolerates_brief_not_found_then_succeeds(
     )
 
     assert result.outcome == PollOutcome.SUCCESS
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )
 
 
 @pytest.mark.asyncio
@@ -214,7 +222,9 @@ async def test_backoff_grows_interval_up_to_cap(polling_service, mock_docling_se
     # see the raw progression.
     sleeps = [call.args[0] for call in no_sleep.call_args_list]
     assert sleeps == [1.0, 2.0, 4.0, 4.0]
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )
 
 
 @pytest.mark.asyncio
@@ -277,4 +287,6 @@ async def test_permanent_result_fetch_error_fails_immediately(
 
     assert result.outcome == PollOutcome.FAILED
     assert "task expired" in (result.detail or "")
-    mock_docling_service.fetch_task_result.assert_awaited_once_with("t1")
+    mock_docling_service.fetch_task_result.assert_awaited_once_with(
+        "t1", user_id=None, auth_header=None
+    )

@@ -5,6 +5,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -83,9 +84,17 @@ class GoogleDriveConnector(BaseConnector):
     CLIENT_SECRET_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_SECRET"
 
     # Connector metadata
+    CONNECTOR_TYPE = "google_drive"
+    CONNECTOR_KIND = "oauth"
     CONNECTOR_NAME = "Google Drive"
     CONNECTOR_DESCRIPTION = "Add knowledge from Google Drive"
     CONNECTOR_ICON = "google-drive"
+
+    @classmethod
+    def get_oauth_class(cls):
+        from .oauth import GoogleDriveOAuth
+
+        return GoogleDriveOAuth
 
     # Supported alias keys coming from various frontends / pickers
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
@@ -186,6 +195,10 @@ class GoogleDriveConnector(BaseConnector):
 
         # Authentication state
         self._authenticated: bool = False
+
+        # Set by setup_subscription; read by the connection manager to persist
+        self.webhook_resource_id: str | None = None
+        self.webhook_expiration: str | None = None
 
     # -------------------------
     # Helpers
@@ -395,9 +408,15 @@ class GoogleDriveConnector(BaseConnector):
             )
             for fid in self.cfg.file_ids:
                 meta = self._get_file_meta_by_id(fid)
-                if not meta or meta.get("trashed"):
+                if not meta:
                     logger.debug(
                         "[GoogleDrive] _iter_selected_items: no metadata for file_id=%s", fid
+                    )
+                    continue
+
+                if meta.get("trashed"):
+                    logger.debug(
+                        "[GoogleDrive] _iter_selected_items: file_id=%s is trashed, skipping", fid
                     )
                     continue
 
@@ -849,30 +868,57 @@ class GoogleDriveConnector(BaseConnector):
         )
         return doc
 
+    def _resolve_webhook_address(self) -> str | None:
+        """Resolve the Drive push notification URL from connection config or env."""
+        webhook_url = self.config.get("webhook_url")
+        if isinstance(webhook_url, str) and webhook_url.strip():
+            return webhook_url.strip()
+
+        from config.settings import GOOGLE_DRIVE_WEBHOOK_URL, WEBHOOK_BASE_URL
+
+        legacy = GOOGLE_DRIVE_WEBHOOK_URL
+        if legacy and legacy.strip():
+            return legacy.strip()
+
+        if WEBHOOK_BASE_URL:
+            return f"{WEBHOOK_BASE_URL.rstrip('/')}/connectors/{self.CONNECTOR_TYPE}/webhook"
+
+        webhook_address = getattr(self.cfg, "webhook_address", None)
+        if isinstance(webhook_address, str) and webhook_address.strip():
+            return webhook_address.strip()
+
+        return None
+
+    def extract_webhook_channel_id(
+        self, payload: dict[str, Any], headers: dict[str, str]
+    ) -> str | None:
+        """Extract Google Drive channel ID from push notification headers."""
+        normalized = {k.lower(): v for k, v in headers.items()}
+        channel_id = normalized.get("x-goog-channel-id")
+        if isinstance(channel_id, str) and channel_id.strip():
+            return channel_id.strip()
+        return None
+
     async def setup_subscription(self) -> str:
         """
         Start a Google Drive Changes API watch (webhook).
         Returns the channel ID (subscription ID) as a string.
 
-        Requires a webhook URL to be configured. This implementation looks for:
-        1) self.cfg.webhook_address (preferred if you have it in your config dataclass)
-        2) os.environ["GOOGLE_DRIVE_WEBHOOK_URL"]
+        Webhook URL resolution order:
+        1) connection config ``webhook_url`` (from ``WEBHOOK_BASE_URL`` at connect time)
+        2) ``GOOGLE_DRIVE_WEBHOOK_URL`` env var (legacy override)
+        3) ``WEBHOOK_BASE_URL`` + ``/connectors/google_drive/webhook``
         """
-        import os
-
         # 1) Ensure we are authenticated and have a live Drive service
         ok = await self.authenticate()
         if not ok:
             raise RuntimeError("GoogleDriveConnector.setup_subscription: not authenticated")
 
-        # 2) Resolve webhook address (no param in ABC, so pull from config/env)
-        webhook_address = getattr(self.cfg, "webhook_address", None) or os.getenv(
-            "GOOGLE_DRIVE_WEBHOOK_URL"
-        )
+        webhook_address = self._resolve_webhook_address()
         if not webhook_address:
             raise RuntimeError(
                 "GoogleDriveConnector.setup_subscription: webhook URL not configured. "
-                "Set cfg.webhook_address or GOOGLE_DRIVE_WEBHOOK_URL."
+                "Set WEBHOOK_BASE_URL or GOOGLE_DRIVE_WEBHOOK_URL."
             )
 
         # 3) Ensure we have a starting page token (checkpoint)
@@ -917,6 +963,20 @@ class GoogleDriveConnector(BaseConnector):
                 "webhook_address": webhook_address,
                 "page_token": self.cfg.changes_page_token,
             }
+
+            # Expose for the connection manager to persist (Drive returns
+            # expiration as an epoch-ms string; normalize to ISO-8601 UTC).
+            self.webhook_resource_id = resource_id
+            self.webhook_expiration = None
+            if expiration:
+                from datetime import datetime
+
+                try:
+                    self.webhook_expiration = datetime.fromtimestamp(
+                        int(expiration) / 1000, tz=UTC
+                    ).isoformat()
+                except (TypeError, ValueError):
+                    pass
 
             if not isinstance(channel_id, str) or not channel_id:
                 raise RuntimeError(f"Drive watch returned invalid channel id: {channel_id!r}")
@@ -1058,7 +1118,7 @@ class GoogleDriveConnector(BaseConnector):
                         pageToken=page_token,
                         fields=(
                             "nextPageToken, newStartPageToken, "
-                            "changes(fileId, file(id, name, mimeType, trashed, parents, "
+                            "changes(fileId, removed, file(id, name, mimeType, trashed, parents, "
                             "shortcutDetails, driveId, modifiedTime, webViewLink))"
                         ),
                         supportsAllDrives=True,
@@ -1071,9 +1131,16 @@ class GoogleDriveConnector(BaseConnector):
                     fid = ch.get("fileId")
                     fobj = ch.get("file") or {}
 
-                    # Skip if no file or explicitly trashed (you can choose to still return these IDs)
-                    if not fid or fobj.get("trashed"):
-                        # If you want to *include* deletions, collect fid here instead of skipping.
+                    if not fid:
+                        continue
+
+                    if ch.get("removed") or fobj.get("trashed"):
+                        # Deletion/trash: include unconditionally so downstream
+                        # cleanup runs. Scope filtering is impossible here (a
+                        # removed file has no metadata; a trashed file is
+                        # excluded from the selected-scope set) and cleanup of
+                        # a never-indexed id is a harmless no-op.
+                        affected.append(fid)
                         continue
 
                     # Resolve shortcuts to target

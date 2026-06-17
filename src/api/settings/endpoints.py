@@ -76,15 +76,17 @@ from dependencies import (
     get_knowledge_filter_service,
     get_langflow_file_service,
     get_models_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
     require_permission,
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
+from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
-from utils.logging_config import get_logger
+from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
@@ -95,10 +97,18 @@ async def get_settings(
     request: Request,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsResponse:
     """Get application settings"""
     try:
         openrag_config = get_openrag_config()
+
+        # Provider configuration is admin-only. Non-admins still get the rest of
+        # settings (the UI needs them) but the providers section is redacted.
+        show_providers = True
+        if is_rbac_enforced():
+            uid = user.db_user_id or user.user_id
+            show_providers = await rbac.has_permission(uid, "providers:read")
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
@@ -201,7 +211,9 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-            ),
+            )
+            if show_providers
+            else None,
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
                 embedding_provider=knowledge_config.embedding_provider,
@@ -237,6 +249,7 @@ async def update_settings(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -266,6 +279,18 @@ async def update_settings(
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+
+        # Provider changes are admin-only. The outer gate only requires
+        # config:write; require providers:write specifically when any
+        # provider field is being touched (defends custom roles too).
+        if should_validate and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+            uid = user.db_user_id or user.user_id
+            if not await rbac.has_permission(uid, "providers:write"):
+                await rbac.audit_denied(uid, "providers:write")
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "permission_denied", "required": "providers:write"},
+                )
 
         if should_validate:
             try:
@@ -779,6 +804,8 @@ async def onboarding(
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
 
+        log_bootstrap_env(logger, "onboarding")
+
         # Get current configuration
         current_config = get_openrag_config()
 
@@ -1046,7 +1073,6 @@ async def onboarding(
                 from config.settings import clients as app_clients
                 from config.settings import (
                     get_openrag_service_token,
-                    get_opensearch_password,
                     get_opensearch_username,
                 )
                 from main import init_index
@@ -1056,12 +1082,11 @@ async def onboarding(
                     is_run_mode_saas,
                 )
 
-                # Choose the OpenSearch client + admin identity for index/security
-                # setup, by run mode:
+                # Choose the admin identity for index/security setup, by run mode:
                 #   saas    -> platform service token (JWT); admin from its claim
                 #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
                 #   oss     -> OpenSearch basic auth; OpenSearch username as admin
-                opensearch_client = None
+                # The matching client comes from the shared run-mode-aware helper.
                 admin_username = None
                 if is_run_mode_saas():
                     service_token = get_openrag_service_token()
@@ -1077,44 +1102,22 @@ async def onboarding(
                                 "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
                                 "cannot determine OpenSearch admin during onboarding"
                             )
-                        opensearch_client = app_clients.create_opensearch_client_from_jwt(
-                            service_token
-                        )
-                        logger.info(
-                            "Onboarding OpenSearch setup: saas mode, using platform service token",
-                            admin_username=admin_username,
-                        )
                     elif user:
                         # TODO: backward-compatibility fallback for saas deployments
                         # without OPENRAG_SERVICE_TOKEN — pins the onboarding user as
                         # admin instead of the platform service identity. Remove once
                         # the service token is always provided.
-                        if user.jwt_token:
-                            opensearch_client = app_clients.create_user_opensearch_client(
-                                user.jwt_token
-                            )
                         admin_username = user.user_id
-                        logger.warning(
-                            "Onboarding OpenSearch setup: saas mode without "
-                            "OPENRAG_SERVICE_TOKEN; falling back to the onboarding user "
-                            "as admin (backward-compatibility path, to be removed later)",
-                            admin_username=admin_username,
-                        )
-                    else:
-                        logger.info(
-                            "Onboarding OpenSearch setup: saas mode with no service "
-                            "token or user; using the unauthenticated global client"
-                        )
                 elif is_run_mode_on_prem() or is_run_mode_oss():
                     admin_username = get_opensearch_username()
-                    opensearch_client = app_clients.create_basic_opensearch_client(
-                        admin_username, get_opensearch_password()
-                    )
-                    logger.info(
-                        "Onboarding OpenSearch setup: %s mode, using OpenSearch basic auth"
-                        % ("on_prem" if is_run_mode_on_prem() else "oss"),
-                        admin_username=admin_username,
-                    )
+
+                opensearch_client = app_clients.create_index_admin_opensearch_client(
+                    user.jwt_token if user else None
+                )
+                logger.info(
+                    "Onboarding OpenSearch setup",
+                    admin_username=admin_username,
+                )
 
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)

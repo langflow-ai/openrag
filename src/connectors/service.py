@@ -180,17 +180,40 @@ class ConnectorService:
                     models_service=self.models_service,
                     docling_service=self.docling_service,
                 )
+                standard_kwargs: dict[str, Any] = {}
+                if isinstance(ingest_settings, dict):
+                    em = ingest_settings.get("embeddingModel")
+                    if isinstance(em, str) and em.strip():
+                        standard_kwargs["embedding_model"] = em.strip()
+                    for ui_key, param in (
+                        ("chunkSize", "chunk_size"),
+                        ("chunkOverlap", "chunk_overlap"),
+                    ):
+                        raw = ingest_settings.get(ui_key)
+                        if raw is not None:
+                            try:
+                                standard_kwargs[param] = int(raw)
+                            except (TypeError, ValueError):
+                                pass
+                    if "ocr" in ingest_settings:
+                        standard_kwargs["ocr"] = bool(ingest_settings["ocr"])
+                    if "pictureDescriptions" in ingest_settings:
+                        standard_kwargs["picture_descriptions"] = bool(
+                            ingest_settings["pictureDescriptions"]
+                        )
+
                 result = await processor.process_document_standard(
                     file_path=tmp_path,
-                    file_hash=document.id,  # Use connector document ID as hash
+                    file_hash=document.id,
                     owner_user_id=owner_user_id,
-                    original_filename=document.filename,  # Pass the original Google Doc title
+                    original_filename=document.filename,
                     jwt_token=jwt_token,
                     owner_name=owner_name,
                     owner_email=owner_email,
                     file_size=len(document.content) if document.content else 0,
                     connector_type=connector_type,
                     acl=document.acl,
+                    **standard_kwargs,
                 )
 
                 logger.info(
@@ -219,6 +242,7 @@ class ConnectorService:
         connector_type: str,
         jwt_token: str = None,
         id_field: str = "document_id",
+        indexed_filename: str | None = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
         from utils.acl_utils import update_document_acl
@@ -294,7 +318,7 @@ class ConnectorService:
                         "params": {
                             "source_url": document.source_url,
                             "connector_type": connector_type,
-                            "filename": document.filename,
+                            "filename": indexed_filename or document.filename,
                             "created_time": document.created_time.isoformat()
                             if document.created_time
                             else None,
@@ -322,6 +346,7 @@ class ConnectorService:
         max_files: int = None,
         jwt_token: str = None,
         filename_filter: set = None,
+        ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
     ) -> str:
         """
@@ -335,6 +360,8 @@ class ConnectorService:
             filename_filter: Optional set of filenames to filter - only files with names
                            in this set will be synced. Used to prevent deleted files
                            from being re-synced.
+            ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …)
+                forwarded to ``ConnectorFileProcessor``.
         """
         jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
 
@@ -420,7 +447,9 @@ class ConnectorService:
                 else DocumentService(session_manager=self.session_manager)
             ),
             models_service=self.models_service,
+            ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
+            connector_type=connector.CONNECTOR_TYPE,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -520,6 +549,27 @@ class ConnectorService:
                 for f in expanded_files:
                     expanded_files_info.append(f)
 
+                # Requested IDs that vanished during expansion are either
+                # folders (replaced by their children) or gone at the source
+                # (deleted/trashed). Re-add the non-folder ones so the
+                # processor can run its deleted-at-source cleanup
+                # (get_file_content -> 404 -> delete indexed chunks).
+                expanded_set = set(expanded_file_ids)
+                known_folder_ids = {
+                    f["id"] for f in (file_infos or []) if f.get("isFolder") and f.get("id")
+                }
+                missing_ids = [
+                    fid
+                    for fid in file_ids
+                    if fid not in expanded_set and fid not in known_folder_ids
+                ]
+                if missing_ids:
+                    logger.info(
+                        f"Re-adding {len(missing_ids)} file id(s) missing after expansion "
+                        f"(possibly deleted at source)"
+                    )
+                    expanded_file_ids = expanded_file_ids + missing_ids
+
             if not expanded_file_ids:
                 logger.warning(
                     f"No files found after expanding file_ids. "
@@ -582,6 +632,7 @@ class ConnectorService:
             models_service=self.models_service,
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
+            connector_type=connector.CONNECTOR_TYPE,
         )
 
         # Create custom task using TaskService

@@ -9,9 +9,11 @@ from typing import Any
 import httpx
 
 from config.settings import (
+    DOCLING_SERVE_VERIFY_SSL,
     LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
+    OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
 )
@@ -196,6 +198,13 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
+            logger.warning(
+                "[LF] Backend-owned ingest delegation DISABLED: no ingest_token_service "
+                "wired. No OPENRAG_INGEST_* globals will be sent, so the Langflow "
+                "OpenSearch component will fall back to a direct write.",
+                document_id=document_id,
+                backend_router_enabled=OPENRAG_BACKEND_ROUTER_ENABLE,
+            )
             return None, None
 
         from config.settings import get_index_name
@@ -237,9 +246,24 @@ class LangflowFileService:
         ingest_run_id: str | None,
     ) -> dict[str, str]:
         if not ingest_token or not ingest_run_id:
+            logger.warning(
+                "[LF] Ingest callback globals NOT attached to Langflow run "
+                "(missing token or run_id) — OpenSearch component will resolve "
+                "OPENRAG_INGEST_* to their placeholders and fall back to a direct "
+                "write instead of delegating to the backend.",
+                has_token=bool(ingest_token),
+                has_run_id=bool(ingest_run_id),
+            )
             return {}
+        callback_url = get_ingest_callback_url()
+        logger.info(
+            "[LF] Ingest callback globals attached — delegating writes to backend",
+            ingest_run_id=ingest_run_id,
+            callback_url=callback_url,
+            batch_size=LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+        )
         return {
-            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": get_ingest_callback_url(),
+            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": callback_url,
             "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN": ingest_token,
             "X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID": ingest_run_id,
             "X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE": str(
@@ -411,6 +435,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
             if docling_task_id
             else "",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
 
         # Serialize ACL lists as JSON strings for Langflow global vars
@@ -585,6 +610,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-FILENAME": str(docs_url),
             "X-Langflow-Global-Var-MIMETYPE": "text/html",
             "X-Langflow-Global-Var-FILESIZE": "0",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
         ingest_token, ingest_run_id = self._configure_ingest_callback(
             document_id=resolved_document_id,
@@ -791,6 +817,9 @@ class LangflowFileService:
         content: bytes,
         jwt_token: str | None = None,
         owner: str | None = None,
+        *,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
@@ -805,7 +834,12 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token
+                filename,
+                content,
+                user_id=owner,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             logger.debug(
                 "[LF] Docling submission accepted",
@@ -868,12 +902,24 @@ class LangflowFileService:
 
         filename, content, _ = file_tuple
 
+        ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        pic_desc_override = (
+            settings.get("pictureDescriptions") if isinstance(settings, dict) else None
+        )
+
         # ── Phase 1: submit to Docling ──────────────────────────────────
         if file_task is not None:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(filename, content, owner=owner, jwt_token=jwt_token)
+        task_id = await self.submit_to_docling(
+            filename,
+            content,
+            owner=owner,
+            jwt_token=jwt_token,
+            ocr=ocr_override,
+            picture_descriptions=pic_desc_override,
+        )
 
         if file_task is not None:
             file_task.docling_task_id = task_id
@@ -897,6 +943,8 @@ class LangflowFileService:
                 max_interval=DOCLING_POLL_MAX_INTERVAL_SECONDS,
                 backoff_factor=DOCLING_POLL_BACKOFF_FACTOR,
                 transient_retry_budget=DOCLING_POLL_TRANSIENT_RETRIES,
+                user_id=owner,
+                auth_header=jwt_token,
             )
 
             if poll_result.outcome != PollOutcome.SUCCESS:
@@ -942,6 +990,11 @@ class LangflowFileService:
         if file_task is not None:
             file_task.phase = IngestionPhase.LANGFLOW
 
+        _raw_em = settings.get("embeddingModel") if isinstance(settings, dict) else None
+        selected_embedding = (
+            _raw_em.strip() if isinstance(_raw_em, str) and _raw_em.strip() else None
+        )
+
         try:
             total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
@@ -957,6 +1010,7 @@ class LangflowFileService:
                 docling_task_id=task_id,
                 document_id=document_id,
                 source_url=source_url,
+                selected_embedding_model=selected_embedding,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,

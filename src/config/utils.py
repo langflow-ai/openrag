@@ -100,10 +100,19 @@ def verify_jwt_from_issuer(
     clients, pin the issuer instead.
     """
     raw_token = _strip_bearer_prefix(token)
+    alg = kid = issuer = None
     try:
         header = jwt.get_unverified_header(raw_token)
-        algorithm = header.get("alg")
+        alg = header.get("alg")
+        kid = header.get("kid")
+        algorithm = alg
         if algorithm not in algorithms:
+            logger.debug(
+                "JWT rejected: unsupported alg",
+                alg=alg,
+                allowed=list(algorithms),
+                kid=kid,
+            )
             return None
 
         unverified_claims = jwt.decode(
@@ -112,6 +121,11 @@ def verify_jwt_from_issuer(
         )
         issuer = unverified_claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
+            logger.debug(
+                "JWT rejected: missing or invalid iss claim",
+                alg=alg,
+                kid=kid,
+            )
             return None
 
         public_key = get_public_key_from_issuer(
@@ -133,5 +147,35 @@ def verify_jwt_from_issuer(
             decode_kwargs["audience"] = audience
 
         return jwt.decode(raw_token, public_key, **decode_kwargs)
-    except (ValueError, httpx.HTTPError, jwt.InvalidTokenError):
+    except (ValueError, httpx.HTTPError, jwt.InvalidTokenError) as e:
+        logger.debug(
+            "JWT verification failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            alg=alg,
+            kid=kid,
+            iss=issuer,
+        )
         return None
+
+
+def resolve_jwt_claims(token: str | None) -> dict[str, Any] | None:
+    """Resolve claims from a forwarded JWT (header or session token).
+
+    When ``OPENRAG_JWT_VERIFY_SIGNATURE`` is true, verifies the signature via
+    the token's ``iss`` JWKS URL. Otherwise decodes without verification,
+    trusting that upstream auth already validated the caller.
+    """
+    if not token or not str(token).strip():
+        return None
+
+    from config.settings import get_jwt_issuer_verify_tls, get_jwt_verify_signature
+
+    if get_jwt_verify_signature():
+        logger.debug("JWT claims: verifying signature")
+        return verify_jwt_from_issuer(token, verify_tls=get_jwt_issuer_verify_tls())
+
+    from auth import ibm_auth
+
+    logger.debug("JWT claims: decode only (signature verification disabled)")
+    return ibm_auth.decode_ibm_jwt(token)
