@@ -1,7 +1,33 @@
 """Utility functions for building Langflow request headers."""
 
 from typing import Dict
+from urllib.parse import quote
+
 from utils.container_utils import transform_localhost_url
+
+
+def ascii_safe_header_value(value) -> str:
+    """Return an ASCII-only HTTP header value.
+
+    httpx (and HTTP itself) requires header values to be ASCII-encodable, so a
+    non-ASCII filename or owner name (e.g. ``こんにちは.pdf`` or ``José``) placed
+    into an ``X-Langflow-Global-Var-*`` header raises ``UnicodeEncodeError``
+    before the request is sent. ASCII values (including spaces) pass through
+    byte-for-byte; only values containing non-ASCII characters are
+    percent-encoded so they can be transmitted.
+
+    Note: in the legacy direct-write ingestion path (no ingest-token service
+    wired) the FILENAME header value is stored verbatim as the indexed
+    ``filename`` column, so a non-ASCII filename lands there percent-encoded.
+    The backend-router path (the default) is unaffected: it sources the
+    authoritative filename from the ingest JWT context, not this header.
+    """
+    s = "" if value is None else str(value)
+    try:
+        s.encode("ascii")
+        return s
+    except UnicodeEncodeError:
+        return quote(s, safe=" /")
 
 
 def build_ibm_opensearch_vars(
