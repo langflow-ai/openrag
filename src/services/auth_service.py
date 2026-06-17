@@ -155,6 +155,10 @@ class AuthService:
                 f"Set {client_key} and {secret_key} in the environment."
             )
 
+        # Per-connector OAuth prompt: Microsoft uses "select_account" so a one-time
+        # tenant admin consent is reused; Google uses "consent" for refresh tokens.
+        prompt = getattr(oauth_class_any, "AUTH_PROMPT", "consent")
+
         return {
             "connection_id": connection_id,
             "oauth_config": {
@@ -163,6 +167,7 @@ class AuthService:
                 "redirect_uri": effective_redirect_uri,
                 "authorization_endpoint": auth_endpoint,
                 "token_endpoint": token_endpoint,
+                "prompt": prompt,
             },
         }
 
