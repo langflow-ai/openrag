@@ -2,18 +2,26 @@
 FastMCP streamable HTTP server integration.
 
 Exposes all /v1/ FastAPI endpoints as MCP tools over streamable HTTP transport.
-Auth headers passed by MCP clients are forwarded transparently to the underlying
-FastAPI endpoint handlers via FastMCP's internal proxy.
+Auth headers passed by MCP clients are forwarded to the underlying FastAPI
+endpoint handlers via FastMCP's internal proxy.
+
+IMPORTANT: FastMCP's proxy STRIPS the ``Authorization`` header before invoking
+the /v1 handler (it is in get_http_headers()'s exclude set), so neither an
+``Authorization`` JWT nor ``Authorization: Bearer orag_...`` survives the proxy.
+Use ``X-API-Key`` for API keys. For SaaS/IBM auth, the gateway (Traefik)
+authenticates the X-Username/X-Api-Key pair and injects the minted user JWT into
+the add-on ``X-OpenRAG-API-JWT`` header (OPENRAG_API_JWT_HEADER), which FastMCP
+forwards because it is not in the exclude set; the /v1 auth dependency reads it.
 
 Supported authentication methods:
 
 1. OpenRAG API Key:
    - X-API-Key: orag_...
-   - Authorization: Bearer orag_...
 
 2. IBM Auth (when IBM_AUTH_ENABLED=true):
    - X-Username: <ibm_username>
    - X-Api-Key: <ibm_api_key>
+   The gateway exchanges these for a user JWT placed in X-OpenRAG-API-JWT.
 
 Usage (MCP client config):
 
