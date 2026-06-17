@@ -70,7 +70,7 @@ class SharePointOAuth:
         self.authority = authority
         self.allow_json_refresh = allow_json_refresh
         self.token_cache = msal.SerializableTokenCache()
-        self._current_account = None
+        self._current_account: dict[str, Any] | None = None
 
         # Initialize MSAL Confidential Client
         self.app = msal.ConfidentialClientApplication(
@@ -117,7 +117,7 @@ class SharePointOAuth:
                 if accounts:
                     self._current_account = accounts[0]
                     logger.debug(
-                        f"Set current account: {self._current_account.get('username', 'no username')}"
+                        f"Set current account: {accounts[0].get('username', 'no username')}"
                     )
 
                     if needs_upgrade:
@@ -180,7 +180,7 @@ class SharePointOAuth:
                 if accounts:
                     self._current_account = accounts[0]
                     logger.debug(
-                        f"Set current account after refresh: {self._current_account.get('username', 'no username')}"
+                        f"Set current account after refresh: {accounts[0].get('username', 'no username')}"
                     )
                 return True
 
