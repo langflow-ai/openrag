@@ -37,14 +37,10 @@ def _fake_os_client(health: dict, cluster_managers: int = 2) -> MagicMock:
 
 
 def _patch_settings(monkeypatch, *, enabled=True, nodes=9, data=3, managers=2):
-    monkeypatch.setattr(
-        "config.settings.OPENSEARCH_NODE_COUNT_CHECK_ENABLED", enabled
-    )
+    monkeypatch.setattr("config.settings.OPENSEARCH_NODE_COUNT_CHECK_ENABLED", enabled)
     monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_NODE_COUNT", nodes)
     monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_DATA_NODE_COUNT", data)
-    monkeypatch.setattr(
-        "config.settings.OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", managers
-    )
+    monkeypatch.setattr("config.settings.OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", managers)
 
 
 @pytest.mark.asyncio
