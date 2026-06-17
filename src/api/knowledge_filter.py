@@ -19,6 +19,27 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _error_response(result: dict) -> JSONResponse:
+    """Map a failed knowledge-filter service result to the right HTTP status.
+
+    Distinguishes an OpenSearch authentication failure (credential rejected ->
+    401, re-authenticate) from authorization ("access denied"/owner check ->
+    403). Conflating the two as 403 "insufficient permissions" hides the real
+    cause. ``not found`` stays 404; everything else is 500.
+    """
+    from utils.opensearch_utils import is_opensearch_auth_error
+
+    error_msg = result.get("error", "") or ""
+    low = error_msg.lower()
+    if "not found" in low or "already deleted" in low:
+        return JSONResponse(result, status_code=404)
+    if is_opensearch_auth_error(error_msg):
+        return JSONResponse(result, status_code=401)
+    if "access denied" in low or "insufficient permissions" in low:
+        return JSONResponse(result, status_code=403)
+    return JSONResponse(result, status_code=500)
+
+
 def normalize_query_data(query_data: str | dict) -> str:
     """
     Normalize query_data to ensure all required fields exist with defaults.
@@ -117,12 +138,7 @@ async def create_knowledge_filter(
 
     if result.get("success"):
         return JSONResponse(result, status_code=201)
-    else:
-        error_msg = result.get("error", "")
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def search_knowledge_filters(
@@ -139,12 +155,7 @@ async def search_knowledge_filters(
 
     if result.get("success"):
         return JSONResponse(result, status_code=200)
-    else:
-        error_msg = result.get("error", "")
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def get_knowledge_filter(
@@ -161,14 +172,7 @@ async def get_knowledge_filter(
 
     if result.get("success"):
         return JSONResponse(result, status_code=200)
-    else:
-        error_msg = result.get("error", "")
-        if "not found" in error_msg.lower():
-            return JSONResponse(result, status_code=404)
-        elif "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def update_knowledge_filter(
@@ -230,12 +234,7 @@ async def update_knowledge_filter(
 
     if result.get("success"):
         return JSONResponse(result, status_code=200)
-    else:
-        error_msg = result.get("error", "")
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def delete_knowledge_filter(
@@ -252,16 +251,7 @@ async def delete_knowledge_filter(
 
     if result.get("success"):
         return JSONResponse(result, status_code=200)
-    else:
-        error_msg = result.get("error", "")
-        if "not found" in error_msg.lower() or "already deleted" in error_msg.lower():
-            return JSONResponse(result, status_code=404)
-        elif (
-            "access denied" in error_msg.lower() or "insufficient permissions" in error_msg.lower()
-        ):
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def subscribe_to_knowledge_filter(
@@ -339,14 +329,7 @@ async def list_knowledge_filter_subscriptions(
 
     if result.get("success"):
         return JSONResponse(result, status_code=200)
-    else:
-        error_msg = result.get("error", "")
-        if "not found" in error_msg.lower():
-            return JSONResponse(result, status_code=404)
-        elif "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
-        else:
-            return JSONResponse(result, status_code=500)
+    return _error_response(result)
 
 
 async def cancel_knowledge_filter_subscription(
