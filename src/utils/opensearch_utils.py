@@ -132,7 +132,7 @@ def opensearch_error_fields(error: Exception) -> dict[str, Any]:
 
 async def wait_for_opensearch(
     opensearch_client: AsyncOpenSearch,
-    max_retries: int = 15,
+    max_retries: int = 30,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
 ) -> None:
@@ -182,6 +182,7 @@ async def wait_for_opensearch(
                             "GET", "/_nodes/coordinating_only:true/process,transport"
                         )
                         coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
+                        
                         if (
                             data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
                             or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
