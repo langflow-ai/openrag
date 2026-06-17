@@ -182,7 +182,7 @@ async def wait_for_opensearch(
                             "GET", "/_nodes/coordinating_only:true/process,transport"
                         )
                         coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
-                        
+
                         if (
                             data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
                             or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
