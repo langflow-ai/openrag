@@ -1242,6 +1242,17 @@ class AppClients:
             default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
             headers = {**default_headers, **passed_headers}
 
+            # HTTP headers must be ASCII; non-ASCII free-text globals (e.g. a
+            # filename or owner name like こんにちは.pdf / José) would otherwise
+            # raise UnicodeEncodeError in httpx. Percent-encode such values so
+            # the request can be sent. ASCII values pass through unchanged.
+            from utils.langflow_headers import ascii_safe_header_value
+
+            headers = {
+                k: ascii_safe_header_value(v) if isinstance(v, str) else v
+                for k, v in headers.items()
+            }
+
             # Remove Content-Type if explicitly set to None (for file uploads)
             if headers.get("Content-Type") is None:
                 headers.pop("Content-Type", None)
