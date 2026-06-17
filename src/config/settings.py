@@ -39,6 +39,16 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
+# Gate the OpenSearch node-count readiness check ("OS node_count" flag).
+# Enabled by default; set to false on small/single-node clusters.
+OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
+    "OPENSEARCH_NODE_COUNT_CHECK", "true"
+).strip().lower() in ("true", "1", "yes")
+
+# Expected cluster size, used only when the node-count check is enabled.
+OPENSEARCH_EXPECTED_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_NODE_COUNT", 6)
+OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 2)
+
 
 def get_opensearch_username() -> str:
     """OpenSearch admin/basic-auth username, read per-call so runtime/test

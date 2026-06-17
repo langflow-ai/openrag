@@ -163,12 +163,45 @@ async def wait_for_opensearch(
                 health = await opensearch_client.cluster.health()
                 status = health.get("status")
                 if status in ["green", "yellow"]:
-                    logger.info(
-                        "Successfully verified that OpenSearch is ready.",
-                        attempt=display_attempt,
-                        status=status,
+                    from config.settings import (
+                        OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                        OPENSEARCH_EXPECTED_NODE_COUNT,
+                        OPENSEARCH_NODE_COUNT_CHECK_ENABLED,
                     )
-                    return
+
+                    if OPENSEARCH_NODE_COUNT_CHECK_ENABLED:
+                        node_count = health.get("number_of_nodes", 0)
+                        data_node_count = health.get("number_of_data_nodes", 0)
+                        if (
+                            node_count < OPENSEARCH_EXPECTED_NODE_COUNT
+                            or data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
+                        ):
+                            logger.warning(
+                                "OpenSearch healthy but cluster has not reached expected node count.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_nodes=node_count,
+                                number_of_data_nodes=data_node_count,
+                                expected_nodes=OPENSEARCH_EXPECTED_NODE_COUNT,
+                                expected_data_nodes=OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                            )
+                            # Fall through to the retry/backoff below until nodes join.
+                        else:
+                            logger.info(
+                                "Successfully verified that OpenSearch is ready.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_nodes=node_count,
+                                number_of_data_nodes=data_node_count,
+                            )
+                            return
+                    else:
+                        logger.info(
+                            "Successfully verified that OpenSearch is ready.",
+                            attempt=display_attempt,
+                            status=status,
+                        )
+                        return
                 else:
                     logger.warning(
                         "OpenSearch is up but cluster health is red.",
