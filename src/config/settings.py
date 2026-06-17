@@ -48,6 +48,10 @@ OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
 # Expected cluster size, used only when the node-count check is enabled.
 OPENSEARCH_EXPECTED_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_NODE_COUNT", 6)
 OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 2)
+# Minimum reachable cluster-manager (master) nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", 2
+)
 
 
 def get_opensearch_username() -> str:
