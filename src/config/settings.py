@@ -46,11 +46,14 @@ OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
 ).strip().lower() in ("true", "1", "yes")
 
 # Expected cluster size, used only when the node-count check is enabled.
-OPENSEARCH_EXPECTED_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_NODE_COUNT", 6)
 OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 2)
 # Minimum reachable cluster-manager (master) nodes, gated by the same flag.
 OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
     "OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", 2
+)
+# Minimum reachable coordinating-only nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", 2
 )
 
 

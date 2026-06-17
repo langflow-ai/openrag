@@ -165,35 +165,40 @@ async def wait_for_opensearch(
                 if status in ["green", "yellow"]:
                     from config.settings import (
                         OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                        OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
                         OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
-                        OPENSEARCH_EXPECTED_NODE_COUNT,
                         OPENSEARCH_NODE_COUNT_CHECK_ENABLED,
                     )
 
                     if OPENSEARCH_NODE_COUNT_CHECK_ENABLED:
-                        node_count = health.get("number_of_nodes", 0)
                         data_node_count = health.get("number_of_data_nodes", 0)
                         # Reachable cluster-manager (master) nodes.
                         cm_info = await opensearch_client.transport.perform_request(
                             "GET", "/_nodes/cluster_manager:true/process,transport"
                         )
                         cluster_manager_count = cm_info.get("_nodes", {}).get("successful", 0)
+                        # Reachable coordinating-only nodes.
+                        coord_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/coordinating_only:true/process,transport"
+                        )
+                        coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
                         if (
-                            node_count < OPENSEARCH_EXPECTED_NODE_COUNT
-                            or data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
+                            data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
                             or cluster_manager_count
                             < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
+                            or coordinating_count
+                            < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
                         ):
                             logger.warning(
                                 "OpenSearch healthy but cluster has not reached expected node count.",
                                 attempt=display_attempt,
                                 status=status,
-                                number_of_nodes=node_count,
                                 number_of_data_nodes=data_node_count,
                                 cluster_manager_nodes=cluster_manager_count,
-                                expected_nodes=OPENSEARCH_EXPECTED_NODE_COUNT,
+                                coordinating_nodes=coordinating_count,
                                 expected_data_nodes=OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
                                 expected_cluster_managers=OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                                expected_coordinating=OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
                             )
                             # Fall through to the retry/backoff below until nodes join.
                         else:
@@ -201,9 +206,9 @@ async def wait_for_opensearch(
                                 "Successfully verified that OpenSearch is ready.",
                                 attempt=display_attempt,
                                 status=status,
-                                number_of_nodes=node_count,
                                 number_of_data_nodes=data_node_count,
                                 cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
                             )
                             return
                     else:
