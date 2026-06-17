@@ -100,10 +100,10 @@ async def delete_documents_by_filename_core(
         )
     except Exception as e:
         import traceback
-        
+
         # Extract OpenSearch info if available (TransportError contains this)
         os_info = getattr(e, "info", None)
-        
+
         logger.error(
             "Error deleting documents by filename",
             filename=normalized_filename,
