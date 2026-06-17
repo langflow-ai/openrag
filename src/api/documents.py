@@ -99,10 +99,18 @@ async def delete_documents_by_filename_core(
             200,
         )
     except Exception as e:
+        import traceback
+        
+        # Extract OpenSearch info if available (TransportError contains this)
+        os_info = getattr(e, "info", None)
+        
         logger.error(
             "Error deleting documents by filename",
             filename=normalized_filename,
             error=str(e),
+            error_type=type(e).__name__,
+            os_info=os_info,
+            traceback=traceback.format_exc(),
         )
         error_str = str(e)
         status_code = 403 if "AuthenticationException" in error_str else 500

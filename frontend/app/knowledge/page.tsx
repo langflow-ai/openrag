@@ -776,13 +776,21 @@ function SearchPage() {
     if (rowsToDelete.length === 0) return;
 
     try {
-      const deleteResults = await Promise.allSettled(
-        rowsToDelete.map((row) =>
-          deleteDocumentMutation.mutateAsync({
+      // Process deletions sequentially to prevent OpenSearch concurrent delete_by_query overload
+      const deleteResults: PromiseSettledResult<
+        Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
+      >[] = [];
+
+      for (const row of rowsToDelete) {
+        try {
+          const value = await deleteDocumentMutation.mutateAsync({
             filename: resolveDeleteFilename(row),
-          }),
-        ),
-      );
+          });
+          deleteResults.push({ status: "fulfilled", value });
+        } catch (reason) {
+          deleteResults.push({ status: "rejected", reason });
+        }
+      }
 
       await refreshTasks();
       await queryClient.invalidateQueries({ queryKey: ["search"] });
