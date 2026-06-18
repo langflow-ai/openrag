@@ -1,16 +1,16 @@
 """Tests for bug #1587: LLM model values not restored by fallback branch."""
- 
+
 from unittest.mock import AsyncMock, MagicMock
- 
+
 import pytest
- 
+
 from api.settings.langflow_sync import _update_langflow_model_values
- 
- 
+
+
 @pytest.fixture
 def mock_config():
     """Standard mock configuration for langflow sync tests.
- 
+
     All four providers configured; embedding via openai, LLM via anthropic.
     """
     config = MagicMock()
@@ -23,16 +23,16 @@ def mock_config():
     config.agent.llm_provider = "anthropic"
     config.agent.llm_model = "claude-3-5-sonnet-20241022"
     return config
- 
- 
+
+
 @pytest.fixture
 def mock_flows_service():
     """Flows service stub whose model-value calls report a successful update."""
     service = AsyncMock()
     service.change_langflow_model_value = AsyncMock(return_value={"updated": True})
     return service
- 
- 
+
+
 @pytest.mark.asyncio
 @pytest.mark.skip(reason="Documents pre-fix behavior of #1587; fails by design on fixed code")
 async def test_bug_1587_unfixed_no_llm_updates_in_fallback(mock_config, mock_flows_service):
@@ -40,7 +40,7 @@ async def test_bug_1587_unfixed_no_llm_updates_in_fallback(mock_config, mock_flo
     Demonstrates the bug: when reapply_all_settings() calls _update_langflow_model_values()
     with no explicit overrides, the fallback branch updates embedding providers but NOT
     LLM providers, leaving flows in a reset state.
- 
+
     This test is skipped because it documents the UNFIXED behavior and will fail on fixed code.
     """
     # Call with no explicit overrides (the reapply_all_settings path)
@@ -52,7 +52,7 @@ async def test_bug_1587_unfixed_no_llm_updates_in_fallback(mock_config, mock_flo
         embedding_model=None,
         embedding_provider=None,
     )
- 
+
     # On unfixed code: zero LLM calls, only embedding calls
     llm_calls = [
         call
@@ -60,8 +60,8 @@ async def test_bug_1587_unfixed_no_llm_updates_in_fallback(mock_config, mock_flo
         if "llm_model" in call.kwargs or "force_llm_update" in call.kwargs
     ]
     assert len(llm_calls) == 0, "Bug #1587: fallback branch should update LLM providers but doesn't"
- 
- 
+
+
 @pytest.mark.asyncio
 async def test_bug_1587_fixed_llm_updates_in_fallback(mock_config, mock_flows_service):
     """
@@ -78,7 +78,7 @@ async def test_bug_1587_fixed_llm_updates_in_fallback(mock_config, mock_flows_se
         embedding_model=None,
         embedding_provider=None,
     )
- 
+
     # Verify LLM calls
     llm_calls = [
         call
@@ -88,18 +88,18 @@ async def test_bug_1587_fixed_llm_updates_in_fallback(mock_config, mock_flows_se
     assert len(llm_calls) == 4, (
         "Should update all 4 LLM providers (openai, anthropic, watsonx, ollama)"
     )
- 
+
     # Verify current provider gets the configured model
     anthropic_call = next((call for call in llm_calls if call.args[0] == "anthropic"), None)
     assert anthropic_call is not None
     assert anthropic_call.kwargs["llm_model"] == "claude-3-5-sonnet-20241022"
- 
+
     # Verify other providers get None
     for provider in ["openai", "watsonx", "ollama"]:
         provider_call = next((call for call in llm_calls if call.args[0] == provider), None)
         assert provider_call is not None
         assert provider_call.kwargs["llm_model"] is None
- 
+
     # Verify embedding calls unchanged (3 providers: openai, watsonx, ollama - no anthropic)
     embedding_calls = [
         call
