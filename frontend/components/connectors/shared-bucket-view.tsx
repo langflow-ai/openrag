@@ -10,6 +10,7 @@ import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { trackStartProcess } from "@/lib/analytics";
 
 export interface SharedBucketViewProps {
   connector: any;
@@ -68,6 +69,14 @@ export function SharedBucketView({
       toast.error("Could not start ingest", { description: chunkErr });
       return;
     }
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_buckets: selectedBuckets.size,
+    });
     syncMutation.mutate(
       {
         connectorType: connector.type,

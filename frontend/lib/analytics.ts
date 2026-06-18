@@ -70,6 +70,16 @@ export const trackButton = <T = Record<string, unknown>>({
 }: T & ButtonEventParams): void =>
   track("Button Clicked", { action, ...rest } as Record<string, unknown>);
 
+interface StartProcessParams {
+  processType: string;
+  process?: string;
+  category?: string;
+}
+
+export const trackStartProcess = <T = Record<string, unknown>>(
+  props: T & StartProcessParams,
+): void => track("Started Process", props as Record<string, unknown>);
+
 interface EndProcessParams {
   processType: string;
   process?: string;

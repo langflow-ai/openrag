@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { trackStartProcess } from "@/lib/analytics";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 
 // CloudFile interface is now imported from the unified cloud picker
@@ -91,6 +92,14 @@ export default function UploadProviderPage() {
     files: CloudFile[],
     replaceDuplicates: boolean,
   ) => {
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_files: files.length,
+    });
     syncMutation.mutate(
       {
         connectorType: connector.type,

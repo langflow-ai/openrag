@@ -428,6 +428,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
+          const firstFile = currentTask.files
+            ? Object.values(currentTask.files)[0]
+            : undefined;
+          const embeddingModel = firstFile?.embedding_model;
+          const connectorType =
+            taskConnectorTypesRef.current.get(currentTask.task_id) || "local";
+
           if (isTotalFailure) {
             trackProcessFailure({
               processType: "Ingestion",
@@ -437,6 +444,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               total_files: currentTask.total_files,
               failed_files: failedFiles,
               duration_seconds: currentTask.duration_seconds,
+              embedding_model: embeddingModel,
+              connector_type: connectorType,
             });
           } else {
             trackProcessSuccess({
@@ -448,6 +457,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               successful_files: successfulFiles,
               failed_files: failedFiles,
               duration_seconds: currentTask.duration_seconds,
+              embedding_model: embeddingModel,
+              connector_type: connectorType,
             });
           }
 

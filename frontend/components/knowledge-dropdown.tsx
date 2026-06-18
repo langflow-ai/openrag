@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { trackStartProcess } from "@/lib/analytics";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -333,6 +334,13 @@ export function KnowledgeDropdown() {
 
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "file",
+      total_files: 1,
+    });
 
     try {
       await uploadFileUtil(file, replace);
@@ -359,6 +367,14 @@ export function KnowledgeDropdown() {
     filesToUpload: File[],
     replace: boolean,
   ) => {
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "folder",
+      total_files: filesToUpload.length,
+    });
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
@@ -577,6 +593,12 @@ export function KnowledgeDropdown() {
 
     setFolderLoading(true);
     setShowFolderDialog(false);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "path",
+    });
 
     try {
       const response = await fetch("/api/upload_path", {
