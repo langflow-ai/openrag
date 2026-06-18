@@ -55,6 +55,10 @@ OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
 OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT = get_env_int(
     "OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", 2
 )
+# Max readiness-probe attempts for the lifespan startup bootstrap (exponential
+# backoff between tries). Higher than other callers because a large cluster can
+# take longer to fully form; raise further for very large clusters.
+OPENSEARCH_WAIT_MAX_RETRIES = get_env_int("OPENSEARCH_WAIT_MAX_RETRIES", 100)
 
 
 def get_opensearch_username() -> str:

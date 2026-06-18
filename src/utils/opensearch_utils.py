@@ -132,7 +132,7 @@ def opensearch_error_fields(error: Exception) -> dict[str, Any]:
 
 async def wait_for_opensearch(
     opensearch_client: AsyncOpenSearch,
-    max_retries: int = 1000,
+    max_retries: int = 30,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
 ) -> None:
