@@ -73,6 +73,9 @@ services:
       - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      # Single-node compose clusters don't meet the multi-node readiness counts,
+      # so default the node-count check off here (override to re-enable).
+      - OPENSEARCH_NODE_COUNT_CHECK=${OPENSEARCH_NODE_COUNT_CHECK:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_API_KEY=${WATSONX_API_KEY}

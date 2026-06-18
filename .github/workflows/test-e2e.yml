@@ -66,6 +66,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+      # Single-node E2E cluster never reaches the multi-node readiness counts
+      OPENSEARCH_NODE_COUNT_CHECK: "false"
       LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
       LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
       LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
