@@ -255,7 +255,7 @@ class APIKeyService:
                     "bool": {
                         "must": [
                             {"term": {"user_id": user_id}},
-                            {"term": {"revoked": False }},
+                            {"term": {"revoked": False}},
                         ]
                     }
                 },

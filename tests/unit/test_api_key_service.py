@@ -93,6 +93,7 @@ async def test_validate_key_accepts_and_migrates_legacy_hash(monkeypatch):
     assert update_doc["key_hash"] == keyed_hash
     assert "last_used_at" in update_doc
 
+
 @pytest.mark.asyncio
 async def test_list_keys_returns_only_non_revoked_api_keys(monkeypatch) -> None:
     from services.api_key_service import APIKeyService
@@ -132,6 +133,6 @@ async def test_list_keys_returns_only_non_revoked_api_keys(monkeypatch) -> None:
         }
     ]
 
-    query_must = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["must"]                                                                              
-    assert {"term": {"user_id": "user-1"}} in query_must                                                                                                                  
+    query_must = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["must"]
+    assert {"term": {"user_id": "user-1"}} in query_must
     assert {"term": {"revoked": False}} in query_must
