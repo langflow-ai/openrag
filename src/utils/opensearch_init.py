@@ -135,7 +135,7 @@ async def _ensure_index_replicas(os_client, index_name: str) -> None:
         )
 
 
-async def wait_for_opensearch(opensearch_client=None):
+async def wait_for_opensearch(opensearch_client=None, max_retries: int = 30):
     """Wait for OpenSearch to be ready, delegating to the shared utility."""
     from utils.opensearch_utils import (
         OpenSearchNotReadyError,
