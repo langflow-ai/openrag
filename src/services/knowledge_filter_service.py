@@ -65,7 +65,7 @@ class KnowledgeFilterService:
                 bucket["key"] for bucket in existence_result["aggregations"]["filenames"]["buckets"]
             }
 
-            for knowledge_filter, data_sources in zip(filters, data_sources_by_filter):
+            for knowledge_filter, data_sources in zip(filters, data_sources_by_filter, strict=True):
                 if data_sources:
                     knowledge_filter["active_source_count"] = sum(
                         1 for source in data_sources if source in existing_filenames
