@@ -293,9 +293,7 @@ async def run_startup(app: FastAPI):
             )
         try:
             logger.info("Verifying OpenSearch readiness before bootstrap")
-            await wait_for_opensearch(
-                opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES
-            )
+            await wait_for_opensearch(opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES)
             logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
             await setup_opensearch_security(opensearch_client, admin_username=admin_username)
             logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
