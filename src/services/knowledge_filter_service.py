@@ -39,8 +39,10 @@ class KnowledgeFilterService:
             all_filenames = set()
             for knowledge_filter in filters:
                 try:
-                    data_sources = json.loads(knowledge_filter.get("query_data") or "{}").get("filters", {}).get(
-                        "data_sources"
+                    data_sources = (
+                        json.loads(knowledge_filter.get("query_data") or "{}")
+                        .get("filters", {})
+                        .get("data_sources")
                     )
                 except Exception:
                     data_sources_by_filter.append(None)
@@ -60,8 +62,7 @@ class KnowledgeFilterService:
                 body=build_existing_filenames_agg_body(list(all_filenames)),
             )
             existing_filenames = {
-                bucket["key"]
-                for bucket in existence_result["aggregations"]["filenames"]["buckets"]
+                bucket["key"] for bucket in existence_result["aggregations"]["filenames"]["buckets"]
             }
 
             for knowledge_filter, data_sources in zip(filters, data_sources_by_filter):

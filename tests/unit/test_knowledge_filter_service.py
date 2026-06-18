@@ -1,6 +1,6 @@
+import json
 from types import SimpleNamespace
 
-import json
 import pytest
 
 from services.knowledge_filter_service import (
@@ -8,14 +8,17 @@ from services.knowledge_filter_service import (
     KnowledgeFilterService,
 )
 
+
 class _Indices:
     async def refresh(self, index):
         return {"acknowledged": True, "index": index}
-    
+
 
 def _filter(filter_id, data_sources=None, query_data=None):
     if query_data is None:
-        query_data = json.dumps({"filters": {"data_sources": data_sources}}) if data_sources else "{}"
+        query_data = (
+            json.dumps({"filters": {"data_sources": data_sources}}) if data_sources else "{}"
+        )
     return {"id": filter_id, "name": filter_id, "query_data": query_data}
 
 
@@ -142,6 +145,7 @@ async def test_knowledge_filter_writes_use_admin_client_after_user_visibility_ch
         {"index": KNOWLEDGE_FILTERS_INDEX_NAME, "id": "filter-1"},
         {"index": KNOWLEDGE_FILTERS_INDEX_NAME, "id": "filter-1"},
     ]
+
 
 @pytest.mark.asyncio
 async def test_search_knowledge_filters_active_source_count_zero_when_document_deleted(
