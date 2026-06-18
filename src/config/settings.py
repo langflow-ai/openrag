@@ -594,6 +594,7 @@ WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 # actual frontend origin that is carried in the OAuth state parameter.
 OAUTH_BROKER_URL = os.getenv("OAUTH_BROKER_URL")
 
+
 def _get_min_env_int(key: str, default: int, minimum: int) -> int:
     """Read an integer env var, clamped to a minimum valid value."""
     return max(get_env_int(key, default), minimum)
