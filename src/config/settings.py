@@ -39,6 +39,27 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
+# Gate the OpenSearch node-count readiness check ("OS node_count" flag).
+# Enabled by default; set to false on small/single-node clusters.
+OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
+    "OPENSEARCH_NODE_COUNT_CHECK", "true"
+).strip().lower() in ("true", "1", "yes")
+
+# Expected cluster size, used only when the node-count check is enabled.
+OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 3)
+# Minimum reachable cluster-manager (master) nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", 3
+)
+# Minimum reachable coordinating-only nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", 3
+)
+# Max readiness-probe attempts for the lifespan startup bootstrap (exponential
+# backoff between tries). Higher than other callers because a large cluster can
+# take longer to fully form; raise further for very large clusters.
+OPENSEARCH_WAIT_MAX_RETRIES = get_env_int("OPENSEARCH_WAIT_MAX_RETRIES", 100)
+
 
 def get_opensearch_username() -> str:
     """OpenSearch admin/basic-auth username, read per-call so runtime/test

@@ -17,6 +17,7 @@ from config.settings import (
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
     OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    OPENSEARCH_WAIT_MAX_RETRIES,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
@@ -292,7 +293,7 @@ async def run_startup(app: FastAPI):
             )
         try:
             logger.info("Verifying OpenSearch readiness before bootstrap")
-            await wait_for_opensearch(opensearch_client)
+            await wait_for_opensearch(opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES)
             logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
             await setup_opensearch_security(opensearch_client, admin_username=admin_username)
             logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)

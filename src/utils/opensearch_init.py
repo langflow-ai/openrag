@@ -145,7 +145,9 @@ async def wait_for_opensearch(opensearch_client=None):
     )
 
     try:
-        await _wait_for_opensearch(opensearch_client or clients.opensearch)
+        logger.info("Waiting for OpenSearch to be ready...", max_retries=max_retries)
+        await _wait_for_opensearch(opensearch_client or clients.opensearch, max_retries=max_retries)
+        logger.info("OpenSearch is ready!")
         await TelemetryClient.send_event(
             Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED
         )
