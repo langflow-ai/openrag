@@ -1643,6 +1643,26 @@ async def _update_langflow_model_values(config, flows_service, llm_model=None, l
             )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
+            # 1. Update ALL configured LLM providers
+            llm_providers = []
+            if config.providers.openai.configured:
+                llm_providers.append("openai")
+            if config.providers.anthropic.configured:
+                llm_providers.append("anthropic")
+            if config.providers.watsonx.configured:
+                llm_providers.append("watsonx")
+            if config.providers.ollama.configured:
+                llm_providers.append("ollama")
+
+            current_llm_provider = (config.agent.llm_provider or "").lower()
+            for provider in llm_providers:
+                # Use configured model for current provider, or None (first available) for others
+                llm_model = config.agent.llm_model if provider == current_llm_provider else None
+                await flows_service.change_langflow_model_value(
+                    provider, llm_model=llm_model, force_llm_update=True
+                )
+                logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
+
             # 2. Update ALL configured embedding providers
             embedding_providers = []
             if config.providers.openai.configured:
