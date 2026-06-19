@@ -1676,10 +1676,7 @@ async def _update_langflow_model_values(config, flows_service, llm_model=None, l
 async def _update_langflow_system_prompt(config, flows_service):
     """Update system prompt in chat flow"""
     try:
-        llm_provider = config.agent.llm_provider.lower()
-        await flows_service.update_chat_flow_system_prompt(
-            config.agent.system_prompt, llm_provider
-        )
+        await flows_service.update_chat_flow_system_prompt(config.agent.system_prompt)
         logger.info("Successfully updated chat flow system prompt")
     except Exception as e:
         logger.error(f"Failed to update chat flow system prompt: {str(e)}")
