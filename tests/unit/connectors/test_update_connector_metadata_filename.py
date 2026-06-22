@@ -100,10 +100,7 @@ async def test_update_includes_filename_in_script_and_params(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_filename_passed_raw_not_cleaned(monkeypatch):
-    """process_document_standard indexes chunks with the raw document.filename
-    (see src/connectors/service.py:80 + src/models/processors.py:323).
-    The metadata update must use the SAME raw value or chunks drift.
-    """
+    """When indexed_filename is omitted, metadata update uses document.filename."""
     service, opensearch_client = _make_service()
 
     async def _noop_acl(**_kwargs):
@@ -122,6 +119,28 @@ async def test_filename_passed_raw_not_cleaned(monkeypatch):
 
     params = opensearch_client.update_by_query.await_args.kwargs["body"]["script"]["params"]
     assert params["filename"] == raw_name
+
+
+@pytest.mark.asyncio
+async def test_indexed_filename_overrides_document_filename(monkeypatch):
+    """Connector processor indexes under a MIME-cleaned name; metadata must match."""
+    service, opensearch_client = _make_service()
+
+    async def _noop_acl(**_kwargs):
+        return {"status": "unchanged"}
+
+    monkeypatch.setattr("utils.acl_utils.update_document_acl", _noop_acl)
+
+    document = _make_document(filename="My Report")
+    await service._update_connector_metadata(
+        document,
+        owner_user_id="alice",
+        connector_type="google_drive",
+        indexed_filename="My Report.pdf",
+    )
+
+    params = opensearch_client.update_by_query.await_args.kwargs["body"]["script"]["params"]
+    assert params["filename"] == "My Report.pdf"
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,33 @@ class OpenSearchDiskSpaceError(Exception):
     """Raised when OpenSearch operations fail due to insufficient disk space."""
 
 
+# Error strings emitted by OpenSearch when the presented credential is rejected.
+# This is an AUTHENTICATION failure (bad/expired/over-ridden credential), not an
+# authorization one — callers must surface it as 401, never 403 "insufficient
+# permissions", so the real cause isn't masked.
+_AUTH_ERROR_INDICATORS = [
+    "authenticationexception",
+    "unauthorized",
+    "authentication failed",
+]
+
+AUTH_ERROR_MESSAGE = (
+    "Authentication failed: OpenSearch rejected the credential. Please sign in again."
+)
+
+
+def is_opensearch_auth_error(error: Exception | str) -> bool:
+    """Whether *error* is an OpenSearch authentication failure (401).
+
+    Accepts an exception or an already-stringified error message. Distinct from
+    authorization ("only the owner can …"): this means the credential OpenRAG
+    presented was not accepted at all. Callers should map it to HTTP 401
+    (re-authenticate), not 403.
+    """
+    error_str = str(error).lower()
+    return any(indicator in error_str for indicator in _AUTH_ERROR_INDICATORS)
+
+
 def is_disk_space_error(error: Exception) -> bool:
     """Check whether an exception is caused by OpenSearch disk space constraints.
 
