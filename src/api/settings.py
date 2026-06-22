@@ -391,10 +391,10 @@ async def get_settings(
             environment=ENVIRONMENT or None,
         )
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve settings: {str(e)}")
+    except Exception:
+        logger.exception("Failed to retrieve settings")
         return JSONResponse(
-            {"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500
+            {"error": "Failed to retrieve settings"}, status_code=500
         )
 
 
@@ -1003,14 +1003,14 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
-    except Exception as e:
-        logger.error("Failed to update settings", error=str(e))
+    except Exception:
+        logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS,
             MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
         return JSONResponse(
-            {"error": f"Failed to update settings: {str(e)}"}, status_code=500
+            {"error": "Failed to update settings"}, status_code=500
         )
 
 
@@ -1272,15 +1272,10 @@ async def onboarding(
                 admin_username = user.user_id if IBM_AUTH_ENABLED and user else None
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize OpenSearch index after onboarding",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to initialize OpenSearch index after onboarding")
                 return JSONResponse(
-                    {
-                        "error": str(e),
-                    },
+                    {"Failed to initialize OpenSearch index after onboarding"},
                     status_code=500,
                 )
 
@@ -1696,10 +1691,7 @@ async def _update_langflow_model_values(config, flows_service, llm_model=None, l
 async def _update_langflow_system_prompt(config, flows_service):
     """Update system prompt in chat flow"""
     try:
-        llm_provider = config.agent.llm_provider.lower()
-        await flows_service.update_chat_flow_system_prompt(
-            config.agent.system_prompt, llm_provider
-        )
+        await flows_service.update_chat_flow_system_prompt(config.agent.system_prompt)
         logger.info("Successfully updated chat flow system prompt")
     except Exception as e:
         logger.error(f"Failed to update chat flow system prompt: {str(e)}")
@@ -2019,10 +2011,10 @@ async def rollback_onboarding(
             deleted_conversations=deleted_conversations_count
         )
 
-    except Exception as e:
-        logger.error("Failed to rollback onboarding configuration", error=str(e))
+    except Exception:
+        logger.error("Failed to rollback onboarding configuration")
         return JSONResponse(
-            {"error": f"Failed to rollback onboarding: {str(e)}"}, status_code=500
+            {"error": "Failed to rollback onboarding"}, status_code=500
         )
 
 
@@ -2090,11 +2082,12 @@ async def update_docling_preset(
             settings=settings_toggles,
             preset_config=preset_config,
         )
-
+    except HTTPException:
+        # Preserve intended HTTP status codes (e.g. 400 for an invalid preset)
+        raise
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to update docling settings: {str(e)}")
-
+        raise HTTPException(status_code=500, detail="Failed to update docling settings") from e
 
 async def refresh_openrag_docs(
     document_service=Depends(get_document_service),
