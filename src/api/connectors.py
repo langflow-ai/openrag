@@ -788,6 +788,7 @@ async def connector_sync(
                     user.user_id,
                     max_files=max_files,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
                 )
         else:
             # No files specified - sync only files already in OpenSearch for this connector
@@ -851,6 +852,7 @@ async def connector_sync(
                     user.user_id,
                     ids_to_sync,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
             else:
@@ -866,6 +868,7 @@ async def connector_sync(
                     max_files=None,
                     jwt_token=jwt_token,
                     filename_filter=set(existing_filenames),
+                    ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
         task_ids = [task_id]
@@ -989,6 +992,11 @@ async def connector_status(
     )
 
 
+# Drive watches registered with a legacy webhook URL may point at
+# /connectors/google/webhook; accept them until those channels expire.
+LEGACY_WEBHOOK_TYPE_ALIASES = {"google": "google_drive"}
+
+
 async def connector_webhook(
     connector_type: str,
     request: Request,
@@ -997,6 +1005,15 @@ async def connector_webhook(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Handle webhook notifications from any connector type"""
+
+    canonical_type = LEGACY_WEBHOOK_TYPE_ALIASES.get(connector_type)
+    if canonical_type:
+        logger.warning(
+            "Legacy webhook connector type received, aliasing",
+            received=connector_type,
+            canonical=canonical_type,
+        )
+        connector_type = canonical_type
 
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
@@ -1081,28 +1098,65 @@ async def connector_webhook(
             # Let the connector handle the webhook and return affected file IDs
             affected_files = await connector.handle_webhook(payload)
 
+            user = session_manager.get_user(connection.user_id)
+            jwt_token = user.jwt_token if user else None
+
+            # Scope guard: a connection's picker selection is not persisted, so
+            # the connector can't filter the change feed to it. Restrict webhook
+            # ingestion to files ALREADY indexed for this connector — the same
+            # durable scope the no-selection manual sync uses. This stops a stray
+            # change (even just opening a file) from auto-ingesting a file the
+            # user never selected. Deletions of indexed files still pass (they
+            # remain in the index until cleaned up) so chunk-cleanup runs.
+            in_scope: list[str] = []
             if affected_files:
+                indexed_ids, _filenames, _id_field = await get_synced_file_ids_for_connector(
+                    connector_type=connector_type,
+                    user_id=connection.user_id,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                )
+                indexed_set = set(indexed_ids)
+                in_scope = [f for f in affected_files if f in indexed_set]
+
+            if in_scope:
                 logger.info(
                     "Webhook connection files affected",
                     connection_id=connection.connection_id,
                     affected_count=len(affected_files),
+                    in_scope_count=len(in_scope),
                 )
 
-                user = session_manager.get_user(connection.user_id)
-                jwt_token = user.jwt_token if user else None
-
-                # Trigger incremental sync for affected files
+                # Trigger incremental sync for affected files. The webhook fires
+                # because the file changed, so replace the indexed copy instead of
+                # tripping the duplicate-filename guard meant for manual uploads.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
-                    affected_files,
+                    in_scope,
                     jwt_token=jwt_token,
+                    replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
 
                 result = {
                     "connection_id": connection.connection_id,
                     "task_id": task_id,
-                    "affected_files": len(affected_files),
+                    "affected_files": len(in_scope),
+                }
+            elif affected_files:
+                # Changes detected, but none are within the indexed scope —
+                # ignore so unselected files are not auto-ingested.
+                logger.info(
+                    "Webhook changes outside synced scope, ignored",
+                    connection_id=connection.connection_id,
+                    affected_count=len(affected_files),
+                    in_scope_count=0,
+                )
+
+                result = {
+                    "connection_id": connection.connection_id,
+                    "action": "ignored",
+                    "reason": "out_of_scope",
                 }
             else:
                 # No specific files identified - just log the webhook

@@ -270,6 +270,26 @@ def get_jwt_auth_header() -> str:
     return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
 
 
+def get_api_jwt_header() -> str:
+    """Secondary, gateway-placed JWT header for the /v1 API/MCP surface only.
+
+    The primary JWT header (``get_jwt_auth_header()``, default ``Authorization``)
+    is stripped by FastMCP's get_http_headers() before an MCP tool call is
+    proxied to the underlying /v1 route, so it never reaches the /v1 auth
+    dependency. The gateway (Traefik) therefore authenticates the MCP/API caller
+    (who supplies X-Username + X-Api-Key) and injects the minted user JWT into
+    this add-on header instead, which FastMCP forwards verbatim. Read per-call so
+    tests can override via monkeypatch.setenv.
+
+    TRUST NOTE: this header is read in addition to Authorization on the /v1
+    surface and is trusted as an identity source. It is gateway-managed: Traefik
+    mints and injects it, and MUST strip any client-supplied value at the edge
+    (standard internal-trust-header hygiene) so callers cannot forge it —
+    important because claims are decode-only unless ``OPENRAG_JWT_VERIFY_SIGNATURE``
+    is enabled."""
+    return os.getenv("OPENRAG_API_JWT_HEADER", "X-OpenRAG-API-JWT")
+
+
 def get_jwt_issuer_verify_tls() -> bool:
     """Whether to verify TLS when fetching JWT signing keys from the token's
     ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
@@ -442,6 +462,11 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
     "yes",
 )
 
+# Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
+OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
+    "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
+
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
 
@@ -510,6 +535,7 @@ DOCLING_POLL_MAX_SECONDS = get_env_int("DOCLING_POLL_MAX_SECONDS", 1800)
 DOCLING_POLL_MAX_INTERVAL_SECONDS = get_env_float("DOCLING_POLL_MAX_INTERVAL_SECONDS", 30.0)
 DOCLING_POLL_BACKOFF_FACTOR = get_env_float("DOCLING_POLL_BACKOFF_FACTOR", 1.5)
 DOCLING_POLL_TRANSIENT_RETRIES = get_env_int("DOCLING_POLL_TRANSIENT_RETRIES", 5)
+DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH", 500)
 
 
 def is_no_auth_mode():
@@ -522,6 +548,25 @@ def is_no_auth_mode():
 
 # Webhook configuration - must be set to enable webhooks
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
+
+# Legacy per-connector webhook URL override (takes precedence over WEBHOOK_BASE_URL).
+# If set, it must end in /connectors/google_drive/webhook.
+#
+# Drive watch addresses resolve config webhook_url -> this var -> WEBHOOK_BASE_URL
+# (google_drive/connector.py _resolve_webhook_address). Watches registered against
+# the legacy /connectors/google/webhook path (e.g. via a stale webhook_url persisted
+# in connections.json) are tolerated by LEGACY_WEBHOOK_TYPE_ALIASES in api/connectors.py;
+# the real fix is correcting the stored webhook_url (e.g. reconnect the data source).
+GOOGLE_DRIVE_WEBHOOK_URL = os.getenv("GOOGLE_DRIVE_WEBHOOK_URL")
+
+# Webhook subscription renewal: how often to check, and how close to expiry a
+# subscription must be before it is renewed. Google Drive channels live ~24h,
+# Microsoft Graph subscriptions 3 days; 6h checks with a 12h threshold give at
+# least two renewal opportunities before either expires.
+_raw_webhook_renewal_interval = get_env_int("WEBHOOK_RENEWAL_INTERVAL_SECONDS", 6 * 3600)
+WEBHOOK_RENEWAL_INTERVAL_SECONDS = max(60, _raw_webhook_renewal_interval)
+_raw_webhook_renewal_threshold = get_env_int("WEBHOOK_RENEWAL_THRESHOLD_SECONDS", 12 * 3600)
+WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 
 # OAuth callback broker URL -- when set, Google (and other providers) redirect
 # here instead of directly to the frontend.  The broker then forwards to the

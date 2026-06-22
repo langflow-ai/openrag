@@ -5,10 +5,12 @@ import { ArrowLeft, FileSearch, FolderOpen, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 
 export interface SharedBucketViewProps {
@@ -19,7 +21,7 @@ export interface SharedBucketViewProps {
   onRefetch: () => void;
   invalidateQueryKey: readonly unknown[];
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string) => void;
+  addTask: (id: string, options?: { connectorType?: string }) => void;
   onBack: () => void;
   onDone: () => void;
 }
@@ -37,6 +39,13 @@ export function SharedBucketView({
   onDone,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showIngestSettings =
+    apiSettings?.show_provider_ingest_settings ?? false;
+
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
@@ -82,7 +91,7 @@ export function SharedBucketView({
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0]);
+            addTask(result.task_ids[0], { connectorType: connector.type });
             onDone();
           } else {
             toast.info("No files found in the selected buckets.");
@@ -234,12 +243,14 @@ export function SharedBucketView({
           </div>
         )}
 
-        <IngestSettings
-          isOpen={isSettingsOpen}
-          onOpenChange={setIsSettingsOpen}
-          settings={ingestSettings}
-          onSettingsChange={setIngestSettings}
-        />
+        {showIngestSettings && (
+          <IngestSettings
+            isOpen={isSettingsOpen}
+            onOpenChange={setIsSettingsOpen}
+            settings={ingestSettings}
+            onSettingsChange={setIngestSettings}
+          />
+        )}
       </div>
 
       <div className="max-w-3xl mx-auto mt-6 sticky bottom-0 left-0 right-0 pb-6 bg-background pt-4">

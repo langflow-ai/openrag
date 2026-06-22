@@ -2,7 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from utils.document_processing import (
@@ -29,6 +29,16 @@ if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
 
+def _verification_client(fallback_client):
+    """Client for post-ingestion verification ("did the chunks land in the
+    index?"). That is a system integrity check, not a user-visibility check,
+    so prefer the platform writer client: it does not depend on the JWT/JWKS
+    trust chain that user-scoped clients need (OpenSearch loads the backend's
+    JWKS lazily, so the first user-JWT queries after a cold start can 401).
+    Falls back to the caller's client when the writer is unavailable."""
+    return clients.opensearch if clients.opensearch is not None else fallback_client
+
+
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
@@ -41,10 +51,19 @@ class TaskProcessor:
         self,
         file_hash: str,
         opensearch_client,
+        on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
+
+        ``on_error`` picks the answer when OpenSearch stays unreachable after
+        retries — the check is ambiguous then, and the safe default differs by
+        caller:
+          * ``"assume_missing"`` (dedupe callers): safer to reprocess than skip.
+          * ``"assume_exists"`` (post-ingestion verification callers): an
+            infrastructure error must not fail a file that Langflow already
+            reported as ingested.
         """
         max_retries = 3
         retry_delay = 1.0
@@ -69,7 +88,14 @@ class TaskProcessor:
                         error=str(e),
                         attempt=attempt + 1,
                     )
-                    # On final failure, assume document doesn't exist (safer to reprocess than skip)
+                    if on_error == "assume_exists":
+                        logger.warning(
+                            "Exists check inconclusive due to connection issues; "
+                            "assuming document exists",
+                            file_hash=file_hash,
+                        )
+                        return True
+                    # Safer to reprocess than skip for dedupe callers.
                     logger.warning(
                         "Assuming document doesn't exist due to connection issues",
                         file_hash=file_hash,
@@ -85,7 +111,7 @@ class TaskProcessor:
                     )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
-        return False
+        return on_error == "assume_exists"
 
     async def check_filename_exists(
         self,
@@ -206,6 +232,69 @@ class TaskProcessor:
             logger.error("Failed to delete existing document", filename=filename, error=str(e))
             raise
 
+    async def _delete_connector_chunks(
+        self,
+        file_id: str,
+        opensearch_client,
+        owner_user_id: str,
+        keep_filenames: list[str] | None = None,
+    ) -> int:
+        """Delete indexed chunks for a connector file by its STABLE id.
+
+        Matches both ``connector_file_id`` (standard path, where ``document_id``
+        holds the content hash) and ``document_id`` (Langflow path, where it
+        holds the connector id). When ``keep_filenames`` is given, chunks whose
+        filename is one of those names are preserved — used to drop only the
+        stale OLD-name chunks left behind by a rename, since a connector file
+        keeps the same id across renames. Best-effort: logs and returns 0 on
+        failure so a cleanup miss never fails the task.
+        """
+        from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+
+        if not file_id:
+            return 0
+        try:
+            write_client = clients.opensearch
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch write client is unavailable")
+
+            query: dict[str, Any] = {
+                "bool": {
+                    "filter": [
+                        {
+                            "bool": {
+                                "should": [
+                                    {"term": {"document_id": file_id}},
+                                    {"term": {"connector_file_id": file_id}},
+                                ],
+                                "minimum_should_match": 1,
+                            }
+                        },
+                        {"term": {"owner": owner_user_id}},
+                    ]
+                }
+            }
+            if keep_filenames:
+                query["bool"]["must_not"] = [{"terms": {"filename": keep_filenames}}]
+
+            chunk_ids = await collect_visible_document_ids(
+                opensearch_client,
+                index=get_index_name(),
+                query=query,
+            )
+            return await delete_document_ids(
+                write_client,
+                index=get_index_name(),
+                document_ids=chunk_ids,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to delete connector chunks",
+                file_id=file_id,
+                error=str(e),
+            )
+            return 0
+
     async def process_document_standard(
         self,
         file_path: str,
@@ -223,6 +312,8 @@ class TaskProcessor:
         is_sample_data: bool = False,
         acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -235,6 +326,8 @@ class TaskProcessor:
                 chunks (non-Langflow path, e.g. connector UI ``chunkSize``).
             chunk_overlap: Overlap between windows; must be less than ``chunk_size``.
             acl: DocumentACL instance with access control information
+            ocr: Per-request OCR override (None = use global config).
+            picture_descriptions: Per-request picture descriptions override.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -272,7 +365,11 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
 
@@ -574,14 +671,20 @@ class DocumentFileProcessor(TaskProcessor):
                 **standard_kwargs,
             )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error") or "Failed to process document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
@@ -603,6 +706,7 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        connector_type: str | None = None,
     ):
         super().__init__(
             document_service=document_service,
@@ -618,6 +722,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
+        self.connector_type = connector_type
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -634,6 +739,8 @@ class ConnectorFileProcessor(TaskProcessor):
             )
             if not connector or not connection:
                 raise ValueError(f"Connection '{self.connection_id}' not found")
+
+            connector_type = self.connector_type or connection.connector_type
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {
@@ -666,7 +773,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 "xhtml",
                 "webp",
             }
-            if file_task.filename:
+            # Only pre-validate when we have a real filename. When the filename
+            # falls back to the connector file_id (e.g. a deletion event re-added
+            # by sync_specific_files, where no name is known), skip this check so
+            # the deletion reaches the 404 -> chunk-cleanup path below. Files that
+            # still exist are re-validated after download (see below).
+            if file_task.filename and file_task.filename != file_id:
                 ext = file_task.filename.split(".")[-1].lower() if "." in file_task.filename else ""
                 if ext not in VALID_EXTENSIONS:
                     file_task.status = TaskStatus.FAILED
@@ -681,28 +793,17 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
-                    # File gone at source — remove indexed chunks by document_id
-                    # (= connector file_id) so it stops appearing in search/chat.
-                    # Filename rename (e.g. .txt → .md) is irrelevant here.
-                    deleted_chunks = 0
-                    try:
-                        from api.documents import delete_chunks_by_document_ids
-
-                        opensearch_client = (
-                            self.document_service.session_manager.get_user_opensearch_client(
-                                self.user_id, self.jwt_token
-                            )
+                    # File gone at source — remove its indexed chunks by the
+                    # stable connector id (matches both connector_file_id and
+                    # document_id) so it stops appearing in search/chat.
+                    opensearch_client = (
+                        self.document_service.session_manager.get_user_opensearch_client(
+                            self.user_id, self.jwt_token
                         )
-                        deleted_chunks = await delete_chunks_by_document_ids(
-                            [file_id], opensearch_client, get_index_name()
-                        )
-                    except Exception as cleanup_err:
-                        logger.error(
-                            "Failed to clean up chunks for deleted source file",
-                            file_id=file_id,
-                            connection_id=self.connection_id,
-                            error=str(cleanup_err),
-                        )
+                    )
+                    deleted_chunks = await self._delete_connector_chunks(
+                        file_id, opensearch_client, self.user_id
+                    )
 
                     logger.warning(
                         "File no longer exists at source — removed from index",
@@ -716,6 +817,13 @@ class ConnectorFileProcessor(TaskProcessor):
                         "status": "skipped",
                         "reason": "deleted_at_source",
                         "deleted_chunks": deleted_chunks,
+                        # Human-readable message so the tasks view shows this
+                        # successful cleanup instead of falling back to
+                        # "Unknown error" for a skip with no message.
+                        "warning": (
+                            f"File no longer exists at source; removed from index "
+                            f"({deleted_chunks} chunk(s) deleted)."
+                        ),
                     }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
@@ -741,7 +849,27 @@ class ConnectorFileProcessor(TaskProcessor):
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 self.user_id, self.jwt_token
             )
-            if await self.check_filename_exists(document.filename, opensearch_client):
+
+            # Rename cleanup: a connector file keeps a stable id across renames,
+            # but chunks are keyed by filename/content-hash, so a renamed file
+            # leaves its OLD-name chunks orphaned. Drop chunks for this id whose
+            # filename differs from the current one. If any were removed (a real
+            # rename), force a re-ingest below so the file is re-indexed under
+            # the new name instead of short-circuiting as "unchanged".
+            # Match against file_task.filename — the cleaned name the file is
+            # actually indexed under — so duplicate/rename detection lines up
+            # with how chunks are keyed.
+            renamed = (
+                await self._delete_connector_chunks(
+                    document.id,
+                    opensearch_client,
+                    self.user_id,
+                    keep_filenames=get_filename_aliases(file_task.filename),
+                )
+                > 0
+            )
+
+            if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
@@ -754,13 +882,13 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
                 await self.delete_document_by_filename(
-                    document.filename,
+                    file_task.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
                 )
 
             # Create temporary file from document content
-            suffix = os.path.splitext(document.filename)[1]
+            suffix = os.path.splitext(file_task.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -771,7 +899,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                if await self.check_document_exists(file_hash, opensearch_client):
+                if not renamed and await self.check_document_exists(file_hash, opensearch_client):
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
@@ -816,7 +944,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
                     langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
-                        document.filename, document.mimetype
+                        file_task.filename, document.mimetype
                     )
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
@@ -849,7 +977,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         owner=self.user_id,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
                         else None,
@@ -859,6 +987,18 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
                     )
+                    # Langflow returns "success" even when no text was extracted
+                    # (e.g. image files without OCR). Verify the document actually
+                    # landed in OpenSearch before declaring success.
+                    if not await self.check_document_exists(
+                        document.id,
+                        _verification_client(opensearch_client),
+                        on_error="assume_exists",
+                    ):
+                        result = {
+                            "status": "error",
+                            "error": "No text content could be extracted from document",
+                        }
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -877,17 +1017,21 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
+                        if "ocr" in s:
+                            standard_kwargs["ocr"] = bool(s["ocr"])
+                        if "pictureDescriptions" in s:
+                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
                         file_hash=file_hash,
                         owner_user_id=self.user_id,
-                        original_filename=document.filename,
+                        original_filename=file_task.filename,
                         jwt_token=self.jwt_token,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
                         file_size=len(document.content),
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
                         **standard_kwargs,
@@ -898,9 +1042,10 @@ class ConnectorFileProcessor(TaskProcessor):
                         await self.connector_service._update_connector_metadata(
                             document,
                             self.user_id,
-                            connection.connector_type,
+                            connector_type,
                             self.jwt_token,
                             id_field="connector_file_id",
+                            indexed_filename=file_task.filename,
                         )
 
                     # Add connector-specific metadata
@@ -911,14 +1056,20 @@ class ConnectorFileProcessor(TaskProcessor):
                         }
                     )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error") or "Failed to process document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
@@ -993,13 +1144,18 @@ class S3FileProcessor(TaskProcessor):
                 )
 
                 result["path"] = f"s3://{self.bucket}/{item}"
-                file_task.status = TaskStatus.COMPLETED
-                file_task.result = result
-                upload_task.successful_files += 1
+                if result.get("status") == "error":
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = result.get("error") or "Failed to process document"
+                    upload_task.failed_files += 1
+                else:
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.result = result
+                    upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             upload_task.failed_files += 1
         finally:
             file_task.updated_at = time.time()
@@ -1129,16 +1285,29 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
             )
 
-            # Update task with success
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            # Langflow returns "success" even when no text was extracted.
+            # Verify the document actually landed in OpenSearch.
+            file_hash = hash_id(item)
+            if not await self.check_document_exists(
+                file_hash,
+                _verification_client(opensearch_client),
+                on_error="assume_exists",
+            ):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = "No text content could be extracted from document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                # Update task with success
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             # Update task with failure
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise

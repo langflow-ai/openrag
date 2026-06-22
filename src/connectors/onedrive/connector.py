@@ -1,5 +1,4 @@
-import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -7,6 +6,7 @@ from urllib.parse import urlparse
 import httpx
 
 from utils.group_acl import unique_acl_principal_labels
+from utils.logging_config import get_logger
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
 from ..microsoft_graph_acl import (
@@ -21,7 +21,7 @@ from ..microsoft_graph_acl import (
 )
 from .oauth import OneDriveOAuth
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OneDriveConnector(BaseConnector):
@@ -66,6 +66,8 @@ class OneDriveConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.redirect_uri = config.get("redirect_uri", "http://localhost")
+        # Graph delta link for webhook change tracking (in-memory per instance)
+        self._delta_link: str | None = None
         self._base_url = config.get("base_url")  # Generic URL field for OneDrive/SharePoint domain
         logger.debug(f"OneDrive connector initialized with base_url from config: {self._base_url}")
 
@@ -114,6 +116,11 @@ class OneDriveConnector(BaseConnector):
 
         # Track subscription ID for webhooks (note: change notifications might not be available for personal accounts)
         self._subscription_id: str | None = None
+
+        # Set by setup_subscription/renew_subscription; read by the
+        # connection manager to persist
+        self.webhook_resource_id: str | None = None
+        self.webhook_expiration: str | None = None
 
         # Graph API defaults
         self._graph_api_version = "v1.0"
@@ -352,8 +359,12 @@ class OneDriveConnector(BaseConnector):
             resource = "/me/drive/root"
 
             subscription_data = {
-                "changeType": "created,updated,deleted",
-                "notificationUrl": f"{webhook_url}/webhook/onedrive",
+                # Graph driveItem subscriptions only support "updated"; creates and
+                # deletes still surface through the delta query the webhook triggers.
+                "changeType": "updated",
+                # webhook_url is already the full endpoint
+                # ({WEBHOOK_BASE_URL}/connectors/onedrive/webhook, set at connect time)
+                "notificationUrl": webhook_url,
                 "resource": resource,
                 "expirationDateTime": self._get_subscription_expiry(),
                 "clientState": "onedrive_personal",
@@ -370,6 +381,10 @@ class OneDriveConnector(BaseConnector):
                 response = await client.post(
                     url, json=subscription_data, headers=headers, timeout=30
                 )
+                if response.status_code >= 400:
+                    logger.error(
+                        f"Graph subscription request rejected: {response.status_code} {response.text}"
+                    )
                 response.raise_for_status()
 
                 result = response.json()
@@ -377,6 +392,7 @@ class OneDriveConnector(BaseConnector):
 
                 if subscription_id:
                     self._subscription_id = subscription_id
+                    self.webhook_expiration = result.get("expirationDateTime")
                     logger.info(f"OneDrive subscription created: {subscription_id}")
                     return subscription_id
                 else:
@@ -476,20 +492,35 @@ class OneDriveConnector(BaseConnector):
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
                 return DocumentACL()
 
-            # OneDrive permissions API endpoint
-            permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
-
-            # Fetch permissions
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    permissions_url, headers={"Authorization": f"Bearer {access_token}"}
+            # OneDrive permissions API endpoint. A composite "driveId!itemId"
+            # must be split into /drives/{driveId}/items/{itemId}; using it
+            # verbatim against /me/drive/items/{id} is malformed → empty ACL.
+            if "!" in file_id and len(file_id.rsplit("!", 1)) == 2:
+                drive_id, item_id = file_id.rsplit("!", 1)
+                permissions_url = (
+                    f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/permissions"
                 )
+            else:
+                permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
 
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
-                return DocumentACL()
+            # Fetch permissions, following pagination for full share lists.
+            permissions: list[dict[str, Any]] = []
+            async with httpx.AsyncClient() as client:
+                url: str | None = permissions_url
+                while url:
+                    response = await client.get(
+                        url, headers={"Authorization": f"Bearer {access_token}"}
+                    )
+                    if response.status_code != 200:
+                        logger.warning(
+                            f"Failed to fetch permissions for {file_id}: {response.status_code}"
+                        )
+                        return DocumentACL()
+                    page = response.json()
+                    permissions.extend(page.get("value", []))
+                    url = page.get("@odata.nextLink")
 
-            permissions_data = response.json()
+            permissions_data = {"value": permissions}
 
             allowed_users = []
             allowed_groups = []
@@ -1075,16 +1106,86 @@ class OneDriveConnector(BaseConnector):
             return notifications[0].get("subscriptionId")
         return None
 
+    @staticmethod
+    def _delta_item_file_id(item: dict[str, Any]) -> str:
+        """Return the composite ``{driveId}!{itemId}`` id used at ingest time.
+
+        Selected-file listing stores ids as ``driveId!itemId`` (see
+        _list_folder_contents), so the webhook delta must emit the same shape
+        or the change can't be correlated with the indexed connector_file_id.
+        """
+        item_id = item.get("id", "")
+        if item_id and "!" in item_id:
+            return item_id
+        drive_id = item.get("parentReference", {}).get("driveId")
+        return f"{drive_id}!{item_id}" if drive_id else item_id
+
     async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
-        """Handle webhook notification and return affected file IDs."""
-        affected_files: list[str] = []
-        notifications = payload.get("value", [])
-        for notification in notifications:
-            resource = notification.get("resource")
-            if resource and "/drive/items/" in resource:
-                file_id = resource.split("/drive/items/")[-1]
-                affected_files.append(file_id)
-        return affected_files
+        """Handle webhook notification and return affected file IDs.
+
+        Graph driveItem notifications never identify the changed items — the
+        notification resource is the subscribed drive root — so run a delta
+        query against the drive to discover what changed.
+        """
+        if not payload.get("value"):
+            return []
+
+        try:
+            if not await self.authenticate():
+                logger.error("OneDrive authentication failed during webhook handling")
+                return []
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Without a stored delta link (first notification for this instance)
+            # the delta query enumerates the whole drive, so only keep recently
+            # modified files instead of re-syncing everything.
+            first_sweep = self._delta_link is None
+            url = self._delta_link or f"{self._graph_base_url}/me/drive/root/delta"
+            cutoff = datetime.now(UTC) - timedelta(minutes=10)
+
+            affected_files: list[str] = []
+            async with httpx.AsyncClient() as client:
+                while url:
+                    response = await client.get(url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    for item in data.get("value", []):
+                        if "deleted" in item:
+                            # Deleted at source: propagate the id so the processor
+                            # runs its deleted-at-source cleanup
+                            # (get_file_content -> 404 -> delete indexed chunks).
+                            if "folder" not in item:
+                                affected_files.append(self._delta_item_file_id(item))
+                            continue
+                        if "file" not in item:
+                            continue
+                        if first_sweep:
+                            modified = item.get("lastModifiedDateTime")
+                            if not modified:
+                                continue
+                            try:
+                                modified_at = datetime.fromisoformat(
+                                    modified.replace("Z", "+00:00")
+                                )
+                            except ValueError:
+                                continue
+                            if modified_at < cutoff:
+                                continue
+                        affected_files.append(self._delta_item_file_id(item))
+
+                    delta_link = data.get("@odata.deltaLink")
+                    if delta_link:
+                        self._delta_link = delta_link
+                    url = data.get("@odata.nextLink")
+
+            return list(dict.fromkeys(affected_files))
+
+        except Exception as e:
+            logger.error(f"OneDrive webhook delta query failed: {e}")
+            return []
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:
         """Clean up subscription - BaseConnector interface."""
@@ -1117,3 +1218,45 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to cleanup OneDrive subscription {subscription_id}: {e}")
             return False
+
+    async def renew_subscription(self, subscription_id: str) -> str | None:
+        """Extend the Graph subscription in place (PATCH avoids re-validation).
+
+        Returns the new expirationDateTime, or None to signal the caller to
+        fall back to delete + recreate."""
+        if subscription_id == "no-webhook-configured":
+            return None
+
+        try:
+            if not await self.authenticate():
+                logger.error("OneDrive authentication failed during subscription renewal")
+                return None
+
+            token = self.oauth.get_access_token()
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+            url = f"{self._graph_base_url}/subscriptions/{subscription_id}"
+            body = {"expirationDateTime": self._get_subscription_expiry()}
+
+            async with httpx.AsyncClient() as client:
+                response = await client.patch(url, json=body, headers=headers, timeout=30)
+
+                if response.status_code == 404:
+                    # Subscription already expired/deleted at Graph; recreate.
+                    logger.info(f"OneDrive subscription {subscription_id} not found, will recreate")
+                    return None
+                if response.status_code not in [200, 201]:
+                    logger.warning(
+                        f"Unexpected response renewing OneDrive subscription: "
+                        f"{response.status_code}"
+                    )
+                    return None
+
+                expiration = response.json().get("expirationDateTime")
+                self.webhook_expiration = expiration
+                logger.info(f"OneDrive subscription {subscription_id} renewed until {expiration}")
+                return expiration
+
+        except Exception as e:
+            logger.error(f"Failed to renew OneDrive subscription {subscription_id}: {e}")
+            return None

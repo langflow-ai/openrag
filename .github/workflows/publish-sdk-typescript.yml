@@ -50,9 +50,20 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: npm run build
 
+      - name: Determine npm tag
+        if: steps.check.outputs.exists == 'false'
+        id: tag
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          if [[ "$VERSION" == *-* ]]; then
+            echo "tag=dev" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to npm
         if: steps.check.outputs.exists == 'false'
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag ${{ steps.tag.outputs.tag }}
 
       - name: Skip publish (version exists)
         if: steps.check.outputs.exists == 'true'

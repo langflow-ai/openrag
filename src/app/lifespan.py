@@ -106,6 +106,41 @@ async def _periodic_backup(services):
             logger.error(f"Error in periodic backup task: {str(e)}")
 
 
+async def _periodic_webhook_renewal(services):
+    """Renew connector webhook subscriptions before they expire.
+
+    Checks immediately at startup (subscriptions may have lapsed while the
+    app was down), then on a fixed interval. Provider subscriptions are
+    short-lived (Google Drive ~24h, Microsoft Graph 3 days) and go silent
+    without renewal.
+    """
+    from config.settings import (
+        WEBHOOK_RENEWAL_INTERVAL_SECONDS,
+        WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
+    )
+
+    # Let startup_tasks finish loading connections before the first pass
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            connector_service = services.get("connector_service")
+            if connector_service:
+                stats = await connector_service.connection_manager.renew_expiring_subscriptions(
+                    WEBHOOK_RENEWAL_THRESHOLD_SECONDS
+                )
+                if stats["renewed"] or stats["failed"]:
+                    logger.info("Webhook subscription renewal pass completed", **stats)
+                else:
+                    logger.debug("Webhook subscription renewal pass completed", **stats)
+        except asyncio.CancelledError:
+            logger.info("Webhook renewal task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in webhook renewal task: {str(e)}")
+        await asyncio.sleep(WEBHOOK_RENEWAL_INTERVAL_SECONDS)
+
+
 async def run_startup(app: FastAPI):
     """Single source of truth for startup work.
 
@@ -278,6 +313,11 @@ async def run_startup(app: FastAPI):
     backup_task = asyncio.create_task(_periodic_backup(services))
     app.state.background_tasks.add(backup_task)
     backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Start periodic webhook subscription renewal task
+    renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))
+    app.state.background_tasks.add(renewal_task)
+    renewal_task.add_done_callback(app.state.background_tasks.discard)
 
 
 async def run_shutdown(app: FastAPI):
