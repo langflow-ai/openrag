@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FileSearch, FolderOpen, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
@@ -28,6 +28,7 @@ export interface SharedBucketViewProps {
   ) => void;
   onBack: () => void;
   onDone: () => void;
+  initialSelectedBuckets?: string[];
 }
 
 export function SharedBucketView({
@@ -41,6 +42,7 @@ export function SharedBucketView({
   addTask,
   onBack,
   onDone,
+  initialSelectedBuckets,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -53,11 +55,28 @@ export function SharedBucketView({
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
+  const hasAppliedInitial = useRef(false);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (
+      !hasAppliedInitial.current &&
+      buckets?.length &&
+      initialSelectedBuckets?.length
+    ) {
+      const valid = initialSelectedBuckets.filter((name) =>
+        buckets.some((b) => b.name === name),
+      );
+      if (valid.length) {
+        setSelectedBuckets(new Set(valid));
+        hasAppliedInitial.current = true;
+      }
+    }
+  }, [buckets, initialSelectedBuckets]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
