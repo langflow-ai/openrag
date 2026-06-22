@@ -673,16 +673,14 @@ class FlowsService:
         await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
                                 node_display_name=target_llm_id)
 
-    async def update_chat_flow_system_prompt(self, system_prompt: str, provider: str):
+    async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
 
-        # Determine target component IDs based on provider
-        target_agent_id = self._get_provider_component_ids(provider)[1]
-
-        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
-                                node_display_name=target_agent_id)
+        await self._update_flow_field(
+            LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt, node_display_name=AGENT_COMPONENT_DISPLAY_NAME
+        )
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
         """Helper function to update docling preset in the ingest flow"""
