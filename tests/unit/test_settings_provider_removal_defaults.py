@@ -32,6 +32,7 @@ from config.model_constants import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_config(
     *,
     openai=False,
@@ -48,7 +49,9 @@ def _make_config(
         providers=ProvidersConfig(
             openai=OpenAIConfig(api_key="sk-test" if openai else "", configured=openai),
             anthropic=AnthropicConfig(api_key="sk-ant" if anthropic else "", configured=anthropic),
-            ollama=OllamaConfig(endpoint="http://localhost:11434" if ollama else "", configured=ollama),
+            ollama=OllamaConfig(
+                endpoint="http://localhost:11434" if ollama else "", configured=ollama
+            ),
             watsonx=WatsonXConfig(
                 api_key="wx-key" if watsonx else "",
                 endpoint="https://us-south.ml.cloud.ibm.com" if watsonx else "",
@@ -73,6 +76,7 @@ def _make_config(
 # _default_llm_model
 # ---------------------------------------------------------------------------
 
+
 class TestDefaultLlmModel:
     def test_openai_returns_static_default(self):
         assert _default_llm_model("openai") == OPENAI_DEFAULT_LANGUAGE_MODEL
@@ -94,6 +98,7 @@ class TestDefaultLlmModel:
 # _default_embedding_model
 # ---------------------------------------------------------------------------
 
+
 class TestDefaultEmbeddingModel:
     def test_openai_returns_static_default(self):
         assert _default_embedding_model("openai") == OPENAI_DEFAULT_EMBEDDING_MODEL
@@ -111,6 +116,7 @@ class TestDefaultEmbeddingModel:
 # ---------------------------------------------------------------------------
 # _first_configured_llm_provider
 # ---------------------------------------------------------------------------
+
 
 class TestFirstConfiguredLlmProvider:
     def test_excludes_removed_provider(self):
@@ -136,6 +142,7 @@ class TestFirstConfiguredLlmProvider:
 # _first_configured_embedding_provider
 # ---------------------------------------------------------------------------
 
+
 class TestFirstConfiguredEmbeddingProvider:
     def test_excludes_removed_provider(self):
         config = _make_config(openai=True, ollama=True)
@@ -160,6 +167,7 @@ class TestFirstConfiguredEmbeddingProvider:
 # Simulated provider removal: LLM model default
 # ---------------------------------------------------------------------------
 
+
 class TestProviderRemovalLlmDefault:
     """Simulate the provider-removal code path from endpoints.py and verify
     that the resulting llm_model is a sensible default, not empty."""
@@ -173,8 +181,10 @@ class TestProviderRemovalLlmDefault:
 
     def test_remove_anthropic_falls_back_to_openai_model(self):
         config = _make_config(
-            openai=True, anthropic=True,
-            llm_provider="anthropic", llm_model="claude-sonnet-4-6",
+            openai=True,
+            anthropic=True,
+            llm_provider="anthropic",
+            llm_model="claude-sonnet-4-6",
         )
         self._simulate_llm_removal(config, "anthropic")
         assert config.agent.llm_provider == "openai"
@@ -182,8 +192,10 @@ class TestProviderRemovalLlmDefault:
 
     def test_remove_openai_falls_back_to_anthropic_model(self):
         config = _make_config(
-            openai=True, anthropic=True,
-            llm_provider="openai", llm_model="gpt-5.4-mini",
+            openai=True,
+            anthropic=True,
+            llm_provider="openai",
+            llm_model="gpt-5.4-mini",
         )
         self._simulate_llm_removal(config, "openai")
         assert config.agent.llm_provider == "anthropic"
@@ -192,8 +204,10 @@ class TestProviderRemovalLlmDefault:
     def test_remove_openai_falls_back_to_ollama_empty_model(self):
         """Ollama models are dynamic — backend returns empty, frontend picks."""
         config = _make_config(
-            openai=True, ollama=True,
-            llm_provider="openai", llm_model="gpt-5.4-mini",
+            openai=True,
+            ollama=True,
+            llm_provider="openai",
+            llm_model="gpt-5.4-mini",
         )
         self._simulate_llm_removal(config, "openai")
         assert config.agent.llm_provider == "ollama"
@@ -201,8 +215,10 @@ class TestProviderRemovalLlmDefault:
 
     def test_remove_watsonx_falls_back_to_openai_model(self):
         config = _make_config(
-            openai=True, watsonx=True,
-            llm_provider="watsonx", llm_model="ibm/granite-13b-chat-v2",
+            openai=True,
+            watsonx=True,
+            llm_provider="watsonx",
+            llm_model="ibm/granite-13b-chat-v2",
         )
         self._simulate_llm_removal(config, "watsonx")
         assert config.agent.llm_provider == "openai"
@@ -211,8 +227,10 @@ class TestProviderRemovalLlmDefault:
     def test_no_change_if_different_provider_removed(self):
         """If the removed provider wasn't the active one, nothing changes."""
         config = _make_config(
-            openai=True, anthropic=True,
-            llm_provider="openai", llm_model="gpt-5.4-mini",
+            openai=True,
+            anthropic=True,
+            llm_provider="openai",
+            llm_model="gpt-5.4-mini",
         )
         self._simulate_llm_removal(config, "anthropic")
         assert config.agent.llm_provider == "openai"
@@ -222,6 +240,7 @@ class TestProviderRemovalLlmDefault:
 # ---------------------------------------------------------------------------
 # Simulated provider removal: embedding model default
 # ---------------------------------------------------------------------------
+
 
 class TestProviderRemovalEmbeddingDefault:
     """Simulate embedding provider fallback on removal."""
@@ -234,8 +253,10 @@ class TestProviderRemovalEmbeddingDefault:
 
     def test_remove_ollama_falls_back_to_openai_embedding(self):
         config = _make_config(
-            openai=True, ollama=True,
-            embedding_provider="ollama", embedding_model="nomic-embed-text",
+            openai=True,
+            ollama=True,
+            embedding_provider="ollama",
+            embedding_model="nomic-embed-text",
         )
         self._simulate_embedding_removal(config, "ollama")
         assert config.knowledge.embedding_provider == "openai"
@@ -243,8 +264,10 @@ class TestProviderRemovalEmbeddingDefault:
 
     def test_remove_openai_falls_back_to_watsonx_empty_embedding(self):
         config = _make_config(
-            openai=True, watsonx=True,
-            embedding_provider="openai", embedding_model="text-embedding-3-small",
+            openai=True,
+            watsonx=True,
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
         )
         self._simulate_embedding_removal(config, "openai")
         assert config.knowledge.embedding_provider == "watsonx"
@@ -252,8 +275,10 @@ class TestProviderRemovalEmbeddingDefault:
 
     def test_remove_watsonx_falls_back_to_openai_embedding(self):
         config = _make_config(
-            openai=True, watsonx=True,
-            embedding_provider="watsonx", embedding_model="ibm/slate-125m-english-rtrvr",
+            openai=True,
+            watsonx=True,
+            embedding_provider="watsonx",
+            embedding_model="ibm/slate-125m-english-rtrvr",
         )
         self._simulate_embedding_removal(config, "watsonx")
         assert config.knowledge.embedding_provider == "openai"
@@ -261,8 +286,10 @@ class TestProviderRemovalEmbeddingDefault:
 
     def test_no_change_if_different_provider_removed(self):
         config = _make_config(
-            openai=True, ollama=True,
-            embedding_provider="openai", embedding_model="text-embedding-3-small",
+            openai=True,
+            ollama=True,
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
         )
         self._simulate_embedding_removal(config, "ollama")
         assert config.knowledge.embedding_provider == "openai"
