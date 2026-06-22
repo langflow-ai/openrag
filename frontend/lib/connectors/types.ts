@@ -17,7 +17,7 @@ export interface ConnectorBucketViewProps {
   // Loosely typed to match the existing connector shape from useGetConnectorsQuery.
   connector: any;
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string) => void;
+  addTask: (id: string, options?: { connectorType?: string }) => void;
   onBack: () => void;
   onDone: () => void;
 }

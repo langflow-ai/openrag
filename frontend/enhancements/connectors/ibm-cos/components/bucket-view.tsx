@@ -7,7 +7,7 @@ import { useIBMCOSBucketStatusQuery } from "../useIBMCOSBucketStatusQuery";
 export interface IBMCOSBucketViewProps {
   connector: any;
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string) => void;
+  addTask: (id: string, options?: { connectorType?: string }) => void;
   onBack: () => void;
   onDone: () => void;
 }
