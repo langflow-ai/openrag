@@ -1,6 +1,6 @@
 """Utility functions for building Langflow request headers."""
 
-from typing import Dict
+from typing import Dict, Optional
 from utils.container_utils import transform_localhost_url
 
 
@@ -28,7 +28,7 @@ async def add_provider_credentials_to_headers(
     headers: Dict[str, str],
     config,
     flows_service=None,
-    jwt_token: str = None,
+    jwt_token: Optional[str] = None,
 ) -> None:
     """Add provider credentials to headers as Langflow global variables.
 
@@ -64,11 +64,25 @@ async def add_provider_credentials_to_headers(
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
     # Inject OpenSearch URL so Langflow flows always use the correct endpoint
-    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        LANGFLOW_OPENSEARCH_HOST,
+        LANGFLOW_OPENSEARCH_PORT,
+        OPENSEARCH_PASSWORD,
+        OPENSEARCH_USERNAME,
+    )
     headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
 
+    # Non-IBM mode: always provide explicit basic auth globals for Langflow ingestion.
+    # This prevents the OpenSearch component from falling back to unauthenticated
+    # requests that are evaluated as the anonymous user.
+    if not IBM_AUTH_ENABLED:
+        if OPENSEARCH_USERNAME:
+            headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_USERNAME"] = str(OPENSEARCH_USERNAME)
+        if OPENSEARCH_PASSWORD:
+            headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_PASSWORD"] = str(OPENSEARCH_PASSWORD)
+
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
-    from config.settings import IBM_AUTH_ENABLED
     if IBM_AUTH_ENABLED and jwt_token:
         headers.update(build_ibm_opensearch_vars(jwt_token, prefix="X-LANGFLOW-GLOBAL-VAR-"))
 
