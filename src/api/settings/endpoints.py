@@ -63,6 +63,7 @@ from config.settings import (
     LANGFLOW_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
+    OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
@@ -235,6 +236,7 @@ async def get_settings(
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
+            show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
         )
