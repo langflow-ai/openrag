@@ -133,6 +133,15 @@ export function AgentSettingsSection() {
     },
   });
 
+  const allLlmOptions = groupedLlmModels.flatMap((g) => g.options);
+
+  useEffect(() => {
+    if (!settings.agent?.llm_model && allLlmOptions.length > 0) {
+      const fallback = allLlmOptions.find((o) => o.default) || allLlmOptions[0];
+      handleModelChange(fallback.value, fallback.provider);
+    }
+  }, [settings.agent?.llm_model, allLlmOptions]);
+
   useEffect(() => {
     if (settings.agent?.system_prompt) {
       setSystemPrompt(settings.agent.system_prompt);

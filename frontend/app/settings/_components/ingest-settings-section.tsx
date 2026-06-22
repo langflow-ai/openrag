@@ -124,6 +124,19 @@ export function IngestSettingsSection() {
     },
   });
 
+  const allEmbeddingOptions = groupedEmbeddingModels.flatMap((g) => g.options);
+
+  useEffect(() => {
+    if (
+      !settings.knowledge?.embedding_model &&
+      allEmbeddingOptions.length > 0
+    ) {
+      const fallback =
+        allEmbeddingOptions.find((o) => o.default) || allEmbeddingOptions[0];
+      handleEmbeddingModelChange(fallback.value, fallback.provider);
+    }
+  }, [settings.knowledge?.embedding_model, allEmbeddingOptions]);
+
   useEffect(() => {
     if (settings.knowledge?.chunk_size !== undefined)
       setChunkSize(settings.knowledge.chunk_size);

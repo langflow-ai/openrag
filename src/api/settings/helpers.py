@@ -34,6 +34,30 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     return "openai"
 
 
+def _default_llm_model(provider: str) -> str:
+    """Return the static default LLM model for a provider, or empty string for
+    providers whose model lists are fully dynamic (ollama, watsonx)."""
+    from config.model_constants import (
+        ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+        OPENAI_DEFAULT_LANGUAGE_MODEL,
+    )
+
+    return {
+        "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
+        "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+    }.get(provider, "")
+
+
+def _default_embedding_model(provider: str) -> str:
+    """Return the static default embedding model for a provider, or empty string
+    for providers whose model lists are fully dynamic (ollama, watsonx)."""
+    from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+
+    return {
+        "openai": OPENAI_DEFAULT_EMBEDDING_MODEL,
+    }.get(provider, "")
+
+
 async def _affected_embedding_models(
     provider: str,
     session_manager,
