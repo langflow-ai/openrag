@@ -339,6 +339,12 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 		if os.IndexName != "" {
 			envVars["OPENSEARCH_INDEX_NAME"] = os.IndexName
 		}
+		if os.NumberOfShards > 0 {
+			envVars["OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS"] = fmt.Sprintf("%d", os.NumberOfShards)
+		}
+		if os.NumberOfReplicas >= 0 {
+			envVars["OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS"] = fmt.Sprintf("%d", os.NumberOfReplicas)
+		}
 
 		// Read OpenSearch credentials from user-provided secret
 		if os.CredentialsSecret != "" {
@@ -519,6 +525,12 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 		envVars["OPENSEARCH_URL"] = fmt.Sprintf("%s://%s:%d", scheme, os.Host, port)
 		if os.IndexName != "" {
 			envVars["OPENSEARCH_INDEX_NAME"] = os.IndexName
+		}
+		if os.NumberOfShards > 0 {
+			envVars["OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS"] = fmt.Sprintf("%d", os.NumberOfShards)
+		}
+		if os.NumberOfReplicas >= 0 {
+			envVars["OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS"] = fmt.Sprintf("%d", os.NumberOfReplicas)
 		}
 	}
 

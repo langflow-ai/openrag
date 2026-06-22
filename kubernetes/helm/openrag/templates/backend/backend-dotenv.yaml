@@ -83,6 +83,8 @@ stringData:
     {{- if .Values.global.opensearch.indexName }}
     OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
     {{- end }}
+    OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS={{ .Values.global.opensearch.numberOfShards | quote }}
+    OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS={{ .Values.global.opensearch.numberOfReplicas | quote }}
     LANGFLOW_OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
     LANGFLOW_OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
 

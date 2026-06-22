@@ -55,6 +55,8 @@ spec:
   #   port: 9200
   #   scheme: https
   #   indexName: documents
+  #   numberOfShards: 1
+  #   numberOfReplicas: 0
   #   credentialsSecret: opensearch-credentials   # keys: username, password
 
   # Operator-managed Docling components — optional document processing
