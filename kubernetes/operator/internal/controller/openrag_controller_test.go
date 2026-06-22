@@ -1428,3 +1428,147 @@ func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
 	// Hash should be identical (no unnecessary pod restart)
 	assert.Equal(t, hash1, hash2, "Hash should remain same when env unchanged (avoids unnecessary restarts)")
 }
+
+// ---------------------------------------------------------------------------
+// Image Drift Detection Tests
+// ---------------------------------------------------------------------------
+
+func TestHasDeploymentImageDrift(t *testing.T) {
+	tests := []struct {
+		name        string
+		desired     *appsv1.Deployment
+		existing    *appsv1.Deployment
+		expectDrift bool
+	}{
+		{
+			name:        "no drift - images match",
+			desired:     createTestDeployment("langflowai/openrag-backend:v1.0.0"),
+			existing:    createTestDeployment("langflowai/openrag-backend:v1.0.0"),
+			expectDrift: false,
+		},
+		{
+			name:        "drift - different tags",
+			desired:     createTestDeployment("langflowai/openrag-backend:v1.0.0"),
+			existing:    createTestDeployment("langflowai/openrag-backend:v0.9.0"),
+			expectDrift: true,
+		},
+		{
+			name:        "drift - completely different image",
+			desired:     createTestDeployment("langflowai/openrag-backend:v1.0.0"),
+			existing:    createTestDeployment("malicious/backdoor:latest"),
+			expectDrift: true,
+		},
+		{
+			name: "drift - second container differs",
+			desired: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "main", Image: "app:v1"},
+								{Name: "sidecar", Image: "sidecar:v1"},
+							},
+						},
+					},
+				},
+			},
+			existing: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "main", Image: "app:v1"},
+								{Name: "sidecar", Image: "sidecar:v2"},
+							},
+						},
+					},
+				},
+			},
+			expectDrift: true,
+		},
+		{
+			name: "drift - different container count",
+			desired: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "main", Image: "app:v1"},
+								{Name: "sidecar", Image: "sidecar:v1"},
+							},
+						},
+					},
+				},
+			},
+			existing: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "main", Image: "app:v1"},
+							},
+						},
+					},
+				},
+			},
+			expectDrift: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasDeploymentImageDrift(tt.desired, tt.existing)
+			assert.Equal(t, tt.expectDrift, result)
+		})
+	}
+}
+
+// Helper function to create a test deployment with a single container
+func createTestDeployment(image string) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "main", Image: image},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Image Drift Detection Tests
+// ---------------------------------------------------------------------------
+
+func TestReconcile_ImageDriftTriggersRevert(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.Backend.Image = "langflowai/openrag-backend:v1.0.0"
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	backendDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "test-ns"}, backendDeploy))
+	assert.Equal(t, "langflowai/openrag-backend:v1.0.0", backendDeploy.Spec.Template.Spec.Containers[0].Image)
+
+	// Simulate image drift
+	backendDeploy.Spec.Template.Spec.Containers[0].Image = "malicious/backdoor:latest"
+	require.NoError(t, c.Update(context.Background(), backendDeploy))
+
+	driftedDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "test-ns"}, driftedDeploy))
+	assert.Equal(t, "malicious/backdoor:latest", driftedDeploy.Spec.Template.Spec.Containers[0].Image)
+
+	// Reconcile should detect drift and revert
+	reconcileOnce(t, r, cr)
+
+	revertedDeploy := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "test-ns"}, revertedDeploy))
+	assert.Equal(t, "langflowai/openrag-backend:v1.0.0", revertedDeploy.Spec.Template.Spec.Containers[0].Image)
+}
