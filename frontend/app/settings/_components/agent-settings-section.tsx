@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
@@ -84,42 +84,55 @@ export function AgentSettingsSection() {
       },
     );
 
-  const groupedLlmModels = [
-    {
-      group: "OpenAI",
-      provider: "openai",
-      icon: getModelLogo("", "openai"),
-      models: openaiModels?.language_models || [],
-      configured: settings.providers?.openai?.configured === true,
-    },
-    {
-      group: "Anthropic",
-      provider: "anthropic",
-      icon: getModelLogo("", "anthropic"),
-      models: anthropicModels?.language_models || [],
-      configured: settings.providers?.anthropic?.configured === true,
-    },
-    {
-      group: "Ollama",
-      provider: "ollama",
-      icon: getModelLogo("", "ollama"),
-      models: ollamaModels?.language_models || [],
-      configured: settings.providers?.ollama?.configured === true,
-    },
-    {
-      group: "IBM watsonx.ai",
-      provider: "watsonx",
-      icon: getModelLogo("", "watsonx"),
-      models: watsonxModels?.language_models || [],
-      configured: settings.providers?.watsonx?.configured === true,
-    },
-  ]
-    .filter((p) => p.configured)
-    .map((p) => ({
-      group: p.group,
-      icon: p.icon,
-      options: p.models.map((m) => ({ ...m, provider: p.provider })),
-    }));
+  const groupedLlmModels = useMemo(
+    () =>
+      [
+        {
+          group: "OpenAI",
+          provider: "openai",
+          icon: getModelLogo("", "openai"),
+          models: openaiModels?.language_models || [],
+          configured: settings.providers?.openai?.configured === true,
+        },
+        {
+          group: "Anthropic",
+          provider: "anthropic",
+          icon: getModelLogo("", "anthropic"),
+          models: anthropicModels?.language_models || [],
+          configured: settings.providers?.anthropic?.configured === true,
+        },
+        {
+          group: "Ollama",
+          provider: "ollama",
+          icon: getModelLogo("", "ollama"),
+          models: ollamaModels?.language_models || [],
+          configured: settings.providers?.ollama?.configured === true,
+        },
+        {
+          group: "IBM watsonx.ai",
+          provider: "watsonx",
+          icon: getModelLogo("", "watsonx"),
+          models: watsonxModels?.language_models || [],
+          configured: settings.providers?.watsonx?.configured === true,
+        },
+      ]
+        .filter((p) => p.configured)
+        .map((p) => ({
+          group: p.group,
+          icon: p.icon,
+          options: p.models.map((m) => ({ ...m, provider: p.provider })),
+        })),
+    [
+      openaiModels?.language_models,
+      anthropicModels?.language_models,
+      ollamaModels?.language_models,
+      watsonxModels?.language_models,
+      settings.providers?.openai?.configured,
+      settings.providers?.anthropic?.configured,
+      settings.providers?.ollama?.configured,
+      settings.providers?.watsonx?.configured,
+    ],
+  );
 
   const isLoadingAnyLlmModels =
     openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
@@ -133,7 +146,10 @@ export function AgentSettingsSection() {
     },
   });
 
-  const allLlmOptions = groupedLlmModels.flatMap((g) => g.options);
+  const allLlmOptions = useMemo(
+    () => groupedLlmModels.flatMap((g) => g.options),
+    [groupedLlmModels],
+  );
 
   useEffect(() => {
     if (!settings.agent?.llm_model && allLlmOptions.length > 0) {

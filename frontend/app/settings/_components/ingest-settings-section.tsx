@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetIBMModelsQuery,
@@ -82,35 +82,46 @@ export function IngestSettingsSection() {
       },
     );
 
-  const groupedEmbeddingModels = [
-    {
-      group: "OpenAI",
-      provider: "openai",
-      icon: getModelLogo("", "openai"),
-      models: openaiModels?.embedding_models || [],
-      configured: settings.providers?.openai?.configured === true,
-    },
-    {
-      group: "Ollama",
-      provider: "ollama",
-      icon: getModelLogo("", "ollama"),
-      models: ollamaModels?.embedding_models || [],
-      configured: settings.providers?.ollama?.configured === true,
-    },
-    {
-      group: "IBM watsonx.ai",
-      provider: "watsonx",
-      icon: getModelLogo("", "watsonx"),
-      models: watsonxModels?.embedding_models || [],
-      configured: settings.providers?.watsonx?.configured === true,
-    },
-  ]
-    .filter((p) => p.configured)
-    .map((p) => ({
-      group: p.group,
-      icon: p.icon,
-      options: p.models.map((m) => ({ ...m, provider: p.provider })),
-    }));
+  const groupedEmbeddingModels = useMemo(
+    () =>
+      [
+        {
+          group: "OpenAI",
+          provider: "openai",
+          icon: getModelLogo("", "openai"),
+          models: openaiModels?.embedding_models || [],
+          configured: settings.providers?.openai?.configured === true,
+        },
+        {
+          group: "Ollama",
+          provider: "ollama",
+          icon: getModelLogo("", "ollama"),
+          models: ollamaModels?.embedding_models || [],
+          configured: settings.providers?.ollama?.configured === true,
+        },
+        {
+          group: "IBM watsonx.ai",
+          provider: "watsonx",
+          icon: getModelLogo("", "watsonx"),
+          models: watsonxModels?.embedding_models || [],
+          configured: settings.providers?.watsonx?.configured === true,
+        },
+      ]
+        .filter((p) => p.configured)
+        .map((p) => ({
+          group: p.group,
+          icon: p.icon,
+          options: p.models.map((m) => ({ ...m, provider: p.provider })),
+        })),
+    [
+      openaiModels?.embedding_models,
+      ollamaModels?.embedding_models,
+      watsonxModels?.embedding_models,
+      settings.providers?.openai?.configured,
+      settings.providers?.ollama?.configured,
+      settings.providers?.watsonx?.configured,
+    ],
+  );
 
   const isLoadingAnyEmbeddingModels =
     openaiLoading || ollamaLoading || watsonxLoading;
@@ -124,7 +135,10 @@ export function IngestSettingsSection() {
     },
   });
 
-  const allEmbeddingOptions = groupedEmbeddingModels.flatMap((g) => g.options);
+  const allEmbeddingOptions = useMemo(
+    () => groupedEmbeddingModels.flatMap((g) => g.options),
+    [groupedEmbeddingModels],
+  );
 
   useEffect(() => {
     if (

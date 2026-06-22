@@ -27,11 +27,11 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`."""
+    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
     for p in ["openai", "watsonx", "ollama"]:
         if p != excluding and getattr(config.providers, p).configured:
             return p
-    return "openai"
+    return ""
 
 
 def _default_llm_model(provider: str) -> str:

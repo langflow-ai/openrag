@@ -5,8 +5,6 @@ the backend should fall back to another configured provider AND select a
 sensible default model (not an empty string).
 """
 
-import pytest
-
 from api.settings.helpers import (
     _default_embedding_model,
     _default_llm_model,
@@ -154,9 +152,9 @@ class TestFirstConfiguredEmbeddingProvider:
         config = _make_config(openai=True, watsonx=True, ollama=True)
         assert _first_configured_embedding_provider(config, "openai") == "watsonx"
 
-    def test_falls_back_to_openai_when_none_configured(self):
+    def test_returns_empty_when_none_configured(self):
         config = _make_config()
-        assert _first_configured_embedding_provider(config, "ollama") == "openai"
+        assert _first_configured_embedding_provider(config, "ollama") == ""
 
 
 # ---------------------------------------------------------------------------
