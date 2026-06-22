@@ -275,9 +275,9 @@ export function IBMCOSSettingsForm({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">
-              Select Buckets to Ingest
+              Restrict to Specific Buckets
               <span className="ml-1 text-muted-foreground font-normal">
-                (leave all unchecked to ingest everything)
+                (leave all unchecked to include all)
               </span>
             </Label>
             {buckets.length > 1 && (

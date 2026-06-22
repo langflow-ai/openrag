@@ -9,13 +9,15 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorTokenQuery";
 import { useIBMCOSBucketStatusQuery } from "@/app/api/queries/useIBMCOSBucketStatusQuery";
+import { useIBMCOSDefaultsQuery } from "@/app/api/queries/useIBMCOSDefaultsQuery";
 import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery";
+import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
@@ -49,6 +51,7 @@ function BucketView({
   addTask,
   onBack,
   onDone,
+  initialSelectedBuckets,
 }: {
   connector: any;
   buckets: Array<{ name: string; ingested_count: number }> | undefined;
@@ -60,16 +63,34 @@ function BucketView({
   addTask: (id: string) => void;
   onBack: () => void;
   onDone: () => void;
+  initialSelectedBuckets?: string[];
 }) {
   const queryClient = useQueryClient();
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
+  const hasAppliedInitial = useRef(false);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (
+      !hasAppliedInitial.current &&
+      buckets?.length &&
+      initialSelectedBuckets?.length
+    ) {
+      const valid = initialSelectedBuckets.filter((name) =>
+        buckets.some((b) => b.name === name),
+      );
+      if (valid.length) {
+        setSelectedBuckets(new Set(valid));
+        hasAppliedInitial.current = true;
+      }
+    }
+  }, [buckets, initialSelectedBuckets]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -318,6 +339,7 @@ function IBMCOSBucketView({
     isLoading,
     refetch,
   } = useIBMCOSBucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useIBMCOSDefaultsQuery({ enabled: true });
   return (
     <BucketView
       connector={connector}
@@ -329,6 +351,7 @@ function IBMCOSBucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={defaults?.bucket_names}
     />
   );
 }
@@ -356,6 +379,7 @@ function S3BucketView({
     error: bucketsError,
     refetch,
   } = useS3BucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useS3DefaultsQuery({ enabled: true });
   return (
     <BucketView
       connector={connector}
@@ -368,6 +392,7 @@ function S3BucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={defaults?.bucket_names}
     />
   );
 }
