@@ -201,7 +201,7 @@ function ChatPage() {
       );
 
       if (result.type === "task") {
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "file" });
         return { type: "task-queued" as const };
       }
 
