@@ -1,4 +1,11 @@
-"""Tests for bug #1587: LLM model values not restored by fallback branch."""
+"""
+Unit tests for api.settings._update_langflow_model_values
+
+Regression tests for issue #1587: the no-argument fallback used by
+reapply_all_settings (triggered when Langflow flows are detected as reset)
+must reapply LLM model values for every configured LLM provider, not only
+embedding providers.
+"""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,17 +14,18 @@ import pytest
 from api.settings import _update_langflow_model_values
 
 
+# Providers a mock config can advertise as configured. LLM supports anthropic;
+# embeddings do not, so embedding reapplication should skip it.
+_ALL_PROVIDERS = ("openai", "anthropic", "watsonx", "ollama")
+_EXPECTED_LLM_PROVIDERS = {"openai", "anthropic", "watsonx", "ollama"}
+_EXPECTED_EMBEDDING_PROVIDERS = {"openai", "watsonx", "ollama"}
+
+
 @pytest.fixture
 def mock_config():
-    """Standard mock configuration for langflow sync tests.
-
-    All four providers configured; embedding via openai, LLM via anthropic.
-    """
     config = MagicMock()
-    config.providers.openai.configured = True
-    config.providers.anthropic.configured = True
-    config.providers.watsonx.configured = True
-    config.providers.ollama.configured = True
+    for name in _ALL_PROVIDERS:
+        getattr(config.providers, name).configured = True
     config.knowledge.embedding_provider = "openai"
     config.knowledge.embedding_model = "text-embedding-3-small"
     config.agent.llm_provider = "anthropic"
@@ -25,86 +33,99 @@ def mock_config():
     return config
 
 
-@pytest.fixture
-def mock_flows_service():
-    """Flows service stub whose model-value calls report a successful update."""
-    service = AsyncMock()
-    service.change_langflow_model_value = AsyncMock(return_value={"updated": True})
-    return service
+def _calls_by_kwarg(flows_service, kwarg):
+    """Return {provider: kwarg_value} for change_langflow_model_value calls carrying `kwarg`."""
+    result = {}
+    for call in flows_service.change_langflow_model_value.await_args_list:
+        if kwarg in call.kwargs:
+            provider = call.args[0] if call.args else call.kwargs.get("provider")
+            result[provider] = call.kwargs[kwarg]
+    return result
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Documents pre-fix behavior of #1587; fails by design on fixed code")
-async def test_bug_1587_unfixed_no_llm_updates_in_fallback(mock_config, mock_flows_service):
-    """
-    Demonstrates the bug: when reapply_all_settings() calls _update_langflow_model_values()
-    with no explicit overrides, the fallback branch updates embedding providers but NOT
-    LLM providers, leaving flows in a reset state.
+async def test_fallback_reapplies_llm_for_all_configured_providers(mock_config):
+    """No-arg fallback must call change_langflow_model_value for every configured LLM provider.
 
-    This test is skipped because it documents the UNFIXED behavior and will fail on fixed code.
+    Regression test for #1587: previously only embedding providers were reapplied,
+    so LLM model values were silently dropped after a flow reset.
     """
-    # Call with no explicit overrides (the reapply_all_settings path)
-    await _update_langflow_model_values(
-        mock_config,
-        mock_flows_service,
-        llm_model=None,
-        llm_provider=None,
-        embedding_model=None,
-        embedding_provider=None,
-    )
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock()
 
-    # On unfixed code: zero LLM calls, only embedding calls
-    llm_calls = [
-        call
-        for call in mock_flows_service.change_langflow_model_value.call_args_list
-        if "llm_model" in call.kwargs or "force_llm_update" in call.kwargs
-    ]
-    assert len(llm_calls) == 0, "Bug #1587: fallback branch should update LLM providers but doesn't"
+    # No model/provider arguments => the reapply_all_settings fallback path.
+    await _update_langflow_model_values(mock_config, flows_service)
+
+    llm_calls = _calls_by_kwarg(flows_service, "llm_model")
+    assert set(llm_calls.keys()) == _EXPECTED_LLM_PROVIDERS
+
+    # Every LLM call must force the update.
+    for call in flows_service.change_langflow_model_value.await_args_list:
+        if "llm_model" in call.kwargs:
+            assert call.kwargs.get("force_llm_update") is True
 
 
 @pytest.mark.asyncio
-async def test_bug_1587_fixed_llm_updates_in_fallback(mock_config, mock_flows_service):
-    """
-    Validates the fix: when reapply_all_settings() calls _update_langflow_model_values()
-    with no explicit overrides, the fallback branch now updates BOTH LLM and embedding
-    providers across all configured providers.
-    """
-    # Call with no explicit overrides (the reapply_all_settings path)
+async def test_fallback_uses_configured_model_only_for_current_llm_provider(mock_config):
+    """The active provider keeps its configured model; others reset to None (first available)."""
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock()
+
+    await _update_langflow_model_values(mock_config, flows_service)
+
+    llm_calls = _calls_by_kwarg(flows_service, "llm_model")
+    assert llm_calls["anthropic"] == "claude-3-5-sonnet-20241022"
+    assert llm_calls["openai"] is None
+    assert llm_calls["watsonx"] is None
+    assert llm_calls["ollama"] is None
+
+
+@pytest.mark.asyncio
+async def test_fallback_still_reapplies_embedding_providers(mock_config):
+    """The fix must not regress the existing embedding reapplication behavior."""
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock()
+
+    await _update_langflow_model_values(mock_config, flows_service)
+
+    embedding_calls = _calls_by_kwarg(flows_service, "embedding_model")
+    # anthropic is not a valid embedding provider and must be skipped.
+    assert set(embedding_calls.keys()) == _EXPECTED_EMBEDDING_PROVIDERS
+    assert embedding_calls["openai"] == "text-embedding-3-small"
+    assert embedding_calls["watsonx"] is None
+    assert embedding_calls["ollama"] is None
+
+
+@pytest.mark.asyncio
+async def test_fallback_only_reapplies_configured_providers(mock_config):
+    """Unconfigured providers must not be touched in the fallback path."""
+    mock_config.providers.watsonx.configured = False
+    mock_config.providers.ollama.configured = False
+
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock()
+
+    await _update_langflow_model_values(mock_config, flows_service)
+
+    llm_calls = _calls_by_kwarg(flows_service, "llm_model")
+    assert set(llm_calls.keys()) == {"openai", "anthropic"}
+
+
+@pytest.mark.asyncio
+async def test_explicit_llm_arguments_bypass_fallback(mock_config):
+    """When explicit llm args are passed, only that provider is updated (no fallback loop)."""
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock()
+
     await _update_langflow_model_values(
         mock_config,
-        mock_flows_service,
-        llm_model=None,
-        llm_provider=None,
-        embedding_model=None,
-        embedding_provider=None,
+        flows_service,
+        llm_model="gpt-4o",
+        llm_provider="openai",
     )
 
-    # Verify LLM calls
-    llm_calls = [
-        call
-        for call in mock_flows_service.change_langflow_model_value.call_args_list
-        if "force_llm_update" in call.kwargs and call.kwargs["force_llm_update"] is True
-    ]
-    assert len(llm_calls) == 4, (
-        "Should update all 4 LLM providers (openai, anthropic, watsonx, ollama)"
-    )
-
-    # Verify current provider gets the configured model
-    anthropic_call = next((call for call in llm_calls if call.args[0] == "anthropic"), None)
-    assert anthropic_call is not None
-    assert anthropic_call.kwargs["llm_model"] == "claude-3-5-sonnet-20241022"
-
-    # Verify other providers get None
-    for provider in ["openai", "watsonx", "ollama"]:
-        provider_call = next((call for call in llm_calls if call.args[0] == provider), None)
-        assert provider_call is not None
-        assert provider_call.kwargs["llm_model"] is None
-
-    # Verify embedding calls unchanged (3 providers: openai, watsonx, ollama - no anthropic)
-    embedding_calls = [
-        call
-        for call in mock_flows_service.change_langflow_model_value.call_args_list
-        if "force_embedding_update" in call.kwargs and call.kwargs["force_embedding_update"] is True
-    ]
-    assert len(embedding_calls) == 3
-
+    flows_service.change_langflow_model_value.assert_awaited_once()
+    call = flows_service.change_langflow_model_value.await_args
+    assert call.args[0] == "openai"
+    assert call.kwargs["llm_model"] == "gpt-4o"
+    assert call.kwargs.get("force_llm_update") is True
