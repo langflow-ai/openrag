@@ -663,22 +663,23 @@ async def connector_sync(
                     user_id=user.user_id,
                     jwt_token=jwt_token,
                 )
-                file_infos = duplicate_check["non_duplicate_files"]
-                selected_files = [f["id"] for f in file_infos if f.get("id")]
-                if not selected_files:
-                    return JSONResponse(
-                        {
-                            "status": "no_files",
-                            "message": (
-                                f"All {duplicate_check['duplicate_count']} selected file(s) "
-                                "already exist. Nothing was synced."
-                            ),
-                            "duplicate_names": duplicate_check["duplicate_names"],
-                            "duplicate_count": duplicate_check["duplicate_count"],
-                            "total_files": duplicate_check["total_files"],
-                        },
-                        status_code=200,
-                    )
+                if duplicate_check["duplicate_count"] > 0:
+                    file_infos = duplicate_check["non_duplicate_files"]
+                    selected_files = [f["id"] for f in file_infos if f.get("id")]
+                    if not selected_files:
+                        return JSONResponse(
+                            {
+                                "status": "no_files",
+                                "message": (
+                                    f"All {duplicate_check['duplicate_count']} selected file(s) "
+                                    "already exist. Nothing was synced."
+                                ),
+                                "duplicate_names": duplicate_check["duplicate_names"],
+                                "duplicate_count": duplicate_check["duplicate_count"],
+                                "total_files": duplicate_check["total_files"],
+                            },
+                            status_code=200,
+                        )
 
             await _ensure_index_exists(jwt_token)
             task_id = await connector_service.sync_specific_files(

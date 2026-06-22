@@ -306,3 +306,50 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
             "isFolder": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_connector_sync_does_not_report_all_duplicates_when_expansion_is_empty(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr("api.documents._ensure_index_exists", AsyncMock())
+
+    connector_service = MagicMock()
+    connection_manager = MagicMock()
+    connector_service.connection_manager = connection_manager
+
+    connection = MagicMock()
+    connection.connection_id = "conn-id"
+    connection.is_active = True
+    connection_manager.list_connections = AsyncMock(return_value=[connection])
+
+    connector = MagicMock()
+    connector.is_authenticated = True
+    connector.authenticate = AsyncMock(return_value=True)
+    connector.cfg = MagicMock()
+    connector.list_files = AsyncMock(return_value={"files": []})
+    connector_service.get_connector = AsyncMock(return_value=connector)
+    connector_service.sync_specific_files = AsyncMock(return_value="task-id")
+
+    session_manager = MagicMock()
+    opensearch_client = AsyncMock()
+    session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    response = await connectors_api.connector_sync(
+        connector_type="google_drive",
+        body=connectors_api.ConnectorSyncBody(
+            selected_files=[{"id": "folder-id", "name": "Folder", "isFolder": True}],
+            replace_duplicates=False,
+        ),
+        connector_service=connector_service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token"),
+    )
+
+    assert response.status_code == 201
+    connector_service.sync_specific_files.assert_awaited_once()
+    args = connector_service.sync_specific_files.await_args.args
+    kwargs = connector_service.sync_specific_files.await_args.kwargs
+    assert args[2] == ["folder-id"]
+    assert kwargs["file_infos"] == [{"id": "folder-id", "name": "Folder", "isFolder": True}]
