@@ -35,7 +35,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
-import { trackStartProcess } from "@/lib/analytics";
+import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -346,6 +346,13 @@ export function KnowledgeDropdown() {
       await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "file",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
       if (typeof window !== "undefined") {
@@ -387,8 +394,15 @@ export function KnowledgeDropdown() {
     for (const batch of batches) {
       try {
         const result = await uploadFiles(batch, replace);
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "folder" });
       } catch (error) {
+        trackProcessFailure({
+          processType: "Ingestion",
+          process: "Document Upload",
+          category: "Knowledge",
+          source: "folder",
+          resultValue: error instanceof Error ? error.message : "Unknown error",
+        });
         console.error("[Folder Upload] Batch upload failed:", error);
         toast.error("Batch upload failed", {
           description: error instanceof Error ? error.message : "Unknown error",
@@ -618,7 +632,7 @@ export function KnowledgeDropdown() {
           throw new Error("No task ID received from server");
         }
 
-        addTask(taskId);
+        addTask(taskId, { source: "path" });
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
@@ -635,6 +649,13 @@ export function KnowledgeDropdown() {
         }
       }
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "path",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       console.error("Folder upload error:", error);
     } finally {
       setFolderLoading(false);

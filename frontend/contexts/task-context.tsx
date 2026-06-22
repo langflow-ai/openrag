@@ -61,7 +61,10 @@ export interface TaskFile {
 interface TaskContextType {
   tasks: Task[];
   files: TaskFile[];
-  addTask: (taskId: string, options?: { connectorType?: string }) => void;
+  addTask: (
+    taskId: string,
+    options?: { connectorType?: string; source?: string },
+  ) => void;
   addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
   /** Mark knowledge-table overlays as processing when a retry starts. */
   markTaskFilesProcessing: (taskId: string, sourceUrls: string[]) => void;
@@ -100,17 +103,20 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
   const taskConnectorTypesRef = useRef<Map<string, string>>(new Map());
+  const taskSourcesRef = useRef<Map<string, string>>(new Map());
 
-  const clearTaskConnectorType = useCallback((taskId: string) => {
+  const clearTaskMetadata = useCallback((taskId: string) => {
     taskConnectorTypesRef.current.delete(taskId);
+    taskSourcesRef.current.delete(taskId);
   }, []);
 
-  const clearTaskConnectorTypesWithoutOverlays = useCallback(
+  const clearTaskMetadataWithoutOverlays = useCallback(
     (prevFiles: TaskFile[], nextFiles: TaskFile[]) => {
       const nextTaskIds = new Set(nextFiles.map((file) => file.task_id));
       for (const file of prevFiles) {
         if (!nextTaskIds.has(file.task_id)) {
           taskConnectorTypesRef.current.delete(file.task_id);
+          taskSourcesRef.current.delete(file.task_id);
         }
       }
     },
@@ -157,7 +163,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         },
       );
 
-      clearTaskConnectorType(variables.taskId);
+      clearTaskMetadata(variables.taskId);
 
       // Update file to display as cancelled
       setFiles((prevFiles) =>
@@ -248,7 +254,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     const currentTaskIds = new Set(tasks.map((task) => task.task_id));
     for (const previousTask of previousTasksRef.current) {
       if (!currentTaskIds.has(previousTask.task_id)) {
-        clearTaskConnectorType(previousTask.task_id);
+        clearTaskMetadata(previousTask.task_id);
       }
     }
 
@@ -434,6 +440,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const embeddingModel = firstFile?.embedding_model;
           const connectorType =
             taskConnectorTypesRef.current.get(currentTask.task_id) || "local";
+          const source =
+            taskSourcesRef.current.get(currentTask.task_id) ||
+            (connectorType === "local" ? "file" : "connector");
 
           if (isTotalFailure) {
             trackProcessFailure({
@@ -446,6 +455,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               duration_seconds: currentTask.duration_seconds,
               embedding_model: embeddingModel,
               connector_type: connectorType,
+              source,
             });
           } else {
             trackProcessSuccess({
@@ -459,6 +469,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               duration_seconds: currentTask.duration_seconds,
               embedding_model: embeddingModel,
               connector_type: connectorType,
+              source,
             });
           }
 
@@ -552,7 +563,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 }
               }
 
-              clearTaskConnectorType(currentTask.task_id);
+              clearTaskMetadata(currentTask.task_id);
 
               setFiles((prevFiles) =>
                 prevFiles.filter((file) => {
@@ -589,7 +600,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           }
           void refetchKnowledgeAfterTaskCompletion();
         } else if (taskJustReachedTerminal) {
-          clearTaskConnectorType(currentTask.task_id);
+          clearTaskMetadata(currentTask.task_id);
         }
 
         if (
@@ -643,15 +654,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     tasks,
     refetchSearch,
     isOnboardingActive,
-    clearTaskConnectorType,
+    clearTaskMetadata,
     queryClient,
   ]);
 
   const addTask = useCallback(
-    (taskId: string, options?: { connectorType?: string }) => {
+    (taskId: string, options?: { connectorType?: string; source?: string }) => {
       const connectorType = options?.connectorType?.trim();
       if (connectorType) {
         taskConnectorTypesRef.current.set(taskId, connectorType);
+      }
+      const source = options?.source?.trim();
+      if (source) {
+        taskSourcesRef.current.set(taskId, source);
       }
       // React Query will automatically handle polling when tasks are active
       // Just trigger a refetch to get the latest data
@@ -667,11 +682,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       const nextFiles = prevFiles.filter(
         (file) => file.status !== "active" && file.status !== "failed",
       );
-      clearTaskConnectorTypesWithoutOverlays(prevFiles, nextFiles);
+      clearTaskMetadataWithoutOverlays(prevFiles, nextFiles);
       return nextFiles;
     });
     await refetchTasks();
-  }, [refetchTasks, clearTaskConnectorTypesWithoutOverlays]);
+  }, [refetchTasks, clearTaskMetadataWithoutOverlays]);
 
   const cancelTask = useCallback(
     async (taskId: string) => {
