@@ -39,7 +39,11 @@ export function IBMCOSBucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
-      initialSelectedBuckets={defaults?.bucket_names}
+      initialSelectedBuckets={
+        defaults?.connection_id === connector.connectionId
+          ? defaults?.bucket_names
+          : undefined
+      }
     />
   );
 }
