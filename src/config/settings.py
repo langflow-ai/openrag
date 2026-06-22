@@ -462,6 +462,11 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
     "yes",
 )
 
+# Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
+OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
+    "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
+
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
 
