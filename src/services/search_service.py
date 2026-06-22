@@ -2,6 +2,7 @@ import asyncio
 import copy
 import os
 import json
+import re
 from collections import Counter
 from typing import Any, Dict
 from agentd.tool_decorator import tool
@@ -20,6 +21,19 @@ EMBED_RETRY_MAX_DELAY = 8.0
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def _is_exact_token_query(query: str) -> bool:
+    """Return True for code/token-like queries that should not allow partial fuzzy matches."""
+    if not query or len(query.strip()) < 3:
+        return False
+
+    query = query.strip()
+
+    if re.search(r"[^a-zA-Z0-9\s]", query):
+        return True
+
+    return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
 
 
 def register_search_service(service: "SearchService") -> None:
@@ -584,8 +598,17 @@ class SearchService:
                     )
                 )
             }
-            if exact_files:
-                chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+            
+            # Determine if we should apply exact-token filtering
+            should_filter_exact = bool(exact_files) or _is_exact_token_query(query)
+            
+            if should_filter_exact:
+                if exact_files:
+                    # Filter to only chunks from files with exact matches
+                    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+                else:
+                    # No exact matches found for a token-like query - return empty results
+                    chunks = []
 
                 def _build_terms_agg(field: str) -> Dict[str, Any]:
                     counts = Counter(
