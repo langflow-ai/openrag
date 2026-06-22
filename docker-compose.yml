@@ -1,6 +1,6 @@
 services:
   opensearch:
-    image: ${CONTAINER_REGISTRY:-docker.io}/langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: Dockerfile
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: ${CONTAINER_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.0.0
+    image: docker.io/opensearchproject/opensearch-dashboards:3.0.0
     container_name: osdash
     depends_on:
       - opensearch
@@ -38,7 +38,7 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    image: ${CONTAINER_REGISTRY:-docker.io}/langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -116,7 +116,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   openrag-frontend:
-    image: ${CONTAINER_REGISTRY:-docker.io}/langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -129,7 +129,7 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: ${CONTAINER_REGISTRY:-docker.io}/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.langflow
