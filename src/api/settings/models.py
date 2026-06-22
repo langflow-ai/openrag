@@ -161,6 +161,7 @@ class SettingsResponse(BaseModel):
     langflow_ingest_edit_url: str | None = None
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
+    show_provider_ingest_settings: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
 
