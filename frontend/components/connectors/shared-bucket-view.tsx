@@ -12,6 +12,7 @@ import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 
 export interface SharedBucketViewProps {
   connector: any;
@@ -21,7 +22,10 @@ export interface SharedBucketViewProps {
   onRefetch: () => void;
   invalidateQueryKey: readonly unknown[];
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string, options?: { connectorType?: string }) => void;
+  addTask: (
+    id: string,
+    options?: { connectorType?: string; source?: string },
+  ) => void;
   onBack: () => void;
   onDone: () => void;
 }
@@ -77,6 +81,14 @@ export function SharedBucketView({
       toast.error("Could not start ingest", { description: chunkErr });
       return;
     }
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_buckets: selectedBuckets.size,
+    });
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -91,13 +103,24 @@ export function SharedBucketView({
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0], { connectorType: connector.type });
+            addTask(result.task_ids[0], {
+              connectorType: connector.type,
+              source: "connector",
+            });
             onDone();
           } else {
             toast.info("No files found in the selected buckets.");
           }
         },
         onError: (err) => {
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            source: "connector",
+            connector_type: connector.type,
+            resultValue: err instanceof Error ? err.message : "Sync failed",
+          });
           toast.error(err instanceof Error ? err.message : "Sync failed");
         },
       },
