@@ -398,9 +398,20 @@ async def get_settings(
         )
 
 
+# Provider names in priority order. LLM supports anthropic; embeddings do not.
+_LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+
+def _configured_provider_names(config, provider_names) -> list:
+    """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
+    providers = config.providers
+    return [name for name in provider_names if getattr(providers, name).configured]
+
+
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in _LLM_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
@@ -408,7 +419,7 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
     """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`."""
-    for p in ["openai", "watsonx", "ollama"]:
+    for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
@@ -1638,14 +1649,31 @@ async def _update_langflow_model_values(config, flows_service, llm_model=None, l
             )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
+            # 1. Update ALL configured LLM providers.
+            # Regression fix (#1587): the no-argument fallback used by
+            # reapply_all_settings previously only reapplied embedding providers,
+            # leaving LLM model values unset whenever flows were reset.
+            llm_providers = _configured_provider_names(config, _LLM_PROVIDER_NAMES)
+
+            current_llm_provider = config.agent.llm_provider.lower()
+            for provider in llm_providers:
+                # Use configured model for current provider, or None (first available) for others
+                provider_llm_model = (
+                    config.agent.llm_model
+                    if provider == current_llm_provider
+                    else None
+                )
+                await flows_service.change_langflow_model_value(
+                        provider,
+                        llm_model=provider_llm_model,
+                        force_llm_update=True
+                    )
+                logger.info(
+                    f"Successfully updated Langflow flows for LLM provider {provider}"
+                )
+
             # 2. Update ALL configured embedding providers
-            embedding_providers = []
-            if config.providers.openai.configured:
-                embedding_providers.append("openai")
-            if config.providers.watsonx.configured:
-                embedding_providers.append("watsonx")
-            if config.providers.ollama.configured:
-                embedding_providers.append("ollama")
+            embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
 
             current_embedding_provider = config.knowledge.embedding_provider.lower()
             for provider in embedding_providers:
