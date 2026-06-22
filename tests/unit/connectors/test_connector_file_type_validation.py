@@ -196,7 +196,11 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
         return_value={
             "files": [
                 {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
-                {"id": "file-2", "name": "existing.docx", "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                {
+                    "id": "file-2",
+                    "name": "existing.docx",
+                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                },
             ]
         }
     )

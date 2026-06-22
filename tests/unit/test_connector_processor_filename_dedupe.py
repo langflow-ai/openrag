@@ -353,9 +353,7 @@ async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
         modified_time=datetime.now(),
         created_time=datetime.now(),
     )
-    _wire_langflow_processor(
-        processor, document, filename_exists=False, connector_id_exists=True
-    )
+    _wire_langflow_processor(processor, document, filename_exists=False, connector_id_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()

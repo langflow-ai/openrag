@@ -655,7 +655,9 @@ async def connector_sync(
 
             if not body.replace_duplicates and file_infos:
                 duplicate_check = await _classify_connector_duplicates(
-                    connector=await connector_service.get_connector(working_connection.connection_id),
+                    connector=await connector_service.get_connector(
+                        working_connection.connection_id
+                    ),
                     selected_files_raw=file_infos,
                     session_manager=session_manager,
                     user_id=user.user_id,
