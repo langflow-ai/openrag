@@ -68,15 +68,17 @@ export function SharedBucketView({
       buckets?.length &&
       initialSelectedBuckets?.length
     ) {
-      const valid = initialSelectedBuckets.filter((name) =>
-        buckets.some((b) => b.name === name),
-      );
-      if (valid.length) {
-        setSelectedBuckets(new Set(valid));
-        hasAppliedInitial.current = true;
+      hasAppliedInitial.current = true;
+      if (selectedBuckets.size === 0) {
+        const valid = initialSelectedBuckets.filter((name) =>
+          buckets.some((b) => b.name === name),
+        );
+        if (valid.length) {
+          setSelectedBuckets(new Set(valid));
+        }
       }
     }
-  }, [buckets, initialSelectedBuckets]);
+  }, [buckets, initialSelectedBuckets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
