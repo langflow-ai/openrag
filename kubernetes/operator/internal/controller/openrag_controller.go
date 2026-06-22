@@ -2154,6 +2154,16 @@ func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Objec
 	}
 
 	existingHash := existing.GetAnnotations()[specHashAnnotation]
+
+	if deployment, ok := obj.(*appsv1.Deployment); ok {
+		existingDep, ok := existing.(*appsv1.Deployment)
+		if ok && hasDeploymentImageDrift(deployment, existingDep) {
+			setAnnotation(obj, specHashAnnotation, hash)
+			obj.SetResourceVersion(existing.GetResourceVersion())
+			return r.Update(ctx, obj)
+		}
+	}
+
 	if existingHash == hash {
 		// No changes needed
 		return nil
@@ -2194,6 +2204,21 @@ func desiredHash(obj client.Object) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])[:16], nil
+}
+
+// hasDeploymentImageDrift compares the desired deployment spec with the existing
+// deployment spec to detect image drift
+func hasDeploymentImageDrift(desired, existing *appsv1.Deployment) bool {
+	for i, container := range desired.Spec.Template.Spec.Containers {
+		if i >= len(existing.Spec.Template.Spec.Containers) {
+			return true
+		}
+		if container.Image != existing.Spec.Template.Spec.Containers[i].Image {
+			return true
+		}
+	}
+
+	return false
 }
 
 func setAnnotation(obj client.Object, key, value string) {
