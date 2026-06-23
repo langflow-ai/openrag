@@ -25,6 +25,7 @@ import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
+import { FlowsUpdateDialog } from "./flows-update-dialog";
 import { Header } from "./header";
 import FailedTasksInfo from "./tasks_details";
 
@@ -184,6 +185,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+
+      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );
 }

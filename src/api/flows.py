@@ -55,3 +55,41 @@ async def reset_flow_endpoint(
             {"success": False, "error": f"Internal server error: {str(e)}"},
             status_code=500
         )
+
+from pydantic import BaseModel
+from typing import List
+
+class BulkUpdateFlowsRequest(BaseModel):
+    flow_types: List[str]
+    backup_custom: bool = True
+
+async def get_flows_updates_endpoint(
+    flows_service=Depends(get_flows_service),
+    user: User = Depends(require_permission("flows:read")),
+):
+    """Get available updates for core flows"""
+    try:
+        updates = await flows_service.get_flows_updates_available()
+        return JSONResponse({"success": True, "updates": updates}, status_code=200)
+    except Exception as e:
+        logger.error("Error getting flow updates", error=str(e))
+        return JSONResponse(
+            {"success": False, "error": f"Internal server error: {str(e)}"},
+            status_code=500
+        )
+
+async def bulk_update_flows_endpoint(
+    request: BulkUpdateFlowsRequest,
+    flows_service=Depends(get_flows_service),
+    user: User = Depends(require_permission("flows:edit")),
+):
+    """Bulk update multiple flows and optionally backup custom flows"""
+    try:
+        results = await flows_service.bulk_update_flows(request.flow_types, request.backup_custom)
+        return JSONResponse({"success": True, "results": results}, status_code=200)
+    except Exception as e:
+        logger.error("Error bulk updating flows", error=str(e))
+        return JSONResponse(
+            {"success": False, "error": f"Internal server error: {str(e)}"},
+            status_code=500
+        )

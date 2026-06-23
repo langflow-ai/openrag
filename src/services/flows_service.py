@@ -1445,3 +1445,114 @@ class FlowsService:
         elif provider == "anthropic":
             return (None, "Anthropic")
         return (None, None)
+
+    async def get_flows_updates_available(self):
+        """
+        Check if there are any updates available for core flows.
+        Returns a list of dicts with flow details.
+        """
+        updates = []
+        flow_configs = [
+            ("nudges", NUDGES_FLOW_ID),
+            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+            ("ingest", LANGFLOW_INGEST_FLOW_ID),
+            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+        ]
+        
+        for flow_type, flow_id in flow_configs:
+            if not flow_id:
+                continue
+                
+            try:
+                # 1. Get the local file modification time
+                flow_path = self._find_flow_file_by_id(flow_id)
+                if not flow_path or not os.path.exists(flow_path):
+                    continue
+                local_mtime = os.path.getmtime(flow_path)
+                
+                # 2. Get the Langflow flow updated_at
+                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if response.status_code == 200:
+                    flow_data = response.json()
+                    
+                    langflow_updated_at_str = flow_data.get("updated_at")
+                    langflow_mtime = 0
+                    if langflow_updated_at_str:
+                        if langflow_updated_at_str.endswith("Z"):
+                            langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
+                        import datetime
+                        try:
+                            dt = datetime.datetime.fromisoformat(langflow_updated_at_str)
+                            langflow_mtime = dt.timestamp()
+                        except ValueError:
+                            pass
+                            
+                    # 3. Compare timestamps
+                    # If the date modified on the local files is greater than what's in Langflow, it needs an update
+                    if local_mtime > langflow_mtime:
+                        is_locked = flow_data.get("locked", False)
+                        updates.append({
+                            "flow_type": flow_type,
+                            "flow_id": flow_id,
+                            "is_custom": not is_locked
+                        })
+            except Exception as e:
+                logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
+                
+        return updates
+
+    async def bulk_update_flows(self, flow_types: list[str], backup_custom: bool = True):
+        """
+        Bulk updates multiple flows.
+        If backup_custom is True, custom flows are backed up before resetting.
+        Returns the paths of the backups if any.
+        """
+        results = []
+        flow_configs_dict = {
+            "nudges": NUDGES_FLOW_ID,
+            "retrieval": LANGFLOW_CHAT_FLOW_ID,
+            "ingest": LANGFLOW_INGEST_FLOW_ID,
+            "url_ingest": LANGFLOW_URL_INGEST_FLOW_ID,
+        }
+        
+        for flow_type in flow_types:
+            flow_id = flow_configs_dict.get(flow_type)
+            if not flow_id:
+                results.append({"flow_type": flow_type, "success": False, "error": "Invalid flow_type"})
+                continue
+                
+            backup_path = None
+            backup_content = None
+            if backup_custom:
+                try:
+                    response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                    if response.status_code == 200:
+                        flow_data = response.json()
+                        if not flow_data.get("locked", False):
+                            logger.info(f"Flow {flow_type} is custom, backing up before update.")
+                            backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
+                            if backup_path and os.path.exists(backup_path):
+                                with open(backup_path, "r") as f:
+                                    backup_content = f.read()
+                except Exception as e:
+                    logger.error(f"Failed to check/backup flow {flow_id} before update: {e}")
+            
+            try:
+                reset_res = await self.reset_langflow_flow(flow_type)
+                results.append({
+                    "flow_type": flow_type,
+                    "success": reset_res.get("success", False),
+                    "error": reset_res.get("error"),
+                    "backup_path": backup_path,
+                    "backup_content": backup_content
+                })
+            except Exception as e:
+                results.append({
+                    "flow_type": flow_type,
+                    "success": False,
+                    "error": str(e),
+                    "backup_path": backup_path,
+                    "backup_content": backup_content
+                })
+                
+        return results
