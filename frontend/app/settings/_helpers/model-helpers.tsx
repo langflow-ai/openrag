@@ -97,9 +97,9 @@ export function getFallbackModels(provider: ModelProvider) {
     case "anthropic":
       return {
         language: [
+          { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+          { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
           { value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-          { value: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
-          { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
         ],
       };
     case "ollama":

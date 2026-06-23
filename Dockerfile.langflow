@@ -56,6 +56,7 @@ RUN pip install --no-cache-dir \
     torchvision \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
     uv \
+    && pip uninstall -y clickhouse-connect \
     && pip uninstall -y ragstack-ai-knowledge-store
 
 # Create a symlink for backwards compatibility with the 'langflow' command

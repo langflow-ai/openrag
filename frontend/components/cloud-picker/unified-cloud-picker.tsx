@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
 import { FileList } from "./file-list";
 import { IngestSettings } from "./ingest-settings";
 import { PickerHeader } from "./picker-header";
@@ -25,6 +27,13 @@ export const UnifiedCloudPicker = ({
   onIngestSettingsChange,
   onSettingsChange,
 }: UnifiedCloudPickerProps) => {
+  const { isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showIngestSettings =
+    apiSettings?.show_provider_ingest_settings ?? false;
+
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(false);
@@ -207,12 +216,14 @@ export const UnifiedCloudPicker = ({
         shouldDisableActions={isIngesting}
       />
 
-      <IngestSettings
-        isOpen={isIngestSettingsOpen}
-        onOpenChange={setIsIngestSettingsOpen}
-        settings={ingestSettings}
-        onSettingsChange={handleIngestSettingsChange}
-      />
+      {showIngestSettings && (
+        <IngestSettings
+          isOpen={isIngestSettingsOpen}
+          onOpenChange={setIsIngestSettingsOpen}
+          settings={ingestSettings}
+          onSettingsChange={handleIngestSettingsChange}
+        />
+      )}
     </div>
   );
 };

@@ -1,12 +1,11 @@
 """Shared model constants used across provider/model validation flows."""
 
 ANTHROPIC_VALIDATION_MODELS = [
-    "claude-opus-4-5-20251101",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
+    "claude-opus-4-5-20251101",
     "claude-sonnet-4-5-20250929",
-    "claude-opus-4-1-20250805",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-20250514",
 ]
 
 OPENAI_VALIDATION_MODELS = [
@@ -30,6 +29,6 @@ OPENAI_VALIDATION_MODELS = [
 
 OPENAI_DEFAULT_LANGUAGE_MODEL = "gpt-5.4-mini"
 
-ANTHROPIC_DEFAULT_LANGUAGE_MODEL = "claude-sonnet-4-5-20250929"
+ANTHROPIC_DEFAULT_LANGUAGE_MODEL = "claude-sonnet-4-6"
 
 OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN = "gpt-oss"
