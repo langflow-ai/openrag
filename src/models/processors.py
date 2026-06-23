@@ -715,8 +715,8 @@ class ConnectorFileProcessor(TaskProcessor):
             except (FileNotFoundError, ValueError) as e:
                 msg = str(e).lower()
                 if "not found" in msg or "404" in msg:
-                    # File gone at source — remove indexed chunks by document_id
-                    # (= connector file_id) so it stops appearing in search/chat.
+                    # File gone at source — remove indexed chunks by connector file id
+                    # so it stops appearing in search/chat.
                     # Filename rename (e.g. .txt → .md) is irrelevant here.
                     deleted_chunks = 0
                     try:
@@ -728,7 +728,10 @@ class ConnectorFileProcessor(TaskProcessor):
                             )
                         )
                         deleted_chunks = await delete_chunks_by_document_ids(
-                            [file_id], opensearch_client, get_index_name()
+                            [file_id],
+                            opensearch_client,
+                            get_index_name(),
+                            field="connector_file_id",
                         )
                     except Exception as cleanup_err:
                         logger.error(
@@ -775,7 +778,7 @@ class ConnectorFileProcessor(TaskProcessor):
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 self.user_id, self.jwt_token
             )
-            if await self.check_filename_exists(document.filename, opensearch_client):
+            if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
@@ -788,12 +791,12 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
                 await self.delete_document_by_filename(
-                    document.filename,
+                    file_task.filename,
                     opensearch_client,
                 )
 
             # Create temporary file from document content
-            suffix = os.path.splitext(document.filename)[1]
+            suffix = os.path.splitext(file_task.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -849,7 +852,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
                     langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
-                        document.filename, document.mimetype
+                        file_task.filename, document.mimetype
                     )
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
@@ -932,7 +935,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_path=tmp_path,
                         file_hash=file_hash,
                         owner_user_id=self.user_id,
-                        original_filename=document.filename,
+                        original_filename=file_task.filename,
                         jwt_token=self.jwt_token,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
@@ -946,7 +949,11 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Update indexed chunks with connector-specific metadata
                     if result["status"] in ["indexed", "unchanged"]:
                         await self.connector_service._update_connector_metadata(
-                            document, self.user_id, connection.connector_type, self.jwt_token
+                            document,
+                            self.user_id,
+                            connection.connector_type,
+                            self.jwt_token,
+                            indexed_filename=file_task.filename,
                         )
 
                     # Add connector-specific metadata
