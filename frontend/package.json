@@ -65,6 +65,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
+    "@emnapi/core": "^1.11.1",
+    "@emnapi/runtime": "^1.11.1",
+    "@emnapi/wasi-threads": "^1.2.2",
     "@playwright/test": "^1.60.0",
     "@types/node": "^20",
     "@types/react": "^19",
