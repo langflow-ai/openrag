@@ -658,6 +658,7 @@ async def connector_sync(
                     user.user_id,
                     max_files=max_files,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
                 )
         else:
             # No files specified - sync only files already in OpenSearch for this connector
@@ -721,6 +722,7 @@ async def connector_sync(
                     user.user_id,
                     ids_to_sync,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
             else:
@@ -736,6 +738,7 @@ async def connector_sync(
                     max_files=None,
                     jwt_token=jwt_token,
                     filename_filter=set(existing_filenames),
+                    ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                 )
         task_ids = [task_id]

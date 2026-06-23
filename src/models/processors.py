@@ -43,10 +43,19 @@ class TaskProcessor:
         self,
         file_hash: str,
         opensearch_client,
+        *,
+        wait_for_visibility: bool = False,
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
@@ -62,7 +71,15 @@ class TaskProcessor:
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
-                return bool(hits)
+                if hits:
+                    return True
+                # No hits. For post-ingest verification, the document may not be
+                # visible yet within the near-real-time refresh window — retry.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return False
             except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
@@ -93,10 +110,19 @@ class TaskProcessor:
         self,
         filename: str,
         opensearch_client,
+        *,
+        wait_for_visibility: bool = False,
     ) -> bool:
         """
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
@@ -127,6 +153,14 @@ class TaskProcessor:
                     # Successfully checked this alias with no hits; don't
                     # re-query it on future retries.
                     pending_candidates.pop(i)
+                    continue
+                # All aliases checked with no hits. For post-ingest verification,
+                # the document may not be visible yet within the near-real-time
+                # refresh window — re-check every alias after a short delay.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    pending_candidates = list(candidate_filenames)
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
                     continue
                 return False
 
@@ -204,6 +238,8 @@ class TaskProcessor:
         is_sample_data: bool = False,
         acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -216,6 +252,8 @@ class TaskProcessor:
                 chunks (non-Langflow path, e.g. connector UI ``chunkSize``).
             chunk_overlap: Overlap between windows; must be less than ``chunk_size``.
             acl: DocumentACL instance with access control information
+            ocr: Per-request OCR override (None = use global config).
+            picture_descriptions: Per-request picture descriptions override.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -253,7 +291,11 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
 
@@ -560,10 +602,16 @@ class DocumentFileProcessor(TaskProcessor):
                 **standard_kwargs,
             )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error", "Failed to process document")
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -844,6 +892,19 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
                     )
+                    # Langflow returns "success" even when no text was extracted
+                    # (e.g. image files without OCR). Verify the document actually
+                    # landed in OpenSearch before declaring success.
+                    # wait_for_visibility polls on an empty result to ride out
+                    # OpenSearch's ~1s near-real-time window (the user-scoped
+                    # client cannot force an indices:admin/refresh — it 403s).
+                    if not await self.check_document_exists(
+                        document.id, opensearch_client, wait_for_visibility=True
+                    ):
+                        result = {
+                            "status": "error",
+                            "error": "No text content could be extracted from document",
+                        }
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -862,6 +923,10 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
+                        if "ocr" in s:
+                            standard_kwargs["ocr"] = bool(s["ocr"])
+                        if "pictureDescriptions" in s:
+                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
@@ -892,10 +957,16 @@ class ConnectorFileProcessor(TaskProcessor):
                         }
                     )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error", "Failed to process document")
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -970,9 +1041,14 @@ class S3FileProcessor(TaskProcessor):
                 )
 
                 result["path"] = f"s3://{self.bucket}/{item}"
-                file_task.status = TaskStatus.COMPLETED
-                file_task.result = result
-                upload_task.successful_files += 1
+                if result.get("status") == "error":
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = result.get("error", "Failed to process document")
+                    upload_task.failed_files += 1
+                else:
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.result = result
+                    upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
@@ -1106,11 +1182,31 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
             )
 
-            # Update task with success
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            # Langflow returns "success" even when no text was extracted
+            # (e.g. image files without OCR). Verify the document actually
+            # landed in OpenSearch before declaring success. We key off the
+            # filename — the identifier this path already uses for dedup and
+            # delete (see check_filename_exists / delete_document_by_filename
+            # above) — because Langflow assigns its own document_id here, so
+            # hash_id(item) is not stored as document_id.
+            #
+            # wait_for_visibility polls on an empty result so the just-written
+            # chunks become visible within OpenSearch's near-real-time refresh
+            # window. We cannot force a refresh here: the user-scoped client
+            # lacks the indices:admin/refresh privilege (it 403s).
+            if not await self.check_filename_exists(
+                original_filename, opensearch_client, wait_for_visibility=True
+            ):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = "No text content could be extracted from document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                # Update task with success
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             # Update task with failure
