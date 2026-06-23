@@ -455,6 +455,14 @@ function SearchPage() {
   const gridRef = useRef<AgGridReact>(null);
   const gridReadyRef = useRef(false);
 
+  const handleGridReady = useCallback(() => {
+    gridReadyRef.current = true;
+  }, []);
+
+  const handleGridPreDestroyed = useCallback(() => {
+    gridReadyRef.current = false;
+  }, []);
+
   const getGridApi = useCallback(() => {
     if (!gridReadyRef.current) return null;
     return gridRef.current?.api ?? null;
@@ -1016,9 +1024,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
-            onGridReady={() => {
-              gridReadyRef.current = true;
-            }}
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -1053,9 +1060,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
-            onGridReady={() => {
-              gridReadyRef.current = true;
-            }}
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
