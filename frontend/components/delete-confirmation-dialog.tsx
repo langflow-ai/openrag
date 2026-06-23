@@ -58,9 +58,7 @@ interface DeleteConfirmationDialogProps {
   children?: ReactNode;
 }
 
-export const DeleteConfirmationDialog: React.FC<
-  DeleteConfirmationDialogProps
-> = ({
+export const DeleteConfirmationDialog = ({
   open,
   onOpenChange,
   title = "Are you sure?",
@@ -71,7 +69,7 @@ export const DeleteConfirmationDialog: React.FC<
   isLoading = false,
   variant = "destructive",
   children,
-}) => {
+}: DeleteConfirmationDialogProps) => {
   const handleConfirm = async () => {
     try {
       await onConfirm();
