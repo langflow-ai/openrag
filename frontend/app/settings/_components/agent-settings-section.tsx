@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
@@ -151,12 +151,33 @@ export function AgentSettingsSection() {
     [groupedLlmModels],
   );
 
+  const handleModelChange = useCallback(
+    (newModel: string, provider?: string) => {
+      if (newModel && provider) {
+        updateSettingsMutation.mutate({
+          llm_model: newModel,
+          llm_provider: provider,
+        });
+      } else if (newModel) {
+        updateSettingsMutation.mutate({ llm_model: newModel });
+      }
+    },
+    [updateSettingsMutation],
+  );
+
+  const autoSelectedLlm = useRef(false);
   useEffect(() => {
-    if (!settings.agent?.llm_model && allLlmOptions.length > 0) {
+    if (settings.agent?.llm_model) {
+      autoSelectedLlm.current = false;
+      return;
+    }
+    if (autoSelectedLlm.current) return;
+    if (allLlmOptions.length > 0) {
+      autoSelectedLlm.current = true;
       const fallback = allLlmOptions.find((o) => o.default) || allLlmOptions[0];
       handleModelChange(fallback.value, fallback.provider);
     }
-  }, [settings.agent?.llm_model, allLlmOptions]);
+  }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
 
   useEffect(() => {
     if (settings.agent?.system_prompt) {
@@ -176,17 +197,6 @@ export function AgentSettingsSection() {
       setTimeout(() => setOpenLlmSelector(false), 100);
     }
   }, [focusLlmModel, searchParams, router, pathname]);
-
-  const handleModelChange = (newModel: string, provider?: string) => {
-    if (newModel && provider) {
-      updateSettingsMutation.mutate({
-        llm_model: newModel,
-        llm_provider: provider,
-      });
-    } else if (newModel) {
-      updateSettingsMutation.mutate({ llm_model: newModel });
-    }
-  };
 
   const handleSystemPromptSave = () => {
     updateSettingsMutation.mutate({ system_prompt: systemPrompt });
