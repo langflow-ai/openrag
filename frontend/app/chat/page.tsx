@@ -164,10 +164,11 @@ function ChatPage() {
   });
 
   // Show warning if waiting too long (20 seconds)
+  const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isChatStreaming && !streamingMessage) {
+    if (isChatStreaming && !hasStreamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -178,7 +179,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, streamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
