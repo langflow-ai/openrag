@@ -315,11 +315,15 @@ async def run_startup(app: FastAPI):
             try:
                 # Readiness is needed for either operation.
                 logger.info("Verifying OpenSearch readiness")
-                await wait_for_opensearch(opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES)
+                await wait_for_opensearch(
+                    opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES
+                )
 
                 if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                     logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
-                    await setup_opensearch_security(opensearch_client, admin_username=admin_username)
+                    await setup_opensearch_security(
+                        opensearch_client, admin_username=admin_username
+                    )
                     logger.info(
                         "OpenSearch security bootstrap completed", admin_username=admin_username
                     )

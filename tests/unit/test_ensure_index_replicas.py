@@ -54,9 +54,7 @@ async def test_corrects_replicas_for_all_known_indices() -> None:
     await ensure_openrag_index_replicas(client)
 
     assert client.indices.put_settings.await_count == len(EXPECTED_INDEX_NAMES)
-    corrected = {
-        call.kwargs["index"] for call in client.indices.put_settings.await_args_list
-    }
+    corrected = {call.kwargs["index"] for call in client.indices.put_settings.await_args_list}
     assert corrected == set(EXPECTED_INDEX_NAMES)
     for call in client.indices.put_settings.await_args_list:
         assert call.kwargs["body"] == {"index": {"number_of_replicas": 2}}
