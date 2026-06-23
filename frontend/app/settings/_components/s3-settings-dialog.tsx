@@ -130,8 +130,8 @@ export default function S3SettingsDialog({
       toast.success("Amazon S3 configured", {
         description:
           selectedBuckets.length > 0
-            ? `Will ingest from: ${selectedBuckets.join(", ")}`
-            : "Will auto-discover and ingest all accessible buckets.",
+            ? `Filtered to: ${selectedBuckets.join(", ")}`
+            : "All accessible buckets are included.",
         icon: <AwsLogo className="w-4 h-4" />,
       });
 
