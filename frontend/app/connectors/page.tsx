@@ -55,7 +55,10 @@ export default function ConnectorsPage() {
       if (response.status === 201) {
         const taskId = result.task_id;
         if (taskId) {
-          addTask(taskId, { connectorType: connector.type });
+          addTask(taskId, {
+            connectorType: connector.type,
+            source: "connector",
+          });
           setSyncResult({
             processed: 0,
             total: selectedFiles.length,
