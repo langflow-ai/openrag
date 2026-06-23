@@ -1023,7 +1023,6 @@ async def get_api_key_user_async(
     safe_headers = {k: _redact_header(k, v) for k, v in request.headers.items()}
     logger.debug("[AUTH] Incoming /v1 request headers (redacted)", headers=safe_headers)
 
-
     if not (raw_jwt and raw_jwt.strip()):
         jwt_header = get_api_jwt_header()
         raw_jwt = request.headers.get(jwt_header, "")
