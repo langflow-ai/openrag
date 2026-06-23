@@ -166,6 +166,12 @@ class ContainerManager:
                 # Copy to TUI directory
                 tui_path.parent.mkdir(parents=True, exist_ok=True)
                 content = compose_resource.read_text()
+
+                # Auto-configure extra_hosts for container-to-host connectivity
+                # Only modify the main docker-compose.yml, not the GPU override
+                if not filename.endswith("gpu.yml"):
+                    content = self._add_extra_hosts_to_compose(content)
+
                 tui_path.write_text(content)
                 return tui_path
             else:
@@ -177,6 +183,77 @@ class ContainerManager:
         # Fall back to TUI path (will fail later if not found)
         self._compose_search_log += f"\n  4. Falling back to: {tui_path.absolute()}"
         return tui_path
+
+    def _add_extra_hosts_to_compose(self, content: str) -> str:
+        """Add extra_hosts configuration to docker-compose.yml for docling connectivity.
+
+        This ensures containers can reach host-based docling-serve by mapping
+        host.docker.internal to the detected host IP.
+
+        Args:
+            content: Original docker-compose.yml content
+
+        Returns:
+            Modified docker-compose.yml content with extra_hosts
+        """
+        # Import yaml here to avoid hard dependency (follows pattern from _extract_images_from_compose_config)
+        try:
+            import yaml
+        except ImportError:
+            logger.debug("PyYAML not available, skipping extra_hosts configuration")
+            return content
+
+        try:
+            from utils.container_utils import guess_host_ip_for_containers
+
+            # Detect the host IP that containers can use
+            host_ip = guess_host_ip_for_containers(logger=logger)
+
+            # Skip if we couldn't detect a valid host IP
+            if not host_ip or host_ip == "127.0.0.1":
+                logger.debug("Skipping extra_hosts configuration (no container bridge IP detected)")
+                return content
+
+            # Parse the docker-compose.yml
+            compose_data = yaml.safe_load(content)
+
+            if not compose_data or "services" not in compose_data:
+                logger.debug("Could not parse docker-compose.yml or no services found")
+                return content
+
+            # Add extra_hosts to services that need to connect to host (docling-serve)
+            services_needing_host_access = ["openrag-backend", "langflow"]
+            extra_hosts_config = [f"host.docker.internal:{host_ip}"]
+
+            modified = False
+            for service_name in services_needing_host_access:
+                if service_name in compose_data["services"]:
+                    # Add or update extra_hosts
+                    if "extra_hosts" not in compose_data["services"][service_name]:
+                        compose_data["services"][service_name]["extra_hosts"] = extra_hosts_config
+                        modified = True
+                        logger.info(
+                            f"Added extra_hosts to {service_name} service for docling connectivity: "
+                            f"host.docker.internal -> {host_ip}"
+                        )
+
+            if modified:
+                # Convert back to YAML
+                modified_content = yaml.dump(
+                    compose_data,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    width=120
+                )
+                return modified_content
+            else:
+                return content
+
+        except Exception as e:
+            # If anything fails, return original content
+            # This ensures we don't break the compose file if something goes wrong
+            logger.debug(f"Could not add extra_hosts to docker-compose.yml: {e}")
+            return content
 
     def _get_env_from_file(self) -> Dict[str, str]:
         """Read environment variables from .env file, prioritizing file values over os.environ.
