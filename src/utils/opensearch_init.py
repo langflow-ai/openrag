@@ -135,6 +135,32 @@ async def _ensure_index_replicas(os_client, index_name: str) -> None:
         )
 
 
+async def ensure_openrag_index_replicas(os_client=None) -> None:
+    """Reconcile replica counts for all known OpenRAG indices at startup.
+
+    Aligns each existing OpenRAG index's number_of_replicas with
+    OPENSEARCH_NUMBER_OF_REPLICAS. Indices that do not yet exist are skipped —
+    init_index creates them with the correct replica count.
+    """
+    os_client = os_client or clients.opensearch
+    index_names = [
+        get_index_name(),
+        "knowledge_filters",
+        API_KEYS_INDEX_NAME,
+        DLS_PRINCIPAL_INDEX_NAME,
+    ]
+    for index_name in index_names:
+        try:
+            if await os_client.indices.exists(index=index_name):
+                await _ensure_index_replicas(os_client, index_name)
+        except Exception as e:
+            logger.warning(
+                "Failed to ensure replicas for index",
+                index_name=index_name,
+                error=str(e),
+            )
+
+
 async def wait_for_opensearch(opensearch_client=None, max_retries: int = 30):
     """Wait for OpenSearch to be ready, delegating to the shared utility."""
     from utils.opensearch_utils import (

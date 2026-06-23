@@ -380,6 +380,13 @@ OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
     "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
+# Reconcile replica counts on existing OpenRAG indices at startup so they match
+# OPENSEARCH_NUMBER_OF_REPLICAS. Defaults to true for production (multi-node)
+# deployments; single-node dev (docker-compose) overrides it to false.
+OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
+    "OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
+).lower() in ("true", "1", "yes")
+
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
 # logging-level "debug" or other unrelated debug flags.
