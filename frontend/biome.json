@@ -16,6 +16,8 @@
   },
   "linter": {
     "domains": {
+      "next": "recommended",
+      "react": "recommended",
       "test": "recommended"
     },
     "enabled": true,
@@ -48,13 +50,14 @@
         "noUnusedLabels": "error",
         "noUnusedPrivateClassMembers": "error",
         "noUnusedVariables": "warn",
-        "useExhaustiveDependencies": "off",
+        "useExhaustiveDependencies": "warn",
         "useIsNan": "error",
         "useValidForDirection": "error",
         "useValidTypeof": "error",
         "useYield": "error"
       },
       "suspicious": {
+        "noArrayIndexKey": "warn",
         "noAssignInExpressions": "error",
         "noAsyncPromiseExecutor": "warn",
         "noCatchAssign": "error",
