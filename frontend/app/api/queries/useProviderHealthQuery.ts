@@ -125,7 +125,7 @@ export const useProviderHealthQuery = (
   const queryKey = ["provider", "health", testCompletion, hasChatError];
   const failureCountKey = queryKey.join("-");
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey,
       queryFn: checkProviderHealth,
@@ -174,6 +174,4 @@ export const useProviderHealthQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -19,11 +19,11 @@ export default function IBMCOSIcon(props: React.SVGProps<SVGSVGElement>) {
         height="11"
       >
         <path
-          d="M7 26C7.55228 26 8 25.5523 8 25C8 24.4477 7.55228 24 7 24C6.44772 24 6 24.4477 6 25C6 25.5523 6.44772 26 7 26Z"
+          d="M7 26C7.55 26 8 25.55 8 25C8 24.45 7.55 24 7 24C6.45 24 6 24.45 6 25C6 25.55 6.45 26 7 26Z"
           fill="white"
         />
         <path
-          d="M28 20H26V22H28V28H4V22H14V20H4C3.46957 20 2.96086 20.2107 2.58579 20.5858C2.21071 20.9609 2 21.4696 2 22V28C2 28.5304 2.21071 29.0391 2.58579 29.4142C2.96086 29.7893 3.46957 30 4 30H28C28.5304 30 29.0391 29.7893 29.4142 29.4142C29.7893 29.0391 30 28.5304 30 28V22C30 21.4696 29.7893 20.9609 29.4142 20.5858C29.0391 20.2107 28.5304 20 28 20Z"
+          d="M28 20H26V22H28V28H4V22H14V20H4C3.47 20 2.96 20.21 2.59 20.59C2.21 20.96 2 21.47 2 22V28C2 28.53 2.21 29.04 2.59 29.41C2.96 29.79 3.47 30 4 30H28C28.53 30 29.04 29.79 29.41 29.41C29.79 29.04 30 28.53 30 28V22C30 21.47 29.79 20.96 29.41 20.59C29.04 20.21 28.53 20 28 20Z"
           fill="white"
         />
         <path d="M15 23H4V19H15V23Z" fill="url(#paint0_linear_40_3996)" />
@@ -45,7 +45,7 @@ export default function IBMCOSIcon(props: React.SVGProps<SVGSVGElement>) {
           gradientUnits="userSpaceOnUse"
         >
           <stop offset="0.1" />
-          <stop offset="0.888" stopOpacity="0" />
+          <stop offset="0.89" stopOpacity="0" />
         </linearGradient>
         <linearGradient
           id="paint1_linear_40_3996"

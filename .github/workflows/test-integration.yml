@@ -164,6 +164,8 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ""
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
+          # Single-node test cluster never reaches the multi-node readiness counts
+          OPENSEARCH_NODE_COUNT_CHECK: "false"
         run: |
           OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"

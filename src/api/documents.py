@@ -119,8 +119,10 @@ async def delete_documents_by_filename_core(
             filename=normalized_filename,
             error=str(e),
         )
-        error_str = str(e)
-        status_code = 403 if "AuthenticationException" in error_str else 500
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        is_auth_error = is_opensearch_auth_error(e)
+        status_code = 401 if is_auth_error else 500
         return (
             {
                 "success": False,
@@ -128,8 +130,8 @@ async def delete_documents_by_filename_core(
                 "filename": normalized_filename,
                 "message": None,
                 "error": (
-                    "Access denied: insufficient permissions"
-                    if status_code == 403
+                    AUTH_ERROR_MESSAGE
+                    if is_auth_error
                     else "An internal error has occurred while deleting documents"
                 ),
             },
@@ -231,11 +233,10 @@ async def check_filename_exists(
 
     except Exception as e:
         logger.error("Error checking filename existence", filename=filename, error=str(e))
-        error_str = str(e)
-        if "AuthenticationException" in error_str:
-            return JSONResponse(
-                {"error": "Access denied: insufficient permissions"}, status_code=403
-            )
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         else:
             return JSONResponse({"error": str(e)}, status_code=500)
 

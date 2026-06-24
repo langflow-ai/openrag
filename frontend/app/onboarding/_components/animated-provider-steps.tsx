@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import AnimatedProcessingIcon from "@/components/icons/animated-processing-icon";
 import {
   Accordion,
@@ -27,14 +27,17 @@ export function AnimatedProviderSteps({
   processingStartTime?: number | null;
   hasError?: boolean;
 }) {
-  const startTime = processingStartTime ?? null;
+  const [prevIsCompleted, setPrevIsCompleted] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
 
-  const elapsedTime = useMemo(() => {
-    if (isCompleted && startTime) {
-      return Date.now() - startTime;
+  if (isCompleted && !prevIsCompleted) {
+    setPrevIsCompleted(true);
+    if (processingStartTime) {
+      setElapsedTime(Date.now() - processingStartTime);
     }
-    return 0;
-  }, [isCompleted, startTime]);
+  } else if (!isCompleted && prevIsCompleted) {
+    setPrevIsCompleted(false);
+  }
 
   // Progress through steps
   useEffect(() => {
