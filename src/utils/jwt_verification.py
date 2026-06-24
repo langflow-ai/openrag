@@ -83,7 +83,7 @@ def _fetch_jwks(url: str) -> dict[str, Any]:
         return jwks
     except Exception as e:
         logger.error(f"Failed to fetch JWKS from {url}", error=str(e))
-        raise JWTVerificationError(f"Failed to fetch JWKS: {e}")
+        raise JWTVerificationError(f"Failed to fetch JWKS: {e}") from e
 
 
 def _get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
@@ -118,7 +118,7 @@ def _get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
         raise JWTVerificationError(f"Signing key with kid '{kid}' not found in JWKS")
 
     except jwt.DecodeError as e:
-        raise JWTVerificationError(f"Failed to decode token header: {e}")
+        raise JWTVerificationError(f"Failed to decode token header: {e}") from e
 
 
 def verify_google_id_token(token: str, client_id: str) -> dict[str, Any]:
@@ -177,21 +177,21 @@ def verify_google_id_token(token: str, client_id: str) -> dict[str, Any]:
 
     except jwt.InvalidSignatureError as e:
         logger.warning("Google ID token has invalid signature", error=str(e))
-        raise InvalidSignatureError(f"Invalid signature: {e}")
+        raise InvalidSignatureError(f"Invalid signature: {e}") from e
     except jwt.ExpiredSignatureError as e:
         logger.warning("Google ID token has expired", error=str(e))
-        raise ExpiredTokenError(f"Token expired: {e}")
+        raise ExpiredTokenError(f"Token expired: {e}") from e
     except jwt.InvalidAudienceError as e:
         logger.warning("Google ID token has invalid audience", error=str(e))
-        raise InvalidAudienceError(f"Invalid audience: {e}")
+        raise InvalidAudienceError(f"Invalid audience: {e}") from e
     except jwt.InvalidIssuerError as e:
         logger.warning("Google ID token has invalid issuer", error=str(e))
-        raise InvalidIssuerError(f"Invalid issuer: {e}")
+        raise InvalidIssuerError(f"Invalid issuer: {e}") from e
     except JWTVerificationError:
         raise
     except Exception as e:
         logger.error("Google ID token verification failed", error=str(e))
-        raise JWTVerificationError(f"Verification failed: {e}")
+        raise JWTVerificationError(f"Verification failed: {e}") from e
 
 
 def verify_microsoft_access_token(
@@ -270,21 +270,21 @@ def verify_microsoft_access_token(
 
     except jwt.InvalidSignatureError as e:
         logger.warning("Microsoft access token has invalid signature", error=str(e))
-        raise InvalidSignatureError(f"Invalid signature: {e}")
+        raise InvalidSignatureError(f"Invalid signature: {e}") from e
     except jwt.ExpiredSignatureError as e:
         logger.warning("Microsoft access token has expired", error=str(e))
-        raise ExpiredTokenError(f"Token expired: {e}")
+        raise ExpiredTokenError(f"Token expired: {e}") from e
     except jwt.InvalidAudienceError as e:
         logger.warning("Microsoft access token has invalid audience", error=str(e))
-        raise InvalidAudienceError(f"Invalid audience: {e}")
+        raise InvalidAudienceError(f"Invalid audience: {e}") from e
     except (jwt.InvalidIssuerError, InvalidIssuerError) as e:
         logger.warning("Microsoft access token has invalid issuer", error=str(e))
-        raise InvalidIssuerError(f"Invalid issuer: {e}")
+        raise InvalidIssuerError(f"Invalid issuer: {e}") from e
     except JWTVerificationError:
         raise
     except Exception as e:
         logger.error("Microsoft access token verification failed", error=str(e))
-        raise JWTVerificationError(f"Verification failed: {e}")
+        raise JWTVerificationError(f"Verification failed: {e}") from e
 
 
 def clear_jwks_cache():

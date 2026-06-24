@@ -509,7 +509,7 @@ class SharePointOAuth:
             raise
         except Exception as e:
             logger.exception("[CONNECTOR] SharePoint get_access_token_for_resource failed")
-            raise ValueError(f"Failed to acquire SharePoint token: {e}") from e
+            raise ValueError(f"Failed to acquire SharePoint token: {str(e)}") from e
 
     async def revoke_credentials(self):
         """Clear token cache and remove token file (like Google Drive)."""
