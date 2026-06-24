@@ -19,7 +19,7 @@ def _verify_id_token_if_present(id_token: str | None) -> dict | None:
         return None
     try:
         from config.settings import GOOGLE_OAUTH_CLIENT_ID
-        from utils.jwt_verification import verify_google_id_token, JWTVerificationError
+        from utils.jwt_verification import JWTVerificationError, verify_google_id_token
 
         if not GOOGLE_OAUTH_CLIENT_ID:
             logger.warning("GOOGLE_OAUTH_CLIENT_ID not configured - skipping ID token verification")
@@ -36,6 +36,7 @@ def _verify_id_token_if_present(id_token: str | None) -> dict | None:
         logger.error("Unexpected error verifying Google ID token", error=str(e))
 
     return None
+
 
 _REFRESH_TIMEOUT_SECONDS = 30
 

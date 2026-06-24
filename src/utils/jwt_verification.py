@@ -146,9 +146,7 @@ def verify_google_id_token(token: str, client_id: str) -> dict[str, Any]:
         JWTVerificationError: For other verification failures
     """
     if not client_id:
-        raise JWTVerificationError(
-            "client_id is required for Google ID token verification"
-        )
+        raise JWTVerificationError("client_id is required for Google ID token verification")
 
     try:
         # Fetch JWKS
@@ -222,9 +220,7 @@ def verify_microsoft_access_token(
         JWTVerificationError: For other verification failures
     """
     if not client_id:
-        raise JWTVerificationError(
-            "client_id is required for Microsoft access token verification"
-        )
+        raise JWTVerificationError("client_id is required for Microsoft access token verification")
 
     try:
         # Extract tenant from token if not provided
@@ -291,5 +287,6 @@ def clear_jwks_cache():
     """Clear the JWKS cache. Useful for testing."""
     _jwks_cache.clear()
     logger.debug("JWKS cache cleared")
+
 
 # Made with Bob

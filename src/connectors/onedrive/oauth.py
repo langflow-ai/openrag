@@ -8,22 +8,28 @@ import msal
 logger = logging.getLogger(__name__)
 
 
-def _verify_access_token_if_present(access_token: str | None, tenant_id: str | None = None) -> dict | None:
+def _verify_access_token_if_present(
+    access_token: str | None, tenant_id: str | None = None
+) -> dict | None:
     """Verify Microsoft access token and return claims if valid, None otherwise."""
     if not access_token:
         return None
-    
+
     raw_token = access_token.removeprefix("Bearer ").strip()
     try:
         from config.settings import MICROSOFT_GRAPH_OAUTH_CLIENT_ID
-        from utils.jwt_verification import verify_microsoft_access_token, JWTVerificationError
+        from utils.jwt_verification import JWTVerificationError, verify_microsoft_access_token
 
         if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
-            logger.warning("MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - skipping access token verification")
+            logger.warning(
+                "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - skipping access token verification"
+            )
             return None
 
         # Verify token with FULL validation
-        claims = verify_microsoft_access_token(raw_token, MICROSOFT_GRAPH_OAUTH_CLIENT_ID, tenant_id=tenant_id)
+        claims = verify_microsoft_access_token(
+            raw_token, MICROSOFT_GRAPH_OAUTH_CLIENT_ID, tenant_id=tenant_id
+        )
         logger.debug("Microsoft access token verification successful, tenant=%s", claims.get("tid"))
         return claims
 
