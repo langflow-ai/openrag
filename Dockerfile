@@ -36,9 +36,9 @@ RUN chmod -R g=u /usr/share/opensearch
 
 
 ########################################
-# Stage 2: UBI9 runtime image
+# Stage 2: UBI10 runtime image
 ########################################
-FROM registry.access.redhat.com/ubi9/ubi:latest
+FROM registry.access.redhat.com/ubi10/ubi:latest
 
 USER root
 

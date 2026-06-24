@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 # Stage: base (system + uv)
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS base
+FROM registry.access.redhat.com/ubi10/python-314-minimal AS base
 
 # Install system dependencies using microdnf (UBI minimal package manager)
 USER 0
@@ -35,7 +35,7 @@ RUN microdnf install -y \
     gcc \
     gcc-c++ \
     make \
-    python3.12-devel \
+    python3.14-devel \
     && microdnf clean all
 
 WORKDIR /app
@@ -62,7 +62,7 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime
+FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
 # Install runtime dependencies and apply security updates for CVE remediation
 USER 0
