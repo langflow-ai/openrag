@@ -64,18 +64,13 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
-# Install runtime dependencies and apply security updates for CVE remediation
+# Install runtime dependencies
 USER 0
 RUN microdnf install -y \
     ca-certificates \
     openssl \
     shadow-utils \
     util-linux \
-    && microdnf update -y \
-    glibc glibc-common glibc-minimal-langpack \
-    openssl openssl-libs \
-    krb5-libs \
-    expat \
     && microdnf clean all \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
