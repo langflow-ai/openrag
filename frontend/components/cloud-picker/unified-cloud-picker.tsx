@@ -37,7 +37,6 @@ export const UnifiedCloudPicker = ({
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(false);
-  const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false);
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | undefined>(undefined);
 
   const isControlled =
@@ -67,25 +66,9 @@ export const UnifiedCloudPicker = ({
 
   const effectiveBaseUrl = baseUrl || autoBaseUrl;
 
-  // Auto-detect base URL for OneDrive personal accounts
-  // For SharePoint, we require the baseUrl to be provided from the connector config
-  useEffect(() => {
-    if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
-      // Only auto-set for OneDrive, not SharePoint
-      const getBaseUrl = async () => {
-        setIsLoadingBaseUrl(true);
-        try {
-          setAutoBaseUrl("https://onedrive.live.com/picker");
-        } catch (error) {
-          console.error("Auto-detect baseUrl failed:", error);
-        } finally {
-          setIsLoadingBaseUrl(false);
-        }
-      };
-
-      getBaseUrl();
-    }
-  }, [accessToken, baseUrl, autoBaseUrl, provider]);
+  if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
+    setAutoBaseUrl("https://onedrive.live.com/picker");
+  }
 
   // Load picker API
   useEffect(() => {
@@ -163,14 +146,6 @@ export const UnifiedCloudPicker = ({
   const handleClearAll = () => {
     onFileSelected([]);
   };
-
-  if (isLoadingBaseUrl) {
-    return (
-      <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
-        Loading...
-      </div>
-    );
-  }
 
   if (
     (provider === "onedrive" || provider === "sharepoint") &&
