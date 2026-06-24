@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
 function formatDate(dateString: string | null) {
@@ -79,11 +80,21 @@ export function ApiKeysSection() {
       toast.error("Please enter a name for the API key");
       return;
     }
+    trackButton({
+      CTA: "Create API Key",
+      elementId: "create-api-key-button",
+      namespace: "settings",
+    });
     createApiKeyMutation.mutate({ name: newKeyName.trim() });
   };
 
   const handleCopyApiKey = async () => {
     if (newlyCreatedKey) {
+      trackButton({
+        CTA: "Copy API Key",
+        elementId: "copy-api-key-button",
+        namespace: "settings",
+      });
       try {
         await navigator.clipboard.writeText(newlyCreatedKey);
         toast.success("API key copied to clipboard");
@@ -185,6 +196,11 @@ export function ApiKeysSection() {
                           confirmText="Revoke"
                           variant="destructive"
                           onConfirm={(closeDialog) => {
+                            trackButton({
+                              CTA: "Revoke API Key",
+                              elementId: "revoke-api-key-button",
+                              namespace: "settings",
+                            });
                             revokeApiKeyMutation.mutate({ key_id: key.key_id });
                             closeDialog();
                           }}

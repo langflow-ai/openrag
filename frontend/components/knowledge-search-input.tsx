@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
@@ -25,6 +26,12 @@ export const KnowledgeSearchInput = () => {
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
       if (e) e.preventDefault();
+      trackButton({
+        CTA: "Search Knowledge",
+        elementId: "search-knowledge-button",
+        namespace: "knowledge",
+        payload: { query: searchQueryInput.trim() },
+      });
       setQueryOverride(searchQueryInput.trim());
     },
     [searchQueryInput, setQueryOverride],

@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { trackButton } from "@/lib/analytics";
 
 type ModelProviderDialogFooterProps = {
   showRemoveConfirm: boolean;
@@ -22,6 +23,8 @@ type ModelProviderDialogFooterProps = {
   onCancel: () => void;
   isSavePending: boolean;
   isValidating: boolean;
+
+  providerKey?: string;
 
   // When the backend returned a 409 because the provider's embedding models
   // are still referenced by indexed documents, pass the list here to render
@@ -41,6 +44,7 @@ const ModelProviderDialogFooter = ({
   onCancel,
   isSavePending,
   isValidating,
+  providerKey,
   affectedModels,
 }: ModelProviderDialogFooterProps) => {
   if (showRemoveConfirm) {
@@ -80,7 +84,15 @@ const ModelProviderDialogFooter = ({
             type="button"
             variant="destructive"
             disabled={isRemovePending}
-            onClick={onConfirmRemove}
+            onClick={() => {
+              trackButton({
+                CTA: "Remove Provider",
+                elementId: "remove-provider-button",
+                namespace: "settings",
+                payload: { provider: providerKey },
+              });
+              onConfirmRemove();
+            }}
           >
             {isRemovePending
               ? "Removing..."
@@ -120,7 +132,18 @@ const ModelProviderDialogFooter = ({
       <Button variant="outline" type="button" onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" disabled={isSavePending || isValidating}>
+      <Button
+        type="submit"
+        disabled={isSavePending || isValidating}
+        onClick={() => {
+          trackButton({
+            CTA: "Save Provider",
+            elementId: "save-provider-button",
+            namespace: "settings",
+            payload: { provider: providerKey },
+          });
+        }}
+      >
         {isSavePending ? "Saving..." : isValidating ? "Validating..." : "Save"}
       </Button>
     </DialogFooter>
