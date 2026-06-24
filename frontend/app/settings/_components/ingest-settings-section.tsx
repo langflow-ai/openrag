@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetIBMModelsQuery,
@@ -82,35 +82,46 @@ export function IngestSettingsSection() {
       },
     );
 
-  const groupedEmbeddingModels = [
-    {
-      group: "OpenAI",
-      provider: "openai",
-      icon: getModelLogo("", "openai"),
-      models: openaiModels?.embedding_models || [],
-      configured: settings.providers?.openai?.configured === true,
-    },
-    {
-      group: "Ollama",
-      provider: "ollama",
-      icon: getModelLogo("", "ollama"),
-      models: ollamaModels?.embedding_models || [],
-      configured: settings.providers?.ollama?.configured === true,
-    },
-    {
-      group: "IBM watsonx.ai",
-      provider: "watsonx",
-      icon: getModelLogo("", "watsonx"),
-      models: watsonxModels?.embedding_models || [],
-      configured: settings.providers?.watsonx?.configured === true,
-    },
-  ]
-    .filter((p) => p.configured)
-    .map((p) => ({
-      group: p.group,
-      icon: p.icon,
-      options: p.models.map((m) => ({ ...m, provider: p.provider })),
-    }));
+  const groupedEmbeddingModels = useMemo(
+    () =>
+      [
+        {
+          group: "OpenAI",
+          provider: "openai",
+          icon: getModelLogo("", "openai"),
+          models: openaiModels?.embedding_models || [],
+          configured: settings.providers?.openai?.configured === true,
+        },
+        {
+          group: "Ollama",
+          provider: "ollama",
+          icon: getModelLogo("", "ollama"),
+          models: ollamaModels?.embedding_models || [],
+          configured: settings.providers?.ollama?.configured === true,
+        },
+        {
+          group: "IBM watsonx.ai",
+          provider: "watsonx",
+          icon: getModelLogo("", "watsonx"),
+          models: watsonxModels?.embedding_models || [],
+          configured: settings.providers?.watsonx?.configured === true,
+        },
+      ]
+        .filter((p) => p.configured)
+        .map((p) => ({
+          group: p.group,
+          icon: p.icon,
+          options: p.models.map((m) => ({ ...m, provider: p.provider })),
+        })),
+    [
+      openaiModels?.embedding_models,
+      ollamaModels?.embedding_models,
+      watsonxModels?.embedding_models,
+      settings.providers?.openai?.configured,
+      settings.providers?.ollama?.configured,
+      settings.providers?.watsonx?.configured,
+    ],
+  );
 
   const isLoadingAnyEmbeddingModels =
     openaiLoading || ollamaLoading || watsonxLoading;
@@ -123,6 +134,44 @@ export function IngestSettingsSection() {
       toast.error("Failed to update settings", { description: error.message });
     },
   });
+
+  const allEmbeddingOptions = useMemo(
+    () => groupedEmbeddingModels.flatMap((g) => g.options),
+    [groupedEmbeddingModels],
+  );
+
+  const handleEmbeddingModelChange = useCallback(
+    (newModel: string, provider?: string) => {
+      if (newModel && provider) {
+        updateSettingsMutation.mutate({
+          embedding_model: newModel,
+          embedding_provider: provider,
+        });
+      } else if (newModel) {
+        updateSettingsMutation.mutate({ embedding_model: newModel });
+      }
+    },
+    [updateSettingsMutation],
+  );
+
+  const autoSelectedEmbedding = useRef(false);
+  useEffect(() => {
+    if (settings.knowledge?.embedding_model) {
+      autoSelectedEmbedding.current = false;
+      return;
+    }
+    if (autoSelectedEmbedding.current) return;
+    if (allEmbeddingOptions.length > 0) {
+      autoSelectedEmbedding.current = true;
+      const fallback =
+        allEmbeddingOptions.find((o) => o.default) || allEmbeddingOptions[0];
+      handleEmbeddingModelChange(fallback.value, fallback.provider);
+    }
+  }, [
+    settings.knowledge?.embedding_model,
+    allEmbeddingOptions,
+    handleEmbeddingModelChange,
+  ]);
 
   useEffect(() => {
     if (settings.knowledge?.chunk_size !== undefined)
@@ -164,17 +213,6 @@ export function IngestSettingsSection() {
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
-
-  const handleEmbeddingModelChange = (newModel: string, provider?: string) => {
-    if (newModel && provider) {
-      updateSettingsMutation.mutate({
-        embedding_model: newModel,
-        embedding_provider: provider,
-      });
-    } else if (newModel) {
-      updateSettingsMutation.mutate({ embedding_model: newModel });
-    }
-  };
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));

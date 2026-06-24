@@ -47,7 +47,7 @@ RUN microdnf update -y \
     && microdnf clean all \
     && mkdir -p /tmp/patch \
     && cd /tmp/patch \
-    && npm install ip-address@10.1.1 --no-audit \
+    && npm install ip-address@10.2.0 --no-audit \
     && cp -rf node_modules/ip-address /usr/lib/node_modules/npm/node_modules/ \
     && rm -rf /tmp/patch
 
