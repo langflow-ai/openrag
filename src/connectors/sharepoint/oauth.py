@@ -28,9 +28,9 @@ def _verify_access_token_if_present(access_token: str | None, tenant_id: str | N
         return claims
 
     except JWTVerificationError as e:
-        logger.warning("Microsoft access token verification failed", error=str(e))
+        logger.warning("Microsoft access token verification failed: %s", str(e))
     except Exception as e:
-        logger.error("Unexpected error verifying Microsoft access token", error=str(e))
+        logger.error("Unexpected error verifying Microsoft access token: %s", str(e))
 
     return None
 
