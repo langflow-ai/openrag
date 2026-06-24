@@ -200,6 +200,39 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(monkey
 
 
 @pytest.mark.asyncio
+async def test_connector_processor_indexes_cleaned_filename(monkeypatch):
+    """MIME-enforced extensions must be indexed under the same name used for dedupe."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+    document = ConnectorDocument(
+        id="doc-id-1",
+        filename="My Report",
+        mimetype="application/vnd.google-apps.document",
+        content=b"%PDF-1.4 dummy",
+        source_url="https://example.google.com/file",
+        acl=DocumentACL(owner="user@example.com"),
+        modified_time=datetime.now(),
+        created_time=datetime.now(),
+    )
+    _wire_connector_processor(processor, document, filename_exists=False)
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch.object(
+        processor,
+        "process_document_standard",
+        new=AsyncMock(return_value={"status": "indexed", "id": "hash-1"}),
+    ) as mock_process:
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.filename == "My Report.pdf"
+    assert mock_process.await_args.kwargs["original_filename"] == "My Report.pdf"
+    metadata_call = processor.connector_service._update_connector_metadata.await_args
+    assert metadata_call.kwargs["indexed_filename"] == "My Report.pdf"
+
+
+@pytest.mark.asyncio
 async def test_connector_processor_proceeds_when_filename_absent(monkeypatch):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
     processor = _build_connector_processor(replace_duplicates=False)
@@ -244,15 +277,21 @@ def _wire_langflow_processor(
     document: ConnectorDocument,
     filename_exists: bool,
     hash_exists: bool = False,
+    connector_id_exists: bool = False,
 ):
     opensearch_client = AsyncMock()
 
     async def mock_search(index, body, **kwargs):
-        query_str = str(body)
-        if "document_id" in query_str:
+        document_id = (
+            body.get("query", {}).get("term", {}).get("document_id")
+            if isinstance(body, dict)
+            else None
+        )
+        if document_id == document.id:
+            return _make_search_response(connector_id_exists)
+        if document_id:
             return _make_search_response(hash_exists)
-        else:
-            return _make_search_response(filename_exists)
+        return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
     opensearch_client.delete_by_query = AsyncMock(return_value={"deleted": 2})
@@ -301,11 +340,38 @@ async def test_langflow_connector_processor_skips_on_filename_collision(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
+    processor = _build_langflow_processor(replace_duplicates=False)
+    document = ConnectorDocument(
+        id="doc-id-1",
+        filename="My Report",
+        mimetype="application/vnd.google-apps.document",
+        content=b"%PDF-1.4 dummy",
+        source_url="https://example.google.com/file",
+        acl=DocumentACL(owner="user@example.com"),
+        modified_time=datetime.now(),
+        created_time=datetime.now(),
+    )
+    _wire_langflow_processor(processor, document, filename_exists=False, connector_id_exists=True)
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    upload_call = processor.connector_service.langflow_service.upload_and_ingest_file.await_args
+    assert upload_call.kwargs["file_tuple"][0] == "My Report.pdf"
+
+
+@pytest.mark.asyncio
 async def test_langflow_connector_processor_overwrites_when_replace_true(monkeypatch):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
-    opensearch_client = _wire_langflow_processor(processor, document, filename_exists=True)
+    opensearch_client = _wire_langflow_processor(
+        processor, document, filename_exists=True, connector_id_exists=True
+    )
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()

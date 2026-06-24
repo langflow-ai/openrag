@@ -9,13 +9,15 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorTokenQuery";
 import { useIBMCOSBucketStatusQuery } from "@/app/api/queries/useIBMCOSBucketStatusQuery";
+import { useIBMCOSDefaultsQuery } from "@/app/api/queries/useIBMCOSDefaultsQuery";
 import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery";
+import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
@@ -29,10 +31,15 @@ import {
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
-import { duplicateCheck } from "@/lib/upload-utils";
 
 // Connectors that sync entire buckets/repositories without a file picker
 const DIRECT_SYNC_PROVIDERS = ["ibm_cos", "aws_s3"];
+
+interface ConnectorDuplicateCheckResponse {
+  duplicate_names?: string[];
+  duplicate_count?: number;
+  non_duplicate_files?: CloudFile[];
+}
 
 // ---------------------------------------------------------------------------
 // Shared bucket view — used by both IBM COS and S3
@@ -49,6 +56,7 @@ function BucketView({
   addTask,
   onBack,
   onDone,
+  initialSelectedBuckets,
 }: {
   connector: any;
   buckets: Array<{ name: string; ingested_count: number }> | undefined;
@@ -60,16 +68,36 @@ function BucketView({
   addTask: (id: string) => void;
   onBack: () => void;
   onDone: () => void;
+  initialSelectedBuckets?: string[];
 }) {
   const queryClient = useQueryClient();
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
+  const hasAppliedInitial = useRef(false);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (
+      !hasAppliedInitial.current &&
+      buckets?.length &&
+      initialSelectedBuckets?.length
+    ) {
+      hasAppliedInitial.current = true;
+      if (selectedBuckets.size === 0) {
+        const valid = initialSelectedBuckets.filter((name) =>
+          buckets.some((b) => b.name === name),
+        );
+        if (valid.length) {
+          setSelectedBuckets(new Set(valid));
+        }
+      }
+    }
+  }, [buckets, initialSelectedBuckets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -318,6 +346,7 @@ function IBMCOSBucketView({
     isLoading,
     refetch,
   } = useIBMCOSBucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useIBMCOSDefaultsQuery({ enabled: true });
   return (
     <BucketView
       connector={connector}
@@ -329,6 +358,11 @@ function IBMCOSBucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={
+        defaults?.connection_id === connector.connectionId
+          ? defaults?.bucket_names
+          : undefined
+      }
     />
   );
 }
@@ -356,6 +390,7 @@ function S3BucketView({
     error: bucketsError,
     refetch,
   } = useS3BucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useS3DefaultsQuery({ enabled: true });
   return (
     <BucketView
       connector={connector}
@@ -368,6 +403,11 @@ function S3BucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={
+        defaults?.connection_id === connector.connectionId
+          ? defaults?.bucket_names
+          : undefined
+      }
     />
   );
 }
@@ -419,6 +459,7 @@ export default function UploadProviderPage() {
     allFiles: CloudFile[];
     nonDuplicateFiles: CloudFile[];
     duplicateNames: string[];
+    duplicateCount: number;
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
 
@@ -514,24 +555,27 @@ export default function UploadProviderPage() {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData = await checkResponse.json();
+      const checkData =
+        (await checkResponse.json()) as ConnectorDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
-      const totalFiles = checkData.total_files || 0;
+      const duplicateCount =
+        typeof checkData.duplicate_count === "number"
+          ? checkData.duplicate_count
+          : duplicateNames.length;
 
-      if (duplicateNames.length === 0) {
+      if (duplicateCount === 0) {
         submitSync(connector, selectedFiles, false);
         return;
       }
 
-      // If all files are duplicates, we set nonDuplicateFiles to empty so it toasts "Nothing was synced" on skip
-      const isAllDuplicate = duplicateNames.length === totalFiles;
-      const nonDuplicateFiles = isAllDuplicate ? [] : selectedFiles;
+      const nonDuplicateFiles = checkData.non_duplicate_files || [];
 
       setPendingSync({
         connector,
         allFiles: selectedFiles,
         nonDuplicateFiles,
         duplicateNames,
+        duplicateCount,
       });
       setDuplicateDialogOpen(true);
     } catch (err) {
@@ -559,12 +603,12 @@ export default function UploadProviderPage() {
         // "skip duplicates" branch.
         isOverwriteConfirmedRef.current = false;
       } else {
-        const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
+        const { connector, nonDuplicateFiles, duplicateCount } = pendingSync;
         if (nonDuplicateFiles.length > 0) {
           submitSync(connector, nonDuplicateFiles, false);
         } else {
           toast.info(
-            `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
+            `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
           );
         }
       }
@@ -788,6 +832,7 @@ export default function UploadProviderPage() {
         onOverwrite={handleOverwriteDuplicates}
         isLoading={isIngesting}
         duplicateNames={pendingSync?.duplicateNames}
+        duplicateCount={pendingSync?.duplicateCount}
       />
     </>
   );
