@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  // Ignore TypeScript errors during build (includes ESLint)
+  // Ignore TypeScript errors during build
   typescript: {
     ignoreBuildErrors: true,
   },

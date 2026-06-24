@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 
 // CloudFile interface is now imported from the unified cloud picker
@@ -91,6 +92,14 @@ export default function UploadProviderPage() {
     files: CloudFile[],
     replaceDuplicates: boolean,
   ) => {
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_files: files.length,
+    });
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -112,11 +121,22 @@ export default function UploadProviderPage() {
         onSuccess: (result) => {
           const taskIds = result.task_ids;
           if (taskIds && taskIds.length > 0) {
-            addTask(taskIds[0], { connectorType: connector.type });
+            addTask(taskIds[0], {
+              connectorType: connector.type,
+              source: "connector",
+            });
             router.push("/knowledge");
           }
         },
         onError: (err) => {
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            source: "connector",
+            connector_type: connector.type,
+            resultValue: err instanceof Error ? err.message : "Sync failed",
+          });
           toast.error(err instanceof Error ? err.message : "Sync failed");
         },
       },

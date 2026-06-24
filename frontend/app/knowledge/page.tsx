@@ -453,6 +453,20 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const gridReadyRef = useRef(false);
+
+  const handleGridReady = useCallback(() => {
+    gridReadyRef.current = true;
+  }, []);
+
+  const handleGridPreDestroyed = useCallback(() => {
+    gridReadyRef.current = false;
+  }, []);
+
+  const getGridApi = useCallback(() => {
+    if (!gridReadyRef.current) return null;
+    return gridRef.current?.api ?? null;
+  }, []);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
   const gridRowsSelectionKey = useMemo(
@@ -466,7 +480,7 @@ function SearchPage() {
   );
 
   useEffect(() => {
-    const api = gridRef.current?.api;
+    const api = getGridApi();
     if (!api) {
       return;
     }
@@ -475,7 +489,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-  }, [gridRowsSelectionKey, isDeletableKnowledgeRow]);
+  }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   const columnDefs: ColDef<File>[] = [
     {
@@ -745,17 +759,18 @@ function SearchPage() {
   };
 
   const onSelectionChanged = useCallback(() => {
-    if (!gridRef.current) {
+    const api = getGridApi();
+    if (!api) {
       return;
     }
     const nextSelected = syncGridSelectionToDeletableRows(
-      gridRef.current.api,
+      api,
       isDeletableKnowledgeRow,
     );
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-  }, [isDeletableKnowledgeRow]);
+  }, [isDeletableKnowledgeRow, getGridApi]);
 
   const handleBulkDelete = async () => {
     const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
@@ -826,9 +841,7 @@ function SearchPage() {
       setShowBulkDeleteDialog(false);
 
       // Clear selection in the grid
-      if (gridRef.current) {
-        gridRef.current.api.deselectAll();
-      }
+      getGridApi()?.deselectAll();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -886,7 +899,7 @@ function SearchPage() {
                 onDelete={() => setShowBulkDeleteDialog(true)}
                 onCancel={() => {
                   setSelectedRows([]);
-                  gridRef.current?.api.deselectAll();
+                  getGridApi()?.deselectAll();
                 }}
               />
             </div>
@@ -1011,6 +1024,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -1045,6 +1060,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}

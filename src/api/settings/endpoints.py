@@ -16,6 +16,8 @@ from api.provider_validation import validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
+    _default_embedding_model,
+    _default_llm_model,
     _embedding_conflict_response,
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
@@ -634,15 +636,13 @@ async def update_settings(
             current_config.providers.ollama.endpoint = ""
             current_config.providers.ollama.configured = False
             if current_config.agent.llm_provider == "ollama":
-                current_config.agent.llm_provider = _first_configured_llm_provider(
-                    current_config, "ollama"
-                )
-                current_config.agent.llm_model = ""
+                fb = _first_configured_llm_provider(current_config, "ollama")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "ollama":
-                current_config.knowledge.embedding_provider = _first_configured_embedding_provider(
-                    current_config, "ollama"
-                )
-                current_config.knowledge.embedding_model = ""
+                fb = _first_configured_embedding_provider(current_config, "ollama")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -670,11 +670,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(current_config, "openai")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "openai":
                 fb = _first_configured_embedding_provider(current_config, "openai")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -696,7 +696,7 @@ async def update_settings(
             if current_config.agent.llm_provider == "anthropic":
                 fb = _first_configured_llm_provider(current_config, "anthropic")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             # Anthropic is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
@@ -727,11 +727,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "watsonx":
                 fb = _first_configured_llm_provider(current_config, "watsonx")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(current_config, "watsonx")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
