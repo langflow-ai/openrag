@@ -24,9 +24,7 @@ interface DuplicateHandlingDialogProps {
 
 const MAX_LISTED_DUPLICATES = 5;
 
-export const DuplicateHandlingDialog: React.FC<
-  DuplicateHandlingDialogProps
-> = ({
+export const DuplicateHandlingDialog = ({
   open,
   onOpenChange,
   onOverwrite,
@@ -34,7 +32,7 @@ export const DuplicateHandlingDialog: React.FC<
   duplicateLabel,
   duplicateCount,
   duplicateNames,
-}) => {
+}: DuplicateHandlingDialogProps) => {
   const handleOverwrite = async () => {
     await onOverwrite();
     onOpenChange(false);
