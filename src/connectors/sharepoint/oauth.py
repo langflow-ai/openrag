@@ -143,9 +143,8 @@ class SharePointOAuth:
                 logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(
-                        f"Set current account: {accounts[0].get('username', 'no username')}"
-                    )
+                    username = self._current_account.get('username', 'no username') if self._current_account else 'no username'
+                    logger.debug(f"Set current account: {username}")
 
                     if needs_upgrade:
                         await self.save_cache()
@@ -206,9 +205,8 @@ class SharePointOAuth:
                 logger.debug(f"After refresh, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(
-                        f"Set current account after refresh: {accounts[0].get('username', 'no username')}"
-                    )
+                    username = self._current_account.get('username', 'no username') if self._current_account else 'no username'
+                    logger.debug(f"Set current account after refresh: {username}")
                 return True
 
             # Error handling
