@@ -107,19 +107,32 @@ jobs:
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
-          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
-            echo "Building PR images locally..."
-            OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-build-images
-          else
-            echo "Preparing DockerHub images..."
-            docker pull langflowai/openrag-backend:latest
-            docker pull langflowai/openrag-frontend:latest
-            docker pull langflowai/openrag-langflow:latest
-            docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}"
-            docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}"
-            docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}"
-            docker build --no-cache -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" -f Dockerfile .
-          fi
+          for i in 1 2 3; do
+            echo "Build attempt $i..."
+            if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
+              echo "Building PR images locally..."
+              if OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-build-images; then
+                break
+              fi
+            else
+              echo "Preparing DockerHub images..."
+              if docker pull langflowai/openrag-backend:latest && \
+                 docker pull langflowai/openrag-frontend:latest && \
+                 docker pull langflowai/openrag-langflow:latest && \
+                 docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}" && \
+                 docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}" && \
+                 docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}" && \
+                 docker build --no-cache -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" -f Dockerfile .; then
+                break
+              fi
+            fi
+            echo "Build attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Build failed after 3 attempts."
+              exit 1
+            fi
+          done
 
       - name: Save OpenRAG images
         run: OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-save-images
