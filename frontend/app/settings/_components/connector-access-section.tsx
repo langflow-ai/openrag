@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { trackButton } from "@/lib/analytics";
 
 export function ConnectorAccessSection() {
   const {
@@ -133,11 +134,16 @@ export function ConnectorAccessSection() {
             </ul>
             <div className="flex justify-end pt-6">
               <Button
-                onClick={() =>
+                onClick={() => {
+                  trackButton({
+                    CTA: "Save Connector Access",
+                    elementId: "save-connector-access-button",
+                    namespace: "settings",
+                  });
                   updateAccess.mutate(accessForSave, {
                     onSuccess: () => setUserDraft(null),
-                  })
-                }
+                  });
+                }}
                 disabled={updateAccess.isPending || !isDirty}
                 className="min-w-[120px]"
                 size="sm"
