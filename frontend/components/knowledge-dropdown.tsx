@@ -35,7 +35,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
-import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import {
+  trackButton,
+  trackProcessFailure,
+  trackStartProcess,
+} from "@/lib/analytics";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -674,6 +678,12 @@ export function KnowledgeDropdown() {
         label: info.name,
         icon: descriptor?.Icon ?? PlugZap,
         onClick: async () => {
+          trackButton({
+            CTA: `Select Connector - ${info.name}`,
+            elementId: "cloud-connector-menu-item",
+            namespace: "knowledge",
+            payload: { connector_type: type },
+          });
           if (info.connected && info.hasToken) {
             setIsNavigatingToCloud(true);
             try {

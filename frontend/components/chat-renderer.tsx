@@ -30,6 +30,8 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
+let onboardingPageTracked = false;
+
 export function ChatRenderer({
   settings,
   children,
@@ -75,7 +77,8 @@ export function ChatRenderer({
   }, [settings?.onboarding?.current_step]);
 
   useEffect(() => {
-    if (!showLayout) {
+    if (!showLayout && !onboardingPageTracked) {
+      onboardingPageTracked = true;
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
