@@ -380,6 +380,13 @@ OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
     "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
+# Reconcile replica counts on existing OpenRAG indices at startup so they match
+# OPENSEARCH_NUMBER_OF_REPLICAS. Defaults to true for production (multi-node)
+# deployments; single-node dev (docker-compose) overrides it to false.
+OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
+    "OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
+).lower() in ("true", "1", "yes")
+
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
 # logging-level "debug" or other unrelated debug flags.
@@ -594,16 +601,24 @@ WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 # actual frontend origin that is carried in the OAuth state parameter.
 OAUTH_BROKER_URL = os.getenv("OAUTH_BROKER_URL")
 
+
+def _get_min_env_int(key: str, default: int, minimum: int) -> int:
+    """Read an integer env var, clamped to a minimum valid value."""
+    return max(get_env_int(key, default), minimum)
+
+
 # OpenSearch configuration
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
+OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
+OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
 
 INDEX_BODY = {
     "settings": {
         "index": {"knn": True},
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
@@ -639,7 +654,10 @@ INDEX_BODY = {
 DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
 DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
     "settings": {
-        "index": {"number_of_replicas": 0, "number_of_shards": 1},
+        "index": {
+            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
+            "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        },
     },
     "mappings": {
         "properties": {
@@ -658,8 +676,8 @@ DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
 API_KEYS_INDEX_NAME = "api_keys"
 API_KEYS_INDEX_BODY = {
     "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
