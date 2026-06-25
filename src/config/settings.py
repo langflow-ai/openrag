@@ -185,6 +185,11 @@ SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-produ
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+OPENRAG_ALLOW_NO_AUTH = os.getenv("OPENRAG_ALLOW_NO_AUTH", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -567,9 +572,16 @@ DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH",
 
 
 def is_no_auth_mode():
-    """Check if we're running in no-auth mode (OAuth credentials missing)"""
+    """Check if we're running in explicit no-auth mode.
+
+    Missing Google OAuth credentials must not silently open the application.
+    Anonymous mode is now opt-in via ``OPENRAG_ALLOW_NO_AUTH=true`` and is
+    intended for local development only.
+    """
     if IBM_AUTH_ENABLED:
         return False  # IBM cookie auth is a valid auth mode (variable name kept for now as per instructions)
+    if not OPENRAG_ALLOW_NO_AUTH:
+        return False
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
     return result
 

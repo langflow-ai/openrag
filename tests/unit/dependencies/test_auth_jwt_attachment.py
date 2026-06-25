@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SRC = ROOT / "src"
@@ -78,6 +79,18 @@ async def test_optional_user_no_auth_gets_effective_jwt(monkeypatch):
     assert user.jwt_token == "Bearer generated-anonymous-token"
     assert request.state.user.jwt_token == "Bearer generated-anonymous-token"
     assert session_manager.effective_token_calls == [("anonymous", None)]
+
+
+@pytest.mark.asyncio
+async def test_current_user_without_cookie_and_without_no_auth_raises(monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
+    session_manager = FakeSessionManager()
+    request = _request()
+
+    with pytest.raises(HTTPException) as exc:
+        await get_current_user(request, session_manager=session_manager)
+
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
