@@ -33,6 +33,7 @@ export default function Nudges({
                 <div className="flex gap-3 justify-start overflow-x-auto scrollbar-hide">
                   {nudges.map((suggestion: string, index: number) => (
                     <button
+                      type="button"
                       key={index}
                       data-testid={`suggestion-${index}`}
                       onClick={() => handleSuggestionClick(suggestion)}

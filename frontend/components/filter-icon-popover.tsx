@@ -115,6 +115,7 @@ export function FilterIconPopover({
     <Popover>
       <PopoverTrigger asChild>
         <button
+          type="button"
           className={cn(
             "h-10 w-10 min-w-10 min-h-10 rounded-md flex items-center justify-center transition-colors",
             filterAccentClasses[color],
