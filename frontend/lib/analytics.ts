@@ -45,10 +45,7 @@ export const page = (
   });
 };
 
-export const track = (
-  eventName: string,
-  properties: Record<string, unknown> = {},
-) => {
+const track = (eventName: string, properties: Record<string, unknown> = {}) => {
   if (!analytics) return;
   try {
     analytics.track(eventName, {
@@ -94,7 +91,7 @@ interface EndProcessParams {
   category?: string;
 }
 
-export const trackEndProcess = <T = Record<string, unknown>>(
+const trackEndProcess = <T = Record<string, unknown>>(
   props: T & EndProcessParams,
 ): void => track("Ended Process", props as Record<string, unknown>);
 

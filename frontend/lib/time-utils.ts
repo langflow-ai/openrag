@@ -23,13 +23,13 @@ export function parseTimestampMs(value: string): number | null {
   return parsed ? parsed.getTime() : null;
 }
 
-export function formatClockTime(date: Date): string {
+function formatClockTime(date: Date): string {
   return date
     .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     .toLowerCase();
 }
 
-export function formatRelativeTime(date: Date, nowMs: number): string {
+function formatRelativeTime(date: Date, nowMs: number): string {
   const diffMs = nowMs - date.getTime();
   const diffSeconds = Math.floor(diffMs / 1000);
   const diffMinutes = Math.floor(diffMs / 60000);

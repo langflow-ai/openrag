@@ -10,7 +10,7 @@ interface ModelSelectItemProps {
   provider?: ModelProvider;
 }
 
-export function ModelSelectItem({ model, provider }: ModelSelectItemProps) {
+function ModelSelectItem({ model, provider }: ModelSelectItemProps) {
   return (
     <SelectItem value={model.value}>
       <div className="flex items-center gap-2">

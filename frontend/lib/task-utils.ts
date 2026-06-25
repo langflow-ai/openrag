@@ -22,7 +22,7 @@ export type TaskFileFilterOptions = {
   task?: Task;
 };
 
-export function isTaskFileCompleted(fileInfo: TaskFileEntry): boolean {
+function isTaskFileCompleted(fileInfo: TaskFileEntry): boolean {
   return fileInfo.status === "completed";
 }
 
@@ -65,7 +65,7 @@ export function getTaskFileName(
 }
 
 /** Lowercase extension without dot, or empty string when none. */
-export function getFileExtensionFromName(filename: string): string {
+function getFileExtensionFromName(filename: string): string {
   const trimmed = filename.trim();
   const dotIndex = trimmed.lastIndexOf(".");
   if (dotIndex <= 0 || dotIndex === trimmed.length - 1) {
@@ -74,10 +74,7 @@ export function getFileExtensionFromName(filename: string): string {
   return trimmed.slice(dotIndex + 1).toLowerCase();
 }
 
-export function getTaskFileTypeKey(
-  filePath: string,
-  fileInfo: TaskFileEntry,
-): string {
+function getTaskFileTypeKey(filePath: string, fileInfo: TaskFileEntry): string {
   const extension = getFileExtensionFromName(
     getTaskFileName(filePath, fileInfo),
   );
@@ -131,7 +128,7 @@ export function countRetryIngestionFiles(task: Task): number {
 }
 
 /** Maps a file to a dialog filter chip bucket (aligned with per-file status labels). */
-export function getTaskFileStatusCategory(
+function getTaskFileStatusCategory(
   fileInfo: TaskFileEntry,
 ): TaskFileStatusCategory {
   if (isTaskFileFailed(fileInfo)) {
@@ -171,7 +168,7 @@ export function countTaskFileEntriesByCategory(
   return counts;
 }
 
-export function countTaskFilesByCategory(
+function countTaskFilesByCategory(
   task: Task,
 ): Record<TaskFileStatusCategory, number> {
   return countTaskFileEntriesByCategory(getTaskFileEntries(task));
@@ -225,9 +222,7 @@ export function filterTaskFileEntries(
   });
 }
 
-export function getFailedFileEntries(
-  task: Task,
-): Array<[string, TaskFileEntry]> {
+function getFailedFileEntries(task: Task): Array<[string, TaskFileEntry]> {
   return Object.entries(task.files || {}).filter(([, fileInfo]) =>
     isTaskFileFailed(fileInfo),
   );
@@ -267,7 +262,7 @@ export function isTerminalFailedTask(task: Task): boolean {
   return task.status === "failed" || task.status === "error";
 }
 
-export function isCompletedWithFailures(task: Task): boolean {
+function isCompletedWithFailures(task: Task): boolean {
   return task.status === "completed" && hasFailedFileEntries(task);
 }
 
@@ -340,14 +335,11 @@ export function didTaskReachCompleted(
  * The enhanced list drops completed files from `files` while a task is still running.
  */
 /** Stable overlay key before the backend temp path is known. */
-export function pendingTaskFileSourceUrl(
-  taskId: string,
-  filename: string,
-): string {
+function pendingTaskFileSourceUrl(taskId: string, filename: string): string {
   return `pending:${taskId}:${filename}`;
 }
 
-export function isPendingTaskFileSourceUrl(sourceUrl: string): boolean {
+function isPendingTaskFileSourceUrl(sourceUrl: string): boolean {
   return sourceUrl.startsWith("pending:");
 }
 
