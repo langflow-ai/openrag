@@ -12,6 +12,7 @@ FROM registry.access.redhat.com/ubi10/python-314-minimal AS base
 USER 0
 RUN microdnf install -y \
     ca-certificates \
+    curl \
     openssl \
     tar \
     gzip \
