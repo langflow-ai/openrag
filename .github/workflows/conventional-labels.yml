@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request_target' && github.event.pull_request.user.type != 'Bot'
     steps:
-      - uses: bcoe/conventional-release-labels@b503ca473654e07521c051628c5f1f969e7436da # v1
+      - uses: bcoe/conventional-release-labels@886f696738527c7be444262c327c89436dfb95a8  # v1.3.1
         with:
           type_labels: '{"feat": "enhancement","fix": "bug","docs": "documentation","style": "style","refactor": "refactor","perf": "performance","test": "test","chore": "chore","build": "build"}'
 
