@@ -329,7 +329,8 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
 def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, component_id):
     flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
     nodes = {node.get("id"): node for node in flow["data"]["nodes"]}
-    edges = flow["data"]["edges"]
+    component = nodes[component_id]
+    template = component["data"]["node"]["template"]
     expected = {
         "openrag_ingest_url": "OPENRAG_INGEST_URL",
         "openrag_ingest_token": "OPENRAG_INGEST_TOKEN",
@@ -337,18 +338,14 @@ def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, compo
     }
 
     for field_name, variable_name in expected.items():
-        source_id = f"TextInput-OpenRAGIngest-{field_name.removeprefix('openrag_ingest_')}"
-        text_node = nodes[source_id]
-        input_template = text_node["data"]["node"]["template"]["input_value"]
+        input_template = template[field_name]
         assert input_template["value"] == variable_name
         assert input_template["load_from_db"] is True
+        assert input_template["show"] is True
 
-        assert any(
-            edge.get("source") == source_id
-            and edge.get("target") == component_id
-            and edge.get("data", {}).get("targetHandle", {}).get("fieldName") == field_name
-            for edge in edges
-        )
+    assert template["openrag_ingest_batch_size"]["value"] == 100
+    assert template["openrag_ingest_batch_size"].get("load_from_db") is None
+    assert template["openrag_ingest_batch_size"]["show"] is True
 
 
 @pytest.mark.parametrize(
