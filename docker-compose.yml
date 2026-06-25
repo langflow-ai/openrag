@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: opensearchproject/opensearch-dashboards:3.0.0
+    image: opensearchproject/opensearch-dashboards:3.6.0
     container_name: osdash
     depends_on:
       - opensearch
