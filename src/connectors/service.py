@@ -386,6 +386,9 @@ class ConnectorService:
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
+
         # Collect files to process (limited by max_files)
         files_to_process: list[dict[str, Any]] = []
         page_token = None
@@ -509,6 +512,9 @@ class ConnectorService:
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
 
         if not file_ids:
             raise ValueError("No file IDs provided")
