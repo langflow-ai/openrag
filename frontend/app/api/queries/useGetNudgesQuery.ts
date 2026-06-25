@@ -98,7 +98,7 @@ export const useGetNudgesQuery = (
   const callerEnabled = options?.enabled ?? true;
   const enabled = isOnboardingComplete && isLLMHealthy && callerEnabled;
 
-  const queryResult = useQuery(
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery(
     {
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
       queryFn: getNudges,
@@ -117,5 +117,5 @@ export const useGetNudgesQuery = (
     queryClient,
   );
 
-  return { ...queryResult, cancel };
+  return { data, isLoading, isError, error, refetch, isFetching, cancel };
 };

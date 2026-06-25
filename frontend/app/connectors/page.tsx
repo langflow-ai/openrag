@@ -102,6 +102,7 @@ export default function ConnectorsPage() {
       {selectedFiles.length > 0 && (
         <div className="space-y-4">
           <button
+            type="button"
             onClick={() =>
               handleSync({
                 connectionId: "google-drive-connection-id",

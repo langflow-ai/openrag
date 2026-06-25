@@ -951,10 +951,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Extract ACL information
                     allowed_users: list[str] = []
                     allowed_groups: list[str] = []
+                    allowed_principals: list[str] = []
+                    allowed_principal_labels: list[dict[str, Any]] = []
                     if document.acl:
                         try:
                             allowed_users = document.acl.allowed_users or []
                             allowed_groups = document.acl.allowed_groups or []
+                            allowed_principals = document.acl.allowed_principals or []
+                            allowed_principal_labels = document.acl.allowed_principal_labels or []
                         except AttributeError:
                             pass
 
@@ -986,6 +990,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
+                        allowed_principals=allowed_principals,
+                        allowed_principal_labels=allowed_principal_labels,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually

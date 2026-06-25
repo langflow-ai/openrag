@@ -98,7 +98,7 @@ export const useGetTasksQuery = (
     return data.tasks || [];
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: [...TASKS_QUERY_KEY],
       queryFn: getTasks,
@@ -124,6 +124,4 @@ export const useGetTasksQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpAZ, ChevronDown, FileText } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import type { Task } from "@/contexts/task-context";
@@ -69,11 +69,9 @@ export function TaskDialogFileList({
 
   const showRetryIngestionsTab = retryIngestionCount > 0;
 
-  useEffect(() => {
-    if (!showRetryIngestionsTab && activeTab === "retry-ingestions") {
-      setActiveTab("task-ingestions");
-    }
-  }, [showRetryIngestionsTab, activeTab]);
+  if (!showRetryIngestionsTab && activeTab === "retry-ingestions") {
+    setActiveTab("task-ingestions");
+  }
 
   const analysisByPath = useMemo(() => {
     const map = new Map<
