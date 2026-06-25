@@ -27,6 +27,15 @@ from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
 
+# Image file extensions that require OCR
+IMAGE_EXTENSIONS = {"bmp", "jpeg", "jpg", "png", "tiff", "tif", "webp"}
+
+
+def is_image_file(filename: str) -> bool:
+    """Check if a file is an image based on its extension."""
+    ext = filename.split(".")[-1].lower() if "." in filename else ""
+    return ext in IMAGE_EXTENSIONS
+
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
@@ -455,6 +464,18 @@ class DocumentFileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
+            # Check if OCR is disabled and file is an image
+            filename = os.path.basename(item)
+            config = get_openrag_config()
+            ocr_enabled = config.knowledge.ocr
+            
+            if not ocr_enabled and is_image_file(filename):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = f"The file '{filename}' is an image file and cannot be ingested because OCR is disabled."
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+
             # Compute hash
             file_hash = hash_id(item)
 
@@ -578,6 +599,17 @@ class ConnectorFileProcessor(TaskProcessor):
                     file_task.updated_at = time.time()
                     upload_task.failed_files += 1
                     return
+                
+                # Check if OCR is disabled and file is an image
+                config = get_openrag_config()
+                ocr_enabled = config.knowledge.ocr
+                
+                if not ocr_enabled and is_image_file(file_task.filename):
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"The file '{file_task.filename}' is an image file and cannot be ingested because OCR is disabled."
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
 
             # Get file content from connector
             try:
@@ -639,6 +671,17 @@ class ConnectorFileProcessor(TaskProcessor):
             if ext not in VALID_EXTENSIONS:
                 file_task.status = TaskStatus.FAILED
                 file_task.error = f"The file '{name}' has an incompatible type."
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+            
+            # Check if OCR is disabled and file is an image
+            config = get_openrag_config()
+            ocr_enabled = config.knowledge.ocr
+            
+            if not ocr_enabled and is_image_file(name):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = f"The file '{name}' is an image file and cannot be ingested because OCR is disabled."
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
                 return
