@@ -18,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -1608,7 +1608,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 
 func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
 	hpaSpec := o.Spec.DoclingComponents.Serve.HPA
-	minReplicas := ptr.To(int32(1))
+	minReplicas := new(int32(1))
 	if hpaSpec.MinReplicas != nil {
 		minReplicas = hpaSpec.MinReplicas
 	}
@@ -1662,7 +1662,7 @@ func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS
 
 func (r *OpenRAGReconciler) doclingWorkerHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
 	hpaSpec := o.Spec.DoclingComponents.Worker.HPA
-	minReplicas := ptr.To(int32(1))
+	minReplicas := new(int32(1))
 	if hpaSpec.MinReplicas != nil {
 		minReplicas = hpaSpec.MinReplicas
 	}

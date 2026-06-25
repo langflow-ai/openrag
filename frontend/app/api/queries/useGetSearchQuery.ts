@@ -80,6 +80,7 @@ export interface SearchResult {
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
 export { EMPTY_SEARCH_RESULT };
 
 export const useGetSearchQuery = (
@@ -244,7 +245,7 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
@@ -255,6 +256,4 @@ export const useGetSearchQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

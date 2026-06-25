@@ -127,11 +127,15 @@ const normalize = (
   };
 };
 
-const DeletesAlert: React.FC<{
+const DeletesAlert = ({
+  orphansByType,
+  totalOrphans,
+  isSyncAll,
+}: {
   orphansByType: Record<string, OrphanFile[]>;
   totalOrphans: number;
   isSyncAll: boolean;
-}> = ({ orphansByType, totalOrphans, isSyncAll }) => {
+}) => {
   const renderList = (list: OrphanFile[]) => (
     <ul className="space-y-1 text-sm">
       {list.map((o) => (
@@ -190,9 +194,7 @@ const DeletesAlert: React.FC<{
   );
 };
 
-const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
-  connectors,
-}) => (
+const UnavailableAlert = ({ connectors }: { connectors: string[] }) => (
   <Alert>
     <AlertTriangle className="size-5" />
     <AlertTitle>Couldn&apos;t check for deletions</AlertTitle>
@@ -210,11 +212,15 @@ const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
   </Alert>
 );
 
-const UpdatesAlert: React.FC<{
+const UpdatesAlert = ({
+  updatesByType,
+  totalUpdates,
+  isSyncAll,
+}: {
   updatesByType: Record<string, number>;
   totalUpdates: number;
   isSyncAll: boolean;
-}> = ({ updatesByType, totalUpdates, isSyncAll }) => {
+}) => {
   const entries = Object.entries(updatesByType);
 
   return (
@@ -237,7 +243,7 @@ const UpdatesAlert: React.FC<{
   );
 };
 
-export const SyncConfirmDialog: React.FC<SyncConfirmDialogProps> = ({
+export const SyncConfirmDialog = ({
   open,
   onOpenChange,
   onConfirm,
@@ -250,7 +256,7 @@ export const SyncConfirmDialog: React.FC<SyncConfirmDialogProps> = ({
   syncedCountByType,
   connectorType,
   isSyncAll = false,
-}) => {
+}: SyncConfirmDialogProps) => {
   const handleConfirm = async () => {
     await onConfirm();
     onOpenChange(false);

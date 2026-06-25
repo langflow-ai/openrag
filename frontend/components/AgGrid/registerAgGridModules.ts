@@ -9,6 +9,7 @@ import {
   ModuleRegistry,
   PaginationModule,
   QuickFilterModule,
+  RowApiModule,
   RowSelectionModule,
   TextFilterModule,
   ValidationModule,
@@ -28,6 +29,7 @@ ModuleRegistry.registerModules([
   DateFilterModule,
   EventApiModule,
   GridStateModule,
+  RowApiModule,
   RowSelectionModule,
   // The ValidationModule adds helpful console warnings/errors that can help identify bad configuration during development.
   ...(process.env.NODE_ENV !== "production" ? [ValidationModule] : []),

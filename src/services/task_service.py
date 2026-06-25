@@ -577,7 +577,7 @@ class TaskService:
                         if file_task.status == TaskStatus.RUNNING:
                             file_task.status = TaskStatus.FAILED
                         if not file_task.error:
-                            file_task.error = str(e)
+                            file_task.error = str(e) or repr(e)
 
                         logger.error(
                             "File processing task exception encountered",

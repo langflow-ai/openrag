@@ -3,7 +3,7 @@ python:
   - "src/**"
   - "pyproject.toml"
   - "uv.lock"
-  - "**/test-integration.yml"
+  - "**/test-ci.yml"
 
 frontend:
   - "frontend/**"
