@@ -636,7 +636,7 @@ class OneDriveConnector(BaseConnector):
 
         # Check if ID contains '!' which indicates driveId!itemId format
         if "!" in file_id:
-            parts = file_id.rsplit("!", 1)
+            parts = file_id.split("!", 1)
             if len(parts) == 2:
                 drive_id = parts[0]
                 item_id = parts[1]
@@ -735,7 +735,7 @@ class OneDriveConnector(BaseConnector):
 
             # Build URL based on ID format
             if "!" in file_id:
-                parts = file_id.rsplit("!", 1)
+                parts = file_id.split("!", 1)
                 if len(parts) == 2:
                     drive_id = parts[0]
                     item_id = parts[1]
@@ -747,11 +747,8 @@ class OneDriveConnector(BaseConnector):
                             return content
 
                     # Try drives endpoint for driveId!itemId format
-                    if not item_id.startswith("s"):
-                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
-                        logger.info(f"Downloading via drives endpoint: {url}")
-                    else:
-                        url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{file_id}/content"
+                    logger.info(f"Downloading via drives endpoint: {url}")
                 else:
                     url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
             else:
@@ -886,18 +883,7 @@ class OneDriveConnector(BaseConnector):
         files: list[dict[str, Any]] = []
 
         try:
-            drive_id = None
-            if "!" in folder_id:
-                parts = folder_id.rsplit("!", 1)
-                if len(parts) == 2:
-                    potential_drive_id, item_id = parts
-                    if not item_id.startswith("s"):
-                        drive_id = potential_drive_id
-                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/children"
-
-            if not drive_id:
-                url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
-
+            url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
             params = dict(self._default_params)
 
             response = await self._make_graph_request(url, params=params)
