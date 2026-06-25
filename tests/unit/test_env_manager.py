@@ -162,6 +162,37 @@ class TestSaveEnvFilePermissions:
         # Managed password should be updated, not duplicated.
         assert "OPENSEARCH_PASSWORD='AnotherNewPass!789'" in content
         assert 'OPENSEARCH_PASSWORD="old-password"' not in content
+
+    def test_writes_langflow_retry_env_defaults(self, env_manager, tmp_path):
+        """TUI saves the Langflow API key retry vars so editing .env does not drop them."""
+        env_file = tmp_path / ".env"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            result = env_manager.save_env_file()
+
+        assert result is True
+        content = env_file.read_text()
+        assert "LANGFLOW_KEY_RETRIES='15'" in content
+        assert "LANGFLOW_KEY_RETRY_DELAY='2.0'" in content
+
+    def test_preserves_existing_langflow_retry_values(self, env_manager, tmp_path, monkeypatch):
+        """Existing retry settings in .env should round-trip through load+save unchanged."""
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "LANGFLOW_KEY_RETRIES='8'\n"
+            "LANGFLOW_KEY_RETRY_DELAY='3.5'\n"
+        )
+        monkeypatch.delenv("LANGFLOW_KEY_RETRIES", raising=False)
+        monkeypatch.delenv("LANGFLOW_KEY_RETRY_DELAY", raising=False)
+        env_manager.load_existing_env()
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            result = env_manager.save_env_file()
+
+        assert result is True
+        content = env_file.read_text()
+        assert "LANGFLOW_KEY_RETRIES='8'" in content
+        assert "LANGFLOW_KEY_RETRY_DELAY='3.5'" in content
 # ---------------------------------------------------------------------------
 # ensure_openrag_version
 # ---------------------------------------------------------------------------

@@ -43,6 +43,8 @@ class EnvConfig:
     langflow_chat_flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
     langflow_url_ingest_flow_id: str = "72c3d17c-2dac-4a73-b48a-6518473d7830"
+    langflow_key_retries: str = "15"
+    langflow_key_retry_delay: str = "2.0"
 
     # Provider API keys and endpoints
     anthropic_api_key: str = ""
@@ -199,6 +201,8 @@ class EnvManager:
             "LANGFLOW_CHAT_FLOW_ID": "langflow_chat_flow_id",
             "LANGFLOW_INGEST_FLOW_ID": "langflow_ingest_flow_id",
             "LANGFLOW_URL_INGEST_FLOW_ID": "langflow_url_ingest_flow_id",
+            "LANGFLOW_KEY_RETRIES": "langflow_key_retries",
+            "LANGFLOW_KEY_RETRY_DELAY": "langflow_key_retry_delay",
             "NUDGES_FLOW_ID": "nudges_flow_id",
             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",  # pragma: allowlist secret
@@ -466,6 +470,10 @@ class EnvManager:
                     f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
                 )
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
+                f.write(f"LANGFLOW_KEY_RETRIES={self._quote_env_value(self.config.langflow_key_retries)}\n")
+                f.write(
+                    f"LANGFLOW_KEY_RETRY_DELAY={self._quote_env_value(self.config.langflow_key_retry_delay)}\n"
+                )
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n")
                 f.write(f"OPENRAG_TENANT_ID={self._quote_env_value(self.config.openrag_tenant_id)}\n")
