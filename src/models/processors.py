@@ -10,6 +10,7 @@ from utils.document_processing import (
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
+    split_chunks_by_max_tokens,
 )
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.file_utils import (
@@ -322,7 +323,6 @@ class TaskProcessor:
         # This ensures the length of chunks matches the length of the embeddings array,
         # since chunk_texts_for_embeddings also drops empty texts.
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
-        texts = [c["text"] for c in slim_doc["chunks"]]
 
         litellm_embedding_model = (
             await self.models_service.get_litellm_model_name(embedding_model)
@@ -331,10 +331,15 @@ class TaskProcessor:
         )
 
         # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        if "ollama" in litellm_embedding_model:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=2000)
-        else:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
+        max_tokens = 2000 if "ollama" in litellm_embedding_model else 8000
+
+        # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
+        slim_doc["chunks"] = split_chunks_by_max_tokens(
+            slim_doc["chunks"], max_tokens, litellm_embedding_model
+        )
+        texts = [c["text"] for c in slim_doc["chunks"]]
+
+        text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
         for batch in text_batches:
