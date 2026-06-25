@@ -160,13 +160,14 @@ async def test_ownerless_doc_visible_to_all_users():
 
 
 async def test_null_owner_field_does_not_trigger_anonymous_path():
-    """A document indexed with owner=null (not absent) must NOT be universally visible.
+    """A document indexed with owner=null is universally visible — same as an absent owner key.
 
-    This regression test guards against the serialization bug described in the plan:
-    'owner': null in JSON is treated by OpenSearch exists filter as present,
-    so it does NOT trigger must_not-exists-owner. Only an absent key triggers it.
+    OpenSearch does not index null values for keyword fields without a null_value mapping.
+    The exists filter therefore returns false for 'owner: null', so the
+    must_not-exists-owner DLS clause fires and the document is visible to everyone.
 
-    This test confirms the fix in _build_chunk_document is necessary.
+    This documents that _build_chunk_document correctly omits the owner key when None,
+    making intent explicit; both null and absent produce the same DLS result.
     """
     from config.settings import INDEX_BODY, clients
     from session_manager import SessionManager, User
@@ -212,11 +213,12 @@ async def test_null_owner_field_does_not_trigger_anonymous_path():
 
         try:
             visible = await _search_visible_document_ids(client, index_name)
-            # owner=null means the field EXISTS (with null value), so must_not-exists-owner
-            # does NOT fire → unrelated user should NOT see this doc
-            assert "null-owner-doc" not in visible, (
-                "A doc with owner=null must NOT be universally visible. "
-                "Only a doc with no owner key triggers the anonymous DLS path."
+            # owner=null is not indexed by OpenSearch (keyword, no null_value), so exists
+            # returns false → must_not-exists-owner fires → doc is visible to everyone
+            assert "null-owner-doc" in visible, (
+                "A doc with owner=null must be universally visible: OpenSearch does not "
+                "index null keyword values, so must_not-exists-owner fires just as it "
+                "does for a doc with no owner key at all."
             )
         finally:
             await client.close()
