@@ -10,7 +10,10 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  type ProviderSettings,
+  useGetSettingsQuery,
+} from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
@@ -85,9 +88,9 @@ const OnboardingCard = ({
   const { data: currentSettings } = useGetSettingsQuery();
 
   // Auto-select the first provider that has an API key set in env vars
-  const [prevProviders, setPrevProviders] = useState(
-    currentSettings?.providers,
-  );
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
   if (currentSettings?.providers !== prevProviders) {
     setPrevProviders(currentSettings?.providers);
     if (currentSettings?.providers) {

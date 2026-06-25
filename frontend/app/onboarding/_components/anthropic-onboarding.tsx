@@ -30,9 +30,13 @@ export function AnthropicOnboarding({
   const [apiKey, setApiKey] = useState("");
   const [getFromEnv, setGetFromEnv] = useState(hasEnvApiKey);
   const [prevHasEnvApiKey, setPrevHasEnvApiKey] = useState(hasEnvApiKey);
-  if (hasEnvApiKey !== prevHasEnvApiKey) {
+  const envKeyChanged = hasEnvApiKey !== prevHasEnvApiKey;
+  if (envKeyChanged) {
     setPrevHasEnvApiKey(hasEnvApiKey);
     setGetFromEnv(hasEnvApiKey);
+    if (hasEnvApiKey) {
+      setApiKey("");
+    }
   }
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
@@ -58,6 +62,10 @@ export function AnthropicOnboarding({
     languageModels,
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
+  if (envKeyChanged) {
+    setLanguageModel?.("");
+    setEmbeddingModel?.("");
+  }
 
   const handleGetFromEnvChange = (fromEnv: boolean) => {
     setGetFromEnv(fromEnv);

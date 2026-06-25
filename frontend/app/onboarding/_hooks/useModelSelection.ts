@@ -9,7 +9,9 @@ export function useModelSelection(
   const [embeddingModel, setEmbeddingModel] = useState("");
 
   // Set default selections when models first load (render-time adjustment)
-  const [prevModelsData, setPrevModelsData] = useState(modelsData);
+  const [prevModelsData, setPrevModelsData] = useState<
+    ModelsResponse | undefined
+  >();
   if (modelsData !== prevModelsData) {
     setPrevModelsData(modelsData);
     if (modelsData) {
