@@ -27,16 +27,17 @@ export function AnimatedProviderSteps({
   processingStartTime?: number | null;
   hasError?: boolean;
 }) {
-  const [startTime, setStartTime] = useState<number | null>(null);
+  const [prevIsCompleted, setPrevIsCompleted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
 
-  // Initialize start time from prop
-  useEffect(() => {
+  if (isCompleted && !prevIsCompleted) {
+    setPrevIsCompleted(true);
     if (processingStartTime) {
-      // Use the start time passed from parent (when user clicked Complete)
-      setStartTime(processingStartTime);
+      setElapsedTime(Date.now() - processingStartTime);
     }
-  }, [processingStartTime]);
+  } else if (!isCompleted && prevIsCompleted) {
+    setPrevIsCompleted(false);
+  }
 
   // Progress through steps
   useEffect(() => {
@@ -47,14 +48,6 @@ export function AnimatedProviderSteps({
       return () => clearInterval(interval);
     }
   }, [currentStep, setCurrentStep, steps, isCompleted]);
-
-  // Calculate elapsed time when completed
-  useEffect(() => {
-    if (isCompleted && startTime) {
-      const elapsed = Date.now() - startTime;
-      setElapsedTime(elapsed);
-    }
-  }, [isCompleted, startTime]);
 
   const isDone = currentStep >= steps.length && !isCompleted && !hasError;
 

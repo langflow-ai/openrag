@@ -107,7 +107,7 @@ export const useGetConversationsQuery = (
   const callerEnabled = options?.enabled ?? true;
   const enabled = isOnboardingComplete && callerEnabled;
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["conversations", endpoint, refreshTrigger],
       placeholderData: (prev) => prev,
@@ -122,6 +122,4 @@ export const useGetConversationsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
