@@ -59,6 +59,7 @@ export default function GlobalError({
               </p>
             )}
             <button
+              type="button"
               onClick={() => window.location.reload()}
               style={{
                 padding: "0.5rem 1rem",
