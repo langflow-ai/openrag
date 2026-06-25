@@ -272,6 +272,7 @@ const OnboardingCard = ({
 
   // Monitor tasks and call onComplete when all tasks are done
   useEffect(() => {
+    let completeTimeoutId: NodeJS.Timeout;
     if (currentStep === null || !tasks || !isEmbedding) {
       return;
     }
@@ -404,10 +405,12 @@ const OnboardingCard = ({
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
       // Wait a bit before completing
-      setTimeout(() => {
+      completeTimeoutId = setTimeout(() => {
         onComplete();
       }, 1000);
     }
+
+    return () => clearTimeout(completeTimeoutId);
   }, [
     tasks,
     currentStep,
