@@ -12,7 +12,6 @@ from config.settings import (
     config_manager,
     get_embedding_model,
     get_index_name,
-    is_no_auth_mode,
 )
 from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
@@ -130,24 +129,20 @@ async def initialize_services():
         langflow_mcp_service=langflow_mcp_service,
     )
 
-    # Load persisted connector connections at startup so webhooks and syncs
-    # can resolve existing subscriptions immediately after server boot
-    # Skip in no-auth mode since connectors require OAuth
-    if not is_no_auth_mode():
-        try:
-            await connector_service.initialize()
-            loaded_count = len(connector_service.connection_manager.connections)
-            logger.info(
-                "Loaded persisted connector connections on startup",
-                loaded_count=loaded_count,
-            )
-        except Exception as e:
-            logger.error("Failed to load persisted connections on startup", error=str(e))
-            await TelemetryClient.send_event(
-                Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED
-            )
-    else:
-        logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
+    # Load persisted connector connections at startup so syncs can resolve
+    # existing data-source connections even when app-login OAuth is disabled.
+    try:
+        await connector_service.initialize()
+        loaded_count = len(connector_service.connection_manager.connections)
+        logger.info(
+            "Loaded persisted connector connections on startup",
+            loaded_count=loaded_count,
+        )
+    except Exception as e:
+        logger.error("Failed to load persisted connections on startup", error=str(e))
+        await TelemetryClient.send_event(
+            Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED
+        )
 
     await TelemetryClient.send_event(
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS

@@ -75,17 +75,22 @@ export const useConnectConnectorMutation = () => {
             )
           : result.connection_id;
 
-        const authUrl =
-          `${result.oauth_config.authorization_endpoint}?` +
-          `client_id=${result.oauth_config.client_id}&` +
-          `response_type=code&` +
-          `scope=${result.oauth_config.scopes.join(" ")}&` +
-          `redirect_uri=${encodeURIComponent(
-            result.oauth_config.redirect_uri,
-          )}&` +
-          `access_type=offline&` +
-          `prompt=consent&` +
-          `state=${encodeURIComponent(state)}`;
+        const params = new URLSearchParams({
+          client_id: result.oauth_config.client_id,
+          response_type: "code",
+          scope: result.oauth_config.scopes.join(" "),
+          redirect_uri: result.oauth_config.redirect_uri,
+          state,
+        });
+
+        if (connector.type === "dropbox") {
+          params.set("token_access_type", "offline");
+        } else {
+          params.set("access_type", "offline");
+          params.set("prompt", "consent");
+        }
+
+        const authUrl = `${result.oauth_config.authorization_endpoint}?${params.toString()}`;
 
         window.location.href = authUrl;
       } else {

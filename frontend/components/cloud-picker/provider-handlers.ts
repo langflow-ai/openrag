@@ -324,6 +324,276 @@ export class OneDriveHandler {
   }
 }
 
+export class DropboxHandler {
+  private accessToken: string;
+  private onPickerStateChange?: (isOpen: boolean) => void;
+
+  constructor(
+    accessToken: string,
+    onPickerStateChange?: (isOpen: boolean) => void,
+  ) {
+    this.accessToken = accessToken;
+    this.onPickerStateChange = onPickerStateChange;
+  }
+
+  async loadPickerApi(): Promise<boolean> {
+    return Boolean(this.accessToken);
+  }
+
+  async openPicker(
+    onFileSelected: (files: CloudFile[]) => void,
+  ): Promise<void> {
+    this.onPickerStateChange?.(true);
+
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.zIndex = "10000";
+    overlay.style.background = "rgba(0, 0, 0, 0.48)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const modal = document.createElement("div");
+    modal.style.width = "min(720px, calc(100vw - 32px))";
+    modal.style.maxHeight = "min(720px, calc(100vh - 32px))";
+    modal.style.background = "var(--background, #fff)";
+    modal.style.color = "var(--foreground, #111)";
+    modal.style.border = "1px solid var(--border, #ddd)";
+    modal.style.borderRadius = "8px";
+    modal.style.boxShadow = "0 20px 60px rgba(0, 0, 0, 0.35)";
+    modal.style.display = "flex";
+    modal.style.flexDirection = "column";
+
+    const header = document.createElement("div");
+    header.style.padding = "16px";
+    header.style.borderBottom = "1px solid var(--border, #ddd)";
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "12px";
+    header.style.alignItems = "center";
+
+    const title = document.createElement("div");
+    title.textContent = "Select files or folders from Dropbox";
+    title.style.fontWeight = "600";
+    title.style.fontSize = "14px";
+    header.appendChild(title);
+
+    const close = document.createElement("button");
+    close.textContent = "Cancel";
+    close.type = "button";
+    close.style.border = "1px solid var(--border, #ddd)";
+    close.style.borderRadius = "6px";
+    close.style.padding = "6px 10px";
+    close.style.background = "transparent";
+    close.style.cursor = "pointer";
+    close.onclick = () => this.closePicker(overlay);
+    header.appendChild(close);
+
+    const body = document.createElement("div");
+    body.style.padding = "12px 16px";
+    body.style.overflow = "auto";
+    body.style.minHeight = "260px";
+
+    const footer = document.createElement("div");
+    footer.style.padding = "12px 16px";
+    footer.style.borderTop = "1px solid var(--border, #ddd)";
+    footer.style.display = "flex";
+    footer.style.justifyContent = "space-between";
+    footer.style.alignItems = "center";
+    footer.style.gap = "12px";
+
+    const count = document.createElement("span");
+    count.textContent = "0 selected";
+    count.style.fontSize = "13px";
+    count.style.color = "var(--muted-foreground, #666)";
+    footer.appendChild(count);
+
+    const add = document.createElement("button");
+    add.textContent = "Add selected";
+    add.type = "button";
+    add.disabled = true;
+    add.style.border = "0";
+    add.style.borderRadius = "6px";
+    add.style.padding = "8px 12px";
+    add.style.background = "var(--foreground, #111)";
+    add.style.color = "var(--background, #fff)";
+    add.style.cursor = "pointer";
+    footer.appendChild(add);
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    modal.appendChild(footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    body.textContent = "Loading Dropbox files...";
+
+    try {
+      const files = await this.listDropboxEntries();
+      const selected = new Map<string, CloudFile>();
+      body.textContent = "";
+
+      if (files.length === 0) {
+        body.textContent = "No Dropbox files found.";
+      }
+
+      for (const file of files) {
+        const row = document.createElement("label");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "10px";
+        row.style.padding = "10px 0";
+        row.style.borderBottom = "1px solid var(--border, #eee)";
+        row.style.cursor = "pointer";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.onchange = () => {
+          if (checkbox.checked) {
+            selected.set(file.id, file);
+          } else {
+            selected.delete(file.id);
+          }
+          count.textContent = `${selected.size} selected`;
+          add.disabled = selected.size === 0;
+        };
+
+        const details = document.createElement("div");
+        details.style.minWidth = "0";
+
+        const name = document.createElement("div");
+        name.textContent = file.isFolder ? `${file.name}/` : file.name;
+        name.style.fontSize = "14px";
+        name.style.overflow = "hidden";
+        name.style.textOverflow = "ellipsis";
+        name.style.whiteSpace = "nowrap";
+
+        const meta = document.createElement("div");
+        meta.textContent = file.isFolder
+          ? "Folder"
+          : [file.mimeType, file.size ? `${file.size} bytes` : null]
+              .filter(Boolean)
+              .join(" · ");
+        meta.style.fontSize = "12px";
+        meta.style.color = "var(--muted-foreground, #666)";
+
+        details.appendChild(name);
+        details.appendChild(meta);
+        row.appendChild(checkbox);
+        row.appendChild(details);
+        body.appendChild(row);
+      }
+
+      add.onclick = () => {
+        onFileSelected(Array.from(selected.values()));
+        this.closePicker(overlay);
+      };
+    } catch (error) {
+      console.error("Failed to load Dropbox files:", error);
+      body.textContent =
+        error instanceof Error
+          ? error.message
+          : "Failed to load Dropbox files.";
+    }
+  }
+
+  private closePicker(overlay: HTMLElement): void {
+    overlay.remove();
+    this.onPickerStateChange?.(false);
+  }
+
+  private async listDropboxEntries(): Promise<CloudFile[]> {
+    const entries: any[] = [];
+    let response = await this.rpc("files/list_folder", {
+      path: "",
+      recursive: true,
+      include_deleted: false,
+      include_has_explicit_shared_members: false,
+      include_mounted_folders: true,
+      include_non_downloadable_files: false,
+      limit: 2000,
+    });
+    entries.push(...(response.entries || []));
+
+    while (response.has_more) {
+      response = await this.rpc("files/list_folder/continue", {
+        cursor: response.cursor,
+      });
+      entries.push(...(response.entries || []));
+    }
+
+    return entries
+      .map((entry) => this.toCloudFile(entry))
+      .filter((file): file is CloudFile => file !== null);
+  }
+
+  private async rpc(endpoint: string, body: Record<string, unknown>) {
+    const response = await fetch(`https://api.dropboxapi.com/2/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Dropbox API failed: ${await response.text()}`);
+    }
+
+    return response.json();
+  }
+
+  private toCloudFile(entry: any): CloudFile | null {
+    if (!entry || entry[".tag"] === "deleted") return null;
+    const isFolder = entry[".tag"] === "folder";
+    const name = entry.name || entry.path_display || entry.id;
+    const id = entry.id || entry.path_lower || entry.path_display;
+    if (!name || !id) return null;
+
+    return {
+      id,
+      name,
+      mimeType: isFolder
+        ? "application/vnd.dropbox.folder"
+        : this.guessMimeType(name),
+      size: entry.size,
+      modifiedTime: entry.server_modified || entry.client_modified,
+      isFolder,
+      webUrl: entry.path_display
+        ? `https://www.dropbox.com/home${entry.path_display}`
+        : "https://www.dropbox.com/home",
+    };
+  }
+
+  private guessMimeType(filename: string): string {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      csv: "text/csv",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      gif: "image/gif",
+      html: "text/html",
+      jpeg: "image/jpeg",
+      jpg: "image/jpeg",
+      json: "application/json",
+      md: "text/markdown",
+      pdf: "application/pdf",
+      png: "image/png",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      txt: "text/plain",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      xml: "application/xml",
+    };
+    return mimeTypes[ext || ""] || "application/octet-stream";
+  }
+}
+
 export const createProviderHandler = (
   provider: CloudProvider,
   accessToken: string,
@@ -375,6 +645,8 @@ export const createProviderHandler = (
         baseUrl,
         onPickerStateChange,
       );
+    case "dropbox":
+      return new DropboxHandler(accessToken, onPickerStateChange);
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }

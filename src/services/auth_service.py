@@ -25,6 +25,18 @@ def _data_source_connector_types() -> set:
     return {cls.CONNECTOR_TYPE for cls in get_connector_classes()}
 
 
+def _has_connector_oauth_credentials(connector_type: str) -> bool:
+    """Whether the requested data-source connector has its own OAuth env vars."""
+    connector_class = get_connector_class(connector_type)
+    if not connector_class:
+        return False
+    client_key = getattr(connector_class, "CLIENT_ID_ENV_VAR", None)
+    secret_key = getattr(connector_class, "CLIENT_SECRET_ENV_VAR", None)
+    if not client_key or not secret_key:
+        return False
+    return bool(os.getenv(client_key) and os.getenv(secret_key))
+
+
 class AuthService:
     def __init__(
         self,
@@ -57,16 +69,12 @@ class AuthService:
                 detail="IBM AMS authentication is active. Login is handled via the IBM Watsonx Data session cookie.",
             )
 
-        # Check if we're in no-auth mode
-        if is_no_auth_mode():
-            if purpose == "app_auth":
-                raise ValueError(
-                    "OAuth credentials not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables to enable authentication."
-                )
-            else:
-                raise ValueError(
-                    "OAuth credentials not configured. Data source connections require OAuth setup."
-                )
+        # App auth is still Google-only, but data-source connectors can use
+        # their own OAuth credentials such as Dropbox or Microsoft Graph.
+        if is_no_auth_mode() and purpose == "app_auth":
+            raise ValueError(
+                "OAuth credentials not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables to enable authentication."
+            )
 
         # Validate connector_type based on purpose
         if purpose == "app_auth" and connector_type != "google_drive":
@@ -75,6 +83,12 @@ class AuthService:
             raise ValueError(f"Unsupported connector type: {connector_type}")
         elif purpose not in ["app_auth", "data_source"]:
             raise ValueError(f"Unsupported purpose: {purpose}")
+
+        if purpose == "data_source" and not _has_connector_oauth_credentials(connector_type):
+            raise ValueError(
+                f"OAuth credentials not configured for {connector_type}. "
+                "Set the connector's OAuth client ID and secret environment variables."
+            )
 
         if not redirect_uri:
             raise ValueError("redirect_uri is required")
@@ -94,7 +108,7 @@ class AuthService:
         }
 
         # Only add webhook URL if WEBHOOK_BASE_URL is configured
-        if WEBHOOK_BASE_URL:
+        if WEBHOOK_BASE_URL and connector_type != "dropbox":
             config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
 
         # Create connection in manager

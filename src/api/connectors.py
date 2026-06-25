@@ -1748,6 +1748,16 @@ async def connector_token(
             except Exception as e:
                 return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
 
+        # DROPBOX
+        if real_type == "dropbox" and hasattr(connector, "oauth"):
+            ok = await connector.oauth.load_credentials()
+            if not ok:
+                return JSONResponse({"error": "Not authenticated"}, status_code=401)
+            access_token = connector.oauth.get_access_token()
+            if not access_token:
+                return JSONResponse({"error": "Access token unavailable"}, status_code=401)
+            return JSONResponse({"access_token": access_token, "expires_in": None})
+
         return JSONResponse(
             {"error": "Token not available for this connector type"}, status_code=400
         )
