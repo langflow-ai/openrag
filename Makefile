@@ -418,7 +418,7 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
-	$(COMPOSE_CMD) up -d
+	$(COMPOSE_CMD) up -d --build
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
