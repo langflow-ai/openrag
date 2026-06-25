@@ -16,7 +16,7 @@ type BannerContextProps = {
   setShow: (show: boolean) => void;
 };
 
-export const BannerContext = createContext<BannerContextProps>({
+const BannerContext = createContext<BannerContextProps>({
   show: true,
   setShow: () => {},
 });
@@ -104,7 +104,7 @@ export const BannerAction = ({
 
 export type BannerCloseProps = ComponentProps<typeof Button>;
 
-export const BannerClose = ({
+const BannerClose = ({
   variant = "ghost",
   size = "icon",
   onClick,

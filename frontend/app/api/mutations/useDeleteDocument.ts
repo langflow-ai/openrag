@@ -13,7 +13,7 @@ interface DeleteDocumentResponse {
   message: string;
 }
 
-export async function deleteDocumentByFilename(
+async function deleteDocumentByFilename(
   filename: string,
 ): Promise<DeleteDocumentResponse> {
   const response = await fetch("/api/documents/delete-by-filename", {
