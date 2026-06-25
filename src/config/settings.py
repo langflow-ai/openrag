@@ -39,6 +39,27 @@ LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PO
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
+# Gate the OpenSearch node-count readiness check ("OS node_count" flag).
+# Enabled by default; set to false on small/single-node clusters.
+OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
+    "OPENSEARCH_NODE_COUNT_CHECK", "true"
+).strip().lower() in ("true", "1", "yes")
+
+# Expected cluster size, used only when the node-count check is enabled.
+OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 3)
+# Minimum reachable cluster-manager (master) nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", 3
+)
+# Minimum reachable coordinating-only nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", 3
+)
+# Max readiness-probe attempts for the lifespan startup bootstrap (exponential
+# backoff between tries). Higher than other callers because a large cluster can
+# take longer to fully form; raise further for very large clusters.
+OPENSEARCH_WAIT_MAX_RETRIES = get_env_int("OPENSEARCH_WAIT_MAX_RETRIES", 100)
+
 
 def get_opensearch_username() -> str:
     """OpenSearch admin/basic-auth username, read per-call so runtime/test
@@ -359,6 +380,13 @@ OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
     "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
+# Reconcile replica counts on existing OpenRAG indices at startup so they match
+# OPENSEARCH_NUMBER_OF_REPLICAS. Defaults to true for production (multi-node)
+# deployments; single-node dev (docker-compose) overrides it to false.
+OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
+    "OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
+).lower() in ("true", "1", "yes")
+
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
 # logging-level "debug" or other unrelated debug flags.
@@ -573,16 +601,24 @@ WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 # actual frontend origin that is carried in the OAuth state parameter.
 OAUTH_BROKER_URL = os.getenv("OAUTH_BROKER_URL")
 
+
+def _get_min_env_int(key: str, default: int, minimum: int) -> int:
+    """Read an integer env var, clamped to a minimum valid value."""
+    return max(get_env_int(key, default), minimum)
+
+
 # OpenSearch configuration
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
+OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
+OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
 
 INDEX_BODY = {
     "settings": {
         "index": {"knn": True},
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
@@ -618,7 +654,10 @@ INDEX_BODY = {
 DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
 DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
     "settings": {
-        "index": {"number_of_replicas": 0, "number_of_shards": 1},
+        "index": {
+            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
+            "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        },
     },
     "mappings": {
         "properties": {
@@ -637,8 +676,8 @@ DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
 API_KEYS_INDEX_NAME = "api_keys"
 API_KEYS_INDEX_BODY = {
     "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
