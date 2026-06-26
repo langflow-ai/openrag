@@ -5,6 +5,7 @@ import React, {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useState,
 } from "react";
 import { FilterColor, IconKey } from "@/components/filter-icon-popover";
@@ -170,11 +171,9 @@ export function KnowledgeFilterProvider({
   };
 
   // Clear the search override when we change filters
-  const [prevSelectedFilter, setPrevSelectedFilter] = useState(selectedFilter);
-  if (selectedFilter !== prevSelectedFilter) {
-    setPrevSelectedFilter(selectedFilter);
+  useEffect(() => {
     setQueryOverride("");
-  }
+  }, [selectedFilter]);
 
   const value: KnowledgeFilterContextType = {
     selectedFilter,

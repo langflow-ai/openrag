@@ -92,7 +92,7 @@ export function Navigation({
     loading,
   } = useChat();
 
-  const previousConversationCountRef = useRef(0);
+  const [previousConversationCount, setPreviousConversationCount] = useState(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
@@ -232,7 +232,8 @@ export function Navigation({
   useEffect(() => {
     if (!isConversationsLoading && !hasCompletedInitialLoad.current) {
       hasCompletedInitialLoad.current = true;
-      previousConversationCountRef.current = conversations.length;
+      // Set initial count after first load completes
+      setPreviousConversationCount(conversations.length);
     }
   }, [isConversationsLoading, conversations.length]);
 
@@ -244,28 +245,37 @@ export function Navigation({
       : Infinity;
     const MIN_TIME_AFTER_MOUNT = 2000; // 2 seconds - prevents selection right after onboarding
 
+    // Only select if:
+    // 1. We have a placeholder (new conversation was created)
+    // 2. Initial load has completed (prevents selection on browser refresh)
+    // 3. Count increased (new conversation appeared)
+    // 4. Not currently loading
+    // 5. Enough time has passed since mount (prevents selection after onboarding completes)
     if (
       placeholderConversation &&
       hasCompletedInitialLoad.current &&
-      currentCount > previousConversationCountRef.current &&
+      currentCount > previousConversationCount &&
       conversations.length > 0 &&
       !isConversationsLoading &&
       timeSinceMount >= MIN_TIME_AFTER_MOUNT
     ) {
       setPlaceholderConversation(null);
+      // Highlight the most recent conversation (first in sorted array) without loading its messages
       const newestConversation = conversations[0];
       if (newestConversation) {
         setCurrentConversationId(newestConversation.response_id);
       }
     }
 
+    // Update the previous count only after initial load
     if (hasCompletedInitialLoad.current) {
-      previousConversationCountRef.current = currentCount;
+      setPreviousConversationCount(currentCount);
     }
   }, [
     conversations.length,
     placeholderConversation,
     setPlaceholderConversation,
+    previousConversationCount,
     conversations,
     setCurrentConversationId,
     isConversationsLoading,
