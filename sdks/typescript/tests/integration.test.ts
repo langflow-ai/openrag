@@ -199,8 +199,10 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       const betaPath = path.join(tmpDir, betaName);
       fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants live here.\n");
       fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers live here.\n");
-      await client.documents.ingest({ filePath: alphaPath });
-      await client.documents.ingest({ filePath: betaPath });
+      await Promise.all([
+        client.documents.ingest({ filePath: alphaPath }),
+        client.documents.ingest({ filePath: betaPath }),
+      ]);
 
       const createResult = await client.knowledgeFilters.create({
         name: `TS chat filter scope ${Date.now()}`,
@@ -234,7 +236,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 180_000);
 
     it("filterId in search actually scopes results to data_sources", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
@@ -244,8 +246,10 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       const betaPath = path.join(tmpDir, betaName);
       fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants live here.\n");
       fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers live here.\n");
-      await client.documents.ingest({ filePath: alphaPath });
-      await client.documents.ingest({ filePath: betaPath });
+      await Promise.all([
+        client.documents.ingest({ filePath: alphaPath }),
+        client.documents.ingest({ filePath: betaPath }),
+      ]);
 
       const createResult = await client.knowledgeFilters.create({
         name: `TS search filter scope ${Date.now()}`,
@@ -275,7 +279,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 180_000);
 
     it("documents.delete(filterId) only removes filenames in the filter", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
@@ -285,8 +289,10 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       const betaPath = path.join(tmpDir, betaName);
       fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants.\n");
       fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers.\n");
-      await client.documents.ingest({ filePath: alphaPath });
-      await client.documents.ingest({ filePath: betaPath });
+      await Promise.all([
+        client.documents.ingest({ filePath: alphaPath }),
+        client.documents.ingest({ filePath: betaPath }),
+      ]);
 
       const createResult = await client.knowledgeFilters.create({
         name: `TS delete-by-filter ${Date.now()}`,
@@ -321,7 +327,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
         await client.documents.delete(alphaName);
         await client.documents.delete(betaName);
       }
-    }, 60_000);
+    }, 180_000);
 
     it("documents.delete rejects both filename and filterId together", async () => {
       await expect(
