@@ -167,10 +167,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
             if (!cancelled && !completeTimeoutRef.current) {
               completeTimeoutRef.current = setTimeout(() => {
-<<<<<<< HEAD
                 completeTimeoutRef.current = undefined;
-=======
->>>>>>> 13364b35 (fix: onboarding timeout cleanup issue (#1977))
                 onComplete();
               }, 1000);
             }
