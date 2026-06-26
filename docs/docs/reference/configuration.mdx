@@ -148,6 +148,7 @@ Configure OpenSearch database authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENSEARCH_PASSWORD` | Not set | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the terminal's [**Reconfigure**](/install-uvx#setup) option. |
+| `OPENSEARCH_NODE_COUNT_CHECK_ENABLED` | `false` in local single-node setups; otherwise `true` | Enables the startup readiness gate that waits for the expected OpenSearch node counts. Keep this `false` for local single-node compose/dev environments. |
 | `OPENSEARCH_INDEX_NAME` | `documents` | The name of the [OpenSearch index](/knowledge#index). |
 | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. |
 | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. |
