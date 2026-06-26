@@ -420,7 +420,7 @@ dashboards:
 
   image:
     repository: opensearchproject/opensearch-dashboards
-    tag: "3.0.0"
+    tag: "3.6.0"
 
   replicaCount: 1
 
