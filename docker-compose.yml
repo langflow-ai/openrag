@@ -219,5 +219,28 @@ services:
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
 
+  # Azurite: local Azure Storage emulator for manually testing the Azure Blob
+  # connector without a paid Azure account. Opt-in only — gated behind the
+  # "azurite" compose profile so it never starts with the normal stack.
+  # Start it with `make azurite-up` (or `docker compose --profile azurite up -d azurite`).
+  # Connect the connector with AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
+  # (from inside the compose network use host "azurite": the well-known dev
+  # endpoint http://azurite:10000/devstoreaccount1).
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: azurite
+    profiles: ["azurite"]
+    # --skipApiVersionCheck: the azure-storage-blob SDK may negotiate a newer
+    # Storage API version than the pinned Azurite image supports; skip the check
+    # so the emulator accepts requests (safe for local dev only).
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --skipApiVersionCheck"
+    ports:
+      - "10000:10000" # Blob
+      - "10001:10001" # Queue
+      - "10002:10002" # Table
+    volumes:
+      - azurite-data:/data
+
 volumes:
   opensearch-data:
+  azurite-data:

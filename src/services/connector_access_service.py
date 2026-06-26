@@ -13,7 +13,7 @@ CONNECTOR_ACCESS_SECTION = "connector_access"
 # without touching this module.
 CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_connector_classes())
 
-_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos"})
+_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos", "azure_blob"})
 
 
 def governable_connector_types() -> tuple[str, ...]:

@@ -96,6 +96,7 @@ endef
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
+       azurite-up azurite-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
        ci-build-images ci-save-images \
@@ -345,6 +346,8 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
 	@echo "  $(PURPLE)make docling$(NC)         - Start docling-serve for document processing"
 	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
+	@echo "  $(PURPLE)make azurite-up$(NC)      - Start Azurite (local Azure Blob emulator) for connector testing"
+	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -672,6 +675,17 @@ docling-stop: ## Stop docling-serve
 	@echo "$(YELLOW)Stopping docling-serve...$(NC)"
 	@uv run python scripts/docling_ctl.py stop
 	@echo "$(PURPLE)Docling-serve stopped.$(NC)"
+
+azurite-up: ## Start Azurite (local Azure Blob emulator) for connector testing
+	@echo "$(YELLOW)Starting Azurite (Azure Blob emulator)...$(NC)"
+	$(COMPOSE_CMD) --profile azurite up -d azurite
+	@echo "$(PURPLE)Azurite started on http://localhost:10000 (account: devstoreaccount1).$(NC)"
+	@echo "  $(CYAN)Connect with AZURE_STORAGE_CONNECTION_STRING=\"UseDevelopmentStorage=true\"$(NC)"
+
+azurite-down: ## Stop Azurite emulator
+	@echo "$(YELLOW)Stopping Azurite...$(NC)"
+	$(COMPOSE_CMD) --profile azurite stop azurite
+	@echo "$(PURPLE)Azurite stopped.$(NC)"
 
 ######################
 # INSTALLATION
