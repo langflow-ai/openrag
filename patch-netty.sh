@@ -46,6 +46,7 @@ declare -A CORE_NETTY_ARTIFACTS=(
 )
 
 replaced_count=0
+matched_count=0
 
 echo "Searching for Netty jars to patch in /usr/share/opensearch..."
 
@@ -64,6 +65,7 @@ for jar_path in /usr/share/opensearch/**/netty-*.jar; do
         
         # Check if the artifact is one of the core Netty artifacts we want to patch
         if [[ -n "${CORE_NETTY_ARTIFACTS[$artifact]:-}" ]]; then
+            matched_count=$((matched_count + 1))
             # If the version is already the target version, skip
             if [ "$version" = "$NETTY_VERSION" ]; then
                 echo "  Skipping: ${filename} (already version ${NETTY_VERSION})"
@@ -98,8 +100,8 @@ rm -rf "${DOWNLOAD_DIR}"
 
 echo "Netty patching complete. Replaced ${replaced_count} jars."
 
-# Fail-safe check: If no jars were replaced, we must fail the build.
-if [ "${replaced_count}" -eq 0 ]; then
-    echo "ERROR: No Netty jars were found to be patched! This indicates that the script failed to apply."
+# Fail-safe check: If no Netty jars were matched at all, we must fail the build.
+if [ "${matched_count}" -eq 0 ]; then
+    echo "ERROR: No Netty jars were found to be patched! This indicates that the script failed to find any expected jars."
     exit 1
 fi
