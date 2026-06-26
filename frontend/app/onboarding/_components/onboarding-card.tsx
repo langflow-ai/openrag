@@ -196,6 +196,10 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
+  // Ref for the completion timeout so it persists across effect re-runs
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
     enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
@@ -277,7 +281,6 @@ const OnboardingCard = ({
 
   // Monitor tasks and call onComplete when all tasks are done
   useEffect(() => {
-    let completeTimeoutId: NodeJS.Timeout;
     if (currentStep === null || !tasks || !isEmbedding) {
       return;
     }
@@ -376,6 +379,7 @@ const OnboardingCard = ({
         failed_files: taskWithFailure.failed_files,
       });
 
+      clearTimeout(completeTimeoutRef.current);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -409,13 +413,12 @@ const OnboardingCard = ({
 
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
-      // Wait a bit before completing
-      completeTimeoutId = setTimeout(() => {
+      // Wait a bit before completing — stored in a ref so the timeout
+      // survives the re-render caused by setCurrentStep above.
+      completeTimeoutRef.current = setTimeout(() => {
         onComplete();
       }, 1000);
     }
-
-    return () => clearTimeout(completeTimeoutId);
   }, [
     tasks,
     currentStep,
