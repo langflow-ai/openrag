@@ -14,18 +14,25 @@ interface RequiredSegmentStaticProperties {
   environment: string;
   productCode: string;
   productCodeType: string;
+  productPlanName: string;
   productTitle: string;
+  category: string;
+  accountPlan: string;
 }
 
 // These properties are required by IBM Segment event schema for all events or they will be blocked
 // See: https://w3.ibm.com/w3publisher/instrumentation-at-ibm/required-properties
-const getRequiredStaticProperties = (): RequiredSegmentStaticProperties => ({
-  UT30: "30AW0",
-  environment: _environment,
-  productCode: "WW1544",
-  productCodeType: "WWPC",
-  productTitle: "OpenRAG",
-});
+export const getRequiredStaticProperties =
+  (): RequiredSegmentStaticProperties => ({
+    UT30: "30AW0",
+    environment: _environment,
+    productCode: "WW1544",
+    productCodeType: "WWPC",
+    productPlanName: "enterprise-mcsp",
+    productTitle: "IBM watsonx.data as a Service",
+    accountPlan: "PAYG",
+    category: "OpenRAG wxd",
+  });
 
 export const page = (
   pageTitle?: string,

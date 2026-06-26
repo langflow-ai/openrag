@@ -2,6 +2,7 @@ import { ArrowRight, Search, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
@@ -24,9 +25,18 @@ export const KnowledgeSearchInput = () => {
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
       if (e) e.preventDefault();
+      trackButton({
+        CTA: "Search Knowledge",
+        elementId: "search-knowledge-button",
+        namespace: "knowledge",
+        payload: {
+          queryLength: searchQueryInput.trim().length,
+          hasFilter: !!selectedFilter,
+        },
+      });
       setQueryOverride(searchQueryInput.trim());
     },
-    [searchQueryInput, setQueryOverride],
+    [searchQueryInput, setQueryOverride, selectedFilter],
   );
 
   return (

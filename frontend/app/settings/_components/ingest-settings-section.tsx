@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
@@ -225,6 +226,19 @@ export function IngestSettingsSection() {
   };
 
   const handleKnowledgeIngestSave = () => {
+    trackButton({
+      CTA: "Save Ingest Settings",
+      elementId: "save-ingest-settings-button",
+      namespace: "settings",
+      payload: {
+        chunk_size: chunkSize,
+        chunk_overlap: chunkOverlap,
+        table_structure: tableStructure,
+        ocr,
+        picture_descriptions: pictureDescriptions,
+        disable_ingest_with_langflow: disableIngestWithLangflow,
+      },
+    });
     if (chunkSize < 1) {
       const msg = "Chunk size must be at least 1";
       setChunkValidationError(msg);
@@ -251,6 +265,11 @@ export function IngestSettingsSection() {
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Edit in Langflow - Ingest",
+      elementId: "edit-langflow-ingest-button",
+      namespace: "settings",
+    });
     window.open(
       resolveLangflowEditUrl({
         flowId: settings.ingest_flow_id,
@@ -266,6 +285,11 @@ export function IngestSettingsSection() {
   };
 
   const handleRestoreIngestFlow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Restore Flow - Ingest",
+      elementId: "restore-ingest-flow-button",
+      namespace: "settings",
+    });
     fetch("/api/reset-flow/ingest", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();

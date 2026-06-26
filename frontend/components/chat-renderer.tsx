@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
@@ -73,8 +73,10 @@ export function ChatRenderer({
     }
   }
 
+  const onboardingPageTracked = useRef(false);
   useEffect(() => {
-    if (!showLayout) {
+    if (!showLayout && !onboardingPageTracked.current) {
+      onboardingPageTracked.current = true;
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
