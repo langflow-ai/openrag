@@ -143,7 +143,6 @@ export const KnowledgeActionsDropdown = ({
                 CTA: "View Chunks",
                 elementId: "view-chunks-button",
                 namespace: "knowledge",
-                payload: { filename },
               });
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(filename)}`,
@@ -218,7 +217,6 @@ export const KnowledgeActionsDropdown = ({
                   CTA: "Delete Document",
                   elementId: "delete-document-button",
                   namespace: "knowledge",
-                  payload: { filename },
                 });
                 setShowDeleteDialog(true);
               }}

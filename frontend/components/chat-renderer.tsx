@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
@@ -29,8 +29,6 @@ import {
   TOTAL_ONBOARDING_STEPS,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-
-let onboardingPageTracked = false;
 
 export function ChatRenderer({
   settings,
@@ -76,9 +74,10 @@ export function ChatRenderer({
     }
   }, [settings?.onboarding?.current_step]);
 
+  const onboardingPageTracked = useRef(false);
   useEffect(() => {
-    if (!showLayout && !onboardingPageTracked) {
-      onboardingPageTracked = true;
+    if (!showLayout && !onboardingPageTracked.current) {
+      onboardingPageTracked.current = true;
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -30,11 +30,14 @@ export const KnowledgeSearchInput = () => {
         CTA: "Search Knowledge",
         elementId: "search-knowledge-button",
         namespace: "knowledge",
-        payload: { query: searchQueryInput.trim() },
+        payload: {
+          queryLength: searchQueryInput.trim().length,
+          hasFilter: !!selectedFilter,
+        },
       });
       setQueryOverride(searchQueryInput.trim());
     },
-    [searchQueryInput, setQueryOverride],
+    [searchQueryInput, setQueryOverride, selectedFilter],
   );
 
   // Reset the query text when the selected filter changes
