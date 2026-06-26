@@ -3,6 +3,7 @@
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { SharedBucketView } from "@/components/connectors/shared-bucket-view";
 import { useIBMCOSBucketStatusQuery } from "../useIBMCOSBucketStatusQuery";
+import { useIBMCOSDefaultsQuery } from "../useIBMCOSDefaultsQuery";
 
 export interface IBMCOSBucketViewProps {
   connector: any;
@@ -25,6 +26,7 @@ export function IBMCOSBucketView({
     error: bucketsError,
     refetch,
   } = useIBMCOSBucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useIBMCOSDefaultsQuery({ enabled: true });
   return (
     <SharedBucketView
       connector={connector}
@@ -37,6 +39,11 @@ export function IBMCOSBucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={
+        defaults?.connection_id === connector.connectionId
+          ? defaults?.bucket_names
+          : undefined
+      }
     />
   );
 }

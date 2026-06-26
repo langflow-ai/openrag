@@ -136,8 +136,8 @@ export default function IBMCOSSettingsDialog({
       toast.success("IBM Cloud Object Storage configured", {
         description:
           selectedBuckets.length > 0
-            ? `Will ingest from: ${selectedBuckets.join(", ")}`
-            : "Will auto-discover and ingest all accessible buckets.",
+            ? `Filtered to: ${selectedBuckets.join(", ")}`
+            : "All accessible buckets are included.",
         icon: <IBMCOSIcon className="w-4 h-4" />,
       });
 
