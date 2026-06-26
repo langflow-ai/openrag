@@ -29,6 +29,15 @@ export function AnthropicOnboarding({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [getFromEnv, setGetFromEnv] = useState(hasEnvApiKey);
+  const [prevHasEnvApiKey, setPrevHasEnvApiKey] = useState(hasEnvApiKey);
+  const envKeyChanged = hasEnvApiKey !== prevHasEnvApiKey;
+  if (envKeyChanged) {
+    setPrevHasEnvApiKey(hasEnvApiKey);
+    setGetFromEnv(hasEnvApiKey);
+    if (hasEnvApiKey) {
+      setApiKey("");
+    }
+  }
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
   // Fetch models from API when API key is provided
@@ -53,6 +62,10 @@ export function AnthropicOnboarding({
     languageModels,
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
+  if (envKeyChanged) {
+    setLanguageModel?.("");
+    setEmbeddingModel?.("");
+  }
 
   const handleGetFromEnvChange = (fromEnv: boolean) => {
     setGetFromEnv(fromEnv);
