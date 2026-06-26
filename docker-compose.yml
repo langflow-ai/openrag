@@ -75,7 +75,7 @@ services:
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       # Single-node compose clusters don't meet the multi-node readiness counts,
       # so default the node-count check off here (override to re-enable).
-      - OPENSEARCH_NODE_COUNT_CHECK=${OPENSEARCH_NODE_COUNT_CHECK:-false}
+      - OPENSEARCH_NODE_COUNT_CHECK_ENABLED=${OPENSEARCH_NODE_COUNT_CHECK_ENABLED:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_API_KEY=${WATSONX_API_KEY}
