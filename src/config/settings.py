@@ -42,7 +42,7 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 # Gate the OpenSearch node-count readiness check ("OS node_count" flag).
 # Enabled by default; set to false on small/single-node clusters.
 OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
-    "OPENSEARCH_NODE_COUNT_CHECK", "true"
+    "OPENSEARCH_NODE_COUNT_CHECK_ENABLED", "true"
 ).strip().lower() in ("true", "1", "yes")
 
 # Expected cluster size, used only when the node-count check is enabled.
