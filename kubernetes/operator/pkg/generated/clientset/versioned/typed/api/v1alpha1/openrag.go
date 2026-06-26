@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	apiv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
+	applyconfigurationapiv1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/applyconfiguration/api/v1alpha1"
 	scheme "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type OpenRAGInterface interface {
 	List(ctx context.Context, opts v1.ListOptions) (*apiv1alpha1.OpenRAGList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *apiv1alpha1.OpenRAG, err error)
+	Apply(ctx context.Context, openRAG *applyconfigurationapiv1alpha1.OpenRAGApplyConfiguration, opts v1.ApplyOptions) (result *apiv1alpha1.OpenRAG, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, openRAG *applyconfigurationapiv1alpha1.OpenRAGApplyConfiguration, opts v1.ApplyOptions) (result *apiv1alpha1.OpenRAG, err error)
 	OpenRAGExpansion
 }
 
 // openRAGs implements OpenRAGInterface
 type openRAGs struct {
-	*gentype.ClientWithList[*apiv1alpha1.OpenRAG, *apiv1alpha1.OpenRAGList]
+	*gentype.ClientWithListAndApply[*apiv1alpha1.OpenRAG, *apiv1alpha1.OpenRAGList, *applyconfigurationapiv1alpha1.OpenRAGApplyConfiguration]
 }
 
 // newOpenRAGs returns a OpenRAGs
 func newOpenRAGs(c *OpenrV1alpha1Client, namespace string) *openRAGs {
 	return &openRAGs{
-		gentype.NewClientWithList[*apiv1alpha1.OpenRAG, *apiv1alpha1.OpenRAGList](
+		gentype.NewClientWithListAndApply[*apiv1alpha1.OpenRAG, *apiv1alpha1.OpenRAGList, *applyconfigurationapiv1alpha1.OpenRAGApplyConfiguration](
 			"openrags",
 			c.RESTClient(),
 			scheme.ParameterCodec,

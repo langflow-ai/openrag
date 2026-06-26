@@ -42,6 +42,7 @@ source "${CODEGEN_PKG}/kube_codegen.sh"
 # --with-watch enables generation of listers and informers
 kube::codegen::gen_client \
   --with-watch \
+  --with-applyconfig \
   --one-input-api "api/v1alpha1" \
   --output-dir "${SCRIPT_ROOT}/pkg/generated" \
   --output-pkg "github.com/langflow-ai/openrag-operator/pkg/generated" \

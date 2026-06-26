@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
-	apiv1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
+	apiv1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/applyconfiguration/api/v1alpha1"
+	typedapiv1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeOpenRAGs implements OpenRAGInterface
 type fakeOpenRAGs struct {
-	*gentype.FakeClientWithList[*v1alpha1.OpenRAG, *v1alpha1.OpenRAGList]
+	*gentype.FakeClientWithListAndApply[*v1alpha1.OpenRAG, *v1alpha1.OpenRAGList, *apiv1alpha1.OpenRAGApplyConfiguration]
 	Fake *FakeOpenrV1alpha1
 }
 
-func newFakeOpenRAGs(fake *FakeOpenrV1alpha1, namespace string) apiv1alpha1.OpenRAGInterface {
+func newFakeOpenRAGs(fake *FakeOpenrV1alpha1, namespace string) typedapiv1alpha1.OpenRAGInterface {
 	return &fakeOpenRAGs{
-		gentype.NewFakeClientWithList[*v1alpha1.OpenRAG, *v1alpha1.OpenRAGList](
+		gentype.NewFakeClientWithListAndApply[*v1alpha1.OpenRAG, *v1alpha1.OpenRAGList, *apiv1alpha1.OpenRAGApplyConfiguration](
 			fake.Fake,
 			namespace,
 			v1alpha1.SchemeGroupVersion.WithResource("openrags"),
