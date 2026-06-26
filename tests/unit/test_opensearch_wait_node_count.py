@@ -1,6 +1,6 @@
 """The OpenSearch readiness probe (wait_for_opensearch) gates on data-node,
-cluster-manager, and coordinating-node counts behind the OPENSEARCH_NODE_COUNT_CHECK
-flag.
+cluster-manager, and coordinating-node counts behind the
+OPENSEARCH_NODE_COUNT_CHECK_ENABLED flag.
 
 Cases:
   * Flag on, all counts met (>= expected):   returns without raising.

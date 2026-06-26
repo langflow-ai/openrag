@@ -194,7 +194,8 @@ export function AgentSettingsSection() {
       const newParams = new URLSearchParams(searchParams.toString());
       newParams.delete("focusLlmModel");
       router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
-      setTimeout(() => setOpenLlmSelector(false), 100);
+      const timeoutId = setTimeout(() => setOpenLlmSelector(false), 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [focusLlmModel, searchParams, router, pathname]);
 

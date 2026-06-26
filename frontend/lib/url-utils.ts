@@ -67,7 +67,7 @@ export function resolveLangflowEditUrl({
  * The transformation appends "-langflow" to the instance ID segment of the hostname.
  * Returns null if the current URL does not match the expected IBM SaaS pattern.
  */
-export function deriveCloudLangflowUrl(
+function deriveCloudLangflowUrl(
   locationOrigin: string = typeof window !== "undefined"
     ? window.location.origin
     : "",
@@ -104,7 +104,7 @@ export function deriveCloudLangflowUrl(
  * The transformation swaps the "openrag-fe-" host prefix for "openrag-lf-".
  * Returns null if the current URL does not match the expected on-prem pattern.
  */
-export function deriveOnPremLangflowUrl(
+function deriveOnPremLangflowUrl(
   locationOrigin: string = typeof window !== "undefined"
     ? window.location.origin
     : "",
