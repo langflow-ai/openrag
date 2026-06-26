@@ -405,12 +405,14 @@ class TaskProcessor:
         )
 
         # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        max_tokens = 2000 if "ollama" in litellm_embedding_model else 8000
+        max_tokens = 2000 if litellm_embedding_model and "ollama" in litellm_embedding_model.lower() else 8000
 
         # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
         slim_doc["chunks"] = split_chunks_by_max_tokens(
             slim_doc["chunks"], max_tokens, litellm_embedding_model
         )
+        # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
+        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
         texts = [c["text"] for c in slim_doc["chunks"]]
 
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)

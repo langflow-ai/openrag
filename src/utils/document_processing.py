@@ -204,11 +204,6 @@ def split_chunks_by_max_tokens(
             new_chunks.append(chunk)
             continue
 
-        # Quick estimate: if char count is less than max_tokens, it's definitely under max_tokens
-        if len(text) < max_tokens:
-            new_chunks.append(chunk)
-            continue
-
         tokens = encoding.encode(text)
         if len(tokens) <= max_tokens:
             new_chunks.append(chunk)

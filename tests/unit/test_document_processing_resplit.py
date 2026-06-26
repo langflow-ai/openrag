@@ -117,3 +117,18 @@ def test_extract_relevant_safeguard_none_table_data():
     assert (
         result["chunks"][0]["text"] == ""
     )  # should handle None data and produce empty string or no cells
+
+
+def test_split_chunks_by_max_tokens_emoji_token_override():
+    from src.utils.document_processing import split_chunks_by_max_tokens
+    # "👨‍👩‍👧‍👦" has len() = 7 in Python, but is 18 tokens in cl100k_base.
+    # If max_tokens is 10, then character count (7) < max_tokens (10),
+    # but token count (18) > max_tokens (10). It must be split.
+    chunks = [{"page": 1, "type": "text", "text": "👨‍👩‍👧‍👦"}]
+    out = split_chunks_by_max_tokens(chunks, max_tokens=10, model="text-embedding-3-small")
+    # Must be split because 18 > 10.
+    assert len(out) > 1
+    # Check that chunks reconstruct to the original text
+    reconstructed = "".join([c["text"] for c in out])
+    assert reconstructed == "👨‍👩‍👧‍👦"
+
