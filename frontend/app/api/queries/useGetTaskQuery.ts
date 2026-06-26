@@ -1,6 +1,7 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import type { Task } from "@/app/api/queries/useGetTasksQuery";
-export const TASK_DETAIL_QUERY_KEY = ["tasks", "detail"] as const;
+
+const TASK_DETAIL_QUERY_KEY = ["tasks", "detail"] as const;
 
 export function taskDetailQueryKey(taskId: string) {
   return [...TASK_DETAIL_QUERY_KEY, taskId] as const;

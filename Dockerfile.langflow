@@ -1,59 +1,21 @@
 # syntax=docker/dockerfile:1.4
-# UBI 9 Python 3.12 base image for enterprise compliance
+# UBI 10 Python 3.14 base image for enterprise compliance
 
-# Stage 1: Build SQLite from source
-FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS builder
-
-USER 0
-
-# Install build dependencies
-RUN microdnf install -y \
-    git \
-    gcc \
-    gcc-c++ \
-    make \
-    tar \
-    gzip \
-    ca-certificates \
-    && microdnf clean all
-
-# Install SQLite >= 3.35.0 (UBI9 has 3.34.1) from source
-RUN curl -L -o sqlite-autoconf-3460000.tar.gz https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz \
-    && echo "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc  sqlite-autoconf-3460000.tar.gz" > sqlite-autoconf-3460000.tar.gz.sha3 \
-    && openssl dgst -sha3-256 sqlite-autoconf-3460000.tar.gz | grep -q "83d2acf79453deb7d6520338b1f4585f12e39b27cd370fb08593afa198f471fc" \
-    && tar -xzf sqlite-autoconf-3460000.tar.gz \
-    && cd sqlite-autoconf-3460000 \
-    && ./configure --prefix=/usr --libdir=/usr/lib64 \
-    && make -j$(nproc) install \
-    && cd .. \
-    && rm -rf sqlite-autoconf-3460000 sqlite-autoconf-3460000.tar.gz sqlite-autoconf-3460000.tar.gz.sha3
-
-# Stage 2: Runtime image
-FROM registry.access.redhat.com/ubi9/python-312-minimal:9.8-1780411724 AS runtime
+FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
 USER 0
-
-# Copy SQLite 3.46.0 from builder stage
-COPY --from=builder /usr/lib64/libsqlite3.so* /usr/lib64/
-COPY --from=builder /usr/bin/sqlite3 /usr/bin/
-COPY --from=builder /usr/include/sqlite3* /usr/include/
 
 # Install runtime system packages and shadow-utils (for groupadd/useradd)
 RUN microdnf install -y \
     ca-certificates \
     shadow-utils \
-    && microdnf update -y \
-    glibc glibc-common glibc-minimal-langpack \
-    openssl openssl-libs \
-    krb5-libs \
-    expat \
     && microdnf clean all
 
 # Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch \
-    torchvision \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
     uv \
     && pip uninstall -y clickhouse-connect \

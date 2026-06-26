@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
@@ -54,28 +54,29 @@ export function ChatRenderer({
   } = useChat();
 
   // Initialize onboarding state from backend settings
-  const [currentStep, setCurrentStep] = useState<number>(() => {
-    return settings?.onboarding?.current_step ?? 0;
-  });
+  const [currentStep, setCurrentStep] = useState<number>(
+    settings?.onboarding?.current_step ?? 0,
+  );
+  const [showLayout, setShowLayout] = useState<boolean>(
+    (settings?.onboarding?.current_step ?? 0) >= TOTAL_ONBOARDING_STEPS,
+  );
 
-  const [showLayout, setShowLayout] = useState<boolean>(() => {
-    // Show layout only if onboarding is complete (current_step >= TOTAL_ONBOARDING_STEPS)
-    // This means onboarding will show even if edited=true, as long as it's not complete
-    const onboardingStep = settings?.onboarding?.current_step ?? 0;
-    return onboardingStep >= TOTAL_ONBOARDING_STEPS;
-  });
-
-  // Update currentStep and showLayout when settings change
-  useEffect(() => {
+  // Sync from settings without an extra render cycle
+  const [prevSettingsStep, setPrevSettingsStep] = useState(
+    settings?.onboarding?.current_step,
+  );
+  if (settings?.onboarding?.current_step !== prevSettingsStep) {
+    setPrevSettingsStep(settings?.onboarding?.current_step);
     if (settings?.onboarding?.current_step !== undefined) {
       setCurrentStep(settings.onboarding.current_step);
-      // Update showLayout based on whether onboarding is complete
       setShowLayout(settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS);
     }
-  }, [settings?.onboarding?.current_step]);
+  }
 
+  const onboardingPageTracked = useRef(false);
   useEffect(() => {
-    if (!showLayout) {
+    if (!showLayout && !onboardingPageTracked.current) {
+      onboardingPageTracked.current = true;
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

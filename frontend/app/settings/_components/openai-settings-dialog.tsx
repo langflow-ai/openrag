@@ -219,6 +219,7 @@ const OpenAISettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isOpenAIConfigured}
               canRemove={canRemoveOpenAI}
+              providerKey="openai"
               removeDisabledTooltip="Configure another model provider before removing OpenAI"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

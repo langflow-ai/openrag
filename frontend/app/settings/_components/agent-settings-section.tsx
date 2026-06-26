@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
@@ -194,15 +195,26 @@ export function AgentSettingsSection() {
       const newParams = new URLSearchParams(searchParams.toString());
       newParams.delete("focusLlmModel");
       router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
-      setTimeout(() => setOpenLlmSelector(false), 100);
+      const timeoutId = setTimeout(() => setOpenLlmSelector(false), 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [focusLlmModel, searchParams, router, pathname]);
 
   const handleSystemPromptSave = () => {
+    trackButton({
+      CTA: "Save Agent Instructions",
+      elementId: "save-agent-instructions-button",
+      namespace: "settings",
+    });
     updateSettingsMutation.mutate({ system_prompt: systemPrompt });
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Edit in Langflow - Agent",
+      elementId: "edit-langflow-agent-button",
+      namespace: "settings",
+    });
     window.open(
       resolveLangflowEditUrl({
         flowId: settings.flow_id,
@@ -218,6 +230,11 @@ export function AgentSettingsSection() {
   };
 
   const handleRestoreRetrievalFlow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Restore Flow - Agent",
+      elementId: "restore-agent-flow-button",
+      namespace: "settings",
+    });
     fetch("/api/reset-flow/retrieval", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();
