@@ -121,6 +121,7 @@ def test_extract_relevant_safeguard_none_table_data():
 
 def test_split_chunks_by_max_tokens_emoji_token_override():
     from src.utils.document_processing import split_chunks_by_max_tokens
+
     # "👨‍👩‍👧‍👦" has len() = 7 in Python, but is 18 tokens in cl100k_base.
     # If max_tokens is 10, then character count (7) < max_tokens (10),
     # but token count (18) > max_tokens (10). It must be split.
@@ -131,4 +132,3 @@ def test_split_chunks_by_max_tokens_emoji_token_override():
     # Check that chunks reconstruct to the original text
     reconstructed = "".join([c["text"] for c in out])
     assert reconstructed == "👨‍👩‍👧‍👦"
-
