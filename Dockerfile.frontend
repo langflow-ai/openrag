@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Stage: deps
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS deps
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS deps
 
 WORKDIR /opt/app-root/src
 USER 0
@@ -18,7 +18,7 @@ RUN npm ci --prefer-offline --no-audit
 # -----------------------------------------------------------------------------
 # Stage: builder
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS builder
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS builder
 
 WORKDIR /opt/app-root/src
 USER 0
@@ -34,22 +34,11 @@ RUN npm run build \
 # -----------------------------------------------------------------------------
 # Stage: runtime
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:9.8 AS runtime
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS runtime
 
 WORKDIR /opt/app-root/src
 USER 0
 
-# Apply security updates for system packages (glibc, openssl, krb5, etc.)
-RUN microdnf update -y \
-    glibc glibc-common glibc-minimal-langpack \
-    openssl openssl-libs \
-    krb5-libs \
-    && microdnf clean all \
-    && mkdir -p /tmp/patch \
-    && cd /tmp/patch \
-    && npm install ip-address@10.2.0 --no-audit \
-    && cp -rf node_modules/ip-address /usr/lib/node_modules/npm/node_modules/ \
-    && rm -rf /tmp/patch
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1

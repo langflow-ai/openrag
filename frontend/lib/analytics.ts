@@ -19,14 +19,13 @@ interface RequiredSegmentStaticProperties {
 
 // These properties are required by IBM Segment event schema for all events or they will be blocked
 // See: https://w3.ibm.com/w3publisher/instrumentation-at-ibm/required-properties
-export const getRequiredStaticProperties =
-  (): RequiredSegmentStaticProperties => ({
-    UT30: "30AW0",
-    environment: _environment,
-    productCode: "WW1544",
-    productCodeType: "WWPC",
-    productTitle: "OpenRAG",
-  });
+const getRequiredStaticProperties = (): RequiredSegmentStaticProperties => ({
+  UT30: "30AW0",
+  environment: _environment,
+  productCode: "WW1544",
+  productCodeType: "WWPC",
+  productTitle: "OpenRAG",
+});
 
 export const page = (
   pageTitle?: string,
@@ -39,10 +38,7 @@ export const page = (
   });
 };
 
-export const track = (
-  eventName: string,
-  properties: Record<string, unknown> = {},
-) => {
+const track = (eventName: string, properties: Record<string, unknown> = {}) => {
   if (!analytics) return;
   try {
     analytics.track(eventName, {
@@ -88,7 +84,7 @@ interface EndProcessParams {
   category?: string;
 }
 
-export const trackEndProcess = <T = Record<string, unknown>>(
+const trackEndProcess = <T = Record<string, unknown>>(
   props: T & EndProcessParams,
 ): void => track("Ended Process", props as Record<string, unknown>);
 
