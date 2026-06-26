@@ -19,6 +19,7 @@ import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { trackButton } from "@/lib/analytics";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -938,6 +939,11 @@ function SearchPage() {
               className="rounded-lg flex-shrink-0"
               disabled={refreshOpenragDocsMutation.isPending}
               onClick={async () => {
+                trackButton({
+                  CTA: "Fetch Latest Docs",
+                  elementId: "fetch-latest-docs-button",
+                  namespace: "knowledge",
+                });
                 try {
                   toast.info("Refreshing OpenRAG docs...");
                   const result = await refreshOpenragDocsMutation.mutateAsync();

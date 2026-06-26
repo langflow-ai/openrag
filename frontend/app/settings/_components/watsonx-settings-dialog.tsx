@@ -228,6 +228,7 @@ const WatsonxSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isWatsonxConfigured}
               canRemove={canRemoveWatsonx}
+              providerKey="watsonx"
               removeDisabledTooltip="Configure another model provider before removing IBM watsonx.ai"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

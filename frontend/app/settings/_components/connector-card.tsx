@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import CardIcon from "./card-icon";
 
@@ -158,7 +159,15 @@ export default function ConnectorCard({
                 {canDisconnect && (
                   <Button
                     variant="outline"
-                    onClick={() => onDisconnect(connector)}
+                    onClick={() => {
+                      trackButton({
+                        CTA: `Disconnect - ${connector.name}`,
+                        elementId: "disconnect-connector-button",
+                        namespace: "settings",
+                        payload: { connector_type: connector.type },
+                      });
+                      onDisconnect(connector);
+                    }}
                     disabled={isDisconnecting || isConnecting}
                     className={cn(
                       "cursor-pointer text-destructive hover:text-destructive",
@@ -176,9 +185,15 @@ export default function ConnectorCard({
               </div>
             ) : (
               <Button
-                onClick={() =>
-                  onConfigure ? onConfigure(connector) : onConnect(connector)
-                }
+                onClick={() => {
+                  trackButton({
+                    CTA: `Connect - ${connector.name}`,
+                    elementId: "connect-connector-button",
+                    namespace: "settings",
+                    payload: { connector_type: connector.type },
+                  });
+                  onConfigure ? onConfigure(connector) : onConnect(connector);
+                }}
                 disabled={isConnecting || !canCreate}
                 title={
                   canCreate

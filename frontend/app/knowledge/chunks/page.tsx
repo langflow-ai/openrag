@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { trackButton } from "@/lib/analytics";
 import {
   type ChunkResult,
   EMPTY_SEARCH_RESULT,
@@ -64,7 +65,11 @@ function ChunksPageContent() {
   const searchFiles = (data as SearchResult).files;
 
   const handleCopy = useCallback((text: string, index: number) => {
-    // Trim whitespace and remove new lines/tabs for cleaner copy
+    trackButton({
+      CTA: "Copy Chunk Text",
+      elementId: "copy-chunk-button",
+      namespace: "knowledge",
+    });
     navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
     setActiveCopiedChunkIndex(index);
     setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds

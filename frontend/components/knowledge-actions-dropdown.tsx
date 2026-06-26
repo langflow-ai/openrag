@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { trackButton } from "@/lib/analytics";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { RequirePermission } from "./require-permission";
@@ -138,6 +139,11 @@ export const KnowledgeActionsDropdown = ({
           <DropdownMenuItem
             className="text-primary focus:text-primary cursor-pointer"
             onClick={() => {
+              trackButton({
+                CTA: "View Chunks",
+                elementId: "view-chunks-button",
+                namespace: "knowledge",
+              });
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(filename)}`,
               );
@@ -162,6 +168,12 @@ export const KnowledgeActionsDropdown = ({
                           e.preventDefault();
                           return;
                         }
+                        trackButton({
+                          CTA: "Sync File",
+                          elementId: "sync-file-button",
+                          namespace: "knowledge",
+                          payload: { connector_type: connectorType },
+                        });
                         handleOpenSyncDialog();
                       }}
                     >
@@ -200,7 +212,14 @@ export const KnowledgeActionsDropdown = ({
           >
             <DropdownMenuItem
               className="text-destructive focus:text-destructive cursor-pointer"
-              onClick={() => setShowDeleteDialog(true)}
+              onClick={() => {
+                trackButton({
+                  CTA: "Delete Document",
+                  elementId: "delete-document-button",
+                  namespace: "knowledge",
+                });
+                setShowDeleteDialog(true);
+              }}
             >
               Delete
             </DropdownMenuItem>
