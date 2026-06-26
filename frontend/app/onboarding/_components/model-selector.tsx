@@ -64,6 +64,14 @@ export function ModelSelector({
   ...props
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [prevDefaultOpen, setPrevDefaultOpen] = useState(defaultOpen);
+  if (defaultOpen !== prevDefaultOpen) {
+    setPrevDefaultOpen(defaultOpen);
+    if (defaultOpen) {
+      setOpen(true);
+    }
+  }
+
   const [searchValue, setSearchValue] = useState("");
   const listboxId = useId();
 
@@ -88,13 +96,6 @@ export function ModelSelector({
       onValueChange("");
     }
   }, [allOptions, value, custom, onValueChange]);
-
-  // Update open state when defaultOpen changes
-  useEffect(() => {
-    if (defaultOpen) {
-      setOpen(true);
-    }
-  }, [defaultOpen]);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>

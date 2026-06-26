@@ -10,7 +10,10 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  type ProviderSettings,
+  useGetSettingsQuery,
+} from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
@@ -85,46 +88,48 @@ const OnboardingCard = ({
   const { data: currentSettings } = useGetSettingsQuery();
 
   // Auto-select the first provider that has an API key set in env vars
-  useEffect(() => {
-    if (!currentSettings?.providers) return;
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
+  if (currentSettings?.providers !== prevProviders) {
+    setPrevProviders(currentSettings?.providers);
+    if (currentSettings?.providers) {
+      const fullOrder = isEmbedding
+        ? EMBEDDING_PROVIDER_ORDER
+        : LLM_PROVIDER_ORDER;
+      const providerOrder = isCloudBrand
+        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+        : fullOrder;
 
-    // Define provider order based on whether it's embedding or not
-    const fullOrder = isEmbedding
-      ? EMBEDDING_PROVIDER_ORDER
-      : LLM_PROVIDER_ORDER;
-    const providerOrder = isCloudBrand
-      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : fullOrder;
-
-    // Find the first provider with an API key
-    for (const provider of providerOrder) {
-      if (
-        provider === "anthropic" &&
-        currentSettings.providers.anthropic?.has_api_key
-      ) {
-        setModelProvider("anthropic");
-        return;
-      } else if (
-        provider === "openai" &&
-        currentSettings.providers.openai?.has_api_key
-      ) {
-        setModelProvider("openai");
-        return;
-      } else if (
-        provider === "watsonx" &&
-        currentSettings.providers.watsonx?.has_api_key
-      ) {
-        setModelProvider("watsonx");
-        return;
-      } else if (
-        provider === "ollama" &&
-        currentSettings.providers.ollama?.endpoint
-      ) {
-        setModelProvider("ollama");
-        return;
+      for (const provider of providerOrder) {
+        if (
+          provider === "anthropic" &&
+          currentSettings.providers.anthropic?.has_api_key
+        ) {
+          setModelProvider("anthropic");
+          break;
+        } else if (
+          provider === "openai" &&
+          currentSettings.providers.openai?.has_api_key
+        ) {
+          setModelProvider("openai");
+          break;
+        } else if (
+          provider === "watsonx" &&
+          currentSettings.providers.watsonx?.has_api_key
+        ) {
+          setModelProvider("watsonx");
+          break;
+        } else if (
+          provider === "ollama" &&
+          currentSettings.providers.ollama?.endpoint
+        ) {
+          setModelProvider("ollama");
+          break;
+        }
       }
     }
-  }, [currentSettings, isEmbedding, isCloudBrand]);
+  }
 
   const handleSetModelProvider = (provider: string) => {
     setIsLoadingModels(false);
