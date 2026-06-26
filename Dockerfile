@@ -5,9 +5,7 @@ FROM opensearchproject/opensearch:3.6.0 AS upstream_opensearch
 
 # Remove plugins
 RUN opensearch-plugin remove opensearch-neural-search || true && \
-    opensearch-plugin remove opensearch-knn || true && \
-    # removing this one due to Netty CVE-2025-58056, can bring it back in the future
-    opensearch-plugin remove opensearch-security-analytics || true 
+    opensearch-plugin remove opensearch-knn || true
 
 # Prepare jvector plugin artifacts
 RUN mkdir -p /tmp/opensearch-jvector-plugin && \
@@ -66,8 +64,6 @@ RUN usermod -aG wheel opensearch && \
 
 # Copy OpenSearch from the upstream stage
 COPY --from=upstream_opensearch --chown=$UID:0 $OPENSEARCH_HOME $OPENSEARCH_HOME
-
-ARG OPENSEARCH_VERSION=3.6.0
 
 ########################################
 # Async-profiler (multi-arch like your original)

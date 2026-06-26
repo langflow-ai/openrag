@@ -12,10 +12,12 @@ openrag_user_role:
   index_permissions:
     - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
       allowed_actions:
-        - read
         - indices:admin/mappings/get
         - indices:admin/exists
         - indices:admin/get
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
+      allowed_actions:
+        - read
       dls: >
         {"bool":{"should":[
           {"term":{"owner":"${user.name}"}},
@@ -27,18 +29,22 @@ openrag_user_role:
         ],"minimum_should_match":1}}
     - index_patterns: ["openrag_dls_principals", "openrag_dls_principals*"]
       allowed_actions:
-        - read
         - indices:admin/exists
+    - index_patterns: ["openrag_dls_principals", "openrag_dls_principals*"]
+      allowed_actions:
+        - read
         - indices:data/read/get
         - indices:data/read/search
       dls: >
         {"term":{"user_name":"${user.name}"}}
     - index_patterns: ["api_keys", "api_keys*"]
       allowed_actions:
-        - read
         - indices:admin/mappings/get
         - indices:admin/exists
         - indices:admin/get
+    - index_patterns: ["api_keys", "api_keys*"]
+      allowed_actions:
+        - read
       dls: >
         {"bool":{"should":[
           {"term":{"user_id":"${user.name}"}},
