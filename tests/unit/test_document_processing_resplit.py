@@ -64,3 +64,71 @@ def test_extract_relevant_with_missing_page_no():
     assert result["chunks"][0]["page"] == 1
     assert "Hello Asciidoc World!" in result["chunks"][0]["text"]
     assert "Second paragraph of text." in result["chunks"][0]["text"]
+
+
+def test_split_chunks_by_max_tokens_under_limit():
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    chunks = [
+        {"page": 1, "type": "text", "text": "hello world"},
+        {"page": 2, "type": "table", "text": "some other text"},
+    ]
+    out = split_chunks_by_max_tokens(chunks, max_tokens=100)
+    assert len(out) == 2
+    assert out[0]["text"] == "hello world"
+    assert out[1]["text"] == "some other text"
+
+
+def test_split_chunks_by_max_tokens_exceeding():
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    # "hello world" is 2 tokens in cl100k_base encoding. If we limit to 1 token per chunk:
+    chunks = [{"page": 5, "type": "table", "table_index": 0, "text": "hello world"}]
+    # We use cl100k_base (standard for gpt-4/text-embedding-3)
+    out = split_chunks_by_max_tokens(chunks, max_tokens=1, model="text-embedding-3-small")
+    assert len(out) == 2
+    assert out[0]["page"] == 5
+    assert out[0]["type"] == "table"
+    assert out[0]["table_index"] == 0
+    assert out[0]["text"] == "hello"
+    assert out[1]["page"] == 5
+    assert out[1]["type"] == "table"
+    assert out[1]["table_index"] == 0
+    assert out[1]["text"] == " world"
+
+
+def test_extract_relevant_safeguard_none_table_data():
+    from src.utils.document_processing import extract_relevant
+
+    doc_dict = {
+        "origin": {"binary_hash": "hash456", "filename": "test.csv", "mimetype": "text/csv"},
+        "texts": [],
+        "tables": [
+            {
+                "prov": [{"page_no": 1}],
+                "data": None,  # Simulate missing table data / structure
+            }
+        ],
+    }
+    result = extract_relevant(doc_dict)
+    assert result["id"] == "hash456"
+    assert len(result["chunks"]) == 1
+    assert result["chunks"][0]["type"] == "table"
+    assert (
+        result["chunks"][0]["text"] == ""
+    )  # should handle None data and produce empty string or no cells
+
+
+def test_split_chunks_by_max_tokens_emoji_token_override():
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    # "👨‍👩‍👧‍👦" has len() = 7 in Python, but is 18 tokens in cl100k_base.
+    # If max_tokens is 10, then character count (7) < max_tokens (10),
+    # but token count (18) > max_tokens (10). It must be split.
+    chunks = [{"page": 1, "type": "text", "text": "👨‍👩‍👧‍👦"}]
+    out = split_chunks_by_max_tokens(chunks, max_tokens=10, model="text-embedding-3-small")
+    # Must be split because 18 > 10.
+    assert len(out) > 1
+    # Check that chunks reconstruct to the original text
+    reconstructed = "".join([c["text"] for c in out])
+    assert reconstructed == "👨‍👩‍👧‍👦"
