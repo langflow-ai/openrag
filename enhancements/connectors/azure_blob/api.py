@@ -1,5 +1,6 @@
 """FastAPI route handlers for Azure Blob-specific endpoints."""
 
+import asyncio
 import os
 
 from fastapi import Depends
@@ -85,9 +86,10 @@ async def azure_blob_configure(
     if error:
         return JSONResponse({"error": error}, status_code=400)
 
-    # Test credentials by listing containers.
+    # Test credentials by listing containers. The azure-storage-blob SDK is sync,
+    # so offload to a worker thread to keep the event loop responsive.
     try:
-        _list_container_names(conn_config)
+        await asyncio.to_thread(_list_container_names, conn_config)
     except Exception:
         logger.exception("Failed to connect to Azure Blob during credential test.")
         return JSONResponse(
@@ -128,7 +130,7 @@ async def azure_blob_list_containers(
         return JSONResponse({"error": "Not an Azure Blob connection"}, status_code=400)
 
     try:
-        containers = _list_container_names(connection.config)
+        containers = await asyncio.to_thread(_list_container_names, connection.config)
         return JSONResponse({"containers": containers})
     except Exception:
         logger.exception("Failed to list Azure Blob containers for connection %s", connection_id)
@@ -154,7 +156,7 @@ async def azure_blob_container_status(
 
     # 1. List all containers.
     try:
-        all_containers = _list_container_names(connection.config)
+        all_containers = await asyncio.to_thread(_list_container_names, connection.config)
     except Exception:
         logger.exception("Failed to list Azure Blob containers for connection %s", connection_id)
         return JSONResponse({"error": "Failed to list containers"}, status_code=500)
