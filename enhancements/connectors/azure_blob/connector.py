@@ -214,9 +214,7 @@ class AzureBlobConnector(BaseConnector):
                             "container": container_name,
                             "key": blob.name,
                             "size": getattr(blob, "size", 0),
-                            "modified_time": last_modified.isoformat()
-                            if last_modified
-                            else None,
+                            "modified_time": last_modified.isoformat() if last_modified else None,
                         }
                     )
                     if max_files and len(files) >= max_files:
