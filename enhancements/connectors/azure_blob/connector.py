@@ -90,6 +90,7 @@ class AzureBlobConnector(BaseConnector):
             azure_blob_container_status,
             azure_blob_defaults,
             azure_blob_list_containers,
+            azure_blob_test,
         )
 
         # Registered before generic /{connector_type}/... to avoid shadowing.
@@ -97,6 +98,13 @@ class AzureBlobConnector(BaseConnector):
             "/connectors/azure_blob/defaults",
             azure_blob_defaults,
             methods=["GET"],
+            tags=["internal"],
+        )
+        # Non-persisting credential validation + container listing (Test Connection).
+        app.add_api_route(
+            "/connectors/azure_blob/test",
+            azure_blob_test,
+            methods=["POST"],
             tags=["internal"],
         )
         app.add_api_route(

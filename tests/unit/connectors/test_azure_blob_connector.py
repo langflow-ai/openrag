@@ -10,10 +10,11 @@ The sync azure-storage-blob client is replaced with a MagicMock — the connecto
 offloads it via asyncio.to_thread, so plain mocks work without async machinery.
 """
 
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -22,6 +23,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from enhancements.connectors.azure_blob import api as az_api  # noqa: E402
 from enhancements.connectors.azure_blob import auth as az_auth  # noqa: E402
 from enhancements.connectors.azure_blob import connector as az_connector  # noqa: E402
 from enhancements.connectors.azure_blob.connector import (  # noqa: E402
@@ -490,3 +492,92 @@ async def test_webhook_stubs_are_noops():
     assert await conn.handle_webhook({}) == []
     assert conn.extract_webhook_channel_id({}, {}) is None
     assert await conn.cleanup_subscription("sub") is True
+
+
+# ---------------------------------------------------------------------------
+# azure_blob_test endpoint (non-persisting credential validation + listing)
+# ---------------------------------------------------------------------------
+
+
+def _test_endpoint_service(existing_connections=None):
+    """connector_service mock for azure_blob_test with persistence spies."""
+    service = MagicMock()
+    cm = service.connection_manager
+    cm.list_connections = AsyncMock(return_value=existing_connections or [])
+    cm.create_connection = AsyncMock()
+    cm.update_connection = AsyncMock()
+    cm.get_connection = AsyncMock()
+    return service
+
+
+def _assert_never_persisted(service):
+    service.connection_manager.create_connection.assert_not_called()
+    service.connection_manager.update_connection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_test_lists_containers_without_persisting(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    service = _test_endpoint_service()
+    user = MagicMock(user_id="u1")
+    body = AzureBlobConfigureBody(auth_mode="connection_string", connection_string="cs")
+
+    with patch.object(az_api, "_list_container_names", return_value=["c1", "c2"]) as lister:
+        resp = await az_api.azure_blob_test(body, connector_service=service, user=user)
+
+    assert resp.status_code == 200
+    assert json.loads(resp.body) == {"containers": ["c1", "c2"]}
+    # Containers listed via the resolved config, and nothing was persisted.
+    lister.assert_called_once()
+    _assert_never_persisted(service)
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_test_does_not_mutate_existing_connection(monkeypatch):
+    """Editing an existing connection's credentials via Test must not save them."""
+    _clear_azure_env(monkeypatch)
+    existing = MagicMock(connection_id="conn-1", config={"connection_string": "old"})
+    service = _test_endpoint_service([existing])
+    user = MagicMock(user_id="u1")
+    body = AzureBlobConfigureBody(
+        auth_mode="connection_string", connection_string="new", connection_id="conn-1"
+    )
+
+    with patch.object(az_api, "_list_container_names", return_value=["c1"]):
+        resp = await az_api.azure_blob_test(body, connector_service=service, user=user)
+
+    assert resp.status_code == 200
+    assert json.loads(resp.body)["containers"] == ["c1"]
+    _assert_never_persisted(service)
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_test_invalid_config_returns_400_without_persisting(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    service = _test_endpoint_service()
+    user = MagicMock(user_id="u1")
+    # connection_string mode with no string → build_azure_blob_config returns an error.
+    body = AzureBlobConfigureBody(auth_mode="connection_string")
+
+    with patch.object(az_api, "_list_container_names") as lister:
+        resp = await az_api.azure_blob_test(body, connector_service=service, user=user)
+
+    assert resp.status_code == 400
+    assert "connection_string" in json.loads(resp.body)["error"]
+    lister.assert_not_called()  # never reached the credential test
+    _assert_never_persisted(service)
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_test_connection_failure_returns_400_without_persisting(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    service = _test_endpoint_service()
+    user = MagicMock(user_id="u1")
+    body = AzureBlobConfigureBody(auth_mode="connection_string", connection_string="cs")
+
+    with patch.object(az_api, "_list_container_names", side_effect=RuntimeError("bad creds")):
+        resp = await az_api.azure_blob_test(body, connector_service=service, user=user)
+
+    assert resp.status_code == 400
+    assert "Could not connect" in json.loads(resp.body)["error"]
+    _assert_never_persisted(service)

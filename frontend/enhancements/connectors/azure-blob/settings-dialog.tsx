@@ -61,26 +61,27 @@ export default function AzureBlobSettingsDialog({
     setFormError(null);
 
     try {
-      const result = await configureMutation.mutateAsync({
-        auth_mode: data.auth_mode,
-        connection_string: data.connection_string || undefined,
-        account_name: data.account_name || undefined,
-        account_key: data.account_key || undefined,
-        endpoint: data.endpoint || undefined,
-        connection_id: defaults?.connection_id ?? undefined,
+      // Validate credentials + list containers WITHOUT persisting. Saving is
+      // reserved for the Save button (onSubmit), so testing never creates or
+      // mutates the connection or clobbers the stored container selection.
+      const res = await fetch("/api/connectors/azure_blob/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auth_mode: data.auth_mode,
+          connection_string: data.connection_string || undefined,
+          account_name: data.account_name || undefined,
+          account_key: data.account_key || undefined,
+          endpoint: data.endpoint || undefined,
+          connection_id: defaults?.connection_id ?? undefined,
+        }),
       });
-
-      const res = await fetch(
-        `/api/connectors/azure_blob/${result.connection_id}/containers`,
-      );
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to list containers");
 
       const fetched: string[] = json.containers;
       setContainers(fetched);
       setSelectedContainers((prev) => prev.filter((c) => fetched.includes(c)));
-
-      queryClient.invalidateQueries({ queryKey: ["azure-blob-defaults"] });
     } catch (err: any) {
       setContainersError(err.message ?? "Connection failed");
     } finally {

@@ -66,6 +66,41 @@ async def azure_blob_defaults(
     )
 
 
+async def azure_blob_test(
+    body: AzureBlobConfigureBody,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
+    """Validate Azure Blob credentials and list containers WITHOUT persisting.
+
+    Backs the settings dialog's "Test Connection" action so testing or refreshing
+    credentials never creates or mutates a saved connection (and so the stored
+    container selection is never clobbered). Persistence happens only in
+    ``azure_blob_configure`` on the final save. Credential resolution mirrors
+    ``azure_blob_configure`` (request body → env → existing connection config).
+    """
+    existing_connections = await connector_service.connection_manager.list_connections(
+        user_id=user.user_id, connector_type="azure_blob"
+    )
+    existing_config = existing_connections[0].config if existing_connections else {}
+
+    conn_config, error = build_azure_blob_config(body, existing_config)
+    if error:
+        return JSONResponse({"error": error}, status_code=400)
+
+    # The azure-storage-blob SDK is sync; offload to keep the event loop free.
+    try:
+        containers = await asyncio.to_thread(_list_container_names, conn_config)
+    except Exception:
+        logger.exception("Failed to connect to Azure Blob during credential test.")
+        return JSONResponse(
+            {"error": "Could not connect to Azure Blob with the provided configuration."},
+            status_code=400,
+        )
+
+    return JSONResponse({"containers": containers})
+
+
 async def azure_blob_configure(
     body: AzureBlobConfigureBody,
     connector_service=Depends(get_connector_service),
