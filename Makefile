@@ -681,6 +681,7 @@ azurite-up: ## Start Azurite (local Azure Blob emulator) for connector testing
 	$(COMPOSE_CMD) --profile azurite up -d azurite
 	@echo "$(PURPLE)Azurite started on http://localhost:10000 (account: devstoreaccount1).$(NC)"
 	@echo "  $(CYAN)Connect with AZURE_STORAGE_CONNECTION_STRING=\"UseDevelopmentStorage=true\"$(NC)"
+	@echo "  $(CYAN)Set OPENRAG_DEV_AZURE_BLOB=true in .env to enable the connector without IBM_AUTH_ENABLED$(NC)"
 
 azurite-down: ## Stop Azurite emulator
 	@echo "$(YELLOW)Stopping Azurite...$(NC)"

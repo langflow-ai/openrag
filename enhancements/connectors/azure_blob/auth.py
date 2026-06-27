@@ -51,6 +51,53 @@ def _resolve_credentials(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _account_name_from_connection_string(connection_string: str) -> str | None:
+    """Best-effort parse of the storage account name from a connection string.
+
+    Handles the Azurite shorthand (``UseDevelopmentStorage=true`` →
+    ``devstoreaccount1``), standard ``AccountName=...`` strings, and SAS-style
+    strings that only carry a ``BlobEndpoint``. Returns None if it can't be
+    determined. Never raises — callers fall back to a stable label.
+    """
+    pairs = (p.split("=", 1) for p in connection_string.split(";") if "=" in p)
+    parts = {k.strip().lower(): v.strip() for k, v in pairs}
+
+    if parts.get("usedevelopmentstorage", "").lower() == "true":
+        return "devstoreaccount1"
+    if parts.get("accountname"):
+        return parts["accountname"]
+
+    # SAS-style strings expose the account only via the blob endpoint host/path,
+    # e.g. https://myacct.blob.core.windows.net or http://host:10000/devstoreaccount1.
+    endpoint = parts.get("blobendpoint")
+    if endpoint:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(endpoint)
+        path = parsed.path.strip("/")
+        if path:  # Azurite path-style: account is the first path segment
+            return path.split("/")[0]
+        host = parsed.hostname or ""
+        if host:  # production host-style: account is the first label
+            return host.split(".")[0]
+    return None
+
+
+def account_name_from_config(config: dict[str, Any]) -> str | None:
+    """Resolve the storage account name from config (both auth modes).
+
+    Used by the connector's ``get_client_id`` so status checks have a stable,
+    non-raising identifier even in connection-string mode (where ``account_name``
+    is implicit in the string rather than stored separately).
+    """
+    creds = _resolve_credentials(config)
+    if creds["account_name"]:
+        return creds["account_name"]
+    if creds["connection_string"]:
+        return _account_name_from_connection_string(creds["connection_string"])
+    return None
+
+
 def create_blob_service_client(config: dict[str, Any]):
     """Return a sync ``BlobServiceClient`` for the configured auth mode.
 

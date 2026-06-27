@@ -1,7 +1,8 @@
 """Azure Blob Storage connector for OpenRAG.
 
-Enterprise/SaaS-only ``bucket``-kind connector, gated like IBM COS via
-``IBM_AUTH_ENABLED``. Uses the official sync ``azure-storage-blob`` SDK; all
+Enterprise/SaaS-only ``bucket``-kind connector, gated by ``IBM_AUTH_ENABLED``
+(or ``OPENRAG_DEV_AZURE_BLOB=true`` for local dev/Azurite testing). Uses the
+official sync ``azure-storage-blob`` SDK; all
 blocking SDK calls are offloaded onto a worker thread with ``asyncio.to_thread``
 so the event loop stays responsive while staying consistent with the cached
 client lifecycle used by the AWS S3 / IBM COS connectors.
@@ -18,11 +19,11 @@ from datetime import UTC, datetime
 from posixpath import basename
 from typing import Any
 
-from config.settings import IBM_AUTH_ENABLED
+from config.settings import IBM_AUTH_ENABLED, is_dev_azure_blob_enabled
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
-from .auth import create_blob_service_client
+from .auth import account_name_from_config, create_blob_service_client
 
 logger = get_logger(__name__)
 
@@ -70,14 +71,17 @@ class AzureBlobConnector(BaseConnector):
     SECRET_CONFIG_KEYS = ("connection_string", "account_key")
 
     # BaseConnector uses these for the default env-availability probe; the
-    # bucket-kind override below makes availability hinge on IBM_AUTH_ENABLED.
+    # bucket-kind override below makes availability hinge on IBM_AUTH_ENABLED
+    # (or OPENRAG_DEV_AZURE_BLOB for local dev).
     CLIENT_ID_ENV_VAR = "AZURE_STORAGE_ACCOUNT_NAME"
     CLIENT_SECRET_ENV_VAR = "AZURE_STORAGE_ACCOUNT_KEY"
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
         # Gated by feature flag like the other bucket connectors (aws_s3, ibm_cos).
-        return IBM_AUTH_ENABLED
+        # OPENRAG_DEV_AZURE_BLOB=true bypasses the IBM_AUTH_ENABLED requirement for
+        # local dev testing (e.g. against Azurite). Never use in production.
+        return IBM_AUTH_ENABLED or is_dev_azure_blob_enabled()
 
     @classmethod
     def register_routes(cls, app) -> None:
@@ -115,10 +119,21 @@ class AzureBlobConnector(BaseConnector):
         )
 
     def get_client_id(self) -> str:
-        """Return account name (account_key mode); used by the availability probe."""
-        val = self.config.get("account_name") or os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+        """Return the storage account name; used by status checks / availability probe.
+
+        Must not raise in connection-string mode: the account name is implicit in
+        the string rather than stored separately, so the status endpoint
+        (api/connectors.py) would otherwise mark an authenticated connection as
+        unauthenticated and the UI would keep showing "Connect". Falls back to a
+        stable label when the account can't be parsed (e.g. SAS-only strings).
+        """
+        val = account_name_from_config(self.config)
         if val:
             return val
+        if self.config.get("auth_mode", "connection_string") == "connection_string" and (
+            self.config.get("connection_string") or os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        ):
+            return "azure_blob"
         raise ValueError(
             "Azure Blob credentials not set. Provide 'account_name' (account_key mode) "
             "or a 'connection_string'."

@@ -247,6 +247,17 @@ def is_dev_connector_policy_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_azure_blob_enabled() -> bool:
+    """Local dev: enable Azure Blob connector without IBM_AUTH_ENABLED.
+
+    Allows testing the Azure Blob connector (e.g. against Azurite) in a local
+    environment where IBM auth is not configured. Never enable in production.
+    Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas

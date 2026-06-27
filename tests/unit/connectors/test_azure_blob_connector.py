@@ -125,15 +125,91 @@ def test_create_client_account_key_missing_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# is_available gating (IBM_AUTH_ENABLED)
+# Account-name resolution (used by get_client_id / status checks)
+# ---------------------------------------------------------------------------
+
+
+def test_account_name_from_connection_string_dev_storage():
+    assert az_auth._account_name_from_connection_string("UseDevelopmentStorage=true") == (
+        "devstoreaccount1"
+    )
+
+
+def test_account_name_from_connection_string_account_name():
+    conn = "DefaultEndpointsProtocol=https;AccountName=myacct;AccountKey=ab==;EndpointSuffix=x"
+    assert az_auth._account_name_from_connection_string(conn) == "myacct"
+
+
+def test_account_name_from_connection_string_sas_host_style():
+    conn = "BlobEndpoint=https://myacct.blob.core.windows.net;SharedAccessSignature=sv=2021"
+    assert az_auth._account_name_from_connection_string(conn) == "myacct"
+
+
+def test_account_name_from_connection_string_sas_path_style():
+    conn = "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;SharedAccessSignature=sv=x"
+    assert az_auth._account_name_from_connection_string(conn) == "devstoreaccount1"
+
+
+def test_account_name_from_connection_string_unparseable_returns_none():
+    assert az_auth._account_name_from_connection_string("SharedAccessSignature=sv=2021") is None
+
+
+def test_account_name_from_config_prefers_account_name(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    assert az_auth.account_name_from_config({"account_name": "explicit"}) == "explicit"
+
+
+def test_account_name_from_config_parses_connection_string(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    cfg = {"auth_mode": "connection_string", "connection_string": "UseDevelopmentStorage=true"}
+    assert az_auth.account_name_from_config(cfg) == "devstoreaccount1"
+
+
+def test_get_client_id_connection_string_mode_does_not_raise(monkeypatch):
+    """Regression: connection-string mode (Azurite) must yield a stable id, not raise.
+
+    Otherwise the status endpoint marks an authenticated connection as
+    unauthenticated and the UI keeps showing "Connect".
+    """
+    _clear_azure_env(monkeypatch)
+    connector = AzureBlobConnector(
+        {"auth_mode": "connection_string", "connection_string": "UseDevelopmentStorage=true"}
+    )
+    assert connector.get_client_id() == "devstoreaccount1"
+
+
+def test_get_client_id_account_key_mode(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    connector = AzureBlobConnector(
+        {"auth_mode": "account_key", "account_name": "acct", "account_key": "k"}
+    )
+    assert connector.get_client_id() == "acct"
+
+
+def test_get_client_id_no_credentials_raises(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    connector = AzureBlobConnector({"auth_mode": "account_key"})
+    with pytest.raises(ValueError, match="Azure Blob credentials not set"):
+        connector.get_client_id()
+
+
+# ---------------------------------------------------------------------------
+# is_available gating (IBM_AUTH_ENABLED / OPENRAG_DEV_AZURE_BLOB)
 # ---------------------------------------------------------------------------
 
 
 def test_is_available_gated_on_ibm_auth_enabled(monkeypatch):
     monkeypatch.setattr(az_connector, "IBM_AUTH_ENABLED", True)
+    monkeypatch.setattr(az_connector, "is_dev_azure_blob_enabled", lambda: False)
     assert AzureBlobConnector.is_available(MagicMock()) is True
     monkeypatch.setattr(az_connector, "IBM_AUTH_ENABLED", False)
     assert AzureBlobConnector.is_available(MagicMock()) is False
+
+
+def test_is_available_dev_flag_bypasses_ibm_auth(monkeypatch):
+    monkeypatch.setattr(az_connector, "IBM_AUTH_ENABLED", False)
+    monkeypatch.setattr(az_connector, "is_dev_azure_blob_enabled", lambda: True)
+    assert AzureBlobConnector.is_available(MagicMock()) is True
 
 
 # ---------------------------------------------------------------------------

@@ -102,7 +102,7 @@ stringData:
     MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
     {{- end }}
 
-    # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED)
+    # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB)
     {{- if .Values.global.azureBlob.connectionString }}
     AZURE_STORAGE_CONNECTION_STRING={{ .Values.global.azureBlob.connectionString | quote }}
     {{- end }}
