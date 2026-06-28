@@ -198,14 +198,17 @@ async def delete_document_endpoint(
             statuses.append(_status)
             total_deleted += payload.get("deleted_chunks", 0) or 0
 
+        all_ok = all(200 <= status < 300 for status in statuses)
+        response_status = 200 if all_ok else max(statuses)
         return JSONResponse(
             {
-                "success": all(200 <= status < 300 for status in statuses),
+                "success": all_ok,
                 "deleted_chunks": total_deleted,
                 "filenames": filenames,
                 "filter_id": body.filter_id,
                 "per_file": results,
-            }
+            },
+            status_code=response_status,
         )
 
     payload, status_code = await delete_documents_by_filename_core(
