@@ -11,7 +11,9 @@ from dependencies import (
     get_connector_service,
     get_current_user,
     get_db_session,
+    get_rbac_service,
     get_session_manager,
+    has_effective_permission,
     require_permission,
 )
 from services.connector_access_service import (
@@ -647,6 +649,7 @@ async def connector_sync(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
     session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """Sync files from all active connections of a connector type"""
     if denied := await _connector_access_denied(request, session, connector_type):
@@ -739,6 +742,17 @@ async def connector_sync(
         if selected_files:
             # Explicit files selected (e.g., from file picker) - sync those specific files
             from .documents import _ensure_index_exists
+
+            if body.shared and body.replace_duplicates:
+                if not await has_effective_permission(
+                    request, user, rbac, "knowledge:delete:anonymous"
+                ):
+                    return JSONResponse(
+                        {
+                            "error": "Replacing shared documents requires the knowledge:delete:anonymous permission"
+                        },
+                        status_code=403,
+                    )
 
             await _ensure_index_exists(jwt_token)
             task_id = await connector_service.sync_specific_files(

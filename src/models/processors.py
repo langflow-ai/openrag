@@ -270,6 +270,7 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str,
         keep_filenames: list[str] | None = None,
+        shared: bool = False,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
@@ -290,6 +291,11 @@ class TaskProcessor:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch write client is unavailable")
 
+            owner_filter = (
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                if shared
+                else {"term": {"owner": owner_user_id}}
+            )
             query: dict[str, Any] = {
                 "bool": {
                     "filter": [
@@ -302,7 +308,7 @@ class TaskProcessor:
                                 "minimum_should_match": 1,
                             }
                         },
-                        {"term": {"owner": owner_user_id}},
+                        owner_filter,
                     ]
                 }
             }
@@ -839,7 +845,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         )
                     )
                     deleted_chunks = await self._delete_connector_chunks(
-                        file_id, opensearch_client, self.user_id
+                        file_id, opensearch_client, self.user_id, shared=self.shared
                     )
 
                     logger.warning(
@@ -902,6 +908,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     opensearch_client,
                     self.user_id,
                     keep_filenames=get_filename_aliases(file_task.filename),
+                    shared=self.shared,
                 )
                 > 0
             )
