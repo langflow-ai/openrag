@@ -867,6 +867,7 @@ async def connector_sync(
                     jwt_token=jwt_token,
                     ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
+                    shared=body.shared,
                 )
             else:
                 # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -883,6 +884,7 @@ async def connector_sync(
                     filename_filter=set(existing_filenames),
                     ingest_settings=body.settings,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
+                    shared=body.shared,
                 )
         task_ids = [task_id]
         await TelemetryClient.send_event(
