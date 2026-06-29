@@ -173,6 +173,22 @@ class AzureBlobConnector(BaseConnector):
 
         self._client = None  # Lazy-initialised, cached BlobServiceClient
 
+    @property
+    def bucket_names(self) -> list[str]:
+        """Alias of ``container_names`` for the generic ``bucket``-kind sync path.
+
+        The connector API (``api/connectors.py``) drives per-bucket sync and the
+        file-picker bucket filter through ``connector.bucket_names`` (the term
+        S3/IBM COS use). Azure's domain name for the same concept is a
+        *container*, so we expose ``bucket_names`` as a read/write alias to
+        satisfy that contract without renaming the Azure-accurate attribute.
+        """
+        return self.container_names
+
+    @bucket_names.setter
+    def bucket_names(self, value: list[str]) -> None:
+        self.container_names = value or []
+
     def _get_client(self):
         """Return (and cache) the BlobServiceClient for this connection."""
         if self._client is None:
