@@ -9,11 +9,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
 from utils.gpu_detection import detect_gpu_devices
+from utils.logging_config import get_logger
 
 from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
-
-from utils.logging_config import get_logger
 
 try:
     from importlib.resources import files
