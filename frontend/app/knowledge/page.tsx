@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { formatFileSize } from "@/lib/file-format";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -582,7 +583,7 @@ function SearchPage() {
       comparator: (valueA?: number, valueB?: number) =>
         (valueA || 0) - (valueB || 0),
       valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+        params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     },
     {
