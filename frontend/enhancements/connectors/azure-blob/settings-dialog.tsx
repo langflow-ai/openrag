@@ -129,8 +129,8 @@ export default function AzureBlobSettingsDialog({
       toast.success("Azure Blob Storage configured", {
         description:
           selectedContainers.length > 0
-            ? `Will ingest from: ${selectedContainers.join(", ")}`
-            : "Will auto-discover and ingest all accessible containers.",
+            ? `Ingestion restricted to the following containers: ${selectedContainers.join(", ")}.`
+            : "All accessible containers available for ingestion.",
         icon: <AzureBlobIcon className="w-4 h-4" />,
       });
 
