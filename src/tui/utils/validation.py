@@ -17,9 +17,7 @@ def validate_env_var_name(name: str) -> bool:
     return bool(re.match(r"^[A-Z][A-Z0-9_]*$", name))
 
 
-def validate_path(
-    path: str, must_exist: bool = False, must_be_dir: bool = False
-) -> bool:
+def validate_path(path: str, must_exist: bool = False, must_be_dir: bool = False) -> bool:
     """Validate file/directory path."""
     if not path:
         return False
