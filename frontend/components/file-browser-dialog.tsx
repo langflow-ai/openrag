@@ -249,6 +249,17 @@ function FileRow({
   selected: boolean;
   onToggle: () => void;
 }) {
+  // The blob/object key is the full path within the bucket/container (e.g.
+  // "invoices/2024/report.pdf"); file.name is only the basename. Surfacing the
+  // directory portion disambiguates same-named files living under different
+  // prefixes (e.g. 2024/report.pdf vs 2025/report.pdf), which otherwise render
+  // identically. Empty for top-level/flat blobs, so flat listings are unchanged.
+  const dir = useMemo(() => {
+    const key = file.key ?? "";
+    const idx = key.lastIndexOf("/");
+    return idx >= 0 ? key.slice(0, idx + 1) : "";
+  }, [file.key]);
+
   return (
     <label
       className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors ${
@@ -264,6 +275,14 @@ function FileRow({
       />
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate font-medium">{file.name}</div>
+        {dir && (
+          <div
+            className="text-xs text-muted-foreground truncate"
+            title={file.key}
+          >
+            {dir}
+          </div>
+        )}
         <div className="text-xs text-muted-foreground flex gap-2">
           {file.bucket && <span>{file.bucket}</span>}
           <span>{formatFileSize(file.size)}</span>
