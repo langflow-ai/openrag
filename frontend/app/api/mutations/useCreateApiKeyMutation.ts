@@ -16,6 +16,25 @@ export interface CreateApiKeyResponse {
   created_at: string;
 }
 
+async function createApiKey(
+  variables: CreateApiKeyRequest,
+): Promise<CreateApiKeyResponse> {
+  const response = await fetch("/api/keys", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(variables),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to create API key");
+  }
+
+  return response.json();
+}
+
 export const useCreateApiKeyMutation = (
   options?: Omit<
     UseMutationOptions<CreateApiKeyResponse, Error, CreateApiKeyRequest>,
@@ -23,25 +42,6 @@ export const useCreateApiKeyMutation = (
   >,
 ) => {
   const queryClient = useQueryClient();
-
-  async function createApiKey(
-    variables: CreateApiKeyRequest,
-  ): Promise<CreateApiKeyResponse> {
-    const response = await fetch("/api/keys", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(variables),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to create API key");
-    }
-
-    return response.json();
-  }
 
   return useMutation({
     mutationFn: createApiKey,

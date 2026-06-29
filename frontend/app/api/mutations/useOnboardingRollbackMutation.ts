@@ -14,6 +14,27 @@ interface RollbackParams {
   embedding_only?: boolean;
 }
 
+async function rollbackOnboarding(
+  params: RollbackParams | void,
+): Promise<OnboardingRollbackResponse> {
+  const requestBody = params || { embedding_only: false };
+
+  const response = await fetch("/api/onboarding/rollback", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to rollback onboarding");
+  }
+
+  return response.json();
+}
+
 export const useOnboardingRollbackMutation = (
   options?: Omit<
     UseMutationOptions<
@@ -25,27 +46,6 @@ export const useOnboardingRollbackMutation = (
   >,
 ) => {
   const queryClient = useQueryClient();
-
-  async function rollbackOnboarding(
-    params: RollbackParams | void,
-  ): Promise<OnboardingRollbackResponse> {
-    const requestBody = params || { embedding_only: false };
-
-    const response = await fetch("/api/onboarding/rollback", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to rollback onboarding");
-    }
-
-    return response.json();
-  }
 
   return useMutation({
     mutationFn: rollbackOnboarding,

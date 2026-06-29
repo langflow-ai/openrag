@@ -67,9 +67,7 @@ export function S3SettingsForm({
             id="s3-access-key"
             type="password"
             placeholder={
-              accessKeySet
-                ? "•••••••• (loaded from env)"
-                : "AKIAIOSFODNN7EXAMPLE"
+              accessKeySet ? "•••••••• (loaded from env)" : "Your access key ID"
             }
             autoComplete="off"
           />
@@ -91,7 +89,7 @@ export function S3SettingsForm({
             placeholder={
               secretKeySet
                 ? "•••••••• (loaded from env)"
-                : "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                : "Your secret access key"
             }
             autoComplete="off"
           />
