@@ -189,6 +189,16 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET", "Client Secret",
             placeholder="", secret=True,
         ),
+        ConfigField(
+            "microsoft_allowed_tenant_ids", "MICROSOFT_ALLOWED_TENANT_IDS",
+            "Allowed Tenant IDs (optional)",
+            placeholder="uuid1,uuid2",
+            helper_text=(
+                "Comma-separated Azure AD tenant UUIDs. When set, tokens from unlisted tenants "
+                "are rejected after signature verification (business policy — not required by "
+                "OAuth standards). Leave empty to allow any tenant."
+            ),
+        ),
     ], advanced=True, gate_prompt="Configure Microsoft Graph OAuth?"),
 
     # ── AWS ─────────────────────────────────────────────────────
