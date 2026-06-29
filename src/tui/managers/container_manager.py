@@ -9,7 +9,9 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from utils.gpu_detection import detect_gpu_devices
+
+from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
 
 from utils.logging_config import get_logger
 
@@ -19,10 +21,6 @@ except ImportError:
     from importlib_resources import files
 
 logger = get_logger(__name__)
-
-from utils.gpu_detection import detect_gpu_devices
-
-from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
 
 
 class ServiceStatus(Enum):
@@ -1128,7 +1126,7 @@ class ContainerManager:
         ports_available, conflicts = await self.check_ports_available()
         if not ports_available:
             yield False, "ERROR: Port conflicts detected:", False
-            for service_name, port, error_msg in conflicts:
+            for service_name, _port, error_msg in conflicts:
                 yield False, f"  - {service_name}: {error_msg}", False
             yield False, "", False
             yield False, format_port_conflict_message(conflicts), False

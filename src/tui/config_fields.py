@@ -7,8 +7,6 @@ Both the TUI config screen and the CLI wizard consume these definitions.
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import Optional
-
 from .utils.validation import (
     validate_anthropic_api_key,
     validate_ollama_endpoint,
