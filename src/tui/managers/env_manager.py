@@ -37,6 +37,7 @@ class EnvConfig:
     opensearch_host: str = "opensearch"
     opensearch_port: str = "9200"
     opensearch_dashboards_port: str = "5601"
+    opensearch_perf_port: str = "9600"
     compose_project_name: str = "openrag"
     langflow_port: str = "7860"
     opensearch_index_name: str = "documents"
@@ -196,6 +197,7 @@ class EnvManager:
             "OPENSEARCH_HOST": "opensearch_host",
             "OPENSEARCH_PORT": "opensearch_port",
             "OPENSEARCH_DASHBOARDS_PORT": "opensearch_dashboards_port",
+            "OPENSEARCH_PERF_PORT": "opensearch_perf_port",
             "COMPOSE_PROJECT_NAME": "compose_project_name",
             "LANGFLOW_PORT": "langflow_port",
             "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
@@ -485,6 +487,8 @@ class EnvManager:
                     f.write(f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n")
                 if self.config.opensearch_dashboards_port and self.config.opensearch_dashboards_port != "5601":
                     f.write(f"OPENSEARCH_DASHBOARDS_PORT={self._quote_env_value(self.config.opensearch_dashboards_port)}\n")
+                if self.config.opensearch_perf_port and self.config.opensearch_perf_port != "9600":
+                    f.write(f"OPENSEARCH_PERF_PORT={self._quote_env_value(self.config.opensearch_perf_port)}\n")
                 f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
 
                 # Expand $HOME in paths before writing to .env

@@ -1,9 +1,9 @@
 services:
   opensearch:
-    image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    # image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
     depends_on:
       - openrag-backend
@@ -11,6 +11,8 @@ services:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - OPENRAG_PORT=${OPENRAG_PORT:-8000}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_PORT:-8000}}
     # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
     # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
     # docker DNS — so the alias overrides docker-compose service-name
@@ -56,7 +58,7 @@ services:
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:8000}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_PORT:-8000}}
       - OPENRAG_BACKEND_ROUTER_ENABLE=${OPENRAG_BACKEND_ROUTER_ENABLE:-false}
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}

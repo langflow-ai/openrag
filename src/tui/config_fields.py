@@ -88,6 +88,12 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             helper_text="Override for remote OpenSearch instances (default: 9200)",
         ),
         ConfigField(
+            "opensearch_perf_port", "OPENSEARCH_PERF_PORT", "Performance Analyzer Port",
+            placeholder="9600", default="9600",
+            helper_text="OpenSearch performance analyzer port (default: 9600)",
+            advanced=True,
+        ),
+        ConfigField(
             "opensearch_index_name", "OPENSEARCH_INDEX_NAME", "Index Name",
             placeholder="documents", default="documents",
             helper_text="Name of the index to use in OpenSearch",
