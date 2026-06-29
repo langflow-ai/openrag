@@ -46,18 +46,25 @@ fi
 COMPOSE_PROJECT_NAME=""
 OPENSEARCH_PORT=""
 LANGFLOW_PORT=""
+FRONTEND_PORT=""
+OPENRAG_BACKEND_PORT=""
 if [ -f .env ]; then
     COMPOSE_PROJECT_NAME=$(grep -E '^COMPOSE_PROJECT_NAME=' .env | cut -d= -f2- | tr -d '"'\')
     OPENSEARCH_PORT=$(grep -E '^OPENSEARCH_PORT=' .env | cut -d= -f2- | tr -d '"'\')
     LANGFLOW_PORT=$(grep -E '^LANGFLOW_PORT=' .env | cut -d= -f2- | tr -d '"'\')
+    FRONTEND_PORT=$(grep -E '^FRONTEND_PORT=' .env | cut -d= -f2- | tr -d '"'\')
+    OPENRAG_BACKEND_PORT=$(grep -E '^OPENRAG_BACKEND_PORT=' .env | cut -d= -f2- | tr -d '"'\')
 fi
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+OPENRAG_BACKEND_PORT="${OPENRAG_BACKEND_PORT:-8000}"
 
 BACKEND_CONTAINER="${COMPOSE_PROJECT_NAME}-backend"
 OPENSEARCH_CONTAINER="${COMPOSE_PROJECT_NAME}-opensearch"
+BACKEND_PROXY_NAME="${COMPOSE_PROJECT_NAME}-backend-proxy"
 
 echo "Using container runtime: $CONTAINER_RUNTIME"
 echo "Starting E2E Setup..."
@@ -74,15 +81,15 @@ make dev-cpu
 echo "Starting docling..."
 make docling
 
-# Forward backend port 8000 using a proxy container
+# Forward backend port using a proxy container
 # We find the network of the backend container and use a proxy to bridge it to the host.
-echo "Starting backend port forwarder at localhost:8000..."
-${CONTAINER_RUNTIME} rm -f openrag-backend-proxy 2>/dev/null || true
+echo "Starting backend port forwarder at localhost:${OPENRAG_BACKEND_PORT}..."
+${CONTAINER_RUNTIME} rm -f ${BACKEND_PROXY_NAME} 2>/dev/null || true
 BACKEND_NETWORK=$(${CONTAINER_RUNTIME} inspect ${BACKEND_CONTAINER} -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' | head -n 1)
 ${CONTAINER_RUNTIME} run -d --rm \
-    --name openrag-backend-proxy \
+    --name ${BACKEND_PROXY_NAME} \
     --network "$BACKEND_NETWORK" \
-    -p 8000:8000 \
+    -p ${OPENRAG_BACKEND_PORT}:8000 \
     alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:${BACKEND_CONTAINER}:8000
 
 # On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
@@ -180,7 +187,7 @@ done
 
 echo "Waiting for Frontend..."
 ELAPSED=0
-until curl -s http://localhost:3000 >/dev/null; do
+until curl -s http://localhost:${FRONTEND_PORT} >/dev/null; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then
@@ -192,7 +199,7 @@ done
 
 echo "Waiting for Backend (via proxy)..."
 ELAPSED=0
-until [ "$(curl -s http://localhost:8000/search/health -o /dev/null -w "%{http_code}")" -eq 200 ]; do
+until [ "$(curl -s http://localhost:${OPENRAG_BACKEND_PORT}/search/health -o /dev/null -w "%{http_code}")" -eq 200 ]; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then

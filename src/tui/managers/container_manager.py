@@ -63,12 +63,14 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
     msg = f"Cannot start services: Port conflicts detected for {conflict_str}."
 
     configurable = any(
-        "frontend" in name.lower() or "langflow" in name.lower() for name, _, _ in conflicts
+        "frontend" in name.lower()
+        or "langflow" in name.lower()
+        or "opensearch" in name.lower()
+        or "dashboards" in name.lower()
+        for name, _, _ in conflicts
     )
     if configurable:
-        msg += (
-            " You can set FRONTEND_PORT or LANGFLOW_PORT in your .env file to use different ports."
-        )
+        msg += " You can set FRONTEND_PORT, LANGFLOW_PORT, OPENSEARCH_PORT, OPENSEARCH_DASHBOARDS_PORT, or OPENSEARCH_PERF_PORT in your .env file to use different ports."
     else:
         msg += " Please stop the conflicting services first."
     return msg
@@ -295,7 +297,9 @@ class ContainerManager:
                         env_match = re.search(r"\$\{(\w+):-(\d+)\}:\d+", line)
                         if env_match:
                             var_name, default_port = env_match.group(1), env_match.group(2)
-                            host_port = int(os.getenv(var_name, default_port))
+                            # Use centralized env resolution instead of os.getenv
+                            env = self._get_env_from_file()
+                            host_port = int(env.get(var_name, default_port))
                         else:
                             # Match literal patterns like: - "3000:3000", - 9200:9200
                             port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
@@ -1317,10 +1321,15 @@ class ContainerManager:
         # Docker Compose usually prefixes it with the project name (defaulting to the directory name).
         volume_name = "opensearch-data"
 
+        # Get project name from env to include COMPOSE_PROJECT_NAME-derived prefix
+        env = self._get_env_from_file()
+        project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+
         possible_names = list(
             dict.fromkeys(
                 [
                     volume_name,
+                    f"{project_name}_{volume_name}",  # e.g. openrag_opensearch-data or custom_opensearch-data
                     f"{Path.cwd().name.lower()}_{volume_name}",  # e.g. openrag_opensearch-data
                     f"{Path.cwd().name.lower().replace('-', '')}_{volume_name}",  # e.g. openrag_opensearch-data (dashes stripped)
                 ]

@@ -17,6 +17,7 @@ from ..utils.validation import (
     validate_google_oauth_client_id,
     validate_non_empty,
     validate_openai_api_key,
+    validate_port,
     validate_url,
 )
 
@@ -388,6 +389,29 @@ class EnvManager:
             is_valid, error_msg, _ = validate_documents_paths(self.config.openrag_documents_paths)
             if not is_valid:
                 self.config.validation_errors["openrag_documents_paths"] = error_msg
+
+        # Validate port settings
+        if self.config.langflow_port and not validate_port(self.config.langflow_port):
+            self.config.validation_errors["langflow_port"] = (
+                "Invalid Langflow port (must be a number between 1 and 65535)"
+            )
+
+        if self.config.opensearch_port and not validate_port(self.config.opensearch_port):
+            self.config.validation_errors["opensearch_port"] = (
+                "Invalid OpenSearch port (must be a number between 1 and 65535)"
+            )
+
+        if self.config.opensearch_dashboards_port and not validate_port(
+            self.config.opensearch_dashboards_port
+        ):
+            self.config.validation_errors["opensearch_dashboards_port"] = (
+                "Invalid OpenSearch Dashboards port (must be a number between 1 and 65535)"
+            )
+
+        if self.config.opensearch_perf_port and not validate_port(self.config.opensearch_perf_port):
+            self.config.validation_errors["opensearch_perf_port"] = (
+                "Invalid OpenSearch performance port (must be a number between 1 and 65535)"
+            )
 
         # Validate required fields
         if not validate_non_empty(self.config.opensearch_password):

@@ -96,6 +96,26 @@ def validate_non_empty(value: str) -> bool:
     return bool(value and value.strip())
 
 
+def validate_port(port_str: str) -> bool:
+    """
+    Validate port number format and range.
+
+    Args:
+        port_str: Port number as string
+
+    Returns:
+        True if port is valid (numeric and in range 1-65535), False otherwise
+    """
+    if not port_str:
+        return False
+
+    try:
+        port = int(port_str)
+        return 1 <= port <= 65535
+    except (ValueError, TypeError):
+        return False
+
+
 def validate_documents_paths(paths_str: str) -> tuple[bool, str, list[str]]:
     """
     Validate comma-separated documents paths for volume mounting.
