@@ -79,6 +79,7 @@ export interface Settings {
   show_provider_ingest_settings?: boolean;
   segment_write_key?: string;
   environment?: string;
+  langflow_port?: string | number | null;
 }
 
 export const useGetSettingsQuery = (
