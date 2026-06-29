@@ -852,8 +852,6 @@ export function KnowledgeDropdown() {
         type="file"
         // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
         webkitdirectory=""
-        // @ts-ignore
-        directory=""
         multiple
         onChange={handleFolderSelect}
         className="hidden"

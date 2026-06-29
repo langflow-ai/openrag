@@ -519,23 +519,16 @@ export function Navigation({
                                 }
                                 asChild
                               >
-                                <div
+                                <button
+                                  type="button"
                                   className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
                                   title="More options"
-                                  role="button"
-                                  tabIndex={0}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                   }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }
-                                  }}
                                 >
                                   <EllipsisVertical className="h-4 w-4" />
-                                </div>
+                                </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent
                                 side="bottom"
