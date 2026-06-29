@@ -1079,7 +1079,9 @@ class ContainerManager:
         results.sort(key=lambda x: x[0])
         return results
 
-    async def start_services(self, cpu_mode: bool | None = None) -> AsyncIterator[tuple[bool, str, bool]]:
+    async def start_services(
+        self, cpu_mode: bool | None = None
+    ) -> AsyncIterator[tuple[bool, str, bool]]:
         """Start all services and yield progress updates."""
         if not self.is_available():
             yield False, "No container runtime available", False
@@ -1233,7 +1235,9 @@ class ContainerManager:
         else:
             yield False, f"Failed to restart services: {stderr}"
 
-    async def upgrade_services(self, cpu_mode: bool = False) -> AsyncIterator[tuple[bool, str, bool]]:
+    async def upgrade_services(
+        self, cpu_mode: bool = False
+    ) -> AsyncIterator[tuple[bool, str, bool]]:
         """Upgrade services (pull latest images and restart) and yield progress updates."""
         yield False, "Pulling latest images...", False
 
