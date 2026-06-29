@@ -151,7 +151,7 @@ def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
 
 
 def test_governable_connector_types_includes_buckets_with_ibm_auth(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
 
     governable = governable_connector_types()
