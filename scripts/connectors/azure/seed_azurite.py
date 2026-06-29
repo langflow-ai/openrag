@@ -111,7 +111,9 @@ BLOBS = {
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--reset", action="store_true", help="Delete the container before seeding.")
     args = parser.parse_args()
 
@@ -144,4 +146,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
