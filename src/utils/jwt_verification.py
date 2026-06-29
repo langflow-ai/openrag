@@ -195,21 +195,38 @@ def verify_google_id_token(token: str, client_id: str) -> dict[str, Any]:
 
 
 def verify_microsoft_access_token(
-    token: str, client_id: str, tenant_id: str | None = None
+    token: str,
+    client_id: str,
+    tenant_id: str | None = None,
+    allowed_tenant_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Verify Microsoft access token with FULL validation.
+    Verify Microsoft access token.
 
-    Performs:
+    Performs (all mandatory per RFC 7519 / RFC 8725):
     - Signature verification using Microsoft's JWKS
-    - Issuer validation
+    - Algorithm enforcement (RS256)
     - Expiration validation
-    - Audience validation (requires client_id)
+    - Audience validation (token must be issued for this client_id)
+    - Issuer domain validation (token must come from a Microsoft authorization server)
+
+    Optionally (business policy, not a standards requirement):
+    - Tenant allow-list: when allowed_tenant_ids is provided, the verified tid claim
+      must be in the set. Defaults to None (disabled) so multi-tenant deployments
+      work without configuration.
 
     Args:
         token: Microsoft access token (JWT)
-        client_id: Expected audience (Microsoft Graph OAuth client ID)
-        tenant_id: Optional tenant ID for JWKS endpoint (extracted from token if not provided)
+        client_id: Expected audience — OpenRAG's own Azure AD app client ID.
+                   In a multi-tenant app this is always OpenRAG's client ID regardless
+                   of which customer tenant the user belongs to.
+        tenant_id: Hint for selecting the JWKS endpoint. Extracted from the token's
+                   unverified `tid` claim if not provided. Only used to locate the
+                   correct JWKS URL — never trusted for security decisions.
+        allowed_tenant_ids: Optional set of permitted Azure AD tenant UUIDs.
+                            When None, any tenant that passes cryptographic checks
+                            is accepted. When provided, tokens from unlisted tenants
+                            are rejected after signature verification.
 
     Returns:
         Verified token claims
@@ -217,8 +234,9 @@ def verify_microsoft_access_token(
     Raises:
         InvalidSignatureError: If signature is invalid
         ExpiredTokenError: If token has expired
-        InvalidAudienceError: If audience doesn't match
-        InvalidIssuerError: If issuer is invalid
+        InvalidAudienceError: If audience doesn't match client_id
+        InvalidIssuerError: If issuer is not a Microsoft authorization server,
+                            or tenant is not in allowed_tenant_ids
         JWTVerificationError: For other verification failures
     """
     if not client_id:
@@ -227,10 +245,17 @@ def verify_microsoft_access_token(
         )
 
     try:
-        # Extract tenant from token if not provided
+        # Extract tenant from the unverified token solely to pick the JWKS endpoint.
+        # This value is NOT trusted for any security decision — we re-read tid from
+        # the verified claims after signature check.
         if not tenant_id:
             unverified_claims = jwt.decode(token, options={"verify_signature": False})
-            tenant_id = unverified_claims.get("tid", "common")
+            tenant_id = unverified_claims.get("tid")
+            if not tenant_id:
+                raise JWTVerificationError(
+                    "Token is missing the 'tid' claim; cannot resolve JWKS endpoint. "
+                    "Opaque (non-JWT) access tokens are not supported."
+                )
             logger.debug(f"Extracted tenant_id from token: {tenant_id}")
 
         # Fetch JWKS for this tenant
@@ -240,8 +265,10 @@ def verify_microsoft_access_token(
         # Get signing key
         signing_key = _get_signing_key(token, jwks)
 
-        # Verify token with FULL validation
-        # Note: Microsoft tokens may have audience as client_id or resource URL
+        # Verify signature, expiry, and audience.
+        # verify_iss is False because PyJWT only enforces it when issuer= is also
+        # supplied; we perform issuer validation manually below against a domain
+        # whitelist rather than a specific tenant URL.
         claims = jwt.decode(
             token,
             signing_key,
@@ -251,21 +278,40 @@ def verify_microsoft_access_token(
                 "verify_signature": True,
                 "verify_exp": True,
                 "verify_aud": True,
-                "verify_iss": True,
+                "verify_iss": False,
             },
         )
 
-        # Additional issuer validation for Microsoft
+        # Issuer domain whitelist (RFC 8725 §3.6): confirm the token was issued by
+        # a Microsoft authorization server. We check the domain prefix only — we do
+        # NOT pin to a specific tenant UUID here, because in a multi-tenant app each
+        # customer's tenant produces a different issuer URL but they all share the
+        # same Microsoft authorization server infrastructure.
         issuer = claims.get("iss", "")
-        expected_issuer_patterns = [
-            f"https://login.microsoftonline.com/{tenant_id}/v2.0",
-            f"https://sts.windows.net/{tenant_id}/",
-        ]
+        _ms_issuer_prefixes = (
+            "https://login.microsoftonline.com/",
+            "https://sts.windows.net/",
+        )
+        if not any(issuer.startswith(p) for p in _ms_issuer_prefixes):
+            raise InvalidIssuerError(
+                f"Token issuer {issuer!r} is not a Microsoft authorization server"
+            )
 
-        if not any(issuer.startswith(pattern) for pattern in expected_issuer_patterns):
-            raise InvalidIssuerError(f"Unexpected issuer: {issuer}")
+        # Tenant allow-list (optional business policy).
+        # Only enforced when MICROSOFT_ALLOWED_TENANT_IDS is configured.
+        # Uses the cryptographically verified tid from post-decode claims — cannot
+        # be spoofed by a crafted token.
+        verified_tid = claims.get("tid", "")
+        if allowed_tenant_ids is not None and verified_tid not in allowed_tenant_ids:
+            logger.warning(
+                "Microsoft token tenant not in allow-list",
+                verified_tid=verified_tid,
+            )
+            raise InvalidIssuerError(
+                f"Tenant '{verified_tid}' is not in the configured allowed tenant list"
+            )
 
-        logger.debug("Microsoft access token verified successfully")
+        logger.debug("Microsoft access token verified successfully", tenant=verified_tid)
         return claims
 
     except jwt.InvalidSignatureError as e:
