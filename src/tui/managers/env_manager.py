@@ -36,6 +36,9 @@ class EnvConfig:
     opensearch_username: str = "admin"
     opensearch_host: str = "opensearch"
     opensearch_port: str = "9200"
+    opensearch_dashboards_port: str = "5601"
+    compose_project_name: str = "openrag"
+    langflow_port: str = "7860"
     opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
@@ -192,6 +195,9 @@ class EnvManager:
             "OPENSEARCH_USERNAME": "opensearch_username",
             "OPENSEARCH_HOST": "opensearch_host",
             "OPENSEARCH_PORT": "opensearch_port",
+            "OPENSEARCH_DASHBOARDS_PORT": "opensearch_dashboards_port",
+            "COMPOSE_PROJECT_NAME": "compose_project_name",
+            "LANGFLOW_PORT": "langflow_port",
             "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
             "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
@@ -477,6 +483,8 @@ class EnvManager:
                     f.write(f"OPENSEARCH_HOST={self._quote_env_value(self.config.opensearch_host)}\n")
                 if self.config.opensearch_port and self.config.opensearch_port != "9200":
                     f.write(f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n")
+                if self.config.opensearch_dashboards_port and self.config.opensearch_dashboards_port != "5601":
+                    f.write(f"OPENSEARCH_DASHBOARDS_PORT={self._quote_env_value(self.config.opensearch_dashboards_port)}\n")
                 f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
 
                 # Expand $HOME in paths before writing to .env
@@ -510,6 +518,8 @@ class EnvManager:
                 # Set OPENRAG_VERSION to TUI version
                 if self.config.openrag_version:
                     f.write(f"OPENRAG_VERSION={self._quote_env_value(self.config.openrag_version)}\n")
+                if self.config.compose_project_name and self.config.compose_project_name != "openrag":
+                    f.write(f"COMPOSE_PROJECT_NAME={self._quote_env_value(self.config.compose_project_name)}\n")
                 else:
                     # Fallback: try to get current version
                     try:
@@ -551,6 +561,8 @@ class EnvManager:
                 # Langflow auth settings
                 f.write("# Langflow auth settings\n")
                 f.write(f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n")
+                if self.config.langflow_port and self.config.langflow_port != "7860":
+                    f.write(f"LANGFLOW_PORT={self._quote_env_value(self.config.langflow_port)}\n")
                 f.write(
                     f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
                 )

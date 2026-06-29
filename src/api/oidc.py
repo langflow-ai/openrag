@@ -1,11 +1,10 @@
-import os
-
 from fastapi import Depends, Request
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 import base64
 from cryptography.hazmat.primitives import serialization
 
+from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
 from dependencies import get_session_manager
 
 
@@ -18,9 +17,8 @@ async def oidc_discovery(
     session_manager=Depends(get_session_manager),
 ):
     """OIDC discovery endpoint"""
-    openrag_fqdn = os.getenv("OPENRAG_FQDN")
-    if openrag_fqdn:
-        base_url = f"http://{openrag_fqdn}:8000"
+    if OPENRAG_FQDN:
+        base_url = f"http://{OPENRAG_FQDN}:{OPENRAG_BACKEND_PORT}"
     else:
         base_url = str(request.base_url).rstrip("/")
 

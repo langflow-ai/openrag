@@ -108,13 +108,17 @@ class ContainerManager:
             "langflow",
         ]
 
+        # Get compose project name from env or default to "openrag"
+        env = self._get_env_from_file()
+        project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+
         # Map container names to service names
         self.container_name_map = {
-            "openrag-backend": "openrag-backend",
-            "openrag-frontend": "openrag-frontend",
-            "os": "opensearch",
-            "osdash": "dashboards",
-            "langflow": "langflow",
+            f"{project_name}-backend": "openrag-backend",
+            f"{project_name}-frontend": "openrag-frontend",
+            f"{project_name}-opensearch": "opensearch",
+            f"{project_name}-dashboards": "dashboards",
+            f"{project_name}-langflow": "langflow",
         }
 
     @staticmethod
@@ -678,8 +682,10 @@ class ContainerManager:
         """
         try:
             # Check for backend container first (most reliable)
+            env = self._get_env_from_file()
+            project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
             success, stdout, _ = await self._run_runtime_command(
-                ["ps", "--all", "--filter", "name=openrag-backend", "--format", "{{.Image}}"]
+                ["ps", "--all", "--filter", f"name={project_name}-backend", "--format", "{{.Image}}"]
             )
             
             if success and stdout.strip():
