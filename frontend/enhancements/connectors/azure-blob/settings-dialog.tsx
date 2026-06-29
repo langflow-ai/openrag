@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,13 @@ export default function AzureBlobSettingsDialog({
   const [selectedContainers, setSelectedContainers] = useState<string[]>(
     defaults?.container_names ?? [],
   );
+  useEffect(() => {
+    if (defaults?.container_names?.length) {
+      setContainers(defaults.container_names);
+      setSelectedContainers(defaults.container_names);
+    }
+  }, [defaults]);
+
   const [isFetchingContainers, setIsFetchingContainers] = useState(false);
   const [containersError, setContainersError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
