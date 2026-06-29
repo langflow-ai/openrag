@@ -18,7 +18,7 @@ from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
 try:
     from importlib.resources import files
 except ImportError:
-    from importlib_resources import files
+    from importlib_resources import files  # type: ignore
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,7 @@ class ContainerManager:
         self.compose_file = compose_file or self._find_compose_file("docker-compose.yml")
         self.gpu_compose_file = self._find_compose_file("docker-compose.gpu.yml")
         self.services_cache: dict[str, ServiceInfo] = {}
-        self.last_status_update = 0
+        self.last_status_update = 0.0
         # Auto-select GPU override if GPU is available
         try:
             has_gpu, _ = detect_gpu_devices()
@@ -1079,10 +1079,10 @@ class ContainerManager:
         results.sort(key=lambda x: x[0])
         return results
 
-    async def start_services(self, cpu_mode: bool | None = None) -> AsyncIterator[tuple[bool, str]]:
+    async def start_services(self, cpu_mode: bool | None = None) -> AsyncIterator[tuple[bool, str, bool]]:
         """Start all services and yield progress updates."""
         if not self.is_available():
-            yield False, "No container runtime available"
+            yield False, "No container runtime available", False
             return
 
         # Ensure OPENRAG_VERSION is set in .env file
@@ -1233,7 +1233,7 @@ class ContainerManager:
         else:
             yield False, f"Failed to restart services: {stderr}"
 
-    async def upgrade_services(self, cpu_mode: bool = False) -> AsyncIterator[tuple[bool, str]]:
+    async def upgrade_services(self, cpu_mode: bool = False) -> AsyncIterator[tuple[bool, str, bool]]:
         """Upgrade services (pull latest images and restart) and yield progress updates."""
         yield False, "Pulling latest images...", False
 
@@ -1549,7 +1549,7 @@ class ContainerManager:
             yield False, f"Failed to list images: {stderr}"
             return
 
-        images_by_repo = {}
+        images_by_repo: dict[str, list[dict[str, str]]] = {}
         for image in images:
             repo = image["repo"]
             if repo not in images_by_repo:
