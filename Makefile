@@ -593,6 +593,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Delete data directory (database and session configs)"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove OpenRAG images"; \
+	echo "  - Delete opensearch-data directory (legacy OpenSearch bind-mount data)"; \
 	echo ""; \
 	echo ""; \
 	if [ "$(FORCE)" != "true" ]; then \
