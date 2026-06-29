@@ -1,9 +1,7 @@
 """Input validation utilities for TUI."""
 
-import os
 import re
 from pathlib import Path
-from typing import Optional
 
 
 class ValidationError(Exception):
