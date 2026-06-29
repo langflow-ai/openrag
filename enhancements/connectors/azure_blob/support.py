@@ -60,5 +60,7 @@ def build_azure_blob_config(
 
     if body.container_names is not None:
         conn_config["container_names"] = body.container_names
+    elif existing_config.get("container_names"):
+        conn_config["container_names"] = existing_config["container_names"]
 
     return conn_config, None
