@@ -1,4 +1,5 @@
 import base64
+import logging
 
 from cryptography.hazmat.primitives import serialization
 from fastapi import Depends, Request
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 
 from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
 from dependencies import get_session_manager
+
+logger = logging.getLogger(__name__)
 
 
 class TokenIntrospectBody(BaseModel):
@@ -81,8 +84,9 @@ async def jwks_endpoint(
 
         return JSONResponse({"keys": [jwk]})
 
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to generate JWKS: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Failed to generate JWKS")
+        return JSONResponse({"error": "Failed to generate JWKS"}, status_code=500)
 
 
 async def token_introspection(
@@ -110,5 +114,6 @@ async def token_introspection(
         else:
             return JSONResponse({"active": False})
 
-    except Exception as e:
-        return JSONResponse({"error": f"Token introspection failed: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Token introspection failed")
+        return JSONResponse({"error": "Token introspection failed"}, status_code=500)
