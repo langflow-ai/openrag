@@ -262,6 +262,8 @@ make clear-os-data  # Clear OpenSearch data directory completely
 make factory-reset  # Complete reset: containers, volumes, and data
 ```
 
+The reset also removes any legacy `opensearch-data` directory, so old OpenSearch index files do not linger after cleanup.
+
 ---
 
 ## Makefile Help System

@@ -621,6 +621,11 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		rm -rf data; \
 		echo "$(PURPLE)data removed$(NC)"; \
 	fi; \
+	if [ -d "opensearch-data" ]; then \
+		echo "Removing opensearch-data..."; \
+		rm -rf opensearch-data; \
+		echo "$(PURPLE)opensearch-data removed$(NC)"; \
+	fi; \
 	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
 		echo "Removing $$OPENRAG_DATA_PATH..."; \
 		rm -rf "$$OPENRAG_DATA_PATH"; \
