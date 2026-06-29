@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -122,7 +121,6 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { isIbmAuthMode } = useAuth();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -140,6 +138,9 @@ export function KnowledgeDropdown() {
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
   const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
+    Record<string, boolean>
+  >({});
+  const [bucketConnectorAvailable, setBucketConnectorAvailable] = useState<
     Record<string, boolean>
   >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -215,6 +216,19 @@ export function KnowledgeDropdown() {
         const connectorsRes = await fetch("/api/connectors");
         if (connectorsRes.ok) {
           const connectorsResult = await connectorsRes.json();
+
+          // Bucket connector availability mirrors the backend `is_available()`
+          // gate (IBM auth, or the dev flag for Azure Blob), so the dropdown
+          // surfaces a bucket entry whenever the connector is actually usable —
+          // not only in IBM auth mode.
+          const bucketAvailable: Record<string, boolean> = {};
+          for (const d of bucketDescriptors) {
+            bucketAvailable[d.connectorType] = Boolean(
+              connectorsResult.connectors?.[d.connectorType]?.available,
+            );
+          }
+          setBucketConnectorAvailable(bucketAvailable);
+
           const cloudConnectorTypes = [
             "google_drive",
             "onedrive",
@@ -700,20 +714,23 @@ export function KnowledgeDropdown() {
       };
     });
 
-  const bucketConnectorItems = isIbmAuthMode
-    ? getConnectorDescriptors()
-        .filter(
-          (d) =>
-            d.kind === "bucket" &&
-            d.menuItem &&
-            bucketConnectorConfigured[d.connectorType],
-        )
-        .map((d) => ({
-          label: d.menuItem!.label,
-          icon: d.Icon,
-          onClick: () => router.push(d.menuItem!.route),
-        }))
-    : [];
+  // Gate each bucket connector on its backend availability (IBM auth, or the
+  // OPENRAG_DEV_AZURE_BLOB dev flag for Azure Blob) AND a saved connection,
+  // rather than the global IBM-auth flag — this keeps S3/IBM COS hidden outside
+  // IBM auth while letting Azure Blob appear in local dev once configured.
+  const bucketConnectorItems = getConnectorDescriptors()
+    .filter(
+      (d) =>
+        d.kind === "bucket" &&
+        d.menuItem &&
+        bucketConnectorAvailable[d.connectorType] &&
+        bucketConnectorConfigured[d.connectorType],
+    )
+    .map((d) => ({
+      label: d.menuItem!.label,
+      icon: d.Icon,
+      onClick: () => router.push(d.menuItem!.route),
+    }));
 
   const menuItems = [
     {
