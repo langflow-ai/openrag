@@ -295,6 +295,8 @@ class DoclingManager:
 
             cmd = [
                 "uvx",
+                "--python",
+                "3.13",
                 "--from",
                 "docling-serve[ui]==1.20.0",
                 "--with",
