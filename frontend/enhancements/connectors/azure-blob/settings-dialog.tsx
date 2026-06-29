@@ -89,8 +89,10 @@ export default function AzureBlobSettingsDialog({
       const fetched: string[] = json.containers;
       setContainers(fetched);
       setSelectedContainers((prev) => prev.filter((c) => fetched.includes(c)));
-    } catch (err: any) {
-      setContainersError(err.message ?? "Connection failed");
+    } catch (err: unknown) {
+      setContainersError(
+        err instanceof Error ? err.message : "Connection failed",
+      );
     } finally {
       setIsFetchingContainers(false);
     }
@@ -134,8 +136,10 @@ export default function AzureBlobSettingsDialog({
 
       queryClient.invalidateQueries({ queryKey: ["connectors"] });
       setOpen(false);
-    } catch (err: any) {
-      setFormError(err.message ?? "Failed to save configuration");
+    } catch (err: unknown) {
+      setFormError(
+        err instanceof Error ? err.message : "Failed to save configuration",
+      );
     }
   });
 
