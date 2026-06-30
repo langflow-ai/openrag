@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Pin the .txt -> .md workaround applied at every Langflow upload site.
 
 Langflow's docling component fails on text/plain (commit f6b9fe0). The

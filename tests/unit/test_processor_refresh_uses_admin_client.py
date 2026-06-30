@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Index refresh after a duplicate-replace must run on the admin client.
 
 `indices:admin/refresh` is index-wide and cannot be DLS-scoped, so the

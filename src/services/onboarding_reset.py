@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Reset workspace onboarding state so the wizard shows again.
 
 Updates ``workspace_config`` (and config.yaml in hybrid/files mode).

@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """`_raise_for_bulk_errors` must surface the real per-item failures.
 
 A bulk response interleaves successes and failures; the check must report only

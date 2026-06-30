@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """config.settings.get_jwt_auth_header — per-call accessor for the header that
 carries a gateway-forwarded JWT to the /v1 (API-key) surface."""
 

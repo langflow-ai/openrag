@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Entrypoint for the OpenRAG Langflow container.
 
 Runs as root to correct /app/langflow-data bind-mount permissions, then drops

@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """IBM AMS auth: JWT source switches from cookie to header under RBAC.
 
 Covers the RBAC-gated token source in ``_get_ibm_user`` (``src/dependencies.py``):
