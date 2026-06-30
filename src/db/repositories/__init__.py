@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Async data-access wrappers for the RBAC layer."""
 
 from db.repositories.api_key_repo import ApiKeyRepo
@@ -10,6 +22,8 @@ from db.repositories.session_ownership_repo import SessionOwnershipRepo
 from db.repositories.user_repo import UserRepo
 from db.repositories.workspace_config_repo import (
     SECTIONS as WORKSPACE_CONFIG_SECTIONS,
+)
+from db.repositories.workspace_config_repo import (
     WorkspaceConfigRepo,
 )
 

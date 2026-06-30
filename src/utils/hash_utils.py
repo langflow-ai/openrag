@@ -1,7 +1,19 @@
-import io
-import os
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 import base64
 import hashlib
+import io
+import os
 from typing import BinaryIO, Optional, Union
 
 
@@ -11,10 +23,10 @@ def _b64url(data: bytes) -> str:
 
 
 def stream_hash(
-    source: Union[str, os.PathLike, BinaryIO],
+    source: str | os.PathLike | BinaryIO,
     *,
     algo: str = "sha256",
-    include_filename: Optional[str] = None,
+    include_filename: str | None = None,
     chunk_size: int = 1024 * 1024,  # 1 MiB
 ) -> bytes:
     """
@@ -62,10 +74,10 @@ def stream_hash(
 
 
 def hash_id(
-    source: Union[str, os.PathLike, BinaryIO],
+    source: str | os.PathLike | BinaryIO,
     *,
     algo: str = "sha256",
-    include_filename: Optional[str] = None,
+    include_filename: str | None = None,
     length: int = 24,  # characters of base64url (set 0 or None for full)
 ) -> str:
     """

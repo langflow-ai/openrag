@@ -1,16 +1,30 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 import re
 import sys
 from pathlib import Path
-from packaging.version import Version, InvalidVersion
+
+from packaging.version import InvalidVersion, Version
+
 
 def update_version(new_version):
     pyproject_path = Path("pyproject.toml")
-    with open(pyproject_path, "r") as f:
+    with open(pyproject_path) as f:
         content = f.read()
 
     # Update the version field
     # Removes 'v' prefix if present from tag
-    clean_version = new_version.lstrip('v')
+    clean_version = new_version.lstrip("v")
 
     # Validate that the resulting version is a valid PEP 440 version
     try:
@@ -40,6 +54,7 @@ def update_version(new_version):
     with open(pyproject_path, "w") as f:
         f.write(new_content)
     print(f"Updated pyproject.toml version to {clean_version}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

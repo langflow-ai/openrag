@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Unit test configuration.
 
 Overrides the session-scoped onboard_system fixture from the root conftest
@@ -11,6 +23,7 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 # guarantees that even if a test imports something that triggers
 # `init_engine()` at import time, the engine binds to an in-memory DB.
 import os as _os
+
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a
@@ -39,6 +52,7 @@ def _reset_db_engine_module_state(monkeypatch):
     """
     try:
         import db.engine as _engine_mod
+
         monkeypatch.setattr(_engine_mod, "_engine", None, raising=False)
         monkeypatch.setattr(_engine_mod, "SessionLocal", None, raising=False)
     except ImportError:

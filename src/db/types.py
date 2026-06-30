@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Custom SQLAlchemy types.
 
 EncryptedString reuses utils.encryption (AES-256-GCM + PBKDF2) so we never
@@ -29,7 +41,7 @@ class EncryptedString(TypeDecorator):
         super().__init__(*args, **kwargs)
         self._tenant_id = tenant_id
 
-    def process_bind_param(self, value: Optional[str], dialect) -> Optional[str]:
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
         if value is None:
             return None
         if not isinstance(value, str):
@@ -43,7 +55,7 @@ class EncryptedString(TypeDecorator):
             return json.dumps(envelope, separators=(",", ":"))
         return envelope
 
-    def process_result_value(self, value: Optional[str], dialect) -> Optional[str]:
+    def process_result_value(self, value: str | None, dialect) -> str | None:
         if value is None:
             return None
         if not value:

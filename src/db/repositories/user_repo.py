@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 from datetime import UTC, datetime
 from typing import Optional
 
@@ -12,24 +24,20 @@ class UserRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, user_id: str) -> Optional[User]:
+    async def get_by_id(self, user_id: str) -> User | None:
         return await self.session.get(User, user_id)
 
-    async def get_by_oauth(self, provider: str, subject: str) -> Optional[User]:
+    async def get_by_oauth(self, provider: str, subject: str) -> User | None:
         result = await self.session.execute(
-            select(User).where(
-                User.oauth_provider == provider, User.oauth_subject == subject
-            )
+            select(User).where(User.oauth_provider == provider, User.oauth_subject == subject)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_email(self, email: str) -> Optional[User]:
+    async def get_by_email(self, email: str) -> User | None:
         h = email_lookup_hash(email)
         if not h:
             return None
-        result = await self.session.execute(
-            select(User).where(User.email_lookup_hash == h)
-        )
+        result = await self.session.execute(select(User).where(User.email_lookup_hash == h))
         return result.scalar_one_or_none()
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[User]:
@@ -54,9 +62,13 @@ class UserRepo:
             await self.session.flush()
 
     async def merge_legacy(
-        self, legacy: User, real_provider: str, real_subject: str,
-        email: Optional[str], display_name: Optional[str],
-        picture_url: Optional[str],
+        self,
+        legacy: User,
+        real_provider: str,
+        real_subject: str,
+        email: str | None,
+        display_name: str | None,
+        picture_url: str | None,
     ) -> User:
         legacy.oauth_provider = real_provider
         legacy.oauth_subject = real_subject

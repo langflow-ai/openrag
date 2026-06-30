@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Tests for OpenRAG-only image cleanup behavior in startup checks."""
 
 from unittest.mock import MagicMock, patch
@@ -40,9 +52,13 @@ def test_remove_openrag_images_filters_to_openrag_repos():
 
 
 def test_fix_storage_corruption_docker_avoids_system_prune():
-    with patch("src.tui.utils.startup_checks.ask_yes_no", return_value=True), patch(
-        "src.tui.utils.startup_checks.remove_openrag_images", return_value=(1, 1)
-    ) as mock_remove, patch("src.tui.utils.startup_checks.subprocess.run") as mock_run:
+    with (
+        patch("src.tui.utils.startup_checks.ask_yes_no", return_value=True),
+        patch(
+            "src.tui.utils.startup_checks.remove_openrag_images", return_value=(1, 1)
+        ) as mock_remove,
+        patch("src.tui.utils.startup_checks.subprocess.run") as mock_run,
+    ):
         ok = startup_checks.fix_storage_corruption(runtime="docker", version="26.1.0")
 
     assert ok is True

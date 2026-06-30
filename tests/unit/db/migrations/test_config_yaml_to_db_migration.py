@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """migrations_runtime.run — config_yaml_to_db_v1 step."""
 
 import sys
@@ -48,15 +60,14 @@ def tmp_yaml(monkeypatch):
         # ConfigManager is a singleton at module level — reset its
         # internal state so it picks up the new path on next load.
         from config.config_manager import config_manager
+
         config_manager.config_file = cfg_dir / "config.yaml"
         config_manager._config = None
         yield cfg_dir / "config.yaml"
 
 
 @pytest.mark.asyncio
-async def test_migration_writes_all_sections_from_existing_yaml(
-    tmp_yaml, session
-):
+async def test_migration_writes_all_sections_from_existing_yaml(tmp_yaml, session):
     """Existing install with config.yaml → all sections copied to DB."""
     yaml_payload = {
         "providers": {

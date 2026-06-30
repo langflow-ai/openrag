@@ -1,12 +1,24 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 from typing import Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
 
-from dependencies import get_chat_service, get_session_manager, get_current_user
+from dependencies import get_chat_service, get_current_user, get_session_manager
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -16,9 +28,9 @@ def _openrag_user_id(user: User) -> str:
 
 
 class NudgesBody(BaseModel):
-    filters: Optional[dict] = None
-    limit: Optional[int] = None
-    score_threshold: Optional[float] = None
+    filters: dict | None = None
+    limit: int | None = None
+    score_threshold: float | None = None
 
 
 async def nudges_from_kb_endpoint(
@@ -44,9 +56,7 @@ async def nudges_from_kb_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
 
 
 async def nudges_from_chat_id_endpoint(
@@ -62,6 +72,7 @@ async def nudges_from_chat_id_endpoint(
 
     try:
         from api.chat import _assert_owns
+
         await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.langflow_nudges_chat(
             user.user_id,
@@ -76,6 +87,4 @@ async def nudges_from_chat_id_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)

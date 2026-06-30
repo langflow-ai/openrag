@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """API key ORM (Phase 2 will move keys here from the OpenSearch index).
 
 Placed in Phase 1 only as a forward-compatible schema; the existing
@@ -19,10 +31,10 @@ class ApiKey(SQLModel, table=True):
     name: str = Field(max_length=128)
     key_hash: str = Field(max_length=128, unique=True, index=True)
     key_prefix: str = Field(max_length=32)
-    scope_role_ids: Optional[list] = Field(
+    scope_role_ids: list | None = Field(
         default=None, sa_column=Column("scope_role_ids", JSON, nullable=True)
     )
-    last_used_at: Optional[datetime] = Field(default=None)
+    last_used_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    revoked_at: Optional[datetime] = Field(default=None)
+    revoked_at: datetime | None = Field(default=None)
     revoked: bool = Field(default=False)

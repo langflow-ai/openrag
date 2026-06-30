@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Fetch a URL, strip HTML, and write the visible text to a temporary file.
 
 Used by the default-docs ingestion flow when DEFAULT_DOCS_INGEST_SOURCE=url

@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Platform detection and container runtime discovery utilities."""
 
 import json
@@ -20,7 +32,7 @@ class RuntimeInfo:
     runtime_type: RuntimeType
     compose_command: list[str]
     runtime_command: list[str]
-    version: Optional[str] = None
+    version: str | None = None
     has_runtime_without_compose: bool = False  # True if docker/podman exists but compose missing
 
 
@@ -50,8 +62,9 @@ class PlatformDetector:
             docker_version = self._get_docker_version()
             if docker_version and podman_version in docker_version:
                 # This is podman masquerading as docker
-                if self._check_command(["docker", "compose", "--help"]) and \
-                   self._check_command(["docker", "compose", "version"]):
+                if self._check_command(["docker", "compose", "--help"]) and self._check_command(
+                    ["docker", "compose", "version"]
+                ):
                     return RuntimeInfo(
                         RuntimeType.PODMAN,
                         ["docker", "compose"],
@@ -67,8 +80,9 @@ class PlatformDetector:
                     )
 
             # Check for native podman compose
-            if self._check_command(["podman", "compose", "--help"]) and \
-               self._check_command(["podman", "compose", "version"]):
+            if self._check_command(["podman", "compose", "--help"]) and self._check_command(
+                ["podman", "compose", "version"]
+            ):
                 return RuntimeInfo(
                     RuntimeType.PODMAN,
                     ["podman", "compose"],
@@ -78,37 +92,26 @@ class PlatformDetector:
 
         # Check for actual docker - try docker compose (new) first, then docker-compose (old)
         # Check both --help and version to ensure compose subcommand actually works
-        if self._check_command(["docker", "compose", "--help"]) and \
-           self._check_command(["docker", "compose", "version"]):
+        if self._check_command(["docker", "compose", "--help"]) and self._check_command(
+            ["docker", "compose", "version"]
+        ):
             version = self._get_docker_version()
-            return RuntimeInfo(
-                RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version
-            )
+            return RuntimeInfo(RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version)
         if self._check_command(["docker-compose", "--help"]):
             version = self._get_docker_version()
-            return RuntimeInfo(
-                RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version
-            )
+            return RuntimeInfo(RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version)
 
         # Check if we have docker/podman runtime but no working compose
         docker_version = self._get_docker_version()
         if docker_version:
             return RuntimeInfo(
-                RuntimeType.DOCKER,
-                [],
-                ["docker"],
-                docker_version,
-                has_runtime_without_compose=True
+                RuntimeType.DOCKER, [], ["docker"], docker_version, has_runtime_without_compose=True
             )
 
         podman_version = self._get_podman_version()
         if podman_version:
             return RuntimeInfo(
-                RuntimeType.PODMAN,
-                [],
-                ["podman"],
-                podman_version,
-                has_runtime_without_compose=True
+                RuntimeType.PODMAN, [], ["podman"], podman_version, has_runtime_without_compose=True
             )
 
         return RuntimeInfo(RuntimeType.NONE, [], [])
@@ -116,12 +119,8 @@ class PlatformDetector:
     def detect_gpu_available(self) -> bool:
         """Best-effort detection of NVIDIA GPU availability for containers."""
         try:
-            res = subprocess.run(
-                ["nvidia-smi", "-L"], capture_output=True, text=True, timeout=5
-            )
-            if res.returncode == 0 and any(
-                "GPU" in ln for ln in res.stdout.splitlines()
-            ):
+            res = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0 and any("GPU" in ln for ln in res.stdout.splitlines()):
                 return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
@@ -146,28 +145,26 @@ class PlatformDetector:
                 return False
             # Check both stdout and stderr for error indicators
             combined = (result.stdout + result.stderr).lower()
-            if "unknown" in combined and ("command" in combined or "flag" in combined or "shorthand" in combined):
+            if "unknown" in combined and (
+                "command" in combined or "flag" in combined or "shorthand" in combined
+            ):
                 return False
             return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
-    def _get_docker_version(self) -> Optional[str]:
+    def _get_docker_version(self) -> str | None:
         try:
-            res = subprocess.run(
-                ["docker", "--version"], capture_output=True, text=True, timeout=5
-            )
+            res = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
             if res.returncode == 0:
                 return res.stdout.strip()
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         return None
 
-    def _get_podman_version(self) -> Optional[str]:
+    def _get_podman_version(self) -> str | None:
         try:
-            res = subprocess.run(
-                ["podman", "--version"], capture_output=True, text=True, timeout=5
-            )
+            res = subprocess.run(["podman", "--version"], capture_output=True, text=True, timeout=5)
             if res.returncode == 0:
                 return res.stdout.strip()
         except (subprocess.TimeoutExpired, FileNotFoundError):

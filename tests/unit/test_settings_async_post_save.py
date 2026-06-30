@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -133,4 +145,3 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
     kwargs = post_save_mock.call_args.kwargs
     assert kwargs["update_mcp_servers"] is True
     assert kwargs["update_model_values"] is True
-

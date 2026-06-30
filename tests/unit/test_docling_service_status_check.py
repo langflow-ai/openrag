@@ -1,15 +1,29 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Unit tests for DoclingService.check_task_status and fetch_task_result.
 
 These are the single-poll primitives that the backend's polling coordinator
 uses instead of the legacy in-method polling loop.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 import httpx
+import pytest
+
 from services.docling_service import (
-    DoclingService,
     DoclingServeError,
+    DoclingService,
     DoclingTaskState,
 )
 

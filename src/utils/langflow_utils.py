@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 import asyncio
 import random
 
@@ -32,6 +44,7 @@ async def wait_for_langflow(
     """
     if langflow_http_client is None:
         from config.settings import clients
+
         langflow_http_client = clients.langflow_http_client
 
     for attempt in range(max_retries):
@@ -71,7 +84,7 @@ async def wait_for_langflow(
             )
 
         if attempt < max_retries - 1:
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             delay = random.uniform(delay / 2, delay)
 
             logger.debug(

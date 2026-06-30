@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Cross-user ownership enforcement on chat endpoints.
 
 Issue: a user could resume another user's conversation by submitting
@@ -21,6 +33,7 @@ if str(SRC) not in sys.path:
 @pytest.mark.asyncio
 async def test_assert_owns_passes_when_session_owned(monkeypatch):
     from api import chat as chat_module
+
     fake_svc = AsyncMock()
     fake_svc.get_session_owner = AsyncMock(return_value="alice")
     monkeypatch.setattr(
@@ -34,6 +47,7 @@ async def test_assert_owns_passes_when_session_owned(monkeypatch):
 @pytest.mark.asyncio
 async def test_assert_owns_returns_403_for_other_user(monkeypatch):
     from api import chat as chat_module
+
     fake_svc = AsyncMock()
     fake_svc.get_session_owner = AsyncMock(return_value="alice")
     monkeypatch.setattr(
@@ -50,6 +64,7 @@ async def test_assert_owns_returns_403_for_other_user(monkeypatch):
 async def test_assert_owns_returns_404_for_unknown_session(monkeypatch):
     """Don't leak existence — unknown session is 404 not 403."""
     from api import chat as chat_module
+
     fake_svc = AsyncMock()
     fake_svc.get_session_owner = AsyncMock(return_value=None)
     monkeypatch.setattr(
@@ -65,6 +80,7 @@ async def test_assert_owns_returns_404_for_unknown_session(monkeypatch):
 async def test_assert_owns_noop_when_session_id_none():
     """New conversation — no previous_response_id to check."""
     from api import chat as chat_module
+
     # No monkeypatch needed — should short-circuit before hitting the service
     await chat_module._assert_owns(None, "alice")
     await chat_module._assert_owns("", "alice")
@@ -83,9 +99,7 @@ async def test_chat_endpoint_calls_assert_owns_with_previous_response_id(monkeyp
         calls.append(("assert", sid, uid))
 
     fake_chat_service = AsyncMock()
-    fake_chat_service.chat = AsyncMock(
-        side_effect=lambda *a, **k: calls.append(("chat",)) or "ok"
-    )
+    fake_chat_service.chat = AsyncMock(side_effect=lambda *a, **k: calls.append(("chat",)) or "ok")
 
     monkeypatch.setattr(chat_module, "_assert_owns", _fake_assert)
 
@@ -242,11 +256,5 @@ async def test_upload_context_uses_db_user_id_for_existing_session(monkeypatch):
     )
 
     assert calls[0] == ("assert", "sess-1", "db-alice")
-    assert (
-        fake_chat_service.upload_context_chat.await_args.kwargs["storage_user_id"]
-        == "db-alice"
-    )
-    assert (
-        fake_chat_service.upload_context_chat.await_args.kwargs["user_id"]
-        == "oauth-alice"
-    )
+    assert fake_chat_service.upload_context_chat.await_args.kwargs["storage_user_id"] == "db-alice"
+    assert fake_chat_service.upload_context_chat.await_args.kwargs["user_id"] == "oauth-alice"

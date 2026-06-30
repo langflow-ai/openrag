@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """FastAPI route handlers for AWS S3-specific endpoints."""
 
 import os
@@ -6,7 +18,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from config.settings import get_index_name
-from dependencies import get_connector_service, get_session_manager, get_current_user
+from dependencies import get_connector_service, get_current_user, get_session_manager
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -38,14 +50,16 @@ async def s3_defaults(
     def _pick(conn_key, env_val):
         return conn_config.get(conn_key) or env_val
 
-    return JSONResponse({
-        "access_key_set": bool(access_key or conn_config.get("access_key")),
-        "secret_key_set": bool(secret_key or conn_config.get("secret_key")),
-        "endpoint": _pick("endpoint_url", endpoint_url),
-        "region": _pick("region", region),
-        "bucket_names": conn_config.get("bucket_names", []),
-        "connection_id": connections[0].connection_id if connections else None,
-    })
+    return JSONResponse(
+        {
+            "access_key_set": bool(access_key or conn_config.get("access_key")),
+            "secret_key_set": bool(secret_key or conn_config.get("secret_key")),
+            "endpoint": _pick("endpoint_url", endpoint_url),
+            "region": _pick("region", region),
+            "bucket_names": conn_config.get("bucket_names", []),
+            "connection_id": connections[0].connection_id if connections else None,
+        }
+    )
 
 
 async def s3_configure(
@@ -135,24 +149,18 @@ async def s3_bucket_status(
     try:
         s3 = create_s3_resource(connection.config)
         all_buckets = [b.name for b in s3.buckets.all()]
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to list buckets from S3 for connection %s", connection_id)
         return JSONResponse({"error": "Failed to list buckets"}, status_code=500)
 
     # 2. Count indexed documents per bucket from OpenSearch
     ingested_counts: dict = {}
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(
-            user.user_id, user.jwt_token
-        )
+        opensearch_client = session_manager.get_user_opensearch_client(user.user_id, user.jwt_token)
         query_body = {
             "size": 0,
             "query": {"term": {"connector_type": "aws_s3"}},
-            "aggs": {
-                "doc_ids": {
-                    "terms": {"field": "document_id", "size": 50000}
-                }
-            },
+            "aggs": {"doc_ids": {"terms": {"field": "document_id", "size": 50000}}},
         }
         index_name = get_index_name()
         os_resp = opensearch_client.search(index=index_name, body=query_body)

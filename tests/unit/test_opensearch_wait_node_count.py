@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """The OpenSearch readiness probe (wait_for_opensearch) gates on data-node,
 cluster-manager, and coordinating-node counts behind the
 OPENSEARCH_NODE_COUNT_CHECK_ENABLED flag.

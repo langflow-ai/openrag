@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Public workspace-config endpoints.
 
 Today there's just one — ``GET /api/onboarding-status`` — used by the
@@ -26,7 +38,7 @@ class OnboardingStatusResponse(BaseModel):
     # OnboardingState.current_step is an int (step index) in the legacy
     # config_manager dataclass; future schema may switch it to a string
     # name. Accept either to stay forward-compatible.
-    current_step: Optional[Union[int, str]] = None
+    current_step: int | str | None = None
 
 
 @router.get("/onboarding-status", response_model=OnboardingStatusResponse)

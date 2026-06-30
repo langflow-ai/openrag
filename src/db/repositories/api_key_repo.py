@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """ApiKey repo — placeholder for Phase 2.
 
 Phase 1 ships the schema only. Existing OpenSearch-backed APIKeyService
@@ -16,16 +28,14 @@ class ApiKeyRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_hash(self, key_hash: str) -> Optional[ApiKey]:
+    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         result = await self.session.execute(
             select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.revoked.is_(False))
         )
         return result.scalar_one_or_none()
 
     async def list_for_user(self, user_id: str) -> list[ApiKey]:
-        result = await self.session.execute(
-            select(ApiKey).where(ApiKey.user_id == user_id)
-        )
+        result = await self.session.execute(select(ApiKey).where(ApiKey.user_id == user_id))
         return list(result.scalars().all())
 
     async def add(self, api_key: ApiKey) -> ApiKey:
@@ -35,6 +45,7 @@ class ApiKeyRepo:
 
     async def revoke(self, key_id: str) -> None:
         from datetime import datetime
+
         row = await self.session.get(ApiKey, key_id)
         if row:
             row.revoked = True

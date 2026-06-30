@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Unit tests for EnvManager file permission security.
 
 These tests verify that every code path that writes a .env file enforces
@@ -15,9 +27,7 @@ from unittest.mock import patch
 import pytest
 
 # Skip all tests on Windows — file permission model differs from Unix.
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="Unix file permissions only"
-)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Unix file permissions only")
 
 
 def _perms(path: Path) -> int:
@@ -53,9 +63,7 @@ class TestSaveEnvFilePermissions:
         assert env_file.exists()
         assert _perms(env_file) == 0o600, f"expected 0o600, got {oct(_perms(env_file))}"
 
-    def test_overwrite_existing_file_has_secure_permissions(
-        self, env_manager, tmp_path
-    ):
+    def test_overwrite_existing_file_has_secure_permissions(self, env_manager, tmp_path):
         """Overwriting a permissive .env (0o644) must produce a new .env with 0o600."""
         env_file = tmp_path / ".env"
         env_file.write_text("OPENSEARCH_PASSWORD='old'\n")
@@ -83,17 +91,12 @@ class TestSaveEnvFilePermissions:
         assert len(backups) == 1, (
             f"expected exactly 1 backup file, found: {[f.name for f in backups]}"
         )
-        assert _perms(backups[0]) == 0o600, (
-            f"expected 0o600, got {oct(_perms(backups[0]))}"
-        )
+        assert _perms(backups[0]) == 0o600, f"expected 0o600, got {oct(_perms(backups[0]))}"
 
     def test_preserves_unmanaged_env_variables(self, env_manager, tmp_path):
         """Saving config must keep existing .env keys that TUI does not manage."""
         env_file = tmp_path / ".env"
-        env_file.write_text(
-            "OPENRAG_BACKEND_HOST='my-host'\n"
-            "OPENSEARCH_PASSWORD='old-password'\n"
-        )
+        env_file.write_text("OPENRAG_BACKEND_HOST='my-host'\nOPENSEARCH_PASSWORD='old-password'\n")
 
         env_manager.config.opensearch_password = "NewSecurePass!123"
 
@@ -107,20 +110,11 @@ class TestSaveEnvFilePermissions:
         assert "OPENSEARCH_PASSWORD='NewSecurePass!123'" in content
         assert "OPENSEARCH_PASSWORD='old-password'" not in content
 
-    def test_preserves_unmanaged_multiline_quoted_value(
-        self, env_manager, tmp_path
-    ):
+    def test_preserves_unmanaged_multiline_quoted_value(self, env_manager, tmp_path):
         """Unmanaged python-dotenv–style multiline quoted values are preserved."""
         env_file = tmp_path / ".env"
-        multiline_block = (
-            'UNMANAGED_MULTILINE="line1\\n'
-            "line2\\n"
-            'line3"\n'
-        )
-        env_file.write_text(
-            multiline_block
-            + 'OPENSEARCH_PASSWORD="old-password"\n'
-        )
+        multiline_block = 'UNMANAGED_MULTILINE="line1\\nline2\\nline3"\n'
+        env_file.write_text(multiline_block + 'OPENSEARCH_PASSWORD="old-password"\n')
 
         env_manager.config.opensearch_password = "NewSecurePass!456"
 
@@ -139,15 +133,8 @@ class TestSaveEnvFilePermissions:
     def test_preserves_unmanaged_continued_line(self, env_manager, tmp_path):
         """Unmanaged values using backslash continuation are preserved."""
         env_file = tmp_path / ".env"
-        continued_block = (
-            "UNMANAGED_LONG_VALUE=first part \\\n"
-            "  second part \\\n"
-            "  third part\n"
-        )
-        env_file.write_text(
-            continued_block
-            + 'OPENSEARCH_PASSWORD="old-password"\n'
-        )
+        continued_block = "UNMANAGED_LONG_VALUE=first part \\\n  second part \\\n  third part\n"
+        env_file.write_text(continued_block + 'OPENSEARCH_PASSWORD="old-password"\n')
 
         env_manager.config.opensearch_password = "AnotherNewPass!789"
 
@@ -162,6 +149,8 @@ class TestSaveEnvFilePermissions:
         # Managed password should be updated, not duplicated.
         assert "OPENSEARCH_PASSWORD='AnotherNewPass!789'" in content
         assert 'OPENSEARCH_PASSWORD="old-password"' not in content
+
+
 # ---------------------------------------------------------------------------
 # ensure_openrag_version
 # ---------------------------------------------------------------------------
@@ -170,9 +159,7 @@ class TestSaveEnvFilePermissions:
 class TestEnsureOpenragVersionPermissions:
     """ensure_openrag_version must enforce 0o600 on every .env it touches."""
 
-    def test_existing_file_update_has_secure_permissions(
-        self, env_manager, tmp_path, monkeypatch
-    ):
+    def test_existing_file_update_has_secure_permissions(self, env_manager, tmp_path, monkeypatch):
         """Updating OPENRAG_VERSION in a permissive .env (0o644) must set 0o600."""
         env_file = tmp_path / ".env"
         env_file.write_text("OPENSEARCH_PASSWORD='test'\n")
@@ -237,6 +224,4 @@ class TestLegacyMigrationPermissions:
             EnvManager()  # no explicit env_file — triggers the migration branch
 
         assert target_env.exists(), "migrated file must be present"
-        assert _perms(target_env) == 0o600, (
-            f"expected 0o600, got {oct(_perms(target_env))}"
-        )
+        assert _perms(target_env) == 0o600, f"expected 0o600, got {oct(_perms(target_env))}"

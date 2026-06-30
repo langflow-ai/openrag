@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """End-to-end tests covering full multi-step SDK workflows."""
 
 import asyncio
@@ -15,7 +27,9 @@ pytestmark = pytest.mark.skipif(
 class TestEndToEnd:
     """Full pipeline tests that exercise multiple SDK operations together."""
 
-    @pytest.mark.skip(reason="Test scenario is returning indeterministic or flaky results resulting in random failures.")
+    @pytest.mark.skip(
+        reason="Test scenario is returning indeterministic or flaky results resulting in random failures."
+    )
     @pytest.mark.asyncio
     async def test_full_rag_pipeline(self, client, tmp_path):
         """Ingest → search → chat: source cited in chat must match the ingested doc."""
@@ -42,7 +56,9 @@ class TestEndToEnd:
                 break
             await asyncio.sleep(2)
         if not search_hit:
-            pytest.skip("Ingested document not findable via search after retries — skipping E2E RAG test")
+            pytest.skip(
+                "Ingested document not findable via search after retries — skipping E2E RAG test"
+            )
 
         chat_response = await client.chat.create(
             message="According to my documents, what is the name of the flamingo and on which planet does it live?"
@@ -94,15 +110,17 @@ class TestEndToEnd:
     async def test_knowledge_filter_scopes_search_results(self, client):
         """A knowledge filter must constrain search and chat to its configured scope."""
         unique_token = uuid.uuid4().hex
-        create_result = await client.knowledge_filters.create({
-            "name": f"E2E Scope Filter {unique_token[:8]}",
-            "description": "Filter for E2E scoping test",
-            "queryData": {
-                "query": f"scoped content {unique_token}",
-                "limit": 5,
-                "scoreThreshold": 0.0,
-            },
-        })
+        create_result = await client.knowledge_filters.create(
+            {
+                "name": f"E2E Scope Filter {unique_token[:8]}",
+                "description": "Filter for E2E scoping test",
+                "queryData": {
+                    "query": f"scoped content {unique_token}",
+                    "limit": 5,
+                    "scoreThreshold": 0.0,
+                },
+            }
+        )
         assert create_result.success is True
         filter_id = create_result.id
 

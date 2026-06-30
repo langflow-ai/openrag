@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Async CRUD over the ``workspace_config`` table.
 
 Each row is one logical section ('providers' | 'knowledge' | 'agent' |
@@ -21,7 +33,7 @@ class WorkspaceConfigRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_section(self, section: str) -> Optional[dict[str, Any]]:
+    async def get_section(self, section: str) -> dict[str, Any] | None:
         row = await self.session.get(WorkspaceConfig, section)
         return None if row is None else (row.value or {})
 
@@ -33,7 +45,7 @@ class WorkspaceConfigRepo:
         self,
         section: str,
         value: dict[str, Any],
-        actor_user_id: Optional[str] = None,
+        actor_user_id: str | None = None,
     ) -> WorkspaceConfig:
         existing = await self.session.get(WorkspaceConfig, section)
         if existing is None:

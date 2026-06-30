@@ -1,16 +1,29 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Command output modal dialog for OpenRAG TUI."""
 
 import asyncio
 import inspect
 import os
 import webbrowser
-from typing import Callable, Optional, AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from typing import Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, TextArea, Footer
+from textual.widgets import Button, Footer, Label, Static, TextArea
 
 from ..utils.clipboard import copy_text_to_clipboard
 from .waves import Waves
@@ -176,7 +189,7 @@ class CommandOutputModal(ModalScreen):
         self,
         title: str,
         command_generator: AsyncIterator[tuple[bool, str]],
-        on_complete: Optional[Callable] = None,
+        on_complete: Callable | None = None,
         show_launch_button: bool = False,
     ):
         """Initialize the modal dialog.
@@ -194,7 +207,7 @@ class CommandOutputModal(ModalScreen):
         self.show_launch_button = show_launch_button
         self._output_lines: list[str] = []
         self._layer_line_map: dict[str, int] = {}  # Maps layer ID to line index
-        self._status_task: Optional[asyncio.Task] = None
+        self._status_task: asyncio.Task | None = None
         self._error_detected = False
         self._command_complete = False
 
@@ -211,9 +224,7 @@ class CommandOutputModal(ModalScreen):
             )
             with Horizontal(id="button-row"):
                 yield Button("Copy Output", variant="default", id="copy-btn")
-                yield Button(
-                    "Close", variant="primary", id="close-btn", disabled=True
-                )
+                yield Button("Close", variant="primary", id="close-btn", disabled=True)
             yield Static("", id="copy-status")
         yield Footer()
 
@@ -300,20 +311,24 @@ class CommandOutputModal(ModalScreen):
 
                 # Detect error patterns in messages
                 import re
+
                 lower_msg = message.lower() if message else ""
-                if not self._error_detected and any(pattern in lower_msg for pattern in [
-                    "error:",
-                    "failed",
-                    "port.*already.*allocated",
-                    "address already in use",
-                    "not found",
-                    "permission denied"
-                ]):
+                if not self._error_detected and any(
+                    pattern in lower_msg
+                    for pattern in [
+                        "error:",
+                        "failed",
+                        "port.*already.*allocated",
+                        "address already in use",
+                        "not found",
+                        "permission denied",
+                    ]
+                ):
                     self._error_detected = True
                     # Enable close button when error detected
                     close_btn = self.query_one("#close-btn", Button)
                     close_btn.disabled = False
-                
+
                 # If command is complete, update UI
                 if is_complete:
                     self._command_complete = True
@@ -325,9 +340,7 @@ class CommandOutputModal(ModalScreen):
                     if self.show_launch_button and not self._error_detected:
                         button_row = self.query_one("#button-row", Horizontal)
                         close_btn = self.query_one("#close-btn", Button)
-                        launch_btn = Button(
-                            "Launch OpenRAG", variant="success", id="launch-btn"
-                        )
+                        launch_btn = Button("Launch OpenRAG", variant="success", id="launch-btn")
                         button_row.mount(launch_btn, before=close_btn)
 
                     # Call the completion callback if provided
@@ -381,7 +394,9 @@ class CommandOutputModal(ModalScreen):
             potential_layer_id = parts[0]
 
             # Check if this looks like a layer ID (hex string, 12 chars for Docker layers)
-            if len(potential_layer_id) == 12 and all(c in '0123456789abcdefABCDEF' for c in potential_layer_id):
+            if len(potential_layer_id) == 12 and all(
+                c in "0123456789abcdefABCDEF" for c in potential_layer_id
+            ):
                 # This is a layer message
                 if potential_layer_id in self._layer_line_map:
                     # Update the existing line for this layer

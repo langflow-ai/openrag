@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Environment configuration manager for OpenRAG TUI."""
 
 import os
@@ -10,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
+
 from utils.logging_config import get_logger
 
 from ..utils.validation import (
@@ -104,20 +117,21 @@ class EnvConfig:
     openrag_version: str = ""
 
     # Validation errors
-    validation_errors: Dict[str, str] = field(default_factory=dict)
+    validation_errors: dict[str, str] = field(default_factory=dict)
 
 
 class EnvManager:
     """Manages environment configuration for OpenRAG."""
 
     assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
-    
-    def __init__(self, env_file: Optional[Path] = None):
+
+    def __init__(self, env_file: Path | None = None):
         if env_file:
             self.env_file = env_file
         else:
             # Use centralized location for TUI .env file
-            from utils.paths import get_tui_env_file, get_legacy_paths
+            from utils.paths import get_legacy_paths, get_tui_env_file
+
             self.env_file = get_tui_env_file()
 
             # Check for legacy .env in current directory and migrate if needed
@@ -125,17 +139,17 @@ class EnvManager:
             if not self.env_file.exists() and legacy_env.exists():
                 try:
                     import shutil
+
                     self.env_file.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(legacy_env, self.env_file)
                     os.chmod(self.env_file, 0o600)
                     logger.info(f"Migrated .env from {legacy_env} to {self.env_file}")
 
-
                 except Exception as e:
                     logger.warning(f"Failed to migrate .env file: {e}")
 
         self.config = EnvConfig()
-        
+
     def generate_secure_password(self) -> str:
         """Generate a secure password for OpenSearch."""
         # Ensure at least one character from each category
@@ -165,6 +179,7 @@ class EnvManager:
     def generate_openrag_encryption_key(self) -> str:
         """Generate a secure AES-256 base64 master key for OpenRAG."""
         import base64
+
         return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
 
     def _quote_env_value(self, value: str) -> str:
@@ -176,7 +191,7 @@ class EnvManager:
         escaped_value = value.replace("'", "'\\''")
         return f"'{escaped_value}'"
 
-    def _env_attr_map(self) -> Dict[str, str]:
+    def _env_attr_map(self) -> dict[str, str]:
         """Map env vars to EnvConfig attribute names."""
         return {  # pragma: allowlist secret
             "OPENAI_API_KEY": "openai_api_key",  # pragma: allowlist secret
@@ -313,6 +328,7 @@ class EnvManager:
         if not self.config.openrag_version:
             try:
                 from ..utils.version_check import get_current_version
+
                 current_version = get_current_version()
                 if current_version != "unknown":
                     self.config.openrag_version = current_version
@@ -374,17 +390,13 @@ class EnvManager:
 
         # Validate documents paths only if provided (optional)
         if self.config.openrag_documents_paths:
-            is_valid, error_msg, _ = validate_documents_paths(
-                self.config.openrag_documents_paths
-            )
+            is_valid, error_msg, _ = validate_documents_paths(self.config.openrag_documents_paths)
             if not is_valid:
                 self.config.validation_errors["openrag_documents_paths"] = error_msg
 
         # Validate required fields
         if not validate_non_empty(self.config.opensearch_password):
-            self.config.validation_errors["opensearch_password"] = (
-                "OpenSearch password is required"
-            )
+            self.config.validation_errors["opensearch_password"] = "OpenSearch password is required"
 
         # Langflow secret key is auto-generated; no user input required
 
@@ -392,11 +404,8 @@ class EnvManager:
 
         if mode == "full":
             # Validate OAuth settings if provided
-            if (
+            if self.config.google_oauth_client_id and not validate_google_oauth_client_id(
                 self.config.google_oauth_client_id
-                and not validate_google_oauth_client_id(
-                    self.config.google_oauth_client_id
-                )
             ):
                 self.config.validation_errors["google_oauth_client_id"] = (
                     "Invalid Google OAuth client ID format"
@@ -417,12 +426,8 @@ class EnvManager:
                 )
 
             # Validate optional URLs if provided
-            if self.config.webhook_base_url and not validate_url(
-                self.config.webhook_base_url
-            ):
-                self.config.validation_errors["webhook_base_url"] = (
-                    "Invalid webhook URL format"
-                )
+            if self.config.webhook_base_url and not validate_url(self.config.webhook_base_url):
+                self.config.validation_errors["webhook_base_url"] = "Invalid webhook URL format"
 
             if self.config.langflow_public_url and not validate_url(
                 self.config.langflow_public_url
@@ -454,34 +459,59 @@ class EnvManager:
 
                 # Core settings
                 f.write("# Core settings\n")
-                f.write(f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n")
+                f.write(
+                    f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
+                )
                 # Only write LANGFLOW_SUPERUSER and password if password is set
                 if self.config.langflow_superuser_password:
-                    f.write(f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n")
+                    f.write(
+                        f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n"
+                    )
                     f.write(
                         f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
                     )
-                f.write(f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n")
+                f.write(
+                    f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n"
+                )
                 f.write(
                     f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
                 )
-                f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
+                f.write(
+                    f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n"
+                )
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
-                f.write(f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n")
-                f.write(f"OPENRAG_TENANT_ID={self._quote_env_value(self.config.openrag_tenant_id)}\n")
-                f.write(f"OPENRAG_ENFORCE_PREREQUISITES={self._quote_env_value(self.config.openrag_enforce_prerequisites)}\n")
-                f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+                f.write(
+                    f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n"
+                )
+                f.write(
+                    f"OPENRAG_TENANT_ID={self._quote_env_value(self.config.openrag_tenant_id)}\n"
+                )
+                f.write(
+                    f"OPENRAG_ENFORCE_PREREQUISITES={self._quote_env_value(self.config.openrag_enforce_prerequisites)}\n"
+                )
+                f.write(
+                    f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n"
+                )
                 if self.config.opensearch_username and self.config.opensearch_username != "admin":
-                    f.write(f"OPENSEARCH_USERNAME={self._quote_env_value(self.config.opensearch_username)}\n")
+                    f.write(
+                        f"OPENSEARCH_USERNAME={self._quote_env_value(self.config.opensearch_username)}\n"
+                    )
                 if self.config.opensearch_host and self.config.opensearch_host != "opensearch":
-                    f.write(f"OPENSEARCH_HOST={self._quote_env_value(self.config.opensearch_host)}\n")
+                    f.write(
+                        f"OPENSEARCH_HOST={self._quote_env_value(self.config.opensearch_host)}\n"
+                    )
                 if self.config.opensearch_port and self.config.opensearch_port != "9200":
-                    f.write(f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n")
-                f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
+                    f.write(
+                        f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n"
+                    )
+                f.write(
+                    f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n"
+                )
 
                 # Expand $HOME in paths before writing to .env
                 # This ensures paths work with all compose implementations (docker, podman)
                 from utils.paths import expand_path
+
                 f.write(
                     f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(expand_path(self.config.openrag_documents_paths))}\n"
                 )
@@ -509,11 +539,14 @@ class EnvManager:
                 )
                 # Set OPENRAG_VERSION to TUI version
                 if self.config.openrag_version:
-                    f.write(f"OPENRAG_VERSION={self._quote_env_value(self.config.openrag_version)}\n")
+                    f.write(
+                        f"OPENRAG_VERSION={self._quote_env_value(self.config.openrag_version)}\n"
+                    )
                 else:
                     # Fallback: try to get current version
                     try:
                         from ..utils.version_check import get_current_version
+
                         current_version = get_current_version()
                         if current_version != "unknown":
                             f.write(f"OPENRAG_VERSION={self._quote_env_value(current_version)}\n")
@@ -544,13 +577,19 @@ class EnvManager:
 
                 # Ingestion settings
                 f.write("# Ingestion settings\n")
-                f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n")
-                f.write(f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n")
+                f.write(
+                    f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n"
+                )
+                f.write(
+                    f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n"
+                )
                 f.write("\n")
 
                 # Langflow auth settings
                 f.write("# Langflow auth settings\n")
-                f.write(f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n")
+                f.write(
+                    f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n"
+                )
                 f.write(
                     f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
                 )
@@ -560,10 +599,7 @@ class EnvManager:
                 f.write("\n")
 
                 # OAuth settings
-                if (
-                    self.config.google_oauth_client_id
-                    or self.config.google_oauth_client_secret
-                ):
+                if self.config.google_oauth_client_id or self.config.google_oauth_client_secret:
                     f.write("# Google OAuth settings\n")
                     f.write(
                         f"GOOGLE_OAUTH_CLIENT_ID={self._quote_env_value(self.config.google_oauth_client_id)}\n"
@@ -646,7 +682,7 @@ class EnvManager:
             logger.error("Error saving .env file", error=str(e))
             return False
 
-    def get_no_auth_setup_fields(self) -> List[tuple[str, str, str, bool]]:
+    def get_no_auth_setup_fields(self) -> list[tuple[str, str, str, bool]]:
         """Get fields required for no-auth setup mode. Returns (field_name, display_name, placeholder, can_generate)."""
         return [
             ("openai_api_key", "OpenAI API Key", "sk-... or leave empty", False),
@@ -676,7 +712,7 @@ class EnvManager:
             ),
         ]
 
-    def get_full_setup_fields(self) -> List[tuple[str, str, str, bool]]:
+    def get_full_setup_fields(self) -> list[tuple[str, str, str, bool]]:
         """Get all fields for full setup mode."""
         base_fields = self.get_no_auth_setup_fields()
 
@@ -747,6 +783,7 @@ class EnvManager:
         """Ensure OPENRAG_VERSION is set in .env file to match TUI version."""
         try:
             from ..utils.version_check import get_current_version
+
             current_version = get_current_version()
             if current_version == "unknown":
                 return
@@ -773,7 +810,9 @@ class EnvManager:
                 for line in lines:
                     if line.strip().startswith("OPENRAG_VERSION"):
                         # Replace existing line
-                        new_lines.append(f"OPENRAG_VERSION={self._quote_env_value(current_version)}")
+                        new_lines.append(
+                            f"OPENRAG_VERSION={self._quote_env_value(current_version)}"
+                        )
                         updated = True
                     else:
                         new_lines.append(line)
@@ -785,19 +824,21 @@ class EnvManager:
                         if "LANGFLOW_DATA_PATH" in line:
                             insert_pos = i + 1
                             break
-                    new_lines.insert(insert_pos, f"OPENRAG_VERSION={self._quote_env_value(current_version)}")
+                    new_lines.insert(
+                        insert_pos, f"OPENRAG_VERSION={self._quote_env_value(current_version)}"
+                    )
 
                 fd = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 # Ensure pre-existing files get restricted permissions
                 os.chmod(self.env_file, 0o600)
-                with os.fdopen(fd, 'w') as f:
+                with os.fdopen(fd, "w") as f:
                     f.write("\n".join(new_lines) + "\n")
                     f.flush()
                     os.fsync(f.fileno())
             else:
                 # Create new .env file with just OPENRAG_VERSION
                 fd = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, 'w') as f:
+                with os.fdopen(fd, "w") as f:
                     content = (
                         f"# OpenRAG Environment Configuration\n"
                         f"# Generated by OpenRAG TUI\n\n"
@@ -809,7 +850,7 @@ class EnvManager:
         except Exception as e:
             logger.error(f"Error ensuring OPENRAG_VERSION: {e}")
 
-    def generate_compose_volume_mounts(self) -> List[str]:
+    def generate_compose_volume_mounts(self) -> list[str]:
         """Generate Docker Compose volume mount strings from documents paths."""
         # Expand $HOME before validation
         paths_str = self.config.openrag_documents_paths.replace("$HOME", str(Path.home()))

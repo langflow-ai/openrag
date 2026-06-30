@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """OpenRAG Python SDK smoke tests against a remote (IBM SaaS) deployment.
 
 Exercises every SDK functionality (settings, models, documents, search, chat,
@@ -132,10 +144,7 @@ async def amain(cfg: Config) -> int:
         timeout=cfg.timeout,
     )
     try:
-        print(
-            f"Target: {cfg.url}  "
-            f"(user: {mask_username(cfg.username)}, key: [REDACTED])"
-        )
+        print(f"Target: {cfg.url}  (user: {mask_username(cfg.username)}, key: [REDACTED])")
 
         # Preflight is non-fatal: an HTTP error (auth, permissions, 5xx) is
         # logged and recorded in the report, and the run continues so every

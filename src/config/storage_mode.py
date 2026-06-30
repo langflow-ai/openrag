@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Single source of truth for OpenRAG's storage-mode flag.
 
 Three modes — one env var, no per-domain proliferation:
@@ -37,7 +49,9 @@ def get_storage_mode() -> StorageMode:
     # Legacy kill switch wins if explicitly set — operators may have it
     # baked into their deployment manifests.
     if os.getenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "").lower() in (
-        "true", "1", "yes",
+        "true",
+        "1",
+        "yes",
     ):
         return "files"
 

@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """OpenRAG SDK knowledge filters client."""
 
 import json
@@ -48,7 +60,9 @@ class KnowledgeFiltersClient:
 
         # Convert query_data to JSON string if it's a model
         if isinstance(query_data, KnowledgeFilterQueryData):
-            query_data_str = query_data.model_dump_json(by_alias=True, exclude_none=True)
+            query_data_str = query_data.model_dump_json(
+                by_alias=True, exclude_none=True
+            )
         elif isinstance(query_data, dict):
             query_data_str = json.dumps(query_data)
         else:

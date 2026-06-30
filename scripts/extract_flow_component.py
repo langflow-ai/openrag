@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """
 Extract embedded component code from a Langflow JSON flow.
 
@@ -20,8 +32,8 @@ from typing import Optional
 def should_select_component(
     node: dict,
     *,
-    display_name: Optional[str],
-    metadata_module: Optional[str],
+    display_name: str | None,
+    metadata_module: str | None,
 ) -> bool:
     """Return True if the node matches the requested component filters."""
     node_data = node.get("data", {})
@@ -43,8 +55,8 @@ def should_select_component(
 def extract_code_from_flow(
     flow_path: Path,
     *,
-    display_name: Optional[str],
-    metadata_module: Optional[str],
+    display_name: str | None,
+    metadata_module: str | None,
     match_index: int,
 ) -> str:
     """Fetch the embedded code string from the matching component node."""
@@ -63,15 +75,11 @@ def extract_code_from_flow(
             matches.append(node)
 
     if not matches:
-        raise SystemExit(
-            "[error] no component found matching the supplied filters "
-            f"in {flow_path}"
-        )
+        raise SystemExit(f"[error] no component found matching the supplied filters in {flow_path}")
 
     if match_index < 0 or match_index >= len(matches):
         raise SystemExit(
-            f"[error] match index {match_index} out of range "
-            f"(found {len(matches)} matches)"
+            f"[error] match index {match_index} out of range (found {len(matches)} matches)"
         )
 
     target = matches[match_index]
@@ -123,9 +131,7 @@ def parse_args() -> argparse.Namespace:
         nodes = flow_data.get("data", {}).get("nodes", [])
         display_names = sorted(
             {
-                node.get("data", {})
-                .get("node", {})
-                .get("display_name", "<unknown>")
+                node.get("data", {}).get("node", {}).get("display_name", "<unknown>")
                 for node in nodes
             }
         )
@@ -140,7 +146,7 @@ def parse_args() -> argparse.Namespace:
             print(f"  [{idx}] {name}")
 
         while True:
-            choice = input(f"Enter choice (0-{len(display_names)-1}): ").strip() or "0"
+            choice = input(f"Enter choice (0-{len(display_names) - 1}): ").strip() or "0"
             if choice.isdigit():
                 index = int(choice)
                 if 0 <= index < len(display_names):

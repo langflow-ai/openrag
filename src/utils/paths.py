@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Host-side path management for OpenRAG TUI.
 
 This module provides functions for TUI to get standardized paths on the host machine.
@@ -11,7 +23,7 @@ from pathlib import Path
 
 def get_openrag_home() -> Path:
     """Get the OpenRAG home directory on the host.
-    
+
     Returns:
         Path to ~/.openrag/ directory
     """
@@ -22,7 +34,7 @@ def get_openrag_home() -> Path:
 
 def get_tui_dir() -> Path:
     """Get the TUI directory for TUI-specific files.
-    
+
     Returns:
         Path to ~/.openrag/tui/ directory
     """
@@ -33,7 +45,7 @@ def get_tui_dir() -> Path:
 
 def get_tui_env_file() -> Path:
     """Get the TUI .env file path.
-    
+
     Returns:
         Path to ~/.openrag/tui/.env file
     """
@@ -42,10 +54,10 @@ def get_tui_env_file() -> Path:
 
 def get_tui_compose_file(gpu: bool = False) -> Path:
     """Get the TUI docker-compose file path.
-    
+
     Args:
         gpu: If True, returns path to docker-compose.gpu.yml
-    
+
     Returns:
         Path to docker-compose file in ~/.openrag/tui/
     """

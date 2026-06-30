@@ -1,10 +1,22 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
+import base64
 import os
 
-from fastapi import Depends, Request
-from pydantic import BaseModel
-from fastapi.responses import JSONResponse
-import base64
 from cryptography.hazmat.primitives import serialization
+from fastapi import Depends, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from dependencies import get_session_manager
 
@@ -36,8 +48,16 @@ async def oidc_discovery(
         "scopes_supported": ["openid", "email", "profile"],
         "token_endpoint_auth_methods_supported": ["client_secret_basic"],
         "claims_supported": [
-            "sub", "iss", "aud", "exp", "iat", "auth_time",
-            "email", "email_verified", "name", "preferred_username",
+            "sub",
+            "iss",
+            "aud",
+            "exp",
+            "iat",
+            "auth_time",
+            "email",
+            "email_verified",
+            "name",
+            "preferred_username",
         ],
     }
 
@@ -75,9 +95,7 @@ async def jwks_endpoint(
         return JSONResponse({"keys": [jwk]})
 
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to generate JWKS: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to generate JWKS: {str(e)}"}, status_code=500)
 
 
 async def token_introspection(
@@ -106,6 +124,4 @@ async def token_introspection(
             return JSONResponse({"active": False})
 
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Token introspection failed: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Token introspection failed: {str(e)}"}, status_code=500)

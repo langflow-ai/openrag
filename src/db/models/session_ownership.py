@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Session ownership — replaces ``data/session_ownership.json``.
 
 Maps a chat session_id (== response_id) to the owning user. Used for
@@ -21,4 +33,4 @@ class SessionOwnership(SQLModel, table=True):
     response_id: str = Field(primary_key=True, max_length=64)
     user_id: str = Field(max_length=64, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_accessed: Optional[datetime] = Field(default=None)
+    last_accessed: datetime | None = Field(default=None)

@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """CLI interactive walkthrough for OpenRAG."""
 
 import asyncio
@@ -99,6 +111,7 @@ def _get_service_states(
 
     Returns (container_services, docling_status, all_running).
     """
+
     async def _inner():
         if container_manager.is_available():
             return await container_manager.get_service_status(force_refresh=True)
@@ -114,8 +127,7 @@ def _get_service_states(
     # Determine if everything is up
     expected = set(container_manager.expected_services)
     running = {
-        name for name, info in container_services.items()
-        if info.status == ServiceStatus.RUNNING
+        name for name, info in container_services.items() if info.status == ServiceStatus.RUNNING
     }
     containers_up = running == expected and len(expected) > 0
     docling_up = docling_status.get("status") == "running"
@@ -204,7 +216,9 @@ def _setup_walkthrough(
     _collect_config(env_manager, advanced=False)
 
     try:
-        configure_advanced = input("Configure cloud connectors & advanced settings? [y/N]: ").strip().lower()
+        configure_advanced = (
+            input("Configure cloud connectors & advanced settings? [y/N]: ").strip().lower()
+        )
     except (EOFError, KeyboardInterrupt):
         console.print()
         configure_advanced = "n"

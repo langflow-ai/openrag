@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """SessionOwnershipService — hybrid / db / files mode coverage."""
 
 import json
@@ -106,9 +118,11 @@ async def test_hybrid_mode_writes_both(monkeypatch, tmp_data_dir, session_factor
 async def test_db_mode_ignores_pre_existing_json(monkeypatch, tmp_data_dir, session_factory):
     """Stale JSON on disk must not bleed through in db mode."""
     tmp_data_dir.parent.mkdir(parents=True, exist_ok=True)
-    tmp_data_dir.write_text(json.dumps({
-        "ghost-sess": {"user_id": "ghost-user", "created_at": "x", "last_accessed": "x"}
-    }))
+    tmp_data_dir.write_text(
+        json.dumps(
+            {"ghost-sess": {"user_id": "ghost-user", "created_at": "x", "last_accessed": "x"}}
+        )
+    )
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(session_factory)

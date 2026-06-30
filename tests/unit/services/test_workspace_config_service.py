@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """WorkspaceConfigService — yaml/DB dual-write contract."""
 
 import os
@@ -46,30 +58,22 @@ def tmp_config_manager():
 
 
 @pytest.mark.asyncio
-async def test_load_config_falls_back_to_yaml_when_db_empty(
-    tmp_config_manager, session_factory
-):
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+async def test_load_config_falls_back_to_yaml_when_db_empty(tmp_config_manager, session_factory):
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = await svc.load_config()
     assert isinstance(config, OpenRAGConfig)
     assert config.edited is False  # fresh install
 
 
 @pytest.mark.asyncio
-async def test_save_config_writes_to_yaml_and_db(
-    monkeypatch, tmp_config_manager, session_factory
-):
+async def test_save_config_writes_to_yaml_and_db(monkeypatch, tmp_config_manager, session_factory):
     """Hybrid mode dual-writes to both yaml and the DB.
 
     The default mode is ``db`` (DB-only, no yaml), so this test forces
     hybrid via an env override to exercise the dual-write contract.
     """
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "Be helpful."
 
@@ -90,12 +94,8 @@ async def test_save_config_writes_to_yaml_and_db(
 
 
 @pytest.mark.asyncio
-async def test_is_onboarded_reads_from_db_first(
-    tmp_config_manager, session_factory
-):
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+async def test_is_onboarded_reads_from_db_first(tmp_config_manager, session_factory):
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
 
     # Seed only the DB (no yaml) — DB read should return True
     async with session_factory() as session:
@@ -106,40 +106,26 @@ async def test_is_onboarded_reads_from_db_first(
 
 
 @pytest.mark.asyncio
-async def test_is_onboarded_false_when_neither_set(
-    tmp_config_manager, session_factory
-):
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+async def test_is_onboarded_false_when_neither_set(tmp_config_manager, session_factory):
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert await svc.is_onboarded() is False
 
 
 @pytest.mark.asyncio
-async def test_get_onboarding_step_returns_db_value(
-    tmp_config_manager, session_factory
-):
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+async def test_get_onboarding_step_returns_db_value(tmp_config_manager, session_factory):
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     async with session_factory() as session:
-        await WorkspaceConfigRepo(session).upsert(
-            "onboarding", {"current_step": "agent_setup"}
-        )
+        await WorkspaceConfigRepo(session).upsert("onboarding", {"current_step": "agent_setup"})
         await session.commit()
 
     assert await svc.get_onboarding_step() == "agent_setup"
 
 
 @pytest.mark.asyncio
-async def test_yaml_write_hooks_mirror_to_db(
-    tmp_config_manager, session_factory
-):
+async def test_yaml_write_hooks_mirror_to_db(tmp_config_manager, session_factory):
     """Legacy callers that hit config_manager.save_config_file directly
     should auto-mirror to the DB via the installed monkey-patch."""
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # Direct legacy-style call (no service, no await)
     config = tmp_config_manager.load_config()
     config.agent.llm_model = "gpt-4o"
@@ -147,6 +133,7 @@ async def test_yaml_write_hooks_mirror_to_db(
 
     # The hook scheduled an asyncio task — wait for it briefly
     import asyncio
+
     for _ in range(20):
         async with session_factory() as session:
             agent = await WorkspaceConfigRepo(session).get_section("agent")
@@ -164,9 +151,7 @@ async def test_yaml_write_hooks_mirror_to_db(
 @pytest.mark.asyncio
 async def test_kill_switch_disables_db(monkeypatch, tmp_config_manager, session_factory):
     monkeypatch.setenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "true")
-    svc = WorkspaceConfigService(
-        config_manager=tmp_config_manager, session_factory=session_factory
-    )
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.llm_model = "gpt-5"
     ok = await svc.save_config(config)

@@ -1,9 +1,21 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Factory reset warning modal for OpenRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label
+from textual.widgets import Button, Label, Static
 
 
 class FactoryResetWarningModal(ModalScreen[bool]):
@@ -83,7 +95,7 @@ class FactoryResetWarningModal(ModalScreen[bool]):
                 "• All provider settings and configuration\n\n"
                 "This cannot be undone.\n\n"
                 "Do you want to continue?",
-                id="message"
+                id="message",
             )
             with Horizontal(id="button-row"):
                 yield Button("Cancel", id="cancel-btn")
@@ -99,4 +111,3 @@ class FactoryResetWarningModal(ModalScreen[bool]):
             self.dismiss(True)  # User wants to continue
         else:
             self.dismiss(False)  # User cancelled
-

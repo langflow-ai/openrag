@@ -1,16 +1,29 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """
 API Key management endpoints.
 
 These endpoints use JWT cookie authentication (for the UI) and allow users
 to create, list, and revoke their API keys for use with the public API.
 """
+
 from fastapi import Depends
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel, Field
 
 from dependencies import get_api_key_service, get_current_user, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,16 +1,26 @@
-from config.settings import MCP_URL_PATTERNS
-from typing import List, Dict, Any
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
+from typing import Any, Dict, List
 
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
-from config.settings import clients
+from config.settings import MCP_URL_PATTERNS, clients
 from utils.logging_config import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -22,7 +32,7 @@ class LangflowMCPService:
         retry=retry_if_exception_type(Exception),
         reraise=True,
     )
-    async def _list_mcp_servers_with_retry(self) -> List[Dict[str, Any]]:
+    async def _list_mcp_servers_with_retry(self) -> list[dict[str, Any]]:
         """Internal method with retry logic for listing MCP servers."""
         response = await clients.langflow_request(
             method="GET",
@@ -39,7 +49,7 @@ class LangflowMCPService:
         )
         return []
 
-    async def list_mcp_servers(self) -> List[Dict[str, Any]]:
+    async def list_mcp_servers(self) -> list[dict[str, Any]]:
         """Fetch list of MCP servers from Langflow (v2 API).
 
         Includes retry logic to handle startup timing issues.
@@ -50,7 +60,7 @@ class LangflowMCPService:
             logger.error("Failed to list MCP servers after retries", error=str(e))
             return []
 
-    async def get_mcp_server(self, server_name: str) -> Dict[str, Any]:
+    async def get_mcp_server(self, server_name: str) -> dict[str, Any]:
         """Get MCP server configuration by name."""
         response = await clients.langflow_request(
             method="GET",
@@ -59,7 +69,7 @@ class LangflowMCPService:
         response.raise_for_status()
         return response.json()
 
-    def _parse_stdio_args(self, args: List[str]) -> tuple[str | None, Dict[str, str]]:
+    def _parse_stdio_args(self, args: list[str]) -> tuple[str | None, dict[str, str]]:
         """Extract URL and headers from stdio args.
 
         Args format: [URL, "--headers", key1, value1, "--headers", key2, value2, ...]
@@ -70,14 +80,12 @@ class LangflowMCPService:
             return None, {}
 
         url: str | None = None
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         url_index: int = -1
 
         # Find the URL by scanning for http:// or https://
         for idx, arg in enumerate(args):
-            if isinstance(arg, str) and (
-                arg.startswith("http://") or arg.startswith("https://")
-            ):
+            if isinstance(arg, str) and (arg.startswith("http://") or arg.startswith("https://")):
                 url = arg
                 url_index = idx
                 break
@@ -102,7 +110,7 @@ class LangflowMCPService:
 
         return url, headers
 
-    def _is_convertible_to_streamable_http(self, server_config: Dict[str, Any]) -> bool:
+    def _is_convertible_to_streamable_http(self, server_config: dict[str, Any]) -> bool:
         """Check if stdio server can be converted to streamable HTTP.
 
         Returns True if:
@@ -126,7 +134,7 @@ class LangflowMCPService:
 
         return False
 
-    def _is_streamable_http_mode(self, server_config: Dict[str, Any]) -> bool:
+    def _is_streamable_http_mode(self, server_config: dict[str, Any]) -> bool:
         """Check if server is in streamable HTTP mode (has url field)."""
         return bool(server_config.get("url"))
 
@@ -248,7 +256,7 @@ class LangflowMCPService:
             )
             return "failed"
 
-    async def update_all_mcp_server_urls(self) -> Dict[str, Any]:
+    async def update_all_mcp_server_urls(self) -> dict[str, Any]:
         """Fetch all MCP servers and update their URLs (replacing localhost with LANGFLOW_URL).
 
         Also converts eligible stdio servers to streamable HTTP mode.
@@ -273,7 +281,12 @@ class LangflowMCPService:
             else:
                 failed_count += 1
 
-        summary = {"patched": patched_count, "skipped": skipped_count, "failed": failed_count, "total": len(servers)}
+        summary = {
+            "patched": patched_count,
+            "skipped": skipped_count,
+            "failed": failed_count,
+            "total": len(servers),
+        }
         if failed_count == 0:
             logger.info("MCP servers URL update completed", **summary)
         else:

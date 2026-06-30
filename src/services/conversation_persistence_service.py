@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Conversation persistence — chat-history metadata only (full message
 bodies live in Langflow).
 
@@ -19,8 +31,9 @@ import asyncio
 import json
 import os
 import threading
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 from config.paths import get_data_file
 from config.storage_mode import (
@@ -38,23 +51,23 @@ class ConversationPersistenceService:
 
     def __init__(
         self,
-        storage_file: Optional[str] = None,
-        session_factory: Optional[Callable] = None,
+        storage_file: str | None = None,
+        session_factory: Callable | None = None,
     ):
         self.storage_file = storage_file or get_data_file("conversations.json")
         os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
         self.lock = threading.Lock()
         self._session_factory = session_factory
-        self._conversations: Dict[str, Dict[str, Any]] = self._load_conversations()
+        self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
     # ------------------------------------------------------------------
     # JSON helpers
     # ------------------------------------------------------------------
 
-    def _load_conversations(self) -> Dict[str, Dict[str, Any]]:
+    def _load_conversations(self) -> dict[str, dict[str, Any]]:
         if os.path.exists(self.storage_file):
             try:
-                with open(self.storage_file, "r", encoding="utf-8") as f:
+                with open(self.storage_file, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"Error loading conversations: {exc}")
@@ -88,7 +101,7 @@ class ConversationPersistenceService:
             return [self._serialize_datetime(x) for x in obj]
         return obj
 
-    def _count_total(self, data: Dict[str, Any]) -> int:
+    def _count_total(self, data: dict[str, Any]) -> int:
         total = 0
         for user_conv in data.values():
             if isinstance(user_conv, dict):
@@ -99,7 +112,7 @@ class ConversationPersistenceService:
     # Public async API
     # ------------------------------------------------------------------
 
-    async def get_user_conversations(self, user_id: str) -> Dict[str, Any]:
+    async def get_user_conversations(self, user_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode == "files":
             if user_id not in self._conversations:
@@ -121,7 +134,7 @@ class ConversationPersistenceService:
         self,
         user_id: str,
         response_id: str,
-        conversation_state: Dict[str, Any],
+        conversation_state: dict[str, Any],
     ) -> None:
         serialized = self._serialize_datetime(conversation_state)
 
@@ -134,9 +147,7 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
 
-    async def get_conversation_thread(
-        self, user_id: str, response_id: str
-    ) -> Dict[str, Any]:
+    async def get_conversation_thread(self, user_id: str, response_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode != "files":
             payload = await self._db_get_one(response_id, user_id)
@@ -147,16 +158,11 @@ class ConversationPersistenceService:
         # files or hybrid-with-no-db-row → JSON
         return self._conversations.get(user_id, {}).get(response_id, {})
 
-    async def delete_conversation_thread(
-        self, user_id: str, response_id: str
-    ) -> bool:
+    async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
         deleted = False
 
         if file_writes_enabled():
-            if (
-                user_id in self._conversations
-                and response_id in self._conversations[user_id]
-            ):
+            if user_id in self._conversations and response_id in self._conversations[user_id]:
                 del self._conversations[user_id][response_id]
                 await self._save_conversations()
                 deleted = True
@@ -175,7 +181,7 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_delete_all(user_id)
 
-    async def get_storage_stats(self) -> Dict[str, Any]:
+    async def get_storage_stats(self) -> dict[str, Any]:
         # Snapshot — uses whichever storage the mode prioritizes.
         mode = get_storage_mode()
         if mode == "files":
@@ -187,8 +193,9 @@ class ConversationPersistenceService:
             }
         # db / hybrid summary from DB
         try:
+            from sqlalchemy import func, select
+
             from db.models import Conversation
-            from sqlalchemy import select, func
 
             sess_factory = self._resolve_session_factory()
             if sess_factory is None:
@@ -198,9 +205,7 @@ class ConversationPersistenceService:
                     await session.execute(select(func.count(Conversation.response_id)))
                 ).scalar_one()
                 users = (
-                    await session.execute(
-                        select(func.count(func.distinct(Conversation.user_id)))
-                    )
+                    await session.execute(select(func.count(func.distinct(Conversation.user_id))))
                 ).scalar_one()
             return {
                 "total_users": int(users or 0),
@@ -221,12 +226,13 @@ class ConversationPersistenceService:
             return self._session_factory
         try:
             from db.engine import SessionLocal
+
             return SessionLocal
         except Exception:  # noqa: BLE001
             return None
 
     @staticmethod
-    def _payload_from_row(row) -> Dict[str, Any]:
+    def _payload_from_row(row) -> dict[str, Any]:
         return {
             "response_id": row.response_id,
             "title": row.title,
@@ -238,9 +244,7 @@ class ConversationPersistenceService:
             "last_activity": row.last_activity.isoformat() if row.last_activity else None,
         }
 
-    async def _db_upsert(
-        self, user_id: str, response_id: str, payload: Dict[str, Any]
-    ) -> None:
+    async def _db_upsert(self, user_id: str, response_id: str, payload: dict[str, Any]) -> None:
         from db.repositories import ConversationRepo
 
         sess_factory = self._resolve_session_factory()
@@ -262,7 +266,7 @@ class ConversationPersistenceService:
         except Exception as exc:  # noqa: BLE001
             logger.error("DB store_conversation failed", error=str(exc))
 
-    async def _db_get_for_user(self, user_id: str) -> Dict[str, Dict[str, Any]]:
+    async def _db_get_for_user(self, user_id: str) -> dict[str, dict[str, Any]]:
         from db.repositories import ConversationRepo
 
         sess_factory = self._resolve_session_factory()
@@ -276,9 +280,7 @@ class ConversationPersistenceService:
             logger.debug("DB get_for_user failed", error=str(exc))
             return {}
 
-    async def _db_get_one(
-        self, response_id: str, user_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def _db_get_one(self, response_id: str, user_id: str) -> dict[str, Any] | None:
         from db.repositories import ConversationRepo
 
         sess_factory = self._resolve_session_factory()

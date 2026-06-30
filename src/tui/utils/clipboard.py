@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Clipboard helper utilities for the TUI."""
 
 from __future__ import annotations
@@ -7,7 +19,7 @@ import subprocess
 from typing import Tuple
 
 
-def copy_text_to_clipboard(text: str) -> Tuple[bool, str]:
+def copy_text_to_clipboard(text: str) -> tuple[bool, str]:
     """Copy ``text`` to the system clipboard.
 
     Returns a tuple of (success, message) so callers can surface feedback to users.
@@ -36,7 +48,10 @@ def copy_text_to_clipboard(text: str) -> Tuple[bool, str]:
             process.communicate(input=text)
             return True, "Copied to clipboard"
         if system == "Linux":
-            for command in (["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
+            for command in (
+                ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"],
+            ):
                 try:
                     process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
                     process.communicate(input=text)
@@ -47,4 +62,3 @@ def copy_text_to_clipboard(text: str) -> Tuple[bool, str]:
         return False, "Clipboard not supported on this platform"
     except Exception as exc:  # pragma: no cover - subprocess errors
         return False, f"Clipboard error: {exc}"
-

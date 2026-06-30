@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Tests for the search endpoint."""
 
 import os
@@ -47,9 +59,7 @@ class TestSearchExtended:
     @pytest.mark.asyncio
     async def test_search_no_results_for_obscure_query(self, client):
         """A nonsense query must return an empty list, not raise an error."""
-        results = await client.search.query(
-            "zzz_xyzzy_nonexistent_content_abc123_qwerty_999"
-        )
+        results = await client.search.query("zzz_xyzzy_nonexistent_content_abc123_qwerty_999")
         assert results.results is not None
         assert isinstance(results.results, list)
 

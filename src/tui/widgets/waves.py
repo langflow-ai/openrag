@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Waves animation widget for command modals."""
 
 import math
@@ -29,7 +41,7 @@ class Waves(Static):
 
     def on_mount(self):
         self.palette = ["#93c5fd", "#60a5fa", "#38bdf8", "#a78bfa", "#f472b6"]
-        self.wavelets: List[Wavelet] = []
+        self.wavelets: list[Wavelet] = []
         # Start with a few wavelets
         for _ in range(3):
             self._add_wavelet()
@@ -39,9 +51,7 @@ class Waves(Static):
         max_offset = max(1, min(width, height) // 2 - 1)
         return min(1 + lane, max_offset)
 
-    def _build_path(
-        self, width: int, height: int, offset: int
-    ) -> List[tuple[int, int]]:
+    def _build_path(self, width: int, height: int, offset: int) -> list[tuple[int, int]]:
         left = offset
         right = max(offset, width - offset - 1)
         top = offset
@@ -49,7 +59,7 @@ class Waves(Static):
         if right < left or bottom < top:
             return [(max(0, left), max(0, top))]
 
-        path: List[tuple[int, int]] = []
+        path: list[tuple[int, int]] = []
         # Top edge
         for x in range(left, right + 1):
             path.append((x, top))
@@ -66,9 +76,7 @@ class Waves(Static):
                 path.append((left, y))
         return path or [(left, top)]
 
-    def _path_for_lane(
-        self, width: int, height: int, lane: int
-    ) -> List[tuple[int, int]]:
+    def _path_for_lane(self, width: int, height: int, lane: int) -> list[tuple[int, int]]:
         offset = self._offset_for_lane(lane, width, height)
         path = self._build_path(width, height, offset)
         if not path and offset > 1:

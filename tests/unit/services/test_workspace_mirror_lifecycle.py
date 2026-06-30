@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """DB-mirror task lifecycle: snapshot at schedule time, serialized
 under a lock, drained on shutdown.
 
@@ -49,9 +61,7 @@ def cm(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_double_save_mirrors_in_order_with_distinct_snapshots(
-    cm, session_factory
-):
+async def test_double_save_mirrors_in_order_with_distinct_snapshots(cm, session_factory):
     """save(A), save(B) — both writes must reach the DB. Without the
     snapshot fix, the second mirror task would read the post-B config
     twice and A would be lost.

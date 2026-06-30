@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Shared helper to resolve a `filter_id` into concrete filter values for v1 endpoints.
 
 API consumers expect `filter_id` on /v1/chat, /v1/search, /v1/documents to "just work"

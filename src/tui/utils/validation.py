@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Input validation utilities for TUI."""
 
 import os
@@ -17,9 +29,7 @@ def validate_env_var_name(name: str) -> bool:
     return bool(re.match(r"^[A-Z][A-Z0-9_]*$", name))
 
 
-def validate_path(
-    path: str, must_exist: bool = False, must_be_dir: bool = False
-) -> bool:
+def validate_path(path: str, must_exist: bool = False, must_be_dir: bool = False) -> bool:
     """Validate file/directory path."""
     if not path:
         return False

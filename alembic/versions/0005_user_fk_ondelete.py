@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """apply ondelete= policy to user FKs
 
 Revision ID: 0005_user_fk_ondelete
@@ -27,31 +39,47 @@ Implementation note:
     place via ALTER TABLE inside the same op.
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
+from typing import Union
 
 from alembic import op
 
-
 revision: str = "0005_user_fk_ondelete"
-down_revision: Union[str, Sequence[str], None] = "0004_chat_history_tables"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0004_chat_history_tables"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 _FK_POLICY = [
     # (table, fk_name, local_cols, remote_table, remote_cols, ondelete)
-    ("user_roles", "fk_user_roles_user_id_users",
-     ["user_id"], "users", ["id"], "CASCADE"),
-    ("user_roles", "fk_user_roles_granted_by_users",
-     ["granted_by"], "users", ["id"], "SET NULL"),
-    ("user_preferences", "fk_user_preferences_user_id_users",
-     ["user_id"], "users", ["id"], "CASCADE"),
-    ("api_keys", "fk_api_keys_user_id_users",
-     ["user_id"], "users", ["id"], "CASCADE"),
-    ("audit_log", "fk_audit_log_actor_user_id_users",
-     ["actor_user_id"], "users", ["id"], "SET NULL"),
-    ("workspace_config", "fk_workspace_config_updated_by_users",
-     ["updated_by"], "users", ["id"], "SET NULL"),
+    ("user_roles", "fk_user_roles_user_id_users", ["user_id"], "users", ["id"], "CASCADE"),
+    ("user_roles", "fk_user_roles_granted_by_users", ["granted_by"], "users", ["id"], "SET NULL"),
+    (
+        "user_preferences",
+        "fk_user_preferences_user_id_users",
+        ["user_id"],
+        "users",
+        ["id"],
+        "CASCADE",
+    ),
+    ("api_keys", "fk_api_keys_user_id_users", ["user_id"], "users", ["id"], "CASCADE"),
+    (
+        "audit_log",
+        "fk_audit_log_actor_user_id_users",
+        ["actor_user_id"],
+        "users",
+        ["id"],
+        "SET NULL",
+    ),
+    (
+        "workspace_config",
+        "fk_workspace_config_updated_by_users",
+        ["updated_by"],
+        "users",
+        ["id"],
+        "SET NULL",
+    ),
 ]
 
 
@@ -59,9 +87,7 @@ def upgrade() -> None:
     for table, name, cols, ref_table, ref_cols, ondelete in _FK_POLICY:
         with op.batch_alter_table(table) as batch:
             batch.drop_constraint(name, type_="foreignkey")
-            batch.create_foreign_key(
-                name, ref_table, cols, ref_cols, ondelete=ondelete
-            )
+            batch.create_foreign_key(name, ref_table, cols, ref_cols, ondelete=ondelete)
 
 
 def downgrade() -> None:

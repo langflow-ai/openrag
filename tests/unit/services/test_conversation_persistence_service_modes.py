@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """ConversationPersistenceService — hybrid / db / files mode coverage."""
 
 import json
@@ -105,14 +117,10 @@ async def test_hybrid_mode_dual_writes(monkeypatch, storage_path, session_factor
 
 
 @pytest.mark.asyncio
-async def test_db_mode_ignores_pre_existing_json(
-    monkeypatch, storage_path, session_factory
-):
-    storage_path.write_text(json.dumps({
-        "alice": {
-            "ghost-r": {"title": "leak", "total_messages": 1}
-        }
-    }))
+async def test_db_mode_ignores_pre_existing_json(monkeypatch, storage_path, session_factory):
+    storage_path.write_text(
+        json.dumps({"alice": {"ghost-r": {"title": "leak", "total_messages": 1}}})
+    )
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
@@ -122,15 +130,13 @@ async def test_db_mode_ignores_pre_existing_json(
 
 
 @pytest.mark.asyncio
-async def test_hybrid_merges_db_and_json_on_read(
-    monkeypatch, storage_path, session_factory
-):
+async def test_hybrid_merges_db_and_json_on_read(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
 
     # Seed JSON with one entry
-    storage_path.write_text(json.dumps({
-        "alice": {"r-json": {"title": "from-json", "total_messages": 0}}
-    }))
+    storage_path.write_text(
+        json.dumps({"alice": {"r-json": {"title": "from-json", "total_messages": 0}}})
+    )
 
     svc = _svc(storage_path, session_factory)
     # Add a DB-only entry
@@ -156,9 +162,7 @@ async def test_delete_only_owner_can_delete(monkeypatch, storage_path, session_f
 
 
 @pytest.mark.asyncio
-async def test_clear_user_removes_all_their_threads(
-    monkeypatch, storage_path, session_factory
-):
+async def test_clear_user_removes_all_their_threads(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
 

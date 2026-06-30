@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 from datetime import UTC, datetime
 from typing import Optional
 
@@ -10,18 +22,18 @@ class PreferencesRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, user_id: str) -> Optional[UserPreferences]:
+    async def get(self, user_id: str) -> UserPreferences | None:
         return await self.session.get(UserPreferences, user_id)
 
     async def upsert(
         self,
         user_id: str,
-        agent_system_prompt_override: Optional[str] = None,
-        default_kf_id: Optional[str] = None,
-        theme: Optional[str] = None,
-        language: Optional[str] = None,
-        provider_overrides: Optional[str] = None,
-        preferences_json: Optional[str] = None,
+        agent_system_prompt_override: str | None = None,
+        default_kf_id: str | None = None,
+        theme: str | None = None,
+        language: str | None = None,
+        provider_overrides: str | None = None,
+        preferences_json: str | None = None,
     ) -> UserPreferences:
         prefs = await self.get(user_id)
         if prefs is None:

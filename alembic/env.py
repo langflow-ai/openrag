@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Alembic env — supports both sync (offline / CLI) and async runtimes.
 
 DATABASE_URL is resolved via db.engine.get_database_url so the same code
@@ -13,9 +25,10 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+from alembic import context
 
 # Make `src/` importable
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,10 +36,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from sqlmodel import SQLModel  # noqa: E402
+
+import db.models  # noqa: E402,F401  (registers tables on metadata)
 from db.base import metadata as base_metadata  # noqa: E402
 from db.engine import get_database_url  # noqa: E402
-import db.models  # noqa: E402,F401  (registers tables on metadata)
-from sqlmodel import SQLModel  # noqa: E402
 
 config = context.config
 

@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """Helper script to control docling-serve using DoclingManager for CI/testing."""
 
-import sys
-import asyncio
 import argparse
+import asyncio
+import sys
 from pathlib import Path
 
 # Add src to path so we can import DoclingManager
@@ -23,7 +35,7 @@ async def start_docling(
     manager = DoclingManager()
 
     if manager.is_running():
-        print(f"Docling-serve is already running")
+        print("Docling-serve is already running")
         status = manager.get_status()
         print(f"Endpoint: {status['endpoint']}")
         return 0
@@ -83,12 +95,8 @@ async def status_docling():
 
 async def main():
     parser = argparse.ArgumentParser(description="Control docling-serve for CI/testing")
-    parser.add_argument(
-        "command", choices=["start", "stop", "status"], help="Command to run"
-    )
-    parser.add_argument(
-        "--port", type=int, default=5001, help="Port to run on (default: 5001)"
-    )
+    parser.add_argument("command", choices=["start", "stop", "status"], help="Command to run")
+    parser.add_argument("--port", type=int, default=5001, help="Port to run on (default: 5001)")
     parser.add_argument(
         "--host",
         default=None,

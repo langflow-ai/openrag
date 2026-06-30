@@ -1,3 +1,15 @@
+# ******************************************************************************
+# IBM Confidential
+#
+# OCO Source Materials
+#
+#  Copyright IBM Corp. 2026  All Rights Reserved.
+#
+# The source code for this program is not published or otherwise divested
+# of its trade secrets, irrespective of what has been deposited with
+# the U.S. Copyright Office.
+# ******************************************************************************
+
 """
 Unit tests for OpenSearch disk space error detection.
 
@@ -6,19 +18,21 @@ watermark, it blocks operations and returns errors with specific
 signatures. These tests verify that those signatures are correctly detected
 and surfaced as OpenSearchDiskSpaceError.
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from utils.opensearch_utils import (
+    DISK_SPACE_ERROR_MESSAGE,
     OpenSearchDiskSpaceError,
     is_disk_space_error,
-    DISK_SPACE_ERROR_MESSAGE,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_disk_space_error
 # ---------------------------------------------------------------------------
+
 
 class TestIsDiskSpaceError:
     def test_disk_watermark_message(self):
@@ -68,6 +82,7 @@ class TestIsDiskSpaceError:
 # DISK_SPACE_ERROR_MESSAGE content
 # ---------------------------------------------------------------------------
 
+
 class TestDiskSpaceErrorMessage:
     def test_message_mentions_disk_space_blocked(self):
         assert "run out of available disk space" in DISK_SPACE_ERROR_MESSAGE.lower()
@@ -82,6 +97,7 @@ class TestDiskSpaceErrorMessage:
 # ---------------------------------------------------------------------------
 # OpenSearchDiskSpaceError is an Exception subclass
 # ---------------------------------------------------------------------------
+
 
 class TestOpenSearchDiskSpaceError:
     def test_is_exception(self):
