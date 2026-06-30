@@ -205,6 +205,7 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} Core Integration Tests${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
+    mkdir -p service-logs
     LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
       GOOGLE_OAUTH_CLIENT_ID="" \
       GOOGLE_OAUTH_CLIENT_SECRET="" \
