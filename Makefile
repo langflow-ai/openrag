@@ -588,6 +588,47 @@ clean: stop ## Stop containers and remove volumes
 	@$(MAKE) remove-openrag-images
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
+define FACTORY_RESET_SCRIPT
+set -e; \
+if [ "$(FORCE)" != "true" ]; then \
+	read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+		exit 0; \
+	fi; \
+fi; \
+echo ""; \
+echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+$(COMPOSE_CMD) down -v --remove-orphans || true; \
+echo "$(YELLOW)Removing local data directories...$(NC)"; \
+if [ -d "langflow-data" ]; then \
+	echo "Removing langflow-data..."; \
+	rm -rf langflow-data; \
+	echo "$(PURPLE)langflow-data removed$(NC)"; \
+fi; \
+if [ -d "config" ]; then \
+	echo "Removing config..."; \
+	rm -rf config; \
+	echo "$(PURPLE)config removed$(NC)"; \
+fi; \
+if [ -d "data" ]; then \
+	echo "Removing data..."; \
+	rm -rf data; \
+	echo "$(PURPLE)data removed$(NC)"; \
+fi; \
+if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+	echo "Removing $$OPENRAG_DATA_PATH..."; \
+	rm -rf "$$OPENRAG_DATA_PATH"; \
+	echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+fi; \
+if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+	echo "Removing JWT keys..."; \
+	rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
+	echo "$(PURPLE)JWT keys removed$(NC)"; \
+fi
+endef
+
 factory-reset: ## Complete reset (stop, remove volumes, clear data)
 	@echo "$(RED)WARNING: This will completely reset OpenRAG data!$(NC)"; \
 	echo "$(YELLOW)This will:$(NC)"; \
@@ -599,43 +640,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data)
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo ""; \
 	echo ""; \
-	if [ "$(FORCE)" != "true" ]; then \
-		read -p "Are you sure? Type 'yes' to continue: " confirm; \
-		if [ "$$confirm" != "yes" ]; then \
-			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
-			exit 0; \
-		fi; \
-	fi; \
-	echo ""; \
-	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
-	$(COMPOSE_CMD) down -v --remove-orphans || true; \
-	echo "$(YELLOW)Removing local data directories...$(NC)"; \
-	if [ -d "langflow-data" ]; then \
-		echo "Removing langflow-data..."; \
-		rm -rf langflow-data; \
-		echo "$(PURPLE)langflow-data removed$(NC)"; \
-	fi; \
-	if [ -d "config" ]; then \
-		echo "Removing config..."; \
-		rm -rf config; \
-		echo "$(PURPLE)config removed$(NC)"; \
-	fi; \
-	if [ -d "data" ]; then \
-		echo "Removing data..."; \
-		rm -rf data; \
-		echo "$(PURPLE)data removed$(NC)"; \
-	fi; \
-	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
-		echo "Removing $$OPENRAG_DATA_PATH..."; \
-		rm -rf "$$OPENRAG_DATA_PATH"; \
-		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
-	fi; \
-	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
-		echo "Removing JWT keys..."; \
-		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
-			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
-		echo "$(PURPLE)JWT keys removed$(NC)"; \
-	fi; \
+	$(FACTORY_RESET_SCRIPT); \
 	echo ""; \
 	echo "$(PURPLE)Factory reset complete!$(NC)"; \
 	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
@@ -652,43 +657,7 @@ factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, 
 	echo "  - Remove OpenRAG images"; \
 	echo ""; \
 	echo ""; \
-	if [ "$(FORCE)" != "true" ]; then \
-		read -p "Are you sure? Type 'yes' to continue: " confirm; \
-		if [ "$$confirm" != "yes" ]; then \
-			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
-			exit 0; \
-		fi; \
-	fi; \
-	echo ""; \
-	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
-	$(COMPOSE_CMD) down -v --remove-orphans || true; \
-	echo "$(YELLOW)Removing local data directories...$(NC)"; \
-	if [ -d "langflow-data" ]; then \
-		echo "Removing langflow-data..."; \
-		rm -rf langflow-data; \
-		echo "$(PURPLE)langflow-data removed$(NC)"; \
-	fi; \
-	if [ -d "config" ]; then \
-		echo "Removing config..."; \
-		rm -rf config; \
-		echo "$(PURPLE)config removed$(NC)"; \
-	fi; \
-	if [ -d "data" ]; then \
-		echo "Removing data..."; \
-		rm -rf data; \
-		echo "$(PURPLE)data removed$(NC)"; \
-	fi; \
-	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
-		echo "Removing $$OPENRAG_DATA_PATH..."; \
-		rm -rf "$$OPENRAG_DATA_PATH"; \
-		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
-	fi; \
-	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
-		echo "Removing JWT keys..."; \
-		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
-			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
-		echo "$(PURPLE)JWT keys removed$(NC)"; \
-	fi; \
+	$(FACTORY_RESET_SCRIPT); \
 	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
 	$(MAKE) remove-openrag-images; \
 	echo ""; \
