@@ -1,4 +1,4 @@
-"""Pin the ASCII-safe HTTP header encoding used for Langflow global vars.
+"""Pin the ASCII-safe HTTP header encoding used for Langflow global variables.
 
 A non-ASCII filename or owner name placed into an ``X-Langflow-Global-Var-*``
 header raised ``UnicodeEncodeError`` in httpx before the request was sent
