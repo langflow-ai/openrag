@@ -1,7 +1,5 @@
 """Tests for ChatService langflow_nudges_chat extraction logic."""
 
-import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

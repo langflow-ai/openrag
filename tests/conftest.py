@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -11,8 +12,6 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
-    import sys
-
     sys.path.insert(0, str(SRC))
 
 # Load environment variables
