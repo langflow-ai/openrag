@@ -127,7 +127,7 @@ const normalize = (
   };
 };
 
-const renderOrphanList = (list: OrphanFile[]) => (
+const OrphanList = ({ list }: { list: OrphanFile[] }) => (
   <ul className="space-y-1 text-sm">
     {list.map((o) => (
       <li
@@ -172,7 +172,7 @@ const DeletesAlert = ({
                     <div className="text-xs font-semibold uppercase tracking-wide mb-1">
                       {formatConnectorLabel(type)} ({list.length})
                     </div>
-                    {renderOrphanList(list)}
+                    <OrphanList list={list} />
                     {index < entries.length - 1 ? (
                       <Separator className="mt-3" />
                     ) : null}
@@ -181,7 +181,7 @@ const DeletesAlert = ({
               </div>
             ) : (
               <div className="pr-2">
-                {renderOrphanList(entries[0]?.[1] ?? [])}
+                <OrphanList list={entries[0]?.[1] ?? []} />
               </div>
             )}
           </ScrollArea>
