@@ -221,14 +221,19 @@ async def azure_blob_container_status(
             "aggs": {"doc_ids": {"terms": {"field": "document_id", "size": 50000}}},
         }
         index_name = get_index_name()
-        os_resp = opensearch_client.search(index=index_name, body=query_body)
+        os_resp = await opensearch_client.search(index=index_name, body=query_body)
         for bucket_entry in os_resp.get("aggregations", {}).get("doc_ids", {}).get("buckets", []):
             doc_id = bucket_entry["key"]
             if "::" in doc_id:
                 container_name = doc_id.split("::")[0]
                 ingested_counts[container_name] = ingested_counts.get(container_name, 0) + 1
     except Exception:
-        pass  # OpenSearch unavailable — show zero counts
+        logger.warning(
+            "Failed to aggregate Azure Blob ingestion counts for connection %s; "
+            "container status will show zero counts",
+            connection_id,
+            exc_info=True,
+        )  # OpenSearch unavailable / query failed — show zero counts
 
     result = [
         {
