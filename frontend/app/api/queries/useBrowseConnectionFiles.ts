@@ -18,6 +18,17 @@ export interface BrowseConnectionFilesParams {
   connectorType: string;
   connectionId: string;
   bucket?: string;
+  /**
+   * Currently unused. The FileBrowserDialog filters the fetched list in-memory
+   * (client-side) instead of sending this to the backend, because the existing
+   * server-side `search` is deficient: it doesn't filter directly at the
+   * connector level — it fetches the capped blob list (maxFiles) and then
+   * post-filters it in memory, so it can't match files beyond the cap and
+   * re-fetches the whole list per query. Passing it would also remount the
+   * query's loading state on every keystroke.
+   * TODO: implement true server-side filtering at the connector level (push the
+   * search term into the connector's list call), then reinstate this param.
+   */
   search?: string;
   pageToken?: string;
   maxFiles?: number;
@@ -68,6 +79,13 @@ export const useBrowseConnectionFiles = (
       queryFn: fetchFiles,
       retry: false,
       enabled: Boolean(params.connectorType && params.connectionId),
+      // Always reflect live ingestion state when the dialog opens. The global
+      // default staleTime (60s) would otherwise serve a cached `is_ingested`
+      // snapshot — e.g. a file deleted on the Knowledge page would still render
+      // as "Ingested"/disabled here until the cache went stale. Matches the
+      // bucket-status queries (useS3BucketStatusQuery / azure container-status).
+      staleTime: 0,
+      refetchOnMount: "always",
       ...options,
     },
     queryClient,

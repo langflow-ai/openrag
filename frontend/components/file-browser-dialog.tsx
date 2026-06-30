@@ -47,18 +47,38 @@ export function FileBrowserDialog({
 
   const syncMutation = useSyncConnector();
 
+  // The bucket's file set is fetched once per open (search is NOT sent to the
+  // backend — its server-side filter just post-filters this same capped list,
+  // so re-fetching per keystroke only adds latency and remounts the loading
+  // state, making the table jump). We filter the cached list in-memory instead.
   const { data, isLoading, error } = useBrowseConnectionFiles(
     {
       connectorType,
       connectionId,
       bucket: selectedBucket,
-      search: search || undefined,
       maxFiles: 500,
     },
     { enabled: open },
   );
 
-  const files = data?.files ?? [];
+  const allFiles = useMemo(() => data?.files ?? [], [data]);
+
+  const files = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q
+      ? allFiles.filter((f) => f.name.toLowerCase().includes(q))
+      : allFiles;
+  }, [allFiles, search]);
+
+  // Un-ingested files within the current (filtered) view — drives "Select all".
+  const visibleUnIngested = useMemo(
+    () => files.filter((f) => !f.is_ingested),
+    [files],
+  );
+
+  const allVisibleSelected =
+    visibleUnIngested.length > 0 &&
+    visibleUnIngested.every((f) => selectedFileIds.has(f.id));
 
   const toggleFile = useCallback((fileId: string) => {
     setSelectedFileIds((prev) => {
@@ -73,17 +93,27 @@ export function FileBrowserDialog({
   }, []);
 
   const toggleAll = useCallback(() => {
-    const unIngestedFiles = files.filter((f) => !f.is_ingested);
-    if (selectedFileIds.size === unIngestedFiles.length) {
-      setSelectedFileIds(new Set());
-    } else {
-      setSelectedFileIds(new Set(unIngestedFiles.map((f) => f.id)));
-    }
-  }, [files, selectedFileIds.size]);
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      const allSelected =
+        visibleUnIngested.length > 0 &&
+        visibleUnIngested.every((f) => next.has(f.id));
+      for (const f of visibleUnIngested) {
+        if (allSelected) {
+          next.delete(f.id);
+        } else {
+          next.add(f.id);
+        }
+      }
+      return next;
+    });
+  }, [visibleUnIngested]);
 
+  // Resolve selections against the full fetched set so a selection survives
+  // filtering (a selected file hidden by the search box is still ingested).
   const selectedFiles = useMemo(
-    () => files.filter((f) => selectedFileIds.has(f.id)),
-    [files, selectedFileIds],
+    () => allFiles.filter((f) => selectedFileIds.has(f.id)),
+    [allFiles, selectedFileIds],
   );
 
   const handleIngest = useCallback(async () => {
@@ -114,8 +144,6 @@ export function FileBrowserDialog({
       });
     }
   }, [selectedFiles, connectorType, syncMutation, onOpenChange]);
-
-  const unIngestedCount = files.filter((f) => !f.is_ingested).length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -177,25 +205,24 @@ export function FileBrowserDialog({
             </div>
           ) : files.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-sm">
-              No files found.
+              {search.trim() && allFiles.length > 0
+                ? "No files match your search."
+                : "No files found."}
             </div>
           ) : (
             <div className="divide-y">
-              {unIngestedCount > 0 && (
+              {visibleUnIngested.length > 0 && (
                 <div className="px-3 py-2 bg-muted/50 flex items-center gap-2 sticky top-0">
                   <input
                     type="checkbox"
-                    checked={
-                      selectedFileIds.size === unIngestedCount &&
-                      unIngestedCount > 0
-                    }
+                    checked={allVisibleSelected}
                     onChange={toggleAll}
                     className="h-4 w-4 rounded border border-input"
                   />
                   <span className="text-xs text-muted-foreground">
                     {selectedFileIds.size > 0
                       ? `${selectedFileIds.size} selected`
-                      : `Select all (${unIngestedCount})`}
+                      : `Select all (${visibleUnIngested.length})`}
                   </span>
                 </div>
               )}
