@@ -62,7 +62,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool, monkey
         sys.modules.pop(mod, None)
 
     from config.settings import clients, get_index_name
-    from main import create_app, startup_tasks
+    from main import create_app
 
     # Ensure a clean index before startup
     await clients.initialize()
