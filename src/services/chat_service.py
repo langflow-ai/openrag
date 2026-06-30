@@ -365,7 +365,7 @@ class ChatService:
 
                     if depth >= MAX_DEPTH:
                         return "[Max depth reached]"
-                    
+
                     if isinstance(r, str):
                         return r[:MAX_STR_LEN] + ("..." if len(r) > MAX_STR_LEN else "")
                     elif isinstance(r, list):
