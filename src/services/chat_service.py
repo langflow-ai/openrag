@@ -363,14 +363,15 @@ class ChatService:
                     MAX_DICT_KEYS = 5
                     MAX_STR_LEN = 1000
 
-                    if depth >= MAX_DEPTH:
-                        return "[Max depth reached]"
-
                     if isinstance(r, str):
                         return r[:MAX_STR_LEN] + ("..." if len(r) > MAX_STR_LEN else "")
                     elif isinstance(r, list):
+                        if depth >= MAX_DEPTH:
+                            return "[Max depth reached]"
                         return [trim_results(x, depth + 1) for x in r[:MAX_LIST_LEN]]
                     elif isinstance(r, dict):
+                        if depth >= MAX_DEPTH:
+                            return "[Max depth reached]"
                         trimmed = {}
                         for i, (k, v) in enumerate(r.items()):
                             if i >= MAX_DICT_KEYS:
