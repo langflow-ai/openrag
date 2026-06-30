@@ -86,11 +86,20 @@ dump_logs() {
   "$container_runtime" logs --tail 10000 os 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
 }
 
+generate_report() {
+  uv run python scripts/ci/generate_test_report.py service-logs || true
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f service-logs/test-failure-report.md ]]; then
+    cat service-logs/test-failure-report.md >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
 teardown() {
   local status=$?
   if [[ "$status" -ne 0 && "$test_result" -eq 0 ]]; then
     test_result="$status"
   fi
+
+  generate_report || true
 
   if [[ "$test_result" -ne 0 ]]; then
     dump_logs || true
@@ -111,7 +120,6 @@ fi
 
 echo "${yellow}Installing test dependencies...${nc}"
 uv sync --quiet --group dev
-uv pip install --quiet pytest-html
 
 echo "::group::Start Infrastructure"
 echo "${yellow}Cleaning up old containers and volumes...${nc}"
@@ -189,6 +197,8 @@ wait_for_url "Langflow" "http://localhost:7860/" 60
 wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60
 echo "::endgroup::"
 
+mkdir -p service-logs
+
 case "$suite" in
   core)
     echo "::group::Core Integration Tests"
@@ -202,8 +212,7 @@ case "$suite" in
       LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      mkdir -p service-logs
-      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --html=service-logs/report-core.html --self-contained-html || test_result=1
+      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
     ;;
@@ -214,8 +223,7 @@ case "$suite" in
     echo "${purple} SDK Integration Tests (Python)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
     uv pip install --quiet -e sdks/python
-    mkdir -p service-logs
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --html=service-logs/report-sdk.html --self-contained-html || test_result=1
+    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || test_result=1
     echo "::endgroup::"
     ;;
   sdk-typescript)
@@ -225,7 +233,7 @@ case "$suite" in
     echo "${purple} SDK Integration Tests (TypeScript)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
     cd sdks/typescript
-    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test || test_result=1
+    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || test_result=1
     cd ../..
     echo "::endgroup::"
     ;;
