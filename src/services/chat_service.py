@@ -357,11 +357,27 @@ class ChatService:
 
                 formatted_messages = []
 
-                def trim_results(r):
-                    if isinstance(r, list):
-                        return [trim_results(x) for x in r[:3]]
+                def trim_results(r, depth=0):
+                    MAX_DEPTH = 3
+                    MAX_LIST_LEN = 3
+                    MAX_DICT_KEYS = 5
+                    MAX_STR_LEN = 1000
+
+                    if depth >= MAX_DEPTH:
+                        return "[Max depth reached]"
+                    
+                    if isinstance(r, str):
+                        return r[:MAX_STR_LEN] + ("..." if len(r) > MAX_STR_LEN else "")
+                    elif isinstance(r, list):
+                        return [trim_results(x, depth + 1) for x in r[:MAX_LIST_LEN]]
                     elif isinstance(r, dict):
-                        return {k: trim_results(v) for k, v in r.items()}
+                        trimmed = {}
+                        for i, (k, v) in enumerate(r.items()):
+                            if i >= MAX_DICT_KEYS:
+                                trimmed["_more_keys"] = f"... ({len(r) - MAX_DICT_KEYS} omitted)"
+                                break
+                            trimmed[k] = trim_results(v, depth + 1)
+                        return trimmed
                     return r
 
                 for msg in user_ast_messages:
@@ -385,7 +401,7 @@ class ChatService:
                                         "retrieval_call",
                                     ]:
                                         t_name = item.get("tool_name") or item.get("name") or "tool"
-                                        res = item.get("results")
+                                        res = trim_results(item.get("results"))
                                         tc = {"tool_name": t_name, "results": res}
                                         extracted_chunks.append(tc)
                                         last_tc = tc
@@ -393,7 +409,7 @@ class ChatService:
                                         "response.tool_call.result",
                                         "tool_call_result",
                                     ]:
-                                        res = chunk.get("result") or chunk
+                                        res = trim_results(chunk.get("result") or chunk)
                                         if last_tc:
                                             last_tc["results"] = res
                                         else:
@@ -418,7 +434,7 @@ class ChatService:
                                             func = tc.get("function")
                                             if isinstance(func, dict) and not t_name:
                                                 t_name = func.get("name")
-                                            res = tc.get("result")
+                                            res = trim_results(tc.get("result"))
                                             extracted_chunks.append(
                                                 {"tool_name": t_name or "tool", "results": res}
                                             )
@@ -429,7 +445,6 @@ class ChatService:
                                 t_name = tc.get("tool_name", "tool")
                                 res = tc.get("results")
                                 if res is not None:
-                                    res = trim_results(res)
                                     res_str = json.dumps(res, ensure_ascii=False, default=str)
                                     chunks_strs.append(f"[Tool: {t_name}, Results: {res_str}]")
                             if chunks_strs:

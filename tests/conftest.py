@@ -7,6 +7,13 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+# Ensure src is in sys.path
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    import sys
+    sys.path.insert(0, str(SRC))
+
 # Load environment variables
 load_dotenv()
 
