@@ -37,35 +37,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "ExportDoclingDocument",
-            "id": "ExportDoclingDocument-zZdRg",
-            "name": "dataframe",
-            "output_types": [
-              "Table"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "df",
-            "id": "DataFrameOperations-1BWXB",
-            "inputTypes": [
-              "DataFrame",
-              "Table"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "reactflow__edge-ExportDoclingDocument-zZdRg{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-DataFrameOperations-1BWXB{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-1BWXBœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "ExportDoclingDocument-zZdRg",
-        "sourceHandle": "{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
-        "target": "DataFrameOperations-1BWXB",
-        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-1BWXBœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "DataFrameOperations",
             "id": "DataFrameOperations-N80fC",
             "name": "output",
@@ -92,35 +63,6 @@
         "sourceHandle": "{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-N80fCœ,œnameœ:œoutputœ,œoutput_typesœ:[œTableœ]}",
         "target": "SplitText-QIKhg",
         "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-QIKhgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "DataFrameOperations",
-            "id": "DataFrameOperations-1BWXB",
-            "name": "output",
-            "output_types": [
-              "Table"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "df",
-            "id": "DataFrameOperations-9vMrp",
-            "inputTypes": [
-              "DataFrame",
-              "Table"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "reactflow__edge-DataFrameOperations-1BWXB{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-1BWXBœ,œnameœ:œoutputœ,œoutput_typesœ:[œTableœ]}-DataFrameOperations-9vMrp{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "DataFrameOperations-1BWXB",
-        "sourceHandle": "{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-1BWXBœ,œnameœ:œoutputœ,œoutput_typesœ:[œTableœ]}",
-        "target": "DataFrameOperations-9vMrp",
-        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       },
       {
         "animated": false,
@@ -264,6 +206,35 @@
         "sourceHandle": "{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
         "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4",
         "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4œ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "ExportDoclingDocument",
+            "id": "ExportDoclingDocument-zZdRg",
+            "name": "dataframe",
+            "output_types": [
+              "Table"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "df",
+            "id": "DataFrameOperations-9vMrp",
+            "inputTypes": [
+              "DataFrame",
+              "Table"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__ExportDoclingDocument-zZdRg{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-DataFrameOperations-9vMrp{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "ExportDoclingDocument-zZdRg",
+        "sourceHandle": "{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "target": "DataFrameOperations-9vMrp",
+        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -535,8 +506,8 @@
           "width": 320
         },
         "position": {
-          "x": 1358.8096961625195,
-          "y": 1779.155571003572
+          "x": 1104.7822073166224,
+          "y": 1766.8724817385216
         },
         "positionAbsolute": {
           "x": 1683.4543896546102,
@@ -1342,585 +1313,6 @@
         "data": {
           "description": "Perform various operations on a Table.",
           "display_name": "Table Operations",
-          "id": "DataFrameOperations-1BWXB",
-          "node": {
-            "base_classes": [
-              "Table"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Perform various operations on a Table.",
-            "display_name": "Table Operations",
-            "documentation": "https://docs.langflow.org/dataframe-operations",
-            "edited": false,
-            "field_order": [
-              "df",
-              "operation",
-              "column_name",
-              "filter_value",
-              "filter_operator",
-              "ascending",
-              "new_column_name",
-              "new_column_value",
-              "columns_to_select",
-              "num_rows",
-              "replace_value",
-              "replacement_value",
-              "left_dataframe",
-              "right_dataframe",
-              "merge_on_column",
-              "merge_how"
-            ],
-            "frozen": false,
-            "icon": "table",
-            "last_updated": "2026-04-01T20:50:29.042Z",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "4df73846bdd3",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "pandas",
-                    "version": "2.2.3"
-                  },
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 2
-              },
-              "keywords": [
-                "dataframe",
-                "dataframe operations",
-                "table",
-                "table operations",
-                "filter",
-                "sort",
-                "merge",
-                "concatenate",
-                "drop column",
-                "rename column",
-                "add column",
-                "select columns",
-                "replace value",
-                "drop duplicates"
-              ],
-              "module": "custom_components.table_operations"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Table",
-                "group_outputs": false,
-                "loop_types": null,
-                "method": "perform_operation",
-                "name": "output",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Table",
-                "tool_mode": true,
-                "types": [
-                  "Table"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_frontend_node_flow_id": {
-                "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
-              },
-              "_frontend_node_folder_id": {
-                "value": "fe68252b-d9af-4eb8-8307-63e971278546"
-              },
-              "_type": "Component",
-              "ascending": {
-                "_input_type": "BoolInput",
-                "advanced": false,
-                "display_name": "Sort Ascending",
-                "dynamic": true,
-                "info": "Whether to sort in ascending order.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "ascending",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              },
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "import pandas as pd\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs import SortableListInput\nfrom lfx.io import BoolInput, DataFrameInput, DropdownInput, IntInput, MessageTextInput, Output, StrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\n\n\nclass DataFrameOperationsComponent(Component):\n    display_name = \"Table Operations\"\n    description = \"Perform various operations on a Table.\"\n    documentation: str = \"https://docs.langflow.org/dataframe-operations\"\n    icon = \"table\"\n    name = \"DataFrameOperations\"\n    metadata = {\n        \"keywords\": [\n            \"dataframe\",\n            \"dataframe operations\",\n            \"table\",\n            \"table operations\",\n            \"filter\",\n            \"sort\",\n            \"merge\",\n            \"concatenate\",\n            \"drop column\",\n            \"rename column\",\n            \"add column\",\n            \"select columns\",\n            \"replace value\",\n            \"drop duplicates\",\n        ],\n    }\n\n    OPERATION_CHOICES = [\n        \"Add Column\",\n        \"Concatenate\",\n        \"Drop Column\",\n        \"Filter\",\n        \"Head\",\n        \"Merge\",\n        \"Rename Column\",\n        \"Replace Value\",\n        \"Select Columns\",\n        \"Sort\",\n        \"Tail\",\n        \"Drop Duplicates\",\n    ]\n\n    inputs = [\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"Table\",\n            info=\"The input DataFrame to operate on. Connect multiple DataFrames for merge or concatenate operations.\",\n            required=True,\n            is_list=True,\n        ),\n        SortableListInput(\n            name=\"operation\",\n            display_name=\"Operation\",\n            placeholder=\"Select Operation\",\n            info=\"Select the DataFrame operation to perform.\",\n            options=[\n                {\"name\": \"Add Column\", \"icon\": \"plus\"},\n                {\"name\": \"Concatenate\", \"icon\": \"combine\"},\n                {\"name\": \"Drop Column\", \"icon\": \"minus\"},\n                {\"name\": \"Filter\", \"icon\": \"filter\"},\n                {\"name\": \"Head\", \"icon\": \"arrow-up\"},\n                {\"name\": \"Merge\", \"icon\": \"merge\"},\n                {\"name\": \"Rename Column\", \"icon\": \"pencil\"},\n                {\"name\": \"Replace Value\", \"icon\": \"replace\"},\n                {\"name\": \"Select Columns\", \"icon\": \"columns\"},\n                {\"name\": \"Sort\", \"icon\": \"arrow-up-down\"},\n                {\"name\": \"Tail\", \"icon\": \"arrow-down\"},\n                {\"name\": \"Drop Duplicates\", \"icon\": \"copy-x\"},\n            ],\n            real_time_refresh=True,\n            limit=1,\n        ),\n        StrInput(\n            name=\"column_name\",\n            display_name=\"Column Name\",\n            info=\"The column name to use for the operation.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter rows by.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"filter_operator\",\n            display_name=\"Filter Operator\",\n            options=[\n                \"equals\",\n                \"not equals\",\n                \"contains\",\n                \"not contains\",\n                \"starts with\",\n                \"ends with\",\n                \"greater than\",\n                \"less than\",\n            ],\n            value=\"equals\",\n            info=\"The operator to apply for filtering rows.\",\n            advanced=False,\n            dynamic=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"ascending\",\n            display_name=\"Sort Ascending\",\n            info=\"Whether to sort in ascending order.\",\n            dynamic=True,\n            show=False,\n            value=True,\n        ),\n        StrInput(\n            name=\"new_column_name\",\n            display_name=\"New Column Name\",\n            info=\"The new column name when renaming or adding a column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"new_column_value\",\n            display_name=\"New Column Value\",\n            info=\"The value to populate the new column with.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"columns_to_select\",\n            display_name=\"Columns to Select\",\n            dynamic=True,\n            is_list=True,\n            show=False,\n        ),\n        IntInput(\n            name=\"num_rows\",\n            display_name=\"Number of Rows\",\n            info=\"Number of rows to return (for head/tail).\",\n            dynamic=True,\n            show=False,\n            value=5,\n        ),\n        MessageTextInput(\n            name=\"replace_value\",\n            display_name=\"Value to Replace\",\n            info=\"The value to replace in the column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"replacement_value\",\n            display_name=\"Replacement Value\",\n            info=\"The value to replace with.\",\n            dynamic=True,\n            show=False,\n        ),\n        DataFrameInput(\n            name=\"left_dataframe\",\n            display_name=\"Left Table\",\n            info=\"The left (primary) DataFrame for merge operations. \"\n            \"In a left merge, all rows from this table are preserved.\",\n            dynamic=True,\n            show=False,\n        ),\n        DataFrameInput(\n            name=\"right_dataframe\",\n            display_name=\"Right Table\",\n            info=\"The right (secondary) DataFrame for merge operations. \"\n            \"In a right merge, all rows from this table are preserved.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"merge_on_column\",\n            display_name=\"Merge On Column\",\n            info=\"The column name to merge DataFrames on. Must exist in both DataFrames.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"merge_how\",\n            display_name=\"Merge Type\",\n            options=[\"inner\", \"outer\", \"left\", \"right\"],\n            value=\"inner\",\n            info=\"Type of merge: inner (intersection), outer (union), left, or right.\",\n            dynamic=True,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Table\",\n            name=\"output\",\n            method=\"perform_operation\",\n            info=\"The resulting DataFrame after the operation.\",\n        )\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        dynamic_fields = [\n            \"column_name\",\n            \"filter_value\",\n            \"filter_operator\",\n            \"ascending\",\n            \"new_column_name\",\n            \"new_column_value\",\n            \"columns_to_select\",\n            \"num_rows\",\n            \"replace_value\",\n            \"replacement_value\",\n            \"left_dataframe\",\n            \"right_dataframe\",\n            \"merge_on_column\",\n            \"merge_how\",\n        ]\n        for field in dynamic_fields:\n            build_config[field][\"show\"] = False\n\n        if field_name == \"operation\":\n            # Handle SortableListInput format\n            if isinstance(field_value, list):\n                operation_name = field_value[0].get(\"name\", \"\") if field_value else \"\"\n            else:\n                operation_name = field_value or \"\"\n\n            # If no operation selected, all dynamic fields stay hidden (already set to False above)\n            if not operation_name:\n                return build_config\n\n            if operation_name == \"Filter\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"filter_value\"][\"show\"] = True\n                build_config[\"filter_operator\"][\"show\"] = True\n            elif operation_name == \"Sort\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"ascending\"][\"show\"] = True\n            elif operation_name == \"Drop Column\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif operation_name == \"Rename Column\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"new_column_name\"][\"show\"] = True\n            elif operation_name == \"Add Column\":\n                build_config[\"new_column_name\"][\"show\"] = True\n                build_config[\"new_column_value\"][\"show\"] = True\n            elif operation_name == \"Select Columns\":\n                build_config[\"columns_to_select\"][\"show\"] = True\n            elif operation_name in {\"Head\", \"Tail\"}:\n                build_config[\"num_rows\"][\"show\"] = True\n            elif operation_name == \"Replace Value\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"replace_value\"][\"show\"] = True\n                build_config[\"replacement_value\"][\"show\"] = True\n            elif operation_name == \"Drop Duplicates\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif operation_name == \"Merge\":\n                build_config[\"left_dataframe\"][\"show\"] = True\n                build_config[\"right_dataframe\"][\"show\"] = True\n                build_config[\"merge_on_column\"][\"show\"] = True\n                build_config[\"merge_how\"][\"show\"] = True\n\n        return build_config\n\n    def _get_primary_dataframe(self) -> DataFrame:\n        \"\"\"Get the first DataFrame from input (handles both single and list inputs).\"\"\"\n        if isinstance(self.df, list):\n            return self.df[0].copy() if self.df else DataFrame()\n        return self.df.copy()\n\n    def perform_operation(self) -> DataFrame:\n        # Handle SortableListInput format for operation (also supports legacy string format)\n        operation_input = getattr(self, \"operation\", [])\n        if isinstance(operation_input, list):\n            op = operation_input[0].get(\"name\", \"\") if operation_input else \"\"\n        else:\n            op = operation_input or \"\"\n\n        # Merge and Concatenate use their own inputs, not the primary df\n        if op == \"Merge\":\n            return self.merge_dataframes()\n        if op == \"Concatenate\":\n            return self.concatenate_dataframes()\n\n        df_copy = self._get_primary_dataframe()\n\n        # If no operation selected, return original DataFrame\n        if not op:\n            return df_copy\n\n        if op == \"Filter\":\n            return self.filter_rows_by_value(df_copy)\n        if op == \"Sort\":\n            return self.sort_by_column(df_copy)\n        if op == \"Drop Column\":\n            return self.drop_column(df_copy)\n        if op == \"Rename Column\":\n            return self.rename_column(df_copy)\n        if op == \"Add Column\":\n            return self.add_column(df_copy)\n        if op == \"Select Columns\":\n            return self.select_columns(df_copy)\n        if op == \"Head\":\n            return self.head(df_copy)\n        if op == \"Tail\":\n            return self.tail(df_copy)\n        if op == \"Replace Value\":\n            return self.replace_values(df_copy)\n        if op == \"Drop Duplicates\":\n            return self.drop_duplicates(df_copy)\n        msg = f\"Unsupported operation: {op}\"\n        logger.error(msg)\n        raise ValueError(msg)\n\n    def filter_rows_by_value(self, df: DataFrame) -> DataFrame:\n        column = df[self.column_name]\n        filter_value = self.filter_value\n\n        # Handle regular DropdownInput format (just a string value)\n        operator = getattr(self, \"filter_operator\", \"equals\")  # Default to equals for backward compatibility\n\n        if operator == \"equals\":\n            mask = column == filter_value\n        elif operator == \"not equals\":\n            mask = column != filter_value\n        elif operator == \"contains\":\n            mask = column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"not contains\":\n            mask = ~column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"starts with\":\n            mask = column.astype(str).str.startswith(str(filter_value), na=False)\n        elif operator == \"ends with\":\n            mask = column.astype(str).str.endswith(str(filter_value), na=False)\n        elif operator == \"greater than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column > numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) > str(filter_value)\n        elif operator == \"less than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column < numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) < str(filter_value)\n        else:\n            mask = column == filter_value  # Fallback to equals\n\n        return DataFrame(df[mask])\n\n    def sort_by_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.sort_values(by=self.column_name, ascending=self.ascending))\n\n    def drop_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop(columns=[self.column_name]))\n\n    def rename_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.rename(columns={self.column_name: self.new_column_name}))\n\n    def add_column(self, df: DataFrame) -> DataFrame:\n        df[self.new_column_name] = [self.new_column_value] * len(df)\n        return DataFrame(df)\n\n    def select_columns(self, df: DataFrame) -> DataFrame:\n        columns = [col.strip() for col in self.columns_to_select]\n        return DataFrame(df[columns])\n\n    def head(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.head(self.num_rows))\n\n    def tail(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.tail(self.num_rows))\n\n    def replace_values(self, df: DataFrame) -> DataFrame:\n        df[self.column_name] = df[self.column_name].replace(self.replace_value, self.replacement_value)\n        return DataFrame(df)\n\n    def drop_duplicates(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop_duplicates(subset=self.column_name))\n\n    def concatenate_dataframes(self) -> DataFrame:\n        \"\"\"Concatenate multiple DataFrames vertically (stack rows).\"\"\"\n        if not isinstance(self.df, list) or len(self.df) == 0:\n            return self.df.copy() if self.df is not None else DataFrame()\n\n        # If only one DataFrame, return it\n        if len(self.df) == 1:\n            return self.df[0].copy()\n\n        # Concatenate all DataFrames vertically\n        concatenated = pd.concat(self.df, ignore_index=True)\n        return DataFrame(concatenated)\n\n    def merge_dataframes(self) -> DataFrame:\n        \"\"\"Merge two DataFrames based on a common column (join operation).\n\n        Uses explicit left_dataframe and right_dataframe inputs to give the user\n        deterministic control over which DataFrame is primary (left) and which\n        is secondary (right) in the merge.\n        \"\"\"\n        left_df = getattr(self, \"left_dataframe\", None)\n        right_df = getattr(self, \"right_dataframe\", None)\n\n        if left_df is None:\n            return DataFrame()\n\n        if right_df is None:\n            return left_df.copy()\n\n        df_left = left_df.copy()\n        df_right = right_df.copy()\n\n        merge_on = getattr(self, \"merge_on_column\", None)\n        merge_how = getattr(self, \"merge_how\", \"inner\")\n\n        if merge_on:\n            if merge_on not in df_left.columns:\n                msg = f\"Column '{merge_on}' not found in left DataFrame. Available: {list(df_left.columns)}\"\n                raise ValueError(msg)\n            if merge_on not in df_right.columns:\n                msg = f\"Column '{merge_on}' not found in right DataFrame. Available: {list(df_right.columns)}\"\n                raise ValueError(msg)\n\n            merged = df_left.merge(df_right, on=merge_on, how=merge_how, suffixes=(\"\", \"_right\"))\n        else:\n            merged = df_left.merge(df_right, left_index=True, right_index=True, how=merge_how, suffixes=(\"\", \"_right\"))\n\n        # Combine duplicate columns: use left value if exists, otherwise right value\n        cols_to_drop = []\n        for col in merged.columns:\n            if col.endswith(\"_right\"):\n                original_col = col[:-6]  # Remove \"_right\" suffix\n                if original_col in merged.columns:\n                    merged[original_col] = merged[original_col].combine_first(merged[col])\n                    cols_to_drop.append(col)\n\n        if cols_to_drop:\n            merged = merged.drop(columns=cols_to_drop)\n\n        return DataFrame(merged)\n"
-              },
-              "column_name": {
-                "_input_type": "StrInput",
-                "advanced": false,
-                "display_name": "Column Name",
-                "dynamic": true,
-                "info": "The column name to use for the operation.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "column_name",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "columns_to_select": {
-                "_input_type": "StrInput",
-                "advanced": false,
-                "display_name": "Columns to Select",
-                "dynamic": true,
-                "info": "",
-                "list": true,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "columns_to_select",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "df": {
-                "_input_type": "DataFrameInput",
-                "advanced": false,
-                "display_name": "Table",
-                "dynamic": false,
-                "info": "The input DataFrame to operate on. Connect multiple DataFrames for merge or concatenate operations.",
-                "input_types": [
-                  "DataFrame",
-                  "Table"
-                ],
-                "list": true,
-                "list_add_label": "Add More",
-                "name": "df",
-                "override_skip": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "other",
-                "value": ""
-              },
-              "filter_operator": {
-                "_input_type": "DropdownInput",
-                "advanced": false,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "Filter Operator",
-                "dynamic": true,
-                "external_options": {},
-                "info": "The operator to apply for filtering rows.",
-                "name": "filter_operator",
-                "options": [
-                  "equals",
-                  "not equals",
-                  "contains",
-                  "not contains",
-                  "starts with",
-                  "ends with",
-                  "greater than",
-                  "less than"
-                ],
-                "options_metadata": [],
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "str",
-                "value": "equals"
-              },
-              "filter_value": {
-                "_input_type": "MessageTextInput",
-                "advanced": false,
-                "display_name": "Filter Value",
-                "dynamic": true,
-                "info": "The value to filter rows by.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "filter_value",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "is_refresh": false,
-              "left_dataframe": {
-                "_input_type": "DataFrameInput",
-                "advanced": false,
-                "display_name": "Left Table",
-                "dynamic": true,
-                "info": "The left (primary) DataFrame for merge operations. In a left merge, all rows from this table are preserved.",
-                "input_types": [
-                  "DataFrame",
-                  "Table"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "left_dataframe",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "other",
-                "value": ""
-              },
-              "merge_how": {
-                "_input_type": "DropdownInput",
-                "advanced": false,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "Merge Type",
-                "dynamic": true,
-                "external_options": {},
-                "info": "Type of merge: inner (intersection), outer (union), left, or right.",
-                "name": "merge_how",
-                "options": [
-                  "inner",
-                  "outer",
-                  "left",
-                  "right"
-                ],
-                "options_metadata": [],
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "str",
-                "value": "inner"
-              },
-              "merge_on_column": {
-                "_input_type": "StrInput",
-                "advanced": false,
-                "display_name": "Merge On Column",
-                "dynamic": true,
-                "info": "The column name to merge DataFrames on. Must exist in both DataFrames.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "merge_on_column",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "new_column_name": {
-                "_input_type": "StrInput",
-                "advanced": false,
-                "display_name": "New Column Name",
-                "dynamic": true,
-                "info": "The new column name when renaming or adding a column.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "new_column_name",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "filename"
-              },
-              "new_column_value": {
-                "_input_type": "MessageTextInput",
-                "advanced": false,
-                "display_name": "New Column Value",
-                "dynamic": true,
-                "info": "The value to populate the new column with.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": true,
-                "name": "new_column_value",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": "FILENAME"
-              },
-              "num_rows": {
-                "_input_type": "IntInput",
-                "advanced": false,
-                "display_name": "Number of Rows",
-                "dynamic": true,
-                "info": "Number of rows to return (for head/tail).",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "num_rows",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "int",
-                "value": 5
-              },
-              "operation": {
-                "_input_type": "SortableListInput",
-                "advanced": false,
-                "display_name": "Operation",
-                "dynamic": false,
-                "info": "Select the DataFrame operation to perform.",
-                "limit": 1,
-                "load_from_db": false,
-                "name": "operation",
-                "options": [
-                  {
-                    "icon": "plus",
-                    "name": "Add Column"
-                  },
-                  {
-                    "icon": "combine",
-                    "name": "Concatenate"
-                  },
-                  {
-                    "icon": "minus",
-                    "name": "Drop Column"
-                  },
-                  {
-                    "icon": "filter",
-                    "name": "Filter"
-                  },
-                  {
-                    "icon": "arrow-up",
-                    "name": "Head"
-                  },
-                  {
-                    "icon": "merge",
-                    "name": "Merge"
-                  },
-                  {
-                    "icon": "pencil",
-                    "name": "Rename Column"
-                  },
-                  {
-                    "icon": "replace",
-                    "name": "Replace Value"
-                  },
-                  {
-                    "icon": "columns",
-                    "name": "Select Columns"
-                  },
-                  {
-                    "icon": "arrow-up-down",
-                    "name": "Sort"
-                  },
-                  {
-                    "icon": "arrow-down",
-                    "name": "Tail"
-                  },
-                  {
-                    "icon": "copy-x",
-                    "name": "Drop Duplicates"
-                  }
-                ],
-                "override_skip": false,
-                "placeholder": "Select Operation",
-                "real_time_refresh": true,
-                "required": false,
-                "search_category": [],
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "sortableList",
-                "value": [
-                  {
-                    "chosen": false,
-                    "icon": "plus",
-                    "name": "Add Column",
-                    "selected": false
-                  }
-                ]
-              },
-              "replace_value": {
-                "_input_type": "MessageTextInput",
-                "advanced": false,
-                "display_name": "Value to Replace",
-                "dynamic": true,
-                "info": "The value to replace in the column.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "replace_value",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "replacement_value": {
-                "_input_type": "MessageTextInput",
-                "advanced": false,
-                "display_name": "Replacement Value",
-                "dynamic": true,
-                "info": "The value to replace with.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "replacement_value",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "right_dataframe": {
-                "_input_type": "DataFrameInput",
-                "advanced": false,
-                "display_name": "Right Table",
-                "dynamic": true,
-                "info": "The right (secondary) DataFrame for merge operations. In a right merge, all rows from this table are preserved.",
-                "input_types": [
-                  "DataFrame",
-                  "Table"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "right_dataframe",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "other",
-                "value": ""
-              }
-            },
-            "tool_mode": false
-          },
-          "showNode": false,
-          "type": "DataFrameOperations"
-        },
-        "dragging": false,
-        "id": "DataFrameOperations-1BWXB",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
-        "position": {
-          "x": 533.2200473013957,
-          "y": 1769.3212323101711
-        },
-        "selected": false,
-        "type": "genericNode"
-      },
-      {
-        "data": {
-          "description": "Perform various operations on a Table.",
-          "display_name": "Table Operations",
           "id": "DataFrameOperations-N80fC",
           "node": {
             "base_classes": [
@@ -2490,8 +1882,8 @@
           "width": 192
         },
         "position": {
-          "x": 1071.7700474772182,
-          "y": 1772.3941727700599
+          "x": 782.5951114664371,
+          "y": 1767.889170620294
         },
         "selected": false,
         "type": "genericNode"
@@ -3069,8 +2461,8 @@
           "width": 192
         },
         "position": {
-          "x": 795.0110500080052,
-          "y": 1768.4224714700015
+          "x": 503.84176795249084,
+          "y": 1767.6542910069415
         },
         "selected": false,
         "type": "genericNode"
@@ -4058,7 +3450,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
+                "value": "203c3612-3397-4ae9-8ef8-dbacfad40a39"
               },
               "_type": "Component",
               "api_base": {
@@ -4359,7 +3751,7 @@
                         "show_progress_bar": "show_progress_bar"
                       }
                     },
-                    "name": "text-embedding-3-small",
+                    "name": "text-embedding-3-large",
                     "provider": "OpenAI"
                   }
                 ]
@@ -4586,7 +3978,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
+                "value": "203c3612-3397-4ae9-8ef8-dbacfad40a39"
               },
               "_type": "Component",
               "api_base": {
@@ -4887,7 +4279,7 @@
                         "show_progress_bar": "show_progress_bar"
                       }
                     },
-                    "name": "text-embedding-3-small",
+                    "name": "text-embedding-3-large",
                     "provider": "OpenAI"
                   }
                 ]
@@ -5032,8 +4424,8 @@
           "width": 320
         },
         "position": {
-          "x": 1313.5212863870001,
-          "y": 1858.0159458799487
+          "x": 1309.9949735963942,
+          "y": 1861.5422586705547
         },
         "selected": false,
         "type": "genericNode"
@@ -5114,7 +4506,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dcac372c-a803-4877-8e1a-83e9adcd2972"
+                "value": "203c3612-3397-4ae9-8ef8-dbacfad40a39"
               },
               "_type": "Component",
               "api_base": {
@@ -5414,7 +4806,7 @@
                         "show_progress_bar": "show_progress_bar"
                       }
                     },
-                    "name": "text-embedding-3-small",
+                    "name": "text-embedding-3-large",
                     "provider": "OpenAI"
                   }
                 ]
@@ -5566,17 +4958,17 @@
       }
     ],
     "viewport": {
-      "x": 91.09392360442735,
-      "y": -726.3579579832333,
-      "zoom": 0.6220209268560802
+      "x": 312.12645935679006,
+      "y": -430.7105214313415,
+      "zoom": 0.42979347188646455
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.9.6",
-  "locked": true,
+  "last_tested_version": "0.9.6",
+  "locked": false,
   "name": "OpenSearch Ingestion Flow",
   "tags": [
     "openai",
