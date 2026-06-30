@@ -217,9 +217,9 @@ export function AzureBlobSettingsForm({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">
-              Restrict to Specific Containers
+              Restrict Ingestion to Containers
               <span className="ml-1 text-muted-foreground font-normal">
-                (optional — leave all unchecked to allow all containers)
+                (optional)
               </span>
             </Label>
             {containers.length > 1 && (
