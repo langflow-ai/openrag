@@ -545,13 +545,24 @@ function LocalUploadPreview({ file }: { file: File }) {
   }, [objectUrl]);
 
   if (file.type === "application/pdf" && objectUrl) {
+    // Render through <object> with an explicit type so the blob bytes are handed
+    // to the browser's PDF viewer instead of being interpreted as a document. A
+    // blob: URL in an <iframe src> would render HTML/SVG payloads in our origin
+    // (DOM-XSS, since file.type is attacker-controlled); pinning
+    // type="application/pdf" forces PDF handling and also fixes Safari, which
+    // won't display PDFs inside an <iframe>.
     return (
-      <iframe
-        title={file.name}
-        src={objectUrl}
+      <object
+        data={objectUrl}
+        type="application/pdf"
+        aria-label={file.name}
         className="h-[420px] w-full rounded-md border border-border/40 bg-background"
         data-testid="local-upload-preview-pdf"
-      />
+      >
+        <div className="flex h-56 items-center justify-center px-4 text-center text-xxs text-muted-foreground">
+          Preview unavailable — the document is still being parsed.
+        </div>
+      </object>
     );
   }
 
