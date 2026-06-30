@@ -591,6 +591,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Delete langflow-data directory"; \
 	echo "  - Delete config directory"; \
 	echo "  - Delete data directory (database and session configs)"; \
+	echo "  - Delete opensearch-data directory (legacy OpenSearch bind-mount data)"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove OpenRAG images"; \
 	echo ""; \
@@ -623,8 +624,11 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	fi; \
 	if [ -d "opensearch-data" ]; then \
 		echo "Removing opensearch-data..."; \
-		rm -rf opensearch-data; \
-		echo "$(PURPLE)opensearch-data removed$(NC)"; \
+		if rm -rf opensearch-data; then \
+			echo "$(PURPLE)opensearch-data removed$(NC)"; \
+		else \
+			echo "$(RED)Warning: Failed to remove opensearch-data (check permissions)$(NC)"; \
+		fi; \
 	fi; \
 	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
 		echo "Removing $$OPENRAG_DATA_PATH..."; \
