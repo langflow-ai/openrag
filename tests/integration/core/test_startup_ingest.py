@@ -32,7 +32,9 @@ def count_files_in_documents() -> int:
     base_dir = Path(os.getcwd()) / "openrag-documents"
     if not base_dir.is_dir():
         return 0
-    return sum(1 for _ in base_dir.rglob("*") if _.is_file() and _.name not in EXCLUDED_INGESTION_FILES)
+    return sum(
+        1 for _ in base_dir.rglob("*") if _.is_file() and _.name not in EXCLUDED_INGESTION_FILES
+    )
 
 
 @pytest.mark.parametrize("disable_langflow_ingest", [True, False])
@@ -59,8 +61,8 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool, monkey
     ]:
         sys.modules.pop(mod, None)
 
-    from main import create_app, startup_tasks
     from config.settings import clients, get_index_name
+    from main import create_app, startup_tasks
 
     # Ensure a clean index before startup
     await clients.initialize()
@@ -76,6 +78,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool, monkey
 
     # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
     from main import _ensure_opensearch_index
+
     await _ensure_opensearch_index()
 
     transport = httpx.ASGITransport(app=app)
@@ -108,7 +111,9 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool, monkey
                 sr = await client.post("/search", json={"query": "*", "limit": 1})
                 assert sr.status_code == 200, sr.text
                 total = sr.json().get("total")
-                assert isinstance(total, int) and total >= 0, "Startup ingest did not index documents"
+                assert isinstance(total, int) and total >= 0, (
+                    "Startup ingest did not index documents"
+                )
                 return
             newest = tasks[0]
             assert "task_id" in newest
@@ -117,6 +122,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool, monkey
         await lifespan_ctx.__aexit__(None, None, None)
         # Explicitly close global clients to avoid aiohttp warnings
         from config.settings import clients
+
         try:
             await clients.close()
         except Exception:
