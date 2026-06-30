@@ -815,7 +815,7 @@ test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integra
 test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
-	uv sync --group dev; \
+	uv sync --quiet --group dev; \
 	echo "::group::Cleanup, Pull & Build Images"; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
@@ -904,7 +904,8 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	mkdir -p service-logs; \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG; \
 	TEST_RESULT=$$?; \
 	echo "::endgroup::"; \
 	echo ""; \
@@ -916,8 +917,9 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
-	uv pip install -e sdks/python; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || TEST_RESULT=1; \
+	uv pip install --quiet -e sdks/python; \
+	mkdir -p service-logs; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -939,7 +941,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci but builds all images locally
 	@set -e; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
-	uv sync --group dev; \
+	uv sync --quiet --group dev; \
 	echo "::group::Cleanup & Build Images"; \
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
@@ -1029,7 +1031,8 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	mkdir -p service-logs; \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG; \
 	TEST_RESULT=$$?; \
 	echo "::endgroup::"; \
 	echo ""; \
@@ -1041,8 +1044,9 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
-	uv pip install -e sdks/python; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || TEST_RESULT=1; \
+	uv pip install --quiet -e sdks/python; \
+	mkdir -p service-logs; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
