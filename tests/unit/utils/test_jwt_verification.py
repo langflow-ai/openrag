@@ -24,7 +24,6 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 # Ensure src/ is on the path when running from the repo root.
@@ -303,17 +302,9 @@ class TestVerifyMsAccessToken:
         Simplest approach: issue token with aud=WRONG, call with client_id=WRONG
         so we enter full-verify, but the JWKS key issuer won't match → raises.
         """
-        wrong_client = "dddddddd-3333-3333-3333-dddddddddddd"
-        wrong_iss = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0"
-        # Token aud == wrong_client → full-verify path; audience check should fail
-        # because PyJWT verifies aud == wrong_client (it will pass), but we can
-        # test audience rejection by issuing a token whose aud != the client_id we pass.
-        # The cleanest test: issue token with aud=CLIENT_ID, call with client_id=CLIENT_ID
-        # but with a JWKS that has a mis-matched issuer so we get InvalidIssuerError.
-        # The audience test is already covered by test_wrong_issuer_raises indirectly;
-        # here we test that passing a client_id that doesn't match the token aud
-        # causes the token to be treated as pass-through (not an error) — which is
-        # the correct documented behaviour.
+        # When client_id != token aud, the function skips verification and returns
+        # unverified claims (pass-through). This is the correct MS docs behaviour:
+        # only validate tokens whose aud matches our application.
         token = _make_ms_token(self.private_key, aud=CLIENT_ID)
 
         # When client_id != token aud, the function skips verification and returns
