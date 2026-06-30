@@ -40,8 +40,7 @@ export function resolveLangflowEditUrl({
         : deriveCloudLangflowUrl(locationOrigin)
       : null;
 
-  const portToUse =
-    langflowPort || process.env.NEXT_PUBLIC_LANGFLOW_PORT || "7860";
+  const portToUse = langflowPort || "7860";
   let derivedFromOrigin = "";
   if (locationOrigin) {
     try {
