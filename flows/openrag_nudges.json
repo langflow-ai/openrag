@@ -283,13 +283,18 @@
             "display_name": "Prompt Template",
             "documentation": "https://docs.langflow.org/components-prompts",
             "edited": false,
+            "error": null,
             "field_order": [
               "template",
               "use_double_brackets",
               "tool_placeholder"
             ],
             "frozen": false,
+            "full_path": null,
             "icon": "prompts",
+            "is_composition": null,
+            "is_input": null,
+            "is_output": null,
             "legacy": false,
             "metadata": {
               "code_hash": "3d3fd7b8a36f",
@@ -305,6 +310,7 @@
               "module": "custom_components.prompt_template"
             },
             "minimized": false,
+            "name": "",
             "output_types": [],
             "outputs": [
               {
@@ -327,6 +333,8 @@
               }
             ],
             "pinned": false,
+            "priority": null,
+            "replacement": null,
             "template": {
               "_type": "Component",
               "code": {
@@ -410,7 +418,7 @@
                 "trace_as_input": true,
                 "track_in_telemetry": false,
                 "type": "prompt",
-                "value": "You are generating prompt nudges to help a user explore a corpus.\n\nTask:\n1) Skim the documents to infer common themes, entities, or tasks.\n2) Propose exactly three concise, distinct prompt nudges that encourage useful next queries.\n3) If the chat history is provided, use it to generate new questions that the user might have, based on the llm's response to his previous query. DO NOT repeat user questions.\n4) Make the nudges concise, close to 40 characters.\n5) The nudges are questions or commands that the user can make to the chatbot, which will respond looking at the corpus.\n4) Return strings only, separating the nudges by a newline. Don't include quotation marks.\n5) If any error occured, return blank. This will be used in production, so don't ask for more info or confirm a info like you're talking to me still. If, for some reason, you can't provide the nudges, your job failed and you just return blank.\nRules: Be brief. No duplicates. No explanations outside the strings of the nudges. English only.\n\nExamples:\n  Show me this quarter's top 10 deals\n  Summarize recent client interactions\n  Search OpenSearch for mentions of our competitors\n\nChat history:\n{prompt}\n\nDocuments:\n{docs}\n\n"
+                "value": "You are generating prompt nudges to help a user explore a corpus.\n\nTask:\n1) Skim the documents to infer common themes, entities, or tasks.\n2) Propose exactly three concise, distinct prompt nudges (close to 40 characters each) that encourage useful next queries.\n3) Ensure the nudges are questions or commands that the user can send to the chatbot.\n4) Return strings only, separated by a newline. Do not include quotation marks.\n5) If an error occurs, return a blank string.\n\nRules: Be brief. No duplicates. No explanations outside the strings of the nudges. English only.\n\nIf chat history is provided, follow these rules:\n1) Generate recommendations based solely on the chat history and its chunks, not on the documents.\n2) Generate new questions that the user might have based on the LLM's response to their previous query. DO NOT repeat user questions.\n3) Match the style of the previous questions (e.g., if the user asked a question, generate nudges as questions).\n\nExamples:\n  What are this quarter's top 10 deals?\n  Summarize recent client interactions\n  Search OpenSearch for mentions of our competitors\n\n--------------------------------------------------------\n\nChat history:\n{prompt}\n\n\n--------------------------------------------------------\n\nDocuments (ignore if chat history is not empty):\n{docs}"
               },
               "tool_placeholder": {
                 "_input_type": "MessageTextInput",
@@ -759,14 +767,14 @@
             },
             "tool_mode": false
           },
-          "showNode": false,
+          "showNode": true,
           "type": "ChatInput"
         },
         "dragging": false,
         "id": "ChatInput-7W1BE",
         "measured": {
-          "height": 52,
-          "width": 192
+          "height": 207,
+          "width": 320
         },
         "position": {
           "x": 908.3744348370491,
