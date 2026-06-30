@@ -196,7 +196,7 @@ export function FileBrowserDialog({
                       unIngestedCount > 0
                     }
                     onChange={toggleAll}
-                    className="h-4 w-4 rounded border-border"
+                    className="h-4 w-4 rounded border border-input"
                   />
                   <span className="text-xs text-muted-foreground">
                     {selectedFileIds.size > 0
@@ -266,7 +266,7 @@ function FileRow({
         checked={selected || file.is_ingested}
         disabled={file.is_ingested}
         onChange={onToggle}
-        className="h-4 w-4 rounded border-border"
+        className="h-4 w-4 rounded border border-input"
       />
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate font-medium">{file.name}</div>

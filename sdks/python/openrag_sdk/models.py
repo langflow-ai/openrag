@@ -1,7 +1,6 @@
 """OpenRAG SDK data models."""
 
-from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -98,6 +97,10 @@ class DeleteDocumentResponse(BaseModel):
     filename: str | None = None
     message: str | None = None
     error: str | None = None
+    # Populated when deleting by filter_id — one entry per resolved data_source.
+    filenames: list[str] | None = None
+    filter_id: str | None = None
+    per_file: list[dict] | None = None
 
 
 # Chat history models

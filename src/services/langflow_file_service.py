@@ -1,27 +1,49 @@
 import asyncio
+import io
 import json
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from config.settings import (
+    DOCLING_SERVE_VERIFY_SSL,
+    LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
+    OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
+    get_ingest_callback_url,
 )
+from services.document_index_writer import DocumentIndexContext
+from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    def __init__(self, flows_service=None, docling_service=None):
+    INGEST_OPENSEARCH_COMPONENT_ID = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"
+    URL_INGEST_OPENSEARCH_COMPONENT_ID = (
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV"
+    )
+
+    def __init__(
+        self,
+        flows_service=None,
+        docling_service=None,
+        document_index_writer=None,
+        ingest_token_service=None,
+    ):
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
         self.docling_service = docling_service
+        self.document_index_writer = document_index_writer
+        self.ingest_token_service = ingest_token_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
+        self._embedding_dimension_cache: dict[str, int] = {}
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
@@ -71,7 +93,204 @@ class LangflowFileService:
 
         return final_tweaks
 
-    async def upload_user_file(self, file_tuple, jwt_token: Optional[str] = None) -> Dict[str, Any]:
+    async def _detect_embedding_dimensions(
+        self,
+        embedding_model: str,
+        embedding_provider: str | None,
+    ) -> int:
+        """Generate one probe embedding so mapping dimensions match the provider."""
+        from services.models_service import ModelsService
+
+        cache_key = f"{embedding_provider or ''}:{embedding_model}"
+        cached = self._embedding_dimension_cache.get(cache_key)
+        if cached:
+            return cached
+
+        litellm_model_name = await ModelsService().get_litellm_model_name(
+            embedding_model,
+            provider=embedding_provider,
+        )
+        response = await clients.patched_embedding_client.embeddings.create(
+            model=litellm_model_name,
+            input=["dimension probe"],
+        )
+        if not response.data:
+            raise RuntimeError("Embedding provider returned no data for dimension probe")
+
+        first = response.data[0]
+        embedding = first["embedding"] if isinstance(first, dict) else first.embedding
+        dimensions = len(embedding)
+        if dimensions <= 0:
+            raise RuntimeError("Embedding provider returned an empty dimension probe")
+
+        self._embedding_dimension_cache[cache_key] = dimensions
+        return dimensions
+
+    async def _ensure_langflow_ingest_index(self, embedding_model: str | None) -> None:
+        """Pre-create index mappings Langflow cannot manage with a DLS JWT."""
+        if clients.opensearch is None:
+            logger.debug("[LF] OpenSearch admin client unavailable; skipping ingest preflight")
+            return
+
+        try:
+            from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+            from config.settings import get_index_name, get_openrag_config
+            from utils.embedding_fields import ensure_embedding_field_exists
+            from utils.embeddings import create_index_body
+
+            config = get_openrag_config()
+            index_name = get_index_name()
+            model_name = embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
+            embedding_dimensions = await self._detect_embedding_dimensions(
+                model_name,
+                config.knowledge.embedding_provider,
+            )
+            if not await clients.opensearch.indices.exists(index=index_name):
+                await clients.opensearch.indices.create(
+                    index=index_name,
+                    body=await create_index_body(model_name, embedding_dimensions),
+                )
+
+            await ensure_embedding_field_exists(
+                clients.opensearch,
+                model_name,
+                index_name,
+                embedding_dimensions,
+            )
+        except Exception as e:
+            logger.warning(
+                "[LF] Failed to preconfigure OpenSearch index before Langflow ingest",
+                embedding_model=embedding_model,
+                error=str(e),
+            )
+
+    def _resolve_document_id(
+        self,
+        file_tuples: list[tuple[str, Any, str]] | None,
+        document_id: str | None,
+    ) -> str:
+        if document_id:
+            return document_id
+        if file_tuples and len(file_tuples[0]) > 1:
+            content: Any = file_tuples[0][1]
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            if isinstance(content, bytes):
+                return hash_id(io.BytesIO(content))
+        return str(uuid.uuid4())
+
+    def _configure_ingest_callback(
+        self,
+        *,
+        document_id: str,
+        filename: str,
+        mimetype: str,
+        file_size: int,
+        embedding_model: str,
+        owner: str | None,
+        owner_name: str | None,
+        owner_email: str | None,
+        connector_type: str | None,
+        source_url: str | None,
+        allowed_users: list[str] | None,
+        allowed_groups: list[str] | None,
+        allowed_principals: list[str] | None,
+        allowed_principal_labels: list[dict[str, Any]] | None = None,
+    ) -> tuple[str | None, str | None]:
+        if self.ingest_token_service is None:
+            logger.warning(
+                "[LF] Backend-owned ingest delegation DISABLED: no ingest_token_service "
+                "wired. No OPENRAG_INGEST_* globals will be sent, so the Langflow "
+                "OpenSearch component will fall back to a direct write.",
+                document_id=document_id,
+                backend_router_enabled=OPENRAG_BACKEND_ROUTER_ENABLE,
+            )
+            return None, None
+
+        from config.settings import get_index_name
+
+        ingest_run_id = f"{document_id}-{uuid.uuid4().hex}"
+        context = DocumentIndexContext(
+            document_id=document_id,
+            filename=filename,
+            mimetype=mimetype,
+            embedding_model=embedding_model,
+            owner=owner,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            file_size=file_size,
+            connector_type=connector_type,
+            source_url=source_url,
+            allowed_users=allowed_users or [],
+            allowed_groups=allowed_groups or [],
+            allowed_principals=allowed_principals or [],
+            allowed_principal_labels=allowed_principal_labels or [],
+            ingest_run_id=ingest_run_id,
+            is_sample_data=connector_type == "openrag_docs",
+            index_name=get_index_name(),
+        )
+        token = self.ingest_token_service.create_token(context)
+        logger.info(
+            "[LF] Configured backend ingest callback",
+            document_id=document_id,
+            ingest_run_id=ingest_run_id,
+            index_name=context.index_name,
+            callback_url=get_ingest_callback_url(),
+        )
+        return token, ingest_run_id
+
+    def _ingest_callback_global_var_headers(
+        self,
+        *,
+        ingest_token: str | None,
+        ingest_run_id: str | None,
+    ) -> dict[str, str]:
+        if not ingest_token or not ingest_run_id:
+            logger.warning(
+                "[LF] Ingest callback globals NOT attached to Langflow run "
+                "(missing token or run_id) — OpenSearch component will resolve "
+                "OPENRAG_INGEST_* to their placeholders and fall back to a direct "
+                "write instead of delegating to the backend.",
+                has_token=bool(ingest_token),
+                has_run_id=bool(ingest_run_id),
+            )
+            return {}
+        callback_url = get_ingest_callback_url()
+        logger.info(
+            "[LF] Ingest callback globals attached — delegating writes to backend",
+            ingest_run_id=ingest_run_id,
+            callback_url=callback_url,
+            batch_size=LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+        )
+        return {
+            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": callback_url,
+            "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN": ingest_token,
+            "X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID": ingest_run_id,
+            "X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE": str(
+                LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
+            ),
+        }
+
+    async def _cleanup_failed_callback_ingest(
+        self,
+        *,
+        ingest_token: str | None,
+        ingest_run_id: str | None,
+    ) -> None:
+        if self.ingest_token_service is not None and ingest_token:
+            self.ingest_token_service.revoke_token(ingest_token)
+        if self.document_index_writer is None or not ingest_run_id:
+            return
+        try:
+            await self.document_index_writer.delete_ingest_run(ingest_run_id)
+        except Exception as e:
+            logger.warning(
+                "[LF] Failed to clean up partial backend ingest run",
+                ingest_run_id=ingest_run_id,
+                error=str(e),
+            )
+
+    async def upload_user_file(self, file_tuple, jwt_token: str | None = None) -> dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
         """
@@ -131,6 +350,8 @@ class LangflowFileService:
         source_url: str | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
+        allowed_principals: list[str] | None = None,
+        allowed_principal_labels: list[dict[str, Any]] | None = None,
         selected_embedding_model: str | None = None,
         docling_task_id: str | None = None,
     ) -> dict[str, Any]:
@@ -166,9 +387,6 @@ class LangflowFileService:
             metadata_tweaks.append({"key": "connector_type", "value": connector_type})
         logger.info(f"[LF] Metadata tweaks {metadata_tweaks}")
 
-        if tweaks:
-            payload["tweaks"] = tweaks
-            logger.debug(f"[LF] Tweaks {tweaks}")
         if session_id:
             payload["session_id"] = session_id
 
@@ -191,6 +409,7 @@ class LangflowFileService:
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
             else ""
         )
+        resolved_document_id = self._resolve_document_id(file_tuples, document_id)
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
@@ -202,33 +421,63 @@ class LangflowFileService:
             embedding_model = selected_embedding_model
 
         headers = {
-            "X-Langflow-Global-Var-JWT": str(jwt_token),
+            "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
             "X-Langflow-Global-Var-OWNER": str(owner),
             "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
             "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
-            "X-Langflow-Global-Var-FILENAME": filename,
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
+            "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
             if docling_task_id
             else "",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
 
         # Serialize ACL lists as JSON strings for Langflow global vars
         # (flows will parse these back into lists before indexing)
-        if allowed_users is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(allowed_users or [])
-        if allowed_groups is not None:
-            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(allowed_groups or [])
+        headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(allowed_users or [])
+        headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(allowed_groups or [])
+        headers["X-Langflow-Global-Var-ALLOWED_PRINCIPALS"] = json.dumps(allowed_principals or [])
+        headers["X-Langflow-Global-Var-ALLOWED_PRINCIPAL_LABELS"] = json.dumps(
+            allowed_principal_labels or []
+        )
+
+        ingest_token, ingest_run_id = self._configure_ingest_callback(
+            document_id=resolved_document_id,
+            filename=filename,
+            mimetype=mimetype,
+            file_size=file_size_bytes,
+            embedding_model=embedding_model,
+            owner=owner,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type=connector_type,
+            source_url=source_url,
+            allowed_users=allowed_users,
+            allowed_groups=allowed_groups,
+            allowed_principals=allowed_principals,
+            allowed_principal_labels=allowed_principal_labels,
+        )
+        headers.update(
+            self._ingest_callback_global_var_headers(
+                ingest_token=ingest_token,
+                ingest_run_id=ingest_run_id,
+            )
+        )
+        if tweaks:
+            payload["tweaks"] = tweaks
+            logger.debug("[LF] Tweaks configured", tweak_keys=list(tweaks.keys()))
 
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(
             headers, config, flows_service=self.flows_service, jwt_token=jwt_token
         )
+        if self.ingest_token_service is None:
+            await self._ensure_langflow_ingest_index(embedding_model)
         start_time = time.time()
         logger.info(
             "[INGEST] Run started",
@@ -236,75 +485,82 @@ class LangflowFileService:
             filename=filename,
             mimetype=mimetype,
         )
-        resp = await clients.langflow_request(
-            "POST",
-            f"/api/v1/run/{self.flow_id_ingest}",
-            json=payload,
-            headers=headers,
-        )
-        duration = round(time.time() - start_time, 2)
-        logger.info(
-            "[INGEST] Run complete",
-            status_code=resp.status_code,
-            reason=resp.reason_phrase,
-            duration_s=duration,
-        )
-        if resp.status_code >= 400:
-            logger.error(
-                "[LF] Run failed",
+        try:
+            resp = await clients.langflow_request(
+                "POST",
+                f"/api/v1/run/{self.flow_id_ingest}",
+                json=payload,
+                headers=headers,
+            )
+            duration = round(time.time() - start_time, 2)
+            logger.info(
+                "[INGEST] Run complete",
                 status_code=resp.status_code,
                 reason=resp.reason_phrase,
-                body=resp.text[:1000],
+                duration_s=duration,
             )
+            if resp.status_code >= 400:
+                logger.error(
+                    "[LF] Run failed",
+                    status_code=resp.status_code,
+                    reason=resp.reason_phrase,
+                    body=resp.text[:1000],
+                )
 
-            # Extract error message from Langflow response
-            error_message = f"Server error '{resp.status_code} {resp.reason_phrase}'"
-            try:
-                error_data = resp.json()
-                if isinstance(error_data, dict) and "detail" in error_data:
-                    detail = error_data["detail"]
-                    if isinstance(detail, str):
-                        try:
-                            detail_obj = json.loads(detail)
-                            if isinstance(detail_obj, dict) and "message" in detail_obj:
-                                error_message = detail_obj["message"]
-                            else:
+                # Extract error message from Langflow response
+                error_message = f"Server error '{resp.status_code} {resp.reason_phrase}'"
+                try:
+                    error_data = resp.json()
+                    if isinstance(error_data, dict) and "detail" in error_data:
+                        detail = error_data["detail"]
+                        if isinstance(detail, str):
+                            try:
+                                detail_obj = json.loads(detail)
+                                if isinstance(detail_obj, dict) and "message" in detail_obj:
+                                    error_message = detail_obj["message"]
+                                else:
+                                    error_message = detail
+                            except json.JSONDecodeError:
                                 error_message = detail
-                        except json.JSONDecodeError:
-                            error_message = detail
-                    elif isinstance(detail, dict) and "message" in detail:
-                        error_message = detail["message"]
-            except Exception:
-                pass
+                        elif isinstance(detail, dict) and "message" in detail:
+                            error_message = detail["message"]
+                except Exception:
+                    pass
 
-            raise Exception(error_message)
+                raise Exception(error_message)
 
-        # Check if response is actually JSON before parsing
-        content_type = resp.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            logger.error(
-                "[LF] Unexpected response content type from Langflow",
-                content_type=content_type,
-                status_code=resp.status_code,
-                body=resp.text[:1000],
+            # Check if response is actually JSON before parsing
+            content_type = resp.headers.get("content-type", "")
+            if "application/json" not in content_type:
+                logger.error(
+                    "[LF] Unexpected response content type from Langflow",
+                    content_type=content_type,
+                    status_code=resp.status_code,
+                    body=resp.text[:1000],
+                )
+                raise ValueError(
+                    f"Langflow returned {content_type} instead of JSON. "
+                    f"This may indicate the ingestion flow failed or the endpoint is incorrect. "
+                    f"Response preview: {resp.text[:500]}"
+                )
+
+            try:
+                resp_json = resp.json()
+            except Exception as e:
+                logger.error(
+                    "[LF] Failed to parse run response as JSON",
+                    body=resp.text[:1000],
+                    error=str(e),
+                )
+
+                raise
+            return resp_json
+        except Exception:
+            await self._cleanup_failed_callback_ingest(
+                ingest_token=ingest_token,
+                ingest_run_id=ingest_run_id,
             )
-            raise ValueError(
-                f"Langflow returned {content_type} instead of JSON. "
-                f"This may indicate the ingestion flow failed or the endpoint is incorrect. "
-                f"Response preview: {resp.text[:500]}"
-            )
-
-        try:
-            resp_json = resp.json()
-        except Exception as e:
-            logger.error(
-                "[LF] Failed to parse run response as JSON",
-                body=resp.text[:1000],
-                error=str(e),
-            )
-
             raise
-        return resp_json
 
     async def run_url_ingestion_flow(
         self,
@@ -328,30 +584,61 @@ class LangflowFileService:
             "input_type": "chat",
             "output_type": "text",
         }
-        if tweaks:
-            payload["tweaks"] = tweaks
+        if not tweaks:
+            tweaks = {}
 
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
+        resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
         headers = {
-            "X-Langflow-Global-Var-JWT": str(jwt_token),
+            "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
             "X-Langflow-Global-Var-OWNER": str(owner),
             "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
             "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-DOCUMENT_ID": "",
+            "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps([]),
             "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps([]),
+            "X-Langflow-Global-Var-ALLOWED_PRINCIPALS": json.dumps([]),
             "X-Langflow-Global-Var-DOCLING_TASK_ID": "",
+            "X-Langflow-Global-Var-MIMETYPE": "text/html",
+            "X-Langflow-Global-Var-FILESIZE": "0",
+            "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
         }
+        ingest_token, ingest_run_id = self._configure_ingest_callback(
+            document_id=resolved_document_id,
+            filename=docs_url,
+            mimetype="text/html",
+            file_size=0,
+            embedding_model=embedding_model,
+            owner=owner,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type=connector_type,
+            source_url=docs_url,
+            allowed_users=[],
+            allowed_groups=[],
+            allowed_principals=[],
+            allowed_principal_labels=[],
+        )
+        headers.update(
+            self._ingest_callback_global_var_headers(
+                ingest_token=ingest_token,
+                ingest_run_id=ingest_run_id,
+            )
+        )
+        if tweaks:
+            payload["tweaks"] = tweaks
         await add_provider_credentials_to_headers(
             headers, config, flows_service=self.flows_service, jwt_token=jwt_token
         )
+        if self.ingest_token_service is None:
+            await self._ensure_langflow_ingest_index(embedding_model)
 
         logger.info(
             "[LF] Running URL ingestion flow",
@@ -359,42 +646,49 @@ class LangflowFileService:
             crawl_depth=crawl_depth,
             connector_type=connector_type,
             embedding_model=embedding_model,
-            payload=payload,
+            tweak_keys=list(tweaks.keys()),
         )
-        resp = await clients.langflow_request(
-            "POST",
-            f"/api/v1/run/{flow_id}",
-            json=payload,
-            headers=headers,
-        )
-        logger.info(
-            "[LF] URL ingestion flow response received",
-            status_code=resp.status_code,
-            flow_id=flow_id,
-        )
-        if resp.status_code >= 400:
-            logger.error(
-                "[LF] URL ingestion flow failed",
+        try:
+            resp = await clients.langflow_request(
+                "POST",
+                f"/api/v1/run/{flow_id}",
+                json=payload,
+                headers=headers,
+            )
+            logger.info(
+                "[LF] URL ingestion flow response received",
                 status_code=resp.status_code,
-                reason=resp.reason_phrase,
-                body=resp.text[:1000],
+                flow_id=flow_id,
             )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                logger.error(
+                    "[LF] URL ingestion flow failed",
+                    status_code=resp.status_code,
+                    reason=resp.reason_phrase,
+                    body=resp.text[:1000],
+                )
+                resp.raise_for_status()
 
-        content_type = resp.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            logger.error(
-                "[LF] Unexpected URL ingestion response content type",
-                content_type=content_type,
-                status_code=resp.status_code,
-                body=resp.text[:1000],
-            )
-            raise ValueError(
-                f"Langflow returned {content_type} instead of JSON for URL ingestion. "
-                f"Response preview: {resp.text[:500]}"
-            )
+            content_type = resp.headers.get("content-type", "")
+            if "application/json" not in content_type:
+                logger.error(
+                    "[LF] Unexpected URL ingestion response content type",
+                    content_type=content_type,
+                    status_code=resp.status_code,
+                    body=resp.text[:1000],
+                )
+                raise ValueError(
+                    f"Langflow returned {content_type} instead of JSON for URL ingestion. "
+                    f"Response preview: {resp.text[:500]}"
+                )
 
-        return resp.json()
+            return resp.json()
+        except Exception:
+            await self._cleanup_failed_callback_ingest(
+                ingest_token=ingest_token,
+                ingest_run_id=ingest_run_id,
+            )
+            raise
 
     async def _ensure_url_ingest_flow_id(self) -> str:
         """Ensure URL ingest flow ID is valid; import flow if missing.
@@ -515,8 +809,16 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
-    async def submit_to_docling(self, filename: str, content: bytes, jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,) -> str:
+    async def submit_to_docling(
+        self,
+        filename: str,
+        content: bytes,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        *,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
+    ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
         Phase 1 of the two-phase ingestion model. The caller is responsible
@@ -530,7 +832,13 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token
+                filename,
+                content,
+                user_id=owner,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
+            )
             logger.debug(
                 "[LF] Docling submission accepted",
                 extra={"task_id": task_id, "filename": filename},
@@ -541,22 +849,28 @@ class LangflowFileService:
                 "[LF] Docling submission failed",
                 extra={"error": str(e), "filename": filename},
             )
-            raise Exception(f"Docling upload failed: {str(e)}")
+            raise Exception(f"Docling upload failed: {str(e)}") from e
 
     async def upload_and_ingest_file(
         self,
         file_tuple,
-        session_id: Optional[str] = None,
-        tweaks: Optional[Dict[str, Any]] = None,
-        settings: Optional[Dict[str, Any]] = None,
-        jwt_token: Optional[str] = None,
-        owner: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        connector_type: Optional[str] = None,
-        docling_polling_service: Optional[Any] = None,
-        file_task: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        session_id: str | None = None,
+        tweaks: dict[str, Any] | None = None,
+        settings: dict[str, Any] | None = None,
+        jwt_token: str | None = None,
+        owner: str | None = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        connector_type: str | None = None,
+        docling_polling_service: Any | None = None,
+        file_task: Any | None = None,
+        document_id: str | None = None,
+        source_url: str | None = None,
+        allowed_users: list[str] | None = None,
+        allowed_groups: list[str] | None = None,
+        allowed_principals: list[str] | None = None,
+        allowed_principal_labels: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
 
@@ -586,12 +900,24 @@ class LangflowFileService:
 
         filename, content, _ = file_tuple
 
+        ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        pic_desc_override = (
+            settings.get("pictureDescriptions") if isinstance(settings, dict) else None
+        )
+
         # ── Phase 1: submit to Docling ──────────────────────────────────
         if file_task is not None:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(filename, content,user_id=owner, auth_header=jwt_token)
+        task_id = await self.submit_to_docling(
+            filename,
+            content,
+            owner=owner,
+            jwt_token=jwt_token,
+            ocr=ocr_override,
+            picture_descriptions=pic_desc_override,
+        )
 
         if file_task is not None:
             file_task.docling_task_id = task_id
@@ -615,6 +941,8 @@ class LangflowFileService:
                 max_interval=DOCLING_POLL_MAX_INTERVAL_SECONDS,
                 backoff_factor=DOCLING_POLL_BACKOFF_FACTOR,
                 transient_retry_budget=DOCLING_POLL_TRANSIENT_RETRIES,
+                user_id=owner,
+                auth_header=jwt_token,
             )
 
             if poll_result.outcome != PollOutcome.SUCCESS:
@@ -660,6 +988,11 @@ class LangflowFileService:
         if file_task is not None:
             file_task.phase = IngestionPhase.LANGFLOW
 
+        _raw_em = settings.get("embeddingModel") if isinstance(settings, dict) else None
+        selected_embedding = (
+            _raw_em.strip() if isinstance(_raw_em, str) and _raw_em.strip() else None
+        )
+
         try:
             total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
@@ -673,6 +1006,13 @@ class LangflowFileService:
                 owner_email=owner_email,
                 connector_type=connector_type,
                 docling_task_id=task_id,
+                document_id=document_id,
+                source_url=source_url,
+                selected_embedding_model=selected_embedding,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=allowed_principal_labels,
             )
             total_duration = round(time.time() - total_start_time, 2)
             logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")

@@ -51,6 +51,11 @@ stringData:
 
     # Langflow url
     LANGFLOW_URL={{ include "openrag.langflow.url" . | quote }}
+    OPENRAG_BACKEND_INTERNAL_URL={{ include "openrag.backend.url" . | quote }}
+    {{- if .Values.backend.ingestRouter.enabled }}
+    OPENRAG_BACKEND_ROUTER_ENABLE=true
+    OPENRAG_BACKEND_ROUTER_PORT={{ .Values.backend.ingestRouter.port }}
+    {{- end }}
 
     # Flow IDs
     {{- if .Values.langflow.flows.chatFlowId }}
@@ -144,6 +149,11 @@ stringData:
     # Docling (optional override)
     {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
     DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
+    {{- end }}
+    {{- if hasKey .Values.global.docling "verifySsl" }}
+    DOCLING_SERVE_VERIFY_SSL={{ ternary "true" "false" .Values.global.docling.verifySsl | quote }}
+    {{- else }}
+    DOCLING_SERVE_VERIFY_SSL="true"
     {{- end }}
 
     # Langflow auth

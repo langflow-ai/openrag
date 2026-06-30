@@ -16,6 +16,8 @@ from api.provider_validation import validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
+    _default_embedding_model,
+    _default_llm_model,
     _embedding_conflict_response,
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
@@ -63,6 +65,7 @@ from config.settings import (
     LANGFLOW_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
+    OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
@@ -76,14 +79,17 @@ from dependencies import (
     get_knowledge_filter_service,
     get_langflow_file_service,
     get_models_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
     require_permission,
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
+from services.rbac_service import is_rbac_enforced
 from session_manager import User
+from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
-from utils.logging_config import get_logger
+from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
@@ -94,10 +100,18 @@ async def get_settings(
     request: Request,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsResponse:
     """Get application settings"""
     try:
         openrag_config = get_openrag_config()
+
+        # Provider configuration is admin-only. Non-admins still get the rest of
+        # settings (the UI needs them) but the providers section is redacted.
+        show_providers = True
+        if is_rbac_enforced():
+            uid = user.db_user_id or user.user_id
+            show_providers = await rbac.has_permission(uid, "providers:read")
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
@@ -200,7 +214,9 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-            ),
+            )
+            if show_providers
+            else None,
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
                 embedding_provider=knowledge_config.embedding_provider,
@@ -210,6 +226,7 @@ async def get_settings(
                 ocr=knowledge_config.ocr,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
+                disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
             ),
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
@@ -221,6 +238,7 @@ async def get_settings(
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
+            show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
         )
@@ -235,6 +253,7 @@ async def update_settings(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
+    rbac=Depends(get_rbac_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -264,6 +283,18 @@ async def update_settings(
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+
+        # Provider changes are admin-only. The outer gate only requires
+        # config:write; require providers:write specifically when any
+        # provider field is being touched (defends custom roles too).
+        if should_validate and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+            uid = user.db_user_id or user.user_id
+            if not await rbac.has_permission(uid, "providers:write"):
+                await rbac.audit_denied(uid, "providers:write")
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "permission_denied", "required": "providers:write"},
+                )
 
         if should_validate:
             try:
@@ -460,6 +491,15 @@ async def update_settings(
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
+        if body.disable_ingest_with_langflow is not None:
+            current_config.knowledge.disable_ingest_with_langflow = (
+                body.disable_ingest_with_langflow
+            )
+            config_updated = True
+            logger.info(
+                f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
+            )
+
         if body.chunk_size is not None:
             effective_overlap = (
                 body.chunk_overlap
@@ -596,15 +636,13 @@ async def update_settings(
             current_config.providers.ollama.endpoint = ""
             current_config.providers.ollama.configured = False
             if current_config.agent.llm_provider == "ollama":
-                current_config.agent.llm_provider = _first_configured_llm_provider(
-                    current_config, "ollama"
-                )
-                current_config.agent.llm_model = ""
+                fb = _first_configured_llm_provider(current_config, "ollama")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "ollama":
-                current_config.knowledge.embedding_provider = _first_configured_embedding_provider(
-                    current_config, "ollama"
-                )
-                current_config.knowledge.embedding_model = ""
+                fb = _first_configured_embedding_provider(current_config, "ollama")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -632,11 +670,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(current_config, "openai")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "openai":
                 fb = _first_configured_embedding_provider(current_config, "openai")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -658,7 +696,7 @@ async def update_settings(
             if current_config.agent.llm_provider == "anthropic":
                 fb = _first_configured_llm_provider(current_config, "anthropic")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             # Anthropic is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
@@ -689,11 +727,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "watsonx":
                 fb = _first_configured_llm_provider(current_config, "watsonx")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(current_config, "watsonx")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -708,6 +746,8 @@ async def update_settings(
         # Save the updated configuration
         if not config_manager.save_config_file(current_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+
+        provider_health_cache.invalidate()
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
@@ -765,6 +805,8 @@ async def onboarding(
     """Handle onboarding configuration setup"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
+
+        log_bootstrap_env(logger, "onboarding")
 
         # Get current configuration
         current_config = get_openrag_config()
@@ -1030,16 +1072,56 @@ async def onboarding(
         # Initialize the OpenSearch index if embedding model is configured
         if body.embedding_model or body.embedding_provider:
             try:
-                from config.settings import IBM_AUTH_ENABLED
                 from config.settings import clients as app_clients
+                from config.settings import (
+                    get_openrag_service_token,
+                    get_opensearch_username,
+                )
                 from main import init_index
+                from utils.run_mode_utils import (
+                    is_run_mode_on_prem,
+                    is_run_mode_oss,
+                    is_run_mode_saas,
+                )
 
-                opensearch_client = None
-                if IBM_AUTH_ENABLED and user and user.jwt_token:
-                    opensearch_client = app_clients.create_user_opensearch_client(user.jwt_token)
+                # Choose the admin identity for index/security setup, by run mode:
+                #   saas    -> platform service token (JWT); admin from its claim
+                #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
+                #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+                # The matching client comes from the shared run-mode-aware helper.
+                admin_username = None
+                if is_run_mode_saas():
+                    service_token = get_openrag_service_token()
+                    if service_token:
+                        # Prefer the platform service token so onboarding pins the
+                        # same admin identity as the startup security bootstrap
+                        # (see app/lifespan.py).
+                        from auth.ibm_auth import admin_username_from_service_jwt
+
+                        admin_username = admin_username_from_service_jwt(service_token)
+                        if not admin_username:
+                            raise RuntimeError(
+                                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                                "cannot determine OpenSearch admin during onboarding"
+                            )
+                    elif user:
+                        # TODO: backward-compatibility fallback for saas deployments
+                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding user as
+                        # admin instead of the platform service identity. Remove once
+                        # the service token is always provided.
+                        admin_username = user.user_id
+                elif is_run_mode_on_prem() or is_run_mode_oss():
+                    admin_username = get_opensearch_username()
+
+                opensearch_client = app_clients.create_index_admin_opensearch_client(
+                    user.jwt_token if user else None
+                )
+                logger.info(
+                    "Onboarding OpenSearch setup",
+                    admin_username=admin_username,
+                )
 
                 logger.info("Initializing OpenSearch index after onboarding configuration")
-                admin_username = user.user_id if IBM_AUTH_ENABLED and user else None
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
@@ -1056,6 +1138,7 @@ async def onboarding(
             if should_ingest_sample_data:
                 try:
                     # Import the function here to avoid circular imports
+                    from config.settings import IBM_AUTH_ENABLED
                     from main import ingest_default_documents_when_ready
 
                     if not config_manager.save_config_file(current_config):
@@ -1063,6 +1146,8 @@ async def onboarding(
                         return JSONResponse(
                             {"error": "Failed to save configuration"}, status_code=500
                         )
+
+                    provider_health_cache.invalidate()
 
                     ingestion_jwt = (
                         user.jwt_token if IBM_AUTH_ENABLED and user and user.jwt_token else None
@@ -1098,6 +1183,7 @@ async def onboarding(
                     )
 
         if config_manager.save_config_file(current_config):
+            provider_health_cache.invalidate()
             set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",
@@ -1311,18 +1397,26 @@ async def rollback_onboarding(
                                 opensearch_client = session_manager.get_user_opensearch_client(
                                     user.user_id, user.jwt_token
                                 )
-                                from config.settings import get_index_name
+                                from config.settings import clients, get_index_name
+                                from utils.opensearch_delete import (
+                                    collect_visible_document_ids,
+                                    delete_document_ids,
+                                )
                                 from utils.opensearch_queries import (
-                                    build_filename_delete_body,
+                                    build_owned_filename_query,
                                 )
 
-                                delete_query = build_filename_delete_body(filename)
-                                result = await opensearch_client.delete_by_query(
-                                    index=get_index_name(),
-                                    body=delete_query,
-                                    conflicts="proceed",
+                                index_name = get_index_name()
+                                document_ids = await collect_visible_document_ids(
+                                    opensearch_client,
+                                    index=index_name,
+                                    query=build_owned_filename_query(filename, user.user_id),
                                 )
-                                deleted_count = result.get("deleted", 0)
+                                deleted_count = await delete_document_ids(
+                                    clients.opensearch,
+                                    index=index_name,
+                                    document_ids=document_ids,
+                                )
                                 if deleted_count > 0:
                                     deleted_files.append(filename)
                                     logger.info(
@@ -1373,6 +1467,10 @@ async def rollback_onboarding(
         current_config.knowledge.embedding_model = ""
         current_config.onboarding.openrag_docs_ingested_version = None
         current_config.onboarding.openrag_docs_remote_signature = None
+        current_config.onboarding.assistant_message = None
+        current_config.onboarding.selected_nudge = None
+        current_config.onboarding.card_steps = None
+        current_config.onboarding.upload_steps = None
 
         embedding_only = body.embedding_only if body else False
 
@@ -1529,6 +1627,7 @@ async def refresh_openrag_docs(
             session_manager=session_manager,
             force=True,
             reason="manual",
+            jwt_token=user.jwt_token if getattr(user, "jwt_token", None) else None,
         )
         return RefreshOpenRAGDocsResponse(
             message=(

@@ -3,8 +3,10 @@
 `run_startup(app)` and `run_shutdown(app)` collapse what previously lived
 as three @app.on_event("startup") handlers and three @app.on_event("shutdown")
 handlers into one helper each. The factory registers these as on_event
-handlers so they fire under both Starlette's lifespan-from-on_event flow
-(production) and `app.router.startup()` / `app.router.shutdown()` (tests).
+handlers so they fire under FastAPI's lifespan-from-on_event flow, both in
+production (the ASGI server drives it) and in tests (which enter/exit
+`app.router.lifespan_context(app)` directly, since Starlette 1.x removed the
+`app.router.startup()` / `app.router.shutdown()` helpers).
 """
 
 import asyncio
@@ -12,14 +14,22 @@ import asyncio
 from fastapi import FastAPI
 
 from config.settings import (
+    JWT_CLAIMS_CACHE_MAX_SIZE,
+    JWT_CLAIMS_CACHE_TTL_SECONDS,
+    OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
+    OPENSEARCH_WAIT_MAX_RETRIES,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
     clients,
     get_openrag_config,
+    get_openrag_service_token,
+    get_opensearch_password,
+    get_opensearch_username,
 )
 from services.startup_orchestrator import startup_tasks
-from utils.logging_config import get_logger
+from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
@@ -98,6 +108,41 @@ async def _periodic_backup(services):
             logger.error(f"Error in periodic backup task: {str(e)}")
 
 
+async def _periodic_webhook_renewal(services):
+    """Renew connector webhook subscriptions before they expire.
+
+    Checks immediately at startup (subscriptions may have lapsed while the
+    app was down), then on a fixed interval. Provider subscriptions are
+    short-lived (Google Drive ~24h, Microsoft Graph 3 days) and go silent
+    without renewal.
+    """
+    from config.settings import (
+        WEBHOOK_RENEWAL_INTERVAL_SECONDS,
+        WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
+    )
+
+    # Let startup_tasks finish loading connections before the first pass
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            connector_service = services.get("connector_service")
+            if connector_service:
+                stats = await connector_service.connection_manager.renew_expiring_subscriptions(
+                    WEBHOOK_RENEWAL_THRESHOLD_SECONDS
+                )
+                if stats["renewed"] or stats["failed"]:
+                    logger.info("Webhook subscription renewal pass completed", **stats)
+                else:
+                    logger.debug("Webhook subscription renewal pass completed", **stats)
+        except asyncio.CancelledError:
+            logger.info("Webhook renewal task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in webhook renewal task: {str(e)}")
+        await asyncio.sleep(WEBHOOK_RENEWAL_INTERVAL_SECONDS)
+
+
 async def run_startup(app: FastAPI):
     """Single source of truth for startup work.
 
@@ -131,6 +176,12 @@ async def run_startup(app: FastAPI):
         backend=RBAC_CACHE_BACKEND,
         workers=UVICORN_WORKER_COUNT,
         perm_cache_ttl_s=RBAC_PERMISSION_CACHE_TTL_SECONDS,
+    )
+    logger.info(
+        "JWT claims cache configured",
+        backend="memory",
+        ttl_s=JWT_CLAIMS_CACHE_TTL_SECONDS,
+        maxsize=JWT_CLAIMS_CACHE_MAX_SIZE,
     )
 
     # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes
@@ -191,6 +242,110 @@ async def run_startup(app: FastAPI):
         await mcp_lifespan_ctx.__aenter__()
         logger.info("FastMCP lifespan started")
 
+    log_bootstrap_env(logger, "startup")
+
+    # One-shot OpenSearch security bootstrap (driven by the platform service
+    # JWT) and/or startup replica reconciliation. Runs synchronously (before
+    # startup_tasks) so the admin role mapping is in place before any other
+    # startup work talks to OpenSearch. The block is entered when EITHER flag is
+    # set so both steps can reuse the same per-run-mode authenticated client;
+    # each step is then gated on its OWN flag. The setup_opensearch_security call
+    # inside startup_tasks is suppressed when OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP
+    # is on.
+    if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP or OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+        logger.info(
+            "OpenSearch startup tasks enabled",
+            security_bootstrap=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+            reconcile_replicas=OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
+        )
+        from utils.opensearch_init import wait_for_opensearch
+        from utils.opensearch_utils import setup_opensearch_security
+        from utils.run_mode_utils import (
+            is_run_mode_on_prem,
+            is_run_mode_oss,
+        )
+
+        # Choose the OpenSearch client + admin identity, by run mode:
+        #   saas    -> platform service token (JWT); admin from its claim
+        #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
+        #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+        admin_username = None
+        opensearch_client = None
+        if is_run_mode_on_prem() or is_run_mode_oss():
+            admin_username = get_opensearch_username()
+            opensearch_client = clients.create_basic_opensearch_client(
+                admin_username, get_opensearch_password()
+            )
+            logger.info(
+                "OpenSearch startup client: %s mode, using OpenSearch basic auth"
+                % ("on_prem" if is_run_mode_on_prem() else "oss"),
+                admin_username=admin_username,
+            )
+        else:
+            service_token = get_openrag_service_token()
+            if not service_token:
+                # A missing service token is fatal only when security bootstrap
+                # was explicitly requested; replica reconciliation is best-effort,
+                # so skip it rather than aborting startup.
+                if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                    raise RuntimeError(
+                        "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
+                        "OPENRAG_SERVICE_TOKEN is not set"
+                    )
+                logger.warning(
+                    "Skipping startup OpenSearch replica reconciliation: saas mode "
+                    "requires OPENRAG_SERVICE_TOKEN, which is not set"
+                )
+            else:
+                from auth.ibm_auth import admin_username_from_service_jwt
+
+                admin_username = admin_username_from_service_jwt(service_token)
+                if not admin_username and OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                    raise RuntimeError(
+                        "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                        "cannot bootstrap OpenSearch security"
+                    )
+                opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
+                logger.info(
+                    "OpenSearch startup client: saas mode, using platform service token",
+                    admin_username=admin_username,
+                )
+
+        if opensearch_client is not None:
+            try:
+                # Readiness is needed for either operation.
+                logger.info("Verifying OpenSearch readiness")
+                await wait_for_opensearch(
+                    opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES
+                )
+
+                if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                    logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
+                    await setup_opensearch_security(
+                        opensearch_client, admin_username=admin_username
+                    )
+                    logger.info(
+                        "OpenSearch security bootstrap completed", admin_username=admin_username
+                    )
+
+                # Reconcile replica counts on existing OpenRAG indices using the
+                # authenticated (admin / service-token) client, before serving
+                # traffic. Best-effort: failures are logged, not fatal.
+                if OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+                    try:
+                        from utils.opensearch_init import ensure_openrag_index_replicas
+
+                        logger.info("Reconciling index replicas at startup")
+                        await ensure_openrag_index_replicas(opensearch_client)
+                    except Exception as e:
+                        logger.warning(
+                            "Index replica reconciliation at startup failed", error=str(e)
+                        )
+            finally:
+                await opensearch_client.close()
+    else:
+        logger.info("OpenSearch startup security/replica tasks disabled - skipping")
+
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))
     app.state.background_tasks.add(t1)
@@ -203,6 +358,11 @@ async def run_startup(app: FastAPI):
     backup_task = asyncio.create_task(_periodic_backup(services))
     app.state.background_tasks.add(backup_task)
     backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Start periodic webhook subscription renewal task
+    renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))
+    app.state.background_tasks.add(renewal_task)
+    renewal_task.add_done_callback(app.state.background_tasks.discard)
 
 
 async def run_shutdown(app: FastAPI):

@@ -87,6 +87,17 @@ if __name__ == "__main__":
 
     app = asyncio.run(create_app())
 
+    # Optionally spin up the standalone ingestion-callback proxy router in this
+    # same process (own daemon thread + port) so Langflow calls back to it
+    # instead of the full backend internal API surface.
+    from config.settings import OPENRAG_BACKEND_ROUTER_ENABLE, OPENRAG_BACKEND_ROUTER_PORT
+
+    if OPENRAG_BACKEND_ROUTER_ENABLE:
+        from app.router_app import start_backend_router
+
+        start_backend_router()
+        logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
+
     uvicorn.run(
         app,
         workers=1,

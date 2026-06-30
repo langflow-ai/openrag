@@ -1,15 +1,18 @@
 """
 API Key Service for managing user API keys for public API authentication.
 """
+
 import hashlib
+import hmac
 import secrets
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from config.settings import API_KEYS_INDEX_NAME
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+API_KEY_HASH_PREFIX = "hmac-sha256:"
 
 
 class APIKeyService:
@@ -25,7 +28,7 @@ class APIKeyService:
         Returns:
             Tuple of (full_key, key_hash, key_prefix)
             - full_key: The complete API key to return to user (only shown once)
-            - key_hash: SHA-256 hash of the key for storage
+            - key_hash: keyed HMAC digest of the key for storage
             - key_prefix: First 12 chars for display (e.g., "orag_abc12345")
         """
         # Generate 32 bytes of random data, encode as base64url (no padding)
@@ -34,8 +37,7 @@ class APIKeyService:
         # Create the full key with prefix
         full_key = f"orag_{random_bytes}"
 
-        # Hash the full key for storage
-        key_hash = hashlib.sha256(full_key.encode()).hexdigest()
+        key_hash = self._hash_key(full_key)
 
         # Create prefix for display (orag_ + first 8 chars of random part)
         key_prefix = f"orag_{random_bytes[:8]}"
@@ -45,17 +47,45 @@ class APIKeyService:
     def _get_opensearch_client(self, jwt_token: str = None):
         """Get the appropriate OpenSearch client.
 
-        In IBM auth mode, returns a user-authenticated client when *jwt_token*
-        is available; otherwise falls back to the default admin client.
+        Upstream-authenticated requests can use the user credential for scoped
+        reads. Writes go through the backend client so the OpenSearch user role
+        can stay read-only.
         """
         from config.settings import IBM_AUTH_ENABLED, clients
+
         if IBM_AUTH_ENABLED and jwt_token and self.session_manager:
             return clients.create_user_opensearch_client(jwt_token)
         return clients.opensearch
 
+    def _get_write_opensearch_client(self):
+        """Return the trusted backend OpenSearch client for API-key writes."""
+        from config.settings import clients
+
+        if clients.opensearch is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
+        return clients.opensearch
+
     def _hash_key(self, api_key: str) -> str:
-        """Hash an API key for lookup."""
-        return hashlib.sha256(api_key.encode()).hexdigest()
+        """Create the keyed lookup digest stored in OpenSearch."""
+        from config.settings import SESSION_SECRET
+
+        digest = hmac.digest(
+            SESSION_SECRET.encode("utf-8"),
+            api_key.encode("utf-8"),
+            "sha256",
+        ).hex()
+        return f"{API_KEY_HASH_PREFIX}{digest}"
+
+    def _legacy_hash_key(self, api_key: str) -> str:
+        """Return the pre-HMAC lookup digest for backwards compatibility."""
+        digest = hashlib.new("sha256", usedforsecurity=False)  # nosec B324
+        digest.update(api_key.encode("utf-8"))
+        return digest.hexdigest()
+
+    def _candidate_hashes(self, api_key: str) -> list[str]:
+        keyed_hash = self._hash_key(api_key)
+        legacy_hash = self._legacy_hash_key(api_key)
+        return [keyed_hash, legacy_hash]
 
     async def create_key(
         self,
@@ -63,7 +93,7 @@ class APIKeyService:
         user_email: str,
         name: str,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create a new API key for a user.
 
@@ -98,7 +128,7 @@ class APIKeyService:
                 "revoked": False,
             }
 
-            opensearch_client = self._get_opensearch_client(jwt_token)
+            opensearch_client = self._get_write_opensearch_client()
 
             # Index the key document
             result = await opensearch_client.index(
@@ -130,7 +160,7 @@ class APIKeyService:
             logger.error("Failed to create API key", error=str(e), user_id=user_id)
             return {"success": False, "error": str(e)}
 
-    async def validate_key(self, api_key: str) -> Optional[Dict[str, Any]]:
+    async def validate_key(self, api_key: str) -> dict[str, Any] | None:
         """
         Validate an API key and return user info if valid.
 
@@ -145,8 +175,8 @@ class APIKeyService:
             if not api_key or not api_key.startswith("orag_"):
                 return None
 
-            # Hash the incoming key
             key_hash = self._hash_key(api_key)
+            candidate_hashes = self._candidate_hashes(api_key)
 
             opensearch_client = self._get_opensearch_client()
 
@@ -155,7 +185,7 @@ class APIKeyService:
                 "query": {
                     "bool": {
                         "must": [
-                            {"term": {"key_hash": key_hash}},
+                            {"terms": {"key_hash": candidate_hashes}},
                             {"term": {"revoked": False}},
                         ]
                     }
@@ -174,16 +204,18 @@ class APIKeyService:
 
             key_doc = hits[0]["_source"]
 
-            # Update last_used_at (fire and forget)
+            matched_hash = key_doc.get("key_hash")
+
+            # Update last_used_at and opportunistically migrate legacy hashes.
             try:
-                await opensearch_client.update(
+                write_client = self._get_write_opensearch_client()
+                update_doc = {"last_used_at": datetime.utcnow().isoformat()}
+                if matched_hash != key_hash:
+                    update_doc["key_hash"] = key_hash
+                await write_client.update(
                     index=API_KEYS_INDEX_NAME,
                     id=key_doc["key_id"],
-                    body={
-                        "doc": {
-                            "last_used_at": datetime.utcnow().isoformat()
-                        }
-                    },
+                    body={"doc": update_doc},
                 )
             except Exception:
                 pass  # Don't fail validation if update fails
@@ -203,7 +235,7 @@ class APIKeyService:
         self,
         user_id: str,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List all API keys for a user (without the actual keys).
 
@@ -219,9 +251,7 @@ class APIKeyService:
 
             # Search for user's keys
             search_body = {
-                "query": {
-                    "term": {"user_id": user_id}
-                },
+                "query": {"term": {"user_id": user_id}},
                 "sort": [{"created_at": {"order": "desc"}}],
                 "_source": [
                     "key_id",
@@ -254,7 +284,7 @@ class APIKeyService:
         user_id: str,
         key_id: str,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Revoke an API key.
 
@@ -282,15 +312,12 @@ class APIKeyService:
             except Exception:
                 return {"success": False, "error": "Key not found"}
 
-            # Update the key to mark as revoked
-            result = await opensearch_client.update(
+            # Update the key to mark as revoked with the trusted backend client.
+            write_client = self._get_write_opensearch_client()
+            result = await write_client.update(
                 index=API_KEYS_INDEX_NAME,
                 id=key_id,
-                body={
-                    "doc": {
-                        "revoked": True
-                    }
-                },
+                body={"doc": {"revoked": True}},
                 refresh="wait_for",
             )
 
@@ -318,7 +345,7 @@ class APIKeyService:
         user_id: str,
         key_id: str,
         jwt_token: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Permanently delete an API key.
 
@@ -346,8 +373,9 @@ class APIKeyService:
             except Exception:
                 return {"success": False, "error": "Key not found"}
 
-            # Delete the key
-            result = await opensearch_client.delete(
+            # Delete the key with the trusted backend client.
+            write_client = self._get_write_opensearch_client()
+            result = await write_client.delete(
                 index=API_KEYS_INDEX_NAME,
                 id=key_id,
                 refresh="wait_for",

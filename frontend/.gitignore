@@ -42,3 +42,6 @@ next-env.d.ts
 
 playwright-report
 test-results
+
+# local-only dev component previews
+app/dev/

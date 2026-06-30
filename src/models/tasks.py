@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+import asyncio
 import itertools
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import ClassVar, Dict, Optional
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from models.processors import TaskProcessor
 
 
 class TaskStatus(Enum):
@@ -10,6 +16,7 @@ class TaskStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class DoclingPhaseStatus(Enum):
@@ -40,15 +47,15 @@ class IngestionPhase(Enum):
 class FileTask:
     file_path: str
     status: TaskStatus = TaskStatus.PENDING
-    result: Optional[dict] = None
-    error: Optional[str] = None
+    result: dict | None = None
+    error: str | None = None
     retry_count: int = 0
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
-    filename: Optional[str] = None  # Original filename for display
+    filename: str | None = None  # Original filename for display
     # Two-phase ingestion fields. Only meaningful for processors that submit
     # files to Docling Serve and then trigger Langflow (i.e. LangflowFileProcessor).
-    docling_task_id: Optional[str] = None
+    docling_task_id: str | None = None
     docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
     phase: IngestionPhase = IngestionPhase.DOCLING
 
@@ -67,10 +74,13 @@ class UploadTask:
     processed_files: int = 0
     successful_files: int = 0
     failed_files: int = 0
-    file_tasks: Dict[str, FileTask] = field(default_factory=dict)
+    file_tasks: dict[str, FileTask] = field(default_factory=dict)
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    processor: TaskProcessor | None = field(default=None, repr=False)
+    background_task: asyncio.Task[None] | None = field(default=None, repr=False)
+    temp_file_paths: list[str] | None = field(default=None, repr=False)
     _sequence_number: int = field(init=False, repr=False)
 
     def __post_init__(self):

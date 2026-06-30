@@ -1,12 +1,8 @@
 "use client";
 
 import { FileText, Folder, Trash2 } from "lucide-react";
-import AwsLogo from "@/components/icons/aws-logo";
-import GoogleDriveIcon from "@/components/icons/google-drive-logo";
-import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
-import OneDriveIcon from "@/components/icons/one-drive-logo";
-import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
+import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import type { CloudFile } from "./types";
 
 interface FileItemProps {
@@ -31,10 +27,24 @@ const getMimeTypeLabel = (mimeType: string) => {
     "application/vnd.google-apps.folder": "Folder",
     "application/pdf": "PDF",
     "text/plain": "Text",
+    "text/csv": "CSV",
+    "text/html": "HTML",
+    "application/xml": "XML",
+    "application/json": "JSON",
+    "application/msword": "Word Doc",
+    "application/vnd.ms-excel": "Excel",
+    "application/vnd.ms-powerpoint": "PowerPoint",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       "Word Doc",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      "Excel",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation":
       "PowerPoint",
+    "application/octet-stream": "File",
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/gif": "GIF",
+    "image/svg+xml": "SVG",
   };
 
   return typeMap[mimeType] || mimeType?.split("/").pop() || "Document";
@@ -49,20 +59,9 @@ const formatFileSize = (bytes?: number) => {
 };
 
 const getProviderIcon = (provider: string) => {
-  switch (provider) {
-    case "google_drive":
-      return <GoogleDriveIcon />;
-    case "onedrive":
-      return <OneDriveIcon />;
-    case "sharepoint":
-      return <SharePointIcon />;
-    case "ibm_cos":
-      return <IBMCOSIcon />;
-    case "aws_s3":
-      return <AwsLogo />;
-    default:
-      return <FileText className="h-6 w-6" />;
-  }
+  const Icon = getConnectorDescriptor(provider)?.Icon;
+  if (Icon) return <Icon />;
+  return <FileText className="h-6 w-6" />;
 };
 
 export const FileItem = ({ file, onRemove, provider }: FileItemProps) => (

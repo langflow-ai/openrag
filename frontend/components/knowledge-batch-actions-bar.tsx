@@ -1,6 +1,7 @@
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 
 import { usePermissions } from "@/hooks/use-permissions";
+import { trackButton } from "@/lib/analytics";
 
 interface KnowledgeBatchActionsBarProps {
   selectedCount: number;
@@ -31,7 +32,15 @@ export const KnowledgeBatchActionsBar = ({
       <div className="ml-auto flex items-stretch">
         <button
           type="button"
-          onClick={onDelete}
+          onClick={() => {
+            trackButton({
+              CTA: "Delete Documents (Bulk)",
+              elementId: "bulk-delete-button",
+              namespace: "knowledge",
+              payload: { count: selectedCount },
+            });
+            onDelete();
+          }}
           disabled={!canDelete}
           title={
             canDelete
@@ -40,7 +49,7 @@ export const KnowledgeBatchActionsBar = ({
           }
           className="flex h-full items-center px-4 text-sm font-medium transition-colors hover:bg-primary-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-4 w-4 mr-2" />
           Delete
         </button>
       </div>

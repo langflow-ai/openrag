@@ -18,6 +18,7 @@ export interface KnowledgeSettings {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
 }
 
 export interface ProviderSettings {
@@ -75,6 +76,7 @@ export interface Settings {
   };
   localhost_url?: string;
   ingest_via_chat?: boolean;
+  show_provider_ingest_settings?: boolean;
   segment_write_key?: string;
   environment?: string;
 }
@@ -94,7 +96,7 @@ export const useGetSettingsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["settings"],
       queryFn: getSettings,
@@ -102,6 +104,4 @@ export const useGetSettingsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -48,7 +48,10 @@ export interface ConversationHistoryResponse {
 export const useGetConversationsQuery = (
   endpoint: EndpointType,
   refreshTrigger?: number,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<ChatConversation[], Error, ChatConversation[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();
@@ -104,7 +107,7 @@ export const useGetConversationsQuery = (
   const callerEnabled = options?.enabled ?? true;
   const enabled = isOnboardingComplete && callerEnabled;
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["conversations", endpoint, refreshTrigger],
       placeholderData: (prev) => prev,
@@ -119,6 +122,4 @@ export const useGetConversationsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

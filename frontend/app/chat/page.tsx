@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import { uploadFileForContext } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -162,10 +164,11 @@ function ChatPage() {
   });
 
   // Show warning if waiting too long (20 seconds)
+  const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isChatStreaming && !streamingMessage) {
+    if (isChatStreaming && !hasStreamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -176,7 +179,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, streamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -186,109 +189,51 @@ function ChatPage() {
   };
 
   const handleFileUpload = async (file: File) => {
-    console.log("handleFileUpload called with file:", file.name);
-
     if (isUploading) return;
 
     setIsUploading(true);
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("endpoint", endpoint);
+      const result = await uploadFileForContext(
+        file,
+        endpoint,
+        previousResponseIds[endpoint],
+      );
 
-      // Add previous_response_id if we have one for this endpoint
-      const currentResponseId = previousResponseIds[endpoint];
-      if (currentResponseId) {
-        formData.append("previous_response_id", currentResponseId);
+      if (result.type === "task") {
+        addTask(result.taskId, { source: "file" });
+        return { type: "task-queued" as const };
       }
 
-      const response = await fetch("/api/upload_context", {
-        method: "POST",
-        body: formData,
-      });
+      // Direct response path
+      const uploadMessage: Message = {
+        role: "user",
+        content: `I'm uploading a document called "${result.filename}". Here is its content:`,
+        timestamp: new Date(),
+      };
+      const confirmationMessage: Message = {
+        role: "assistant",
+        content: `Confirmed`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
 
-      console.log("Upload response status:", response.status);
+      addConversationDoc(result.filename);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "Upload failed with status:",
-          response.status,
-          "Response:",
-          errorText,
-        );
-        throw new Error("Failed to process document");
-      }
-
-      const result = await response.json();
-      console.log("Upload result:", result);
-
-      if (!response.ok) {
-        // Set chat error flag if upload fails
-        setChatError(true);
-      }
-
-      if (response.status === 201) {
-        // New flow: Got task ID, start tracking with centralized system
-        const taskId = result.task_id || result.id;
-
-        if (!taskId) {
-          console.error("No task ID in 201 response:", result);
-          throw new Error("No task ID received from server");
-        }
-
-        // Add task to centralized tracking
-        addTask(taskId);
-
-        return null;
-      } else if (response.ok) {
-        // Original flow: Direct response
-
-        const uploadMessage: Message = {
-          role: "user",
-          content: `I'm uploading a document called "${result.filename}". Here is its content:`,
-          timestamp: new Date(),
-        };
-
-        const confirmationMessage: Message = {
-          role: "assistant",
-          content: `Confirmed`,
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
-
-        // Add file to conversation docs
-        if (result.filename) {
-          addConversationDoc(result.filename);
-        }
-
-        // Update the response ID for this endpoint
-        if (result.response_id) {
-          setPreviousResponseIds((prev) => ({
-            ...prev,
-            [endpoint]: result.response_id,
-          }));
-
-          // If this is a new conversation (no currentConversationId), set it now
-          if (!currentConversationId) {
-            setCurrentConversationId(result.response_id);
-            refreshConversations(true);
-          } else {
-            // For existing conversations, do a silent refresh to keep backend in sync
-            refreshConversationsSilent();
-          }
-
-          return result.response_id;
-        }
+      setPreviousResponseIds((prev) => ({
+        ...prev,
+        [endpoint]: result.responseId,
+      }));
+      if (!currentConversationId) {
+        setCurrentConversationId(result.responseId);
+        refreshConversations(true);
       } else {
-        throw new Error(`Upload failed: ${response.status}`);
+        refreshConversationsSilent();
       }
+      return result.responseId;
     } catch (error) {
       console.error("Upload failed:", error);
-      // Set chat error flag to trigger test_completion=true on health checks
       setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
@@ -351,6 +296,7 @@ function ChatPage() {
 
   // Load conversation data from context
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     // Only load conversation data when:
     // 1. conversationData exists AND
     // 2. (It's a different conversation OR we're not streaming and data has changed) AND
@@ -542,13 +488,15 @@ function ChatPage() {
       }));
 
       // Focus input when loading a conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     } else if (!conversationData) {
       // No conversation selected (new conversation)
       lastLoadedConversationRef.current = null;
     }
+
+    return () => clearTimeout(focusTimeoutId);
   }, [
     conversationData,
     isUserInteracting,
@@ -560,25 +508,21 @@ function ChatPage() {
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
       console.log("Starting new conversation");
       setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     }
+    return () => clearTimeout(focusTimeoutId);
   }, [placeholderConversation, currentConversationId]);
 
-  // Check onboarding completion
-
-  // Check if onboarding is complete (current_step >= 4 means complete)
-  const TOTAL_ONBOARDING_STEPS = 4;
-  const isOnboardingComplete =
-    settings?.onboarding?.current_step !== undefined &&
-    settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS;
+  const { isOnboardingComplete } = useOnboardingState();
 
   // Prepare filters for nudges (same as chat)
   const processedFiltersForNudges = parsedFilterData?.filters
@@ -800,17 +744,20 @@ function ChatPage() {
     // Check if there's an uploaded file and upload it first
     let uploadedResponseId: string | null = null;
     if (uploadedFile) {
-      // Upload the file first
-      const responseId = await handleFileUpload(uploadedFile);
-      // Clear the file after upload
+      const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
 
-      // If the upload resulted in a new conversation, store the response ID
-      if (responseId) {
-        uploadedResponseId = responseId;
+      if (uploadResult && typeof uploadResult === "object") {
+        // File is being processed asynchronously — don't send the message yet.
+        // The user can submit again once the task completes.
+        return;
+      }
+
+      if (uploadResult) {
+        uploadedResponseId = uploadResult;
         setPreviousResponseIds((prev) => ({
           ...prev,
-          [endpoint]: responseId,
+          [endpoint]: uploadResult,
         }));
       }
     }
@@ -979,7 +926,7 @@ function ChatPage() {
                   ? (messages[index]?.content.match(FILES_REGEX)?.[0] ??
                       null) === null && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
@@ -1015,7 +962,7 @@ function ChatPage() {
                       (messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
                         null) === null) && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"

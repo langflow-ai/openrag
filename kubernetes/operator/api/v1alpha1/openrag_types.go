@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // PVCReclaimPolicy describes what happens to PVCs when the OpenRAG CR is deleted.
@@ -135,6 +136,41 @@ type ComponentSpec struct {
 	// ServiceAnnotations are annotations to add to the Service resource.
 	// +optional
 	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+
+	// ServiceLabels are custom labels to add to the Service resource.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for service discovery, monitoring, and network policies.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceLabels map[string]string `json:"serviceLabels,omitempty"`
+
+	// ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for RBAC policies, auditing, and IAM integration.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceAccountLabels map[string]string `json:"serviceAccountLabels,omitempty"`
+
+	// ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	ServiceAccountAnnotations map[string]string `json:"serviceAccountAnnotations,omitempty"`
+
+	// SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for secret management tools, backup policies, and auditing.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	SecretLabels map[string]string `json:"secretLabels,omitempty"`
+
+	// SecretAnnotations are custom annotations to add to component-managed Secrets.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	SecretAnnotations map[string]string `json:"secretAnnotations,omitempty"`
 
 	// Command overrides the container's entrypoint.
 	// +optional
@@ -297,6 +333,20 @@ type PersistenceSpec struct {
 	// ExistingClaim reuses a pre-existing PVC instead of creating one.
 	// +optional
 	ExistingClaim string `json:"existingClaim,omitempty"`
+
+	// Labels are custom labels to add to the PersistentVolumeClaim.
+	// Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+	// Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are custom annotations to add to the PersistentVolumeClaim.
+	// Merged with CommonResourceAnnotations from OpenRAGSpec.
+	// Useful for volume provisioning hints and backup policies.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // OpenSearchSpec points the operator at an external OpenSearch cluster.
@@ -338,6 +388,10 @@ type DoclingSpec struct {
 	// +optional
 	// +kubebuilder:default="http"
 	Scheme string `json:"scheme,omitempty"`
+
+	// +optional
+	// +kubebuilder:default=false
+	VerifySsl *bool `json:"verifySsl,omitempty"`
 }
 
 // DoclingServeSpec configures the Docling serve component (API server).
@@ -625,6 +679,18 @@ type NetworkPolicySpec struct {
 
 // OpenRAGSpec defines the desired state of an OpenRAG instance.
 type OpenRAGSpec struct {
+	// InstanceName is a short unique identifier embedded in all resource names, enabling
+	// multiple OpenRAG CRs to coexist in the same namespace (e.g. "prod", "staging").
+	// Must start with a lowercase letter and contain only lowercase letters, digits, and
+	// hyphens, with a maximum of 8 characters. When empty (default), resources use legacy
+	// static names (openrag-fe, openrag-be, openrag-lf) for backwards compatibility.
+	// This field is immutable after creation.
+	// +optional
+	// +kubebuilder:validation:MaxLength=8
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]*$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="instanceName is immutable after creation"
+	InstanceName string `json:"instanceName,omitempty"`
+
 	// TargetNamespace is the namespace where all OpenRAG resources are created.
 	// Defaults to the namespace of the CR itself. Cannot be "default".
 	// +optional
@@ -639,6 +705,23 @@ type OpenRAGSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self.all(x, x.name != '')",message="imagePullSecret name cannot be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// CommonResourceLabels are labels applied to all managed infrastructure resources
+	// (PVCs, Secrets, Services, ServiceAccounts). These labels are merged with
+	// resource-specific labels, with resource-specific labels taking precedence.
+	// Operator-managed labels (e.g., app.kubernetes.io/managed-by) cannot be overridden.
+	// Useful for organization-wide policies, cost allocation, and resource grouping.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	CommonResourceLabels map[string]string `json:"commonResourceLabels,omitempty"`
+
+	// CommonResourceAnnotations are annotations applied to all managed infrastructure resources
+	// (PVCs, Secrets, Services, ServiceAccounts). These annotations are merged with
+	// resource-specific annotations, with resource-specific annotations taking precedence.
+	// Useful for backup policies, monitoring configuration, and GitOps metadata.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=64
+	CommonResourceAnnotations map[string]string `json:"commonResourceAnnotations,omitempty"`
 
 	// Frontend configures the OpenRAG Next.js frontend.
 	// +kubebuilder:validation:Required
@@ -710,6 +793,7 @@ type OpenRAGStatus struct {
 // +kubebuilder:printcolumn:name="Frontend",type="string",JSONPath=".spec.frontend.image"
 // +kubebuilder:printcolumn:name="Backend",type="string",JSONPath=".spec.backend.image"
 // +kubebuilder:printcolumn:name="Langflow",type="string",JSONPath=".spec.langflow.image"
+// +genclient
 
 // OpenRAG is the Schema for the openrags API.
 type OpenRAG struct {
@@ -730,5 +814,12 @@ type OpenRAGList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&OpenRAG{}, &OpenRAGList{})
+	SchemeBuilder.Register(func(scheme *runtime.Scheme) error {
+		scheme.AddKnownTypes(GroupVersion,
+			&OpenRAG{},
+			&OpenRAGList{},
+		)
+		metav1.AddToGroupVersion(scheme, GroupVersion)
+		return nil
+	})
 }

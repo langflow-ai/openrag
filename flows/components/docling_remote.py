@@ -4,7 +4,7 @@ import base64
 import json
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import Any
 
 import httpx
@@ -14,9 +14,7 @@ from pydantic import ValidationError
 from lfx.base.data import BaseFileComponent
 from lfx.inputs import IntInput, NestedDictInput, StrInput, TableInput
 from lfx.inputs.inputs import FloatInput
-from lfx.schema import Data
-from lfx.schema.dotdict import dotdict
-from lfx.schema.message import Message
+from lfx.schema import Data, dotdict
 from lfx.utils.util import transform_localhost_url
 
 
@@ -134,6 +132,15 @@ class DoclingRemoteComponent(BaseFileComponent):
                 "See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information."
             ),
             input_types=["Message"],
+        ),
+        StrInput(
+            name="verify_ssl",
+            display_name="Verify SSL",
+            info="Whether to verify SSL certificates for Docling Serve.",
+            value="DOCLING_SERVE_VERIFY_SSL",
+            load_from_db=True,
+            required=False,
+            advanced=True,
         ),
     ]
 
@@ -255,6 +262,20 @@ class DoclingRemoteComponent(BaseFileComponent):
         result_resp.raise_for_status()
         result = result_resp.json()
 
+        if result.get("status") == "failure" or result.get("errors"):
+            errors = result.get("errors", [])
+            err_msg_list = []
+            for err in errors:
+                if isinstance(err, dict) and "error_message" in err:
+                    err_msg_list.append(err["error_message"])
+                elif isinstance(err, str):
+                    err_msg_list.append(err)
+
+            err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+
+            msg = f"Docling processing failed: {err_details}"
+            raise ValueError(msg)
+
         if "json_content" not in result["document"] or result["document"]["json_content"] is None:
             self.log("No JSON DoclingDocument found in the result.")
             return None
@@ -269,6 +290,19 @@ class DoclingRemoteComponent(BaseFileComponent):
             self.log(f"Error validating the document. {e}")
             return None
 
+    def _get_verify_ssl(self) -> bool:
+        """Determine whether to verify SSL certificates for Docling Serve.
+
+        Returns:
+            bool: True if SSL verification should be enforced, False otherwise.
+        """
+        verify = getattr(self, "verify_ssl", "true")
+        if isinstance(verify, bool):
+            return verify
+        if isinstance(verify, str):
+            return verify.lower() in ("true", "1", "yes")
+        return True
+
     def _process_task_id(self) -> list[Data]:
         """Process an existing task by polling for status and retrieving results.
 
@@ -278,7 +312,7 @@ class DoclingRemoteComponent(BaseFileComponent):
         transformed_url = transform_localhost_url(self.api_url)
         base_url = f"{transformed_url}/v1"
 
-        with httpx.Client(headers=self._process_headers()) as client:
+        with httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client:
             result = self._poll_and_fetch_result(client, base_url, self.task_id)
             return [result] if result else []
 
@@ -323,7 +357,7 @@ class DoclingRemoteComponent(BaseFileComponent):
 
         processed_data: list[Data | None] = []
         with (
-            httpx.Client(headers=self._process_headers()) as client,
+            httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client,
             ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,
         ):
             futures: list[tuple[int, Future]] = []

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import copy
 import json
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from opensearchpy import OpenSearch, helpers
-from opensearchpy.exceptions import OpenSearchException, RequestError
-
+import httpx
 from lfx.base.vectorstores.model import LCVectorStoreComponent, check_cached_vector_store
 from lfx.base.vectorstores.vector_store_connection_decorator import vector_store_connection
 from lfx.io import (
@@ -25,9 +22,42 @@ from lfx.io import (
 )
 from lfx.log import logger
 from lfx.schema.data import Data
+from lfx.schema.dataframe import Table
+from opensearchpy import OpenSearch, helpers
+from opensearchpy.exceptions import OpenSearchException, RequestError
 
 REQUEST_TIMEOUT = 60
 MAX_RETRIES = 5
+
+# watsonx.ai surfaces rate-limit state via these (mostly non-standard) response
+# headers. The IBM SDK acts on the x-requests-limit-* family directly; we log
+# them on a failed embedding call to aid plan/region tuning.
+_WATSONX_RATE_LIMIT_HEADERS = (
+    "x-requests-limit-rate",
+    "x-requests-limit-remaining",
+    "x-requests-limit-reset",
+    "Retry-After",
+)
+
+
+def _log_watsonx_rate_limit_headers(error: Exception) -> None:
+    """Best-effort diagnostic: log watsonx rate-limit headers from a failed call.
+
+    The watsonx SDK raises ``ApiRequestFailure``, which carries the originating
+    httpx/requests ``Response`` as ``.response``. On a 429 exhaustion we surface
+    the documented rate-limit headers so operators can tune throughput.
+    """
+    try:
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", None)
+        if not headers:
+            return
+        status = getattr(response, "status_code", "unknown")
+        observed = {h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None}
+        if str(status) == "429" or observed:
+            logger.warning(f"watsonx rate-limit response (status={status}): {observed}")
+    except Exception as log_error:  # never let diagnostics mask the real error
+        logger.debug(f"Could not extract watsonx rate-limit headers: {log_error}")
 
 
 def normalize_model_name(model_name: str) -> str:
@@ -129,7 +159,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         "docs_metadata",
         "request_timeout",
         "max_retries",
+        "openrag_ingest_url",
+        "openrag_ingest_token",
+        "openrag_ingest_run_id",
+        "openrag_ingest_batch_size",
     ]
+    _openrag_ingest_global_placeholders = {
+        "openrag_ingest_url": "OPENRAG_INGEST_URL",
+        "openrag_ingest_token": "OPENRAG_INGEST_TOKEN",
+        "openrag_ingest_run_id": "OPENRAG_INGEST_RUN_ID",
+    }
 
     inputs = [
         TableInput(
@@ -154,7 +193,24 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 },
             ],
             value=[],
-            input_types=["Data"],
+            input_types=["Data", "JSON"],
+        ),
+        StrInput(
+            name="openrag_ingest_token",
+            display_name="OpenRAG Ingest Token",
+            value="OPENRAG_INGEST_TOKEN",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+            info="Short-lived token used only for OpenRAG ingest callbacks.",
+        ),
+        StrInput(
+            name="openrag_ingest_run_id",
+            display_name="OpenRAG Ingest Run ID",
+            value="OPENRAG_INGEST_RUN_ID",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
         ),
         StrInput(
             name="opensearch_url",
@@ -228,7 +284,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=True,
         ),
         *LCVectorStoreComponent.inputs,  # includes search_query, add_documents, etc.
-        HandleInput(name="embedding", display_name="Embedding", input_types=["Embeddings"], is_list=True),
+        HandleInput(
+            name="embedding", display_name="Embedding", input_types=["Embeddings"], is_list=True
+        ),
         StrInput(
             name="embedding_model_name",
             display_name="Embedding Model Name",
@@ -280,11 +338,13 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         DropdownInput(
             name="auth_mode",
             display_name="Authentication Mode",
-            value="jwt",
-            options=["basic", "jwt"],
+            value="openrag",
+            options=["basic", "jwt", "openrag"],
             info=(
                 "Authentication method: 'basic' for username/password authentication, "
-                "or 'jwt' for JSON Web Token (Bearer) authentication."
+                "'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to "
+                "delegate writes to the OpenRAG backend ingest callback (no direct "
+                "OpenSearch credentials required — only OPENRAG_* fields)."
             ),
             real_time_refresh=True,
             advanced=False,
@@ -311,6 +371,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Valid JSON Web Token for authentication. "
                 "Will be sent in the Authorization header (with optional 'Bearer ' prefix)."
             ),
+            required=False
         ),
         StrInput(
             name="jwt_header",
@@ -362,6 +423,38 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=True,
             info="Number of retries for failed connections before raising an error.",
         ),
+        StrInput(
+            name="openrag_ingest_url",
+            display_name="OpenRAG Ingest URL",
+            value="OPENRAG_INGEST_URL",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+            info="Internal OpenRAG callback URL for backend-owned document indexing.",
+        ),
+        StrInput(
+            name="openrag_ingest_token",
+            display_name="OpenRAG Ingest Token",
+            value="OPENRAG_INGEST_TOKEN",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+            info="Short-lived token used only for OpenRAG ingest callbacks.",
+        ),
+        StrInput(
+            name="openrag_ingest_run_id",
+            display_name="OpenRAG Ingest Run ID",
+            value="OPENRAG_INGEST_RUN_ID",
+            load_from_db=True,
+            input_types=["Text", "Message"],
+            advanced=True,
+        ),
+        IntInput(
+            name="openrag_ingest_batch_size",
+            display_name="OpenRAG Ingest Batch Size",
+            value=100,
+            advanced=True,
+        ),
     ]
     outputs = [
         Output(
@@ -391,7 +484,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             return Data(data={})
 
         if isinstance(raw_query, dict):
-            query_body = raw_query
+            query_body = copy.deepcopy(raw_query)
         elif isinstance(raw_query, str):
             s = raw_query.strip()
 
@@ -414,15 +507,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             msg = f"Unsupported raw_search query type: {type(raw_query)!r}"
             raise TypeError(msg)
 
-        # Apply filter_expression if configured (same parsing as search())
-        filter_obj = None
-        if getattr(self, "filter_expression", "") and self.filter_expression.strip():
-            try:
-                filter_obj = json.loads(self.filter_expression)
-            except json.JSONDecodeError as e:
-                msg = f"Invalid filter_expression JSON: {e}"
-                raise ValueError(msg) from e
-
+        filter_obj = self._parse_filter_expression()
         filter_clauses = self._coerce_filter_clauses(filter_obj)
 
         if filter_clauses:
@@ -445,14 +530,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         if filter_obj:
             # Apply limit if not already set in the raw query
             if "size" not in query_body:
-                limit = filter_obj.get("limit")
+                limit = self._resolve_limit(filter_obj, default_limit=None)
                 if limit is not None:
                     query_body["size"] = limit
 
             # Apply score_threshold / scoreThreshold as min_score if not already set
             if "min_score" not in query_body:
-                score_threshold = filter_obj.get("score_threshold") or filter_obj.get("scoreThreshold")
-                if isinstance(score_threshold, (int, float)) and score_threshold > 0:
+
+                score_threshold = self._resolve_score_threshold(filter_obj)
+                if score_threshold is not None:
+
                     query_body["min_score"] = score_threshold
 
         client = self.build_client()
@@ -469,7 +556,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         def is_vector(val):
             # Accepts if it's a list of numbers (float or int) and has reasonable vector length
             return (
-                isinstance(val, list) and len(val) > min_vector_length and all(isinstance(x, (float, int)) for x in val)
+                isinstance(val, list)
+                and len(val) > min_vector_length
+                and all(isinstance(x, (float, int)) for x in val)
             )
 
         if "hits" in resp and "hits" in resp["hits"]:
@@ -691,7 +780,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 )
                 # Skip and continue - ingestion will proceed, but KNN search may fail if mapping doesn't exist
                 return
-            logger.warning(f"[OpenSearchMultimodel] Could not add embedding field mapping for {field_name}: {e}")
+            logger.warning(
+                f"[OpenSearchMultimodel] Could not add embedding field mapping for {field_name}: {e}"
+            )
             raise
 
         # Verify the field was added correctly
@@ -727,7 +818,158 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Returns:
             True if AOSS is enabled, False otherwise
         """
-        return http_auth is not None and hasattr(http_auth, "service") and http_auth.service == "aoss"
+        return (
+            http_auth is not None and hasattr(http_auth, "service") and http_auth.service == "aoss"
+        )
+
+    @staticmethod
+    def _openrag_input_to_str(value: Any) -> str:
+        if value is None:
+            return ""
+        if hasattr(value, "get_secret_value"):
+            value = value.get_secret_value()
+        if hasattr(value, "text"):
+            value = value.text
+        return str(value or "").strip()
+
+    def _openrag_callback_value(self, attr_name: str) -> str:
+        value = self._openrag_input_to_str(getattr(self, attr_name, ""))
+        if value == self._openrag_ingest_global_placeholders.get(attr_name):
+            return ""
+        return value
+
+    def _openrag_ingest_callback_config(self) -> tuple[str, str, str] | None:
+        url = self._openrag_callback_value("openrag_ingest_url")
+        token = self._openrag_callback_value("openrag_ingest_token")
+        ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")
+
+        masked_token = (
+            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
+        )
+        debug_payload = {
+            "openrag_ingest_url": url,
+            "openrag_ingest_url_len": len(url),
+            "openrag_ingest_token_masked": masked_token,
+            "openrag_ingest_token_len": len(token),
+            "openrag_ingest_run_id": ingest_run_id,
+            "raw_url_type": type(self.openrag_ingest_url).__name__,
+            "raw_token_type": type(self.openrag_ingest_token).__name__,
+            "raw_run_id_type": type(self.openrag_ingest_run_id).__name__,
+        }
+        logger.warning(f"[OpenRAG callback config] {debug_payload}")
+        try:
+            self.log(f"[OpenRAG callback config] {debug_payload}")
+        except Exception:
+            pass
+
+        if not url and not token and not ingest_run_id:
+            return None
+        if not url or not token or not ingest_run_id:
+            msg = "OpenRAG ingest callback requires url, token, and ingest_run_id."
+            raise ValueError(msg)
+        return url, token, ingest_run_id
+
+    def _post_openrag_ingest_batches(
+        self,
+        *,
+        requests: list[dict],
+        vector_field: str,
+        text_field: str,
+    ) -> None:
+        callback_config = self._openrag_ingest_callback_config()
+        if callback_config is None:
+            return
+
+        url, token, ingest_run_id = callback_config
+        batch_size = max(self._parse_int_param("openrag_ingest_batch_size", 100), 1)
+        timeout = self._parse_int_param("request_timeout", REQUEST_TIMEOUT)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        masked_token = (
+            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
+        )
+        request_summary = {
+            "url": url,
+            "ingest_run_id": ingest_run_id,
+            "token_masked": masked_token,
+            "total_chunks": len(requests),
+            "batch_size": batch_size,
+            "timeout_s": timeout,
+        }
+        logger.warning(f"[OpenRAG ingest POST] {request_summary}")
+        try:
+            self.log(f"[OpenRAG ingest POST] {request_summary}")
+        except Exception:
+            pass
+
+        with httpx.Client(timeout=timeout) as client:
+            total_batches = (len(requests) + batch_size - 1) // batch_size
+            for batch_number, start in enumerate(range(0, len(requests), batch_size), start=1):
+                batch = requests[start : start + batch_size]
+                final = batch_number == total_batches
+                payload = {
+                    "ingest_run_id": ingest_run_id,
+                    "batch_id": batch_number,
+                    "final": final,
+                    "chunks": [
+                        self._openrag_chunk_payload(
+                            request,
+                            vector_field=vector_field,
+                            text_field=text_field,
+                        )
+                        for request in batch
+                    ],
+                }
+                logger.warning(
+                    f"[OpenRAG ingest POST] -> batch={batch_number}/{total_batches} "
+                    f"url={url} chunks={len(payload['chunks'])} final={final}"
+                )
+                response = client.post(url, json=payload, headers=headers)
+                response_summary = {
+                    "batch": batch_number,
+                    "url": url,
+                    "status": response.status_code,
+                    "final_url": str(response.request.url),
+                    "response_headers": dict(response.headers),
+                    "body_preview": response.text[:500],
+                }
+                logger.warning(f"[OpenRAG ingest POST resp] {response_summary}")
+                try:
+                    self.log(f"[OpenRAG ingest POST resp] {response_summary}")
+                except Exception:
+                    pass
+                if response.status_code >= 400:
+                    msg = (
+                        "OpenRAG ingest callback failed "
+                        f"(batch={batch_number}, status={response.status_code}, "
+                        f"url={url}): {response.text[:1000]}"
+                    )
+                    raise RuntimeError(msg)
+
+        self.log(f"Posted {len(requests)} chunks to OpenRAG backend ingest callback.")
+
+    @staticmethod
+    def _openrag_chunk_payload(
+        request: dict,
+        *,
+        vector_field: str,
+        text_field: str,
+    ) -> dict:
+        metadata = {
+            key: value
+            for key, value in request.items()
+            if key not in {"_op_type", "_index", "_id", "id", vector_field, text_field}
+        }
+        page = metadata.get("page")
+        if isinstance(page, str) and page.isdigit():
+            page = int(page)
+        return {
+            "id": request.get("_id") or request.get("id"),
+            "text": request.get(text_field, ""),
+            "vector": request[vector_field],
+            "page": page if isinstance(page, int) else None,
+            "metadata": metadata,
+        }
 
     def _bulk_ingest_embeddings(
         self,
@@ -782,7 +1024,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 metadata = {**metadata, "embedding_dimensions": vector_dimensions}
 
             # Normalize ACL fields that may arrive as JSON strings from flows
-            for key in ("allowed_users", "allowed_groups"):
+            for key in ("allowed_users", "allowed_groups", "allowed_principals"):
                 value = metadata.get(key)
                 if isinstance(value, str):
                     try:
@@ -793,7 +1035,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         # Leave value as-is if it isn't valid JSON
                         pass
 
-            _id = ids[i] if ids else str(uuid.uuid4())
+            metadata_document_id = str(metadata.get("document_id") or "").strip()
+            if metadata_document_id and metadata_document_id.lower() != "none":
+                generated_id = f"{metadata_document_id}_{i}"
+            else:
+                generated_id = str(uuid.uuid4())
+            _id = ids[i] if ids else generated_id
             request = {
                 "_op_type": "index",
                 "_index": index_name,
@@ -810,8 +1057,46 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             return_ids.append(_id)
         if metadatas:
             self.log(f"Sample metadata: {metadatas[0] if metadatas else {}}")
-        helpers.bulk(client, requests, max_chunk_bytes=max_chunk_bytes)
+        if self._openrag_ingest_callback_config() is not None:
+            self._post_openrag_ingest_batches(
+                requests=requests,
+                vector_field=vector_field,
+                text_field=text_field,
+            )
+            return return_ids
+        try:
+            helpers.bulk(client, requests, max_chunk_bytes=max_chunk_bytes)
+        except Exception as bulk_error:
+            if "Unsupported request type for filter level DLS" not in str(bulk_error):
+                raise
+            logger.warning(
+                "[OpenSearchMultimodel] Bulk ingest is blocked by filter-level DLS; "
+                "falling back to per-document index requests."
+            )
+            self._index_embeddings_individually(client, requests)
         return return_ids
+
+    def _index_embeddings_individually(
+        self,
+        client: OpenSearch,
+        requests: list[dict],
+    ) -> None:
+        """Index documents one at a time when OpenSearch DLS rejects bulk writes."""
+        for request in requests:
+            document_id = request.get("_id") or request.get("id")
+            body = {
+                key: value
+                for key, value in request.items()
+                if key not in {"_op_type", "_index", "_id", "id"}
+            }
+            client.index(index=request["_index"], id=document_id, body=body)
+
+    def _log_index_admin_skip(self, operation: str, error: Exception) -> None:
+        """Log index-admin operations that may be blocked under filter-level DLS."""
+        logger.warning(
+            f"[OpenSearchMultimodel] Could not run index-admin operation '{operation}': {error}. "
+            "Assuming the backend pre-created the required index/mapping and continuing."
+        )
 
     # ---------- param helpers ----------
     def _parse_int_param(self, attr_name: str, default: int) -> int:
@@ -822,7 +1107,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         try:
             value = int(str(raw).strip())
         except ValueError:
-            logger.warning(f"Invalid integer value '{raw}' for {attr_name}, using default {default}")
+            logger.warning(
+                f"Invalid integer value '{raw}' for {attr_name}, using default {default}"
+            )
             return default
 
         if value < 0:
@@ -853,6 +1140,26 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             header_name = (self.jwt_header or "Authorization").strip()
             header_value = f"Bearer {token}" if self.bearer_prefix else token
             return {"headers": {header_name: header_value}}
+        if mode == "openrag":
+            # Writes are delegated to the OpenRAG backend ingest callback,
+            # so no direct OpenSearch credentials are needed. Only the
+            # OPENRAG_* fields are required for ingestion to function.
+            missing = [
+                name
+                for name, value in (
+                    ("openrag_ingest_url", self.openrag_ingest_url),
+                    ("openrag_ingest_token", self.openrag_ingest_token),
+                    ("openrag_ingest_run_id", self.openrag_ingest_run_id),
+                )
+                if not (value or "").strip()
+            ]
+            if missing:
+                msg = (
+                    "Auth Mode is 'openrag' but required OPENRAG_* fields are "
+                    f"missing: {', '.join(missing)}."
+                )
+                raise ValueError(msg)
+            return {}
         user = (self.username or "").strip()
         pwd = (self.password or "").strip()
         if not user or not pwd:
@@ -888,7 +1195,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # Check if we're in ingestion-only mode (no search query)
         has_search_query = bool((self.search_query or "").strip())
         if not has_search_query:
-            logger.debug("[OpenSearchMultimodel] Ingestion-only mode activated: search operations will be skipped")
+            logger.debug(
+                "[OpenSearchMultimodel] Ingestion-only mode activated: search operations will be skipped"
+            )
             logger.debug("[OpenSearchMultimodel] Starting ingestion mode...")
 
         logger.debug(f"[OpenSearchMultimodel] Embedding: {self.embedding}")
@@ -938,19 +1247,31 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         # NOW check if we have any valid embeddings left after filtering
         if not embeddings_list:
-            logger.warning("All embeddings returned None (fail-safe mode enabled). Skipping document ingestion.")
-            self.log("Embedding returned None (fail-safe mode enabled). Skipping document ingestion.")
+            logger.warning(
+                "All embeddings returned None (fail-safe mode enabled). Skipping document ingestion."
+            )
+            self.log(
+                "Embedding returned None (fail-safe mode enabled). Skipping document ingestion."
+            )
             return
 
-        logger.debug(f"[OpenSearchMultimodel][INGESTION] Valid embeddings after filtering: {len(embeddings_list)}")
-        self.log(f"[OpenSearchMultimodel][INGESTION] Available embedding models: {len(embeddings_list)}")
+        logger.debug(
+            f"[OpenSearchMultimodel][INGESTION] Valid embeddings after filtering: {len(embeddings_list)}"
+        )
+        self.log(
+            f"[OpenSearchMultimodel][INGESTION] Available embedding models: {len(embeddings_list)}"
+        )
 
         # Select the embedding to use for ingestion
         selected_embedding = None
         embedding_model = None
 
         # If embedding_model_name is specified, find matching embedding
-        if hasattr(self, "embedding_model_name") and self.embedding_model_name and self.embedding_model_name.strip():
+        if (
+            hasattr(self, "embedding_model_name")
+            and self.embedding_model_name
+            and self.embedding_model_name.strip()
+        ):
             target_model_name = self.embedding_model_name.strip()
             self.log(f"Looking for embedding model: {target_model_name}")
 
@@ -996,12 +1317,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         # Use the dedicated embedding instance from the dict
                         selected_embedding = available_models_attr[target_model_name]
                         embedding_model = target_model_name
-                        self.log(f"Found dedicated embedding instance for '{embedding_model}' in available_models dict")
+                        self.log(
+                            f"Found dedicated embedding instance for '{embedding_model}' in available_models dict"
+                        )
                     else:
                         # Traditional identifier match
                         selected_embedding = emb_obj
                         embedding_model = self._get_embedding_model_name(emb_obj)
-                        self.log(f"Found matching embedding model: {embedding_model} (matched on: {target_model_name})")
+                        self.log(
+                            f"Found matching embedding model: {embedding_model} (matched on: {target_model_name})"
+                        )
                     break
 
             if not selected_embedding:
@@ -1072,7 +1397,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         # No model switching needed - each model in available_models has its own dedicated instance
         # The selected_embedding is already configured correctly for the target model
-        logger.info(f"Using embedding instance for '{embedding_model}' - pre-configured and ready to use")
+        logger.info(
+            f"Using embedding instance for '{embedding_model}' - pre-configured and ready to use"
+        )
 
         # Extract texts and metadata from documents
         texts = []
@@ -1107,93 +1434,107 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             metadatas.append(data_copy)
         self.log(metadatas)
 
-        # Generate embeddings with rate-limit-aware retry logic using tenacity
-        from tenacity import (
-            retry,
-            retry_if_exception,
-            stop_after_attempt,
-            wait_exponential,
-        )
-
-        def is_rate_limit_error(exception: Exception) -> bool:
-            """Check if exception is a rate limit error (429)."""
-            error_str = str(exception).lower()
-            return "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str
-
-        def is_other_retryable_error(exception: Exception) -> bool:
-            """Check if exception is retryable but not a rate limit error."""
-            # Retry on most exceptions except for specific non-retryable ones
-            # Add other non-retryable exceptions here if needed
-            return not is_rate_limit_error(exception)
-
-        # Create retry decorator for rate limit errors (longer backoff)
-        retry_on_rate_limit = retry(
-            retry=retry_if_exception(is_rate_limit_error),
-            stop=stop_after_attempt(5),
-            wait=wait_exponential(multiplier=2, min=2, max=30),
-            reraise=True,
-            before_sleep=lambda retry_state: logger.warning(
-                f"Rate limit hit for chunk (attempt {retry_state.attempt_number}/5), "
-                f"backing off for {retry_state.next_action.sleep:.1f}s"
-            ),
-        )
-
-        # Create retry decorator for other errors (shorter backoff)
-        retry_on_other_errors = retry(
-            retry=retry_if_exception(is_other_retryable_error),
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=1, min=1, max=8),
-            reraise=True,
-            before_sleep=lambda retry_state: logger.warning(
-                f"Error embedding chunk (attempt {retry_state.attempt_number}/3), "
-                f"retrying in {retry_state.next_action.sleep:.1f}s: {retry_state.outcome.exception()}"
-            ),
-        )
-
-        def embed_chunk_with_retry(chunk_text: str, chunk_idx: int) -> list[float]:
-            """Embed a single chunk with rate-limit-aware retry logic."""
-
-            @retry_on_rate_limit
-            @retry_on_other_errors
-            def _embed(text: str) -> list[float]:
-                return selected_embedding.embed_documents([text])[0]
-
-            try:
-                return _embed(chunk_text)
-            except Exception as e:
-                logger.error(
-                    f"Failed to embed chunk {chunk_idx} after all retries: {e}",
-                    error=str(e),
-                )
-                raise
-
-        # Restrict concurrency for IBM/Watsonx models to avoid rate limits
+        # Determine whether the selected embedding is watsonx/IBM. The watsonx
+        # SDK ships its own rate-limit machinery (input batching, proactive
+        # x-requests-limit-* TokenBucket throttling, and jittered exponential
+        # backoff on 429), so we lean on it instead of retrying on top of it.
+        # The type-name check also covers watsonx-hosted, non-"ibm/" models
+        # (e.g. intfloat/multilingual-e5-large).
         is_ibm = (embedding_model and "ibm" in str(embedding_model).lower()) or (
             selected_embedding and "watsonx" in type(selected_embedding).__name__.lower()
         )
-        logger.debug(f"Is IBM: {is_ibm}")
-
-        # For IBM models, use sequential processing with rate limiting
-        # For other models, use parallel processing
-        vectors: list[list[float]] = [None] * len(texts)
+        logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
         if is_ibm:
-            # Sequential processing with inter-request delay for IBM models
-            inter_request_delay = 0.6  # ~1.67 req/s, safely under 2 req/s limit
-            logger.info(f"Using sequential processing for IBM model with {inter_request_delay}s delay between requests")
 
-            for idx, chunk in enumerate(texts):
-                if idx > 0:
-                    # Add delay between requests (but not before the first one)
-                    time.sleep(inter_request_delay)
-                vectors[idx] = embed_chunk_with_retry(chunk, idx)
+            # Hand the full batch to the SDK and let it batch/throttle/retry.
+            # Retry attempts and base backoff are tunable via the SDK's own
+            # WATSONX_MAX_RETRIES / WATSONX_DELAY_TIME environment variables.
+            logger.info(
+                f"Embedding {len(texts)} chunks via watsonx SDK batch (SDK-managed throttle + 429 retry)"
+            )
+            try:
+                vectors: list[list[float]] = selected_embedding.embed_documents(texts)
+                logger.info(f"Successfully embedded {len(vectors)} chunks via watsonx SDK")
+            except Exception as embed_error:
+                _log_watsonx_rate_limit_headers(embed_error)
+                logger.error(
+                    f"Failed to embed {len(texts)} chunks via watsonx SDK. Error: {embed_error}",
+                )
+                raise
+
         else:
-            # Parallel processing for non-IBM models
+            # Non-watsonx providers (OpenAI, Ollama) lack the watsonx SDK's
+            # built-in rate-limit handling, so embed per chunk in parallel with
+            # a generic rate-limit-aware tenacity retry.
+            vectors: list[list[float]] = [None] * len(texts)
+            from tenacity import (
+                retry,
+                retry_if_exception,
+                stop_after_attempt,
+                wait_exponential,
+            )
+
+            def is_rate_limit_error(exception: Exception) -> bool:
+                """Check if exception is a rate limit error (429)."""
+                error_str = str(exception).lower()
+                return "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str
+
+            def is_other_retryable_error(exception: Exception) -> bool:
+                """Check if exception is a transient network error worth retrying."""
+                if is_rate_limit_error(exception):
+                    return False
+                return isinstance(exception, (ConnectionError, TimeoutError, OSError))
+
+            # Retry decorator for rate limit errors (longer backoff)
+            retry_on_rate_limit = retry(
+                retry=retry_if_exception(is_rate_limit_error),
+                stop=stop_after_attempt(5),
+                wait=wait_exponential(multiplier=2, min=2, max=30),
+                reraise=True,
+                before_sleep=lambda retry_state: logger.warning(
+                    f"Rate limit hit for chunk (attempt {retry_state.attempt_number}/5), "
+                    f"backing off for {retry_state.next_action.sleep:.1f}s"
+                ),
+            )
+
+            # Retry decorator for other errors (shorter backoff)
+            retry_on_other_errors = retry(
+                retry=retry_if_exception(is_other_retryable_error),
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=1, max=8),
+                reraise=True,
+                before_sleep=lambda retry_state: logger.warning(
+                    f"Error embedding chunk (attempt {retry_state.attempt_number}/3), "
+                    f"retrying in {retry_state.next_action.sleep:.1f}s: {retry_state.outcome.exception()}"
+                ),
+            )
+
+            def embed_chunk_with_retry(chunk_text: str, chunk_idx: int) -> list[float]:
+                """Embed a single chunk with rate-limit-aware retry logic."""
+
+                @retry_on_rate_limit
+                @retry_on_other_errors
+                def _embed(text: str) -> list[float]:
+                    return selected_embedding.embed_documents([text])[0]
+
+                try:
+                    return _embed(chunk_text)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to embed chunk {chunk_idx} after all retries: {e}",
+                        error=str(e),
+                    )
+                    raise
+
             max_workers = min(max(len(texts), 1), 8)
             logger.debug(f"Using parallel processing with {max_workers} workers")
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(embed_chunk_with_retry, chunk, idx): idx for idx, chunk in enumerate(texts)}
+                futures = {
+                    executor.submit(embed_chunk_with_retry, chunk, idx): idx
+                    for idx, chunk in enumerate(texts)
+                }
                 for future in as_completed(futures):
                     idx = futures[future]
                     vectors[idx] = future.result()
@@ -1204,68 +1545,84 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         # Get vector dimension for mapping
         dim = len(vectors[0]) if vectors else 768  # default fallback
+        use_openrag_ingest_callback = self._openrag_ingest_callback_config() is not None
 
-        # Check for AOSS
-        auth_kwargs = self._build_auth_kwargs()
-        is_aoss = self._is_aoss_enabled(auth_kwargs.get("http_auth"))
+        is_aoss = False
+        mapping: dict | None = None
 
-        # Validate engine with AOSS
         engine = getattr(self, "engine", "jvector")
-        self._validate_aoss_with_engines(is_aoss=is_aoss, engine=engine)
 
-        # Create mapping with proper KNN settings
-        space_type = getattr(self, "space_type", "l2")
-        ef_construction = getattr(self, "ef_construction", 512)
-        m = getattr(self, "m", 16)
+        if use_openrag_ingest_callback:
+            self.log("Using OpenRAG backend ingest callback; skipping direct OpenSearch writes.")
+        else:
+            # Check for AOSS
+            auth_kwargs = self._build_auth_kwargs()
+            is_aoss = self._is_aoss_enabled(auth_kwargs.get("http_auth"))
 
-        mapping = self._default_text_mapping(
-            dim=dim,
-            engine=engine,
-            space_type=space_type,
-            ef_construction=ef_construction,
-            m=m,
-            vector_field=dynamic_field_name,  # Use dynamic field name
+            # Validate engine with AOSS
+            self._validate_aoss_with_engines(is_aoss=is_aoss, engine=engine)
+
+            # Create mapping with proper KNN settings
+            space_type = getattr(self, "space_type", "l2")
+            ef_construction = getattr(self, "ef_construction", 512)
+            m = getattr(self, "m", 16)
+
+            mapping = self._default_text_mapping(
+                dim=dim,
+                engine=engine,
+                space_type=space_type,
+                ef_construction=ef_construction,
+                m=m,
+                vector_field=dynamic_field_name,  # Use dynamic field name
+            )
+
+            # Ensure index exists with baseline mapping (index.knn: true is required for vector search)
+            index_exists = True
+            try:
+                index_exists = bool(client.indices.exists(index=self.index_name))
+            except OpenSearchException as exists_error:
+                self._log_index_admin_skip("indices.exists", exists_error)
+
+            try:
+                if not index_exists:
+                    self.log(f"Creating index '{self.index_name}' with base mapping")
+                    client.indices.create(index=self.index_name, body=mapping)
+            except RequestError as creation_error:
+                if creation_error.error == "resource_already_exists_exception":
+                    pass  # Index was created concurrently
+                else:
+                    error_msg = str(creation_error).lower()
+                    if "invalid engine" in error_msg or "illegal_argument" in error_msg:
+                        if "jvector" in error_msg:
+                            msg = (
+                                "The 'jvector' engine is not available in your OpenSearch installation. "
+                                "Use 'nmslib' or 'faiss' for standard OpenSearch, or upgrade to 2.9+."
+                            )
+                            raise ValueError(msg) from creation_error
+                        if "index.knn" in error_msg:
+                            msg = (
+                                "The index has index.knn: false. Delete the existing index and let the "
+                                "component recreate it, or create a new index with a different name."
+                            )
+                            raise ValueError(msg) from creation_error
+                    logger.warning(f"Failed to create index '{self.index_name}': {creation_error}")
+                    raise
+
+            # Ensure the dynamic field exists in the index
+            self._ensure_embedding_field_mapping(
+                client=client,
+                index_name=self.index_name,
+                field_name=dynamic_field_name,
+                dim=dim,
+                engine=engine,
+                space_type=space_type,
+                ef_construction=ef_construction,
+                m=m,
+            )
+
+        self.log(
+            f"Indexing {len(texts)} documents into '{self.index_name}' with model '{embedding_model}'..."
         )
-
-        # Ensure index exists with baseline mapping (index.knn: true is required for vector search)
-        try:
-            if not client.indices.exists(index=self.index_name):
-                self.log(f"Creating index '{self.index_name}' with base mapping")
-                client.indices.create(index=self.index_name, body=mapping)
-        except RequestError as creation_error:
-            if creation_error.error == "resource_already_exists_exception":
-                pass  # Index was created concurrently
-            else:
-                error_msg = str(creation_error).lower()
-                if "invalid engine" in error_msg or "illegal_argument" in error_msg:
-                    if "jvector" in error_msg:
-                        msg = (
-                            "The 'jvector' engine is not available in your OpenSearch installation. "
-                            "Use 'nmslib' or 'faiss' for standard OpenSearch, or upgrade to 2.9+."
-                        )
-                        raise ValueError(msg) from creation_error
-                    if "index.knn" in error_msg:
-                        msg = (
-                            "The index has index.knn: false. Delete the existing index and let the "
-                            "component recreate it, or create a new index with a different name."
-                        )
-                        raise ValueError(msg) from creation_error
-                logger.warning(f"Failed to create index '{self.index_name}': {creation_error}")
-                raise
-
-        # Ensure the dynamic field exists in the index
-        self._ensure_embedding_field_mapping(
-            client=client,
-            index_name=self.index_name,
-            field_name=dynamic_field_name,
-            dim=dim,
-            engine=engine,
-            space_type=space_type,
-            ef_construction=ef_construction,
-            m=m,
-        )
-
-        self.log(f"Indexing {len(texts)} documents into '{self.index_name}' with model '{embedding_model}'...")
         logger.info(f"Will store embeddings in field: {dynamic_field_name}")
         logger.info(f"Will tag documents with embedding_model: {embedding_model}")
 
@@ -1332,7 +1689,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 raw = [raw]
             explicit_clauses: list[dict] = []
             for f in raw or []:
-                if "term" in f and isinstance(f["term"], dict) and not self._is_placeholder_term(f["term"]):
+                if (
+                    "term" in f
+                    and isinstance(f["term"], dict)
+                    and not self._is_placeholder_term(f["term"])
+                ):
                     explicit_clauses.append(f)
                 elif "terms" in f and isinstance(f["terms"], dict):
                     field, vals = next(iter(f["terms"].items()))
@@ -1361,7 +1722,63 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 context_clauses.append({"terms": {field: values}})
         return context_clauses
 
+
+    def _parse_filter_expression(self) -> dict | None:
+        """Parse and validate optional filter_expression JSON.
+
+        Returns:
+            Parsed JSON object as a dict, or None when unset/blank.
+
+        Raises:
+            ValueError: If JSON is invalid or does not decode to an object.
+        """
+        filter_expression = getattr(self, "filter_expression", "")
+        if not isinstance(filter_expression, str) or not filter_expression.strip():
+            return None
+        try:
+            filter_obj = json.loads(filter_expression)
+        except json.JSONDecodeError as e:
+            msg = f"Invalid filter_expression JSON: {e}"
+            raise ValueError(msg) from e
+
+        if not isinstance(filter_obj, dict):
+            msg = "Invalid filter_expression JSON type: expected a JSON object."
+            raise TypeError(msg)
+        return filter_obj
+
+    def _resolve_limit(self, filter_obj: dict | None, default_limit: int | None) -> int | None:
+        """Resolve an integer result limit from filter settings."""
+        if not filter_obj:
+            return default_limit
+        raw_limit = filter_obj.get("limit", default_limit)
+        if raw_limit is None:
+            return None
+        if isinstance(raw_limit, bool):
+            msg = "Invalid filter_expression.limit: expected a positive integer."
+            raise TypeError(msg)
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError) as e:
+            msg = "Invalid filter_expression.limit: expected a positive integer."
+            raise ValueError(msg) from e
+        if limit <= 0:
+            msg = "Invalid filter_expression.limit: expected a positive integer."
+            raise ValueError(msg)
+        return limit
+
+    def _resolve_score_threshold(self, filter_obj: dict | None) -> float | None:
+        """Resolve optional positive min score from filter settings."""
+        if not filter_obj:
+            return None
+        score_threshold = filter_obj.get("score_threshold")
+        if score_threshold is None:
+            score_threshold = filter_obj.get("scoreThreshold")
+        if not isinstance(score_threshold, (int, float)) or score_threshold <= 0:
+            return None
+        return float(score_threshold)
+
     def _detect_available_models(self, client: OpenSearch, filter_clauses: list[dict] | None = None) -> list[str]:
+
         """Detect which embedding models have documents in the index.
 
         Uses aggregation to find all unique embedding_model values, optionally
@@ -1375,7 +1792,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             List of embedding model names found in the index
         """
         try:
-            agg_query = {"size": 0, "aggs": {"embedding_models": {"terms": {"field": "embedding_model", "size": 10}}}}
+            agg_query = {
+                "size": 0,
+                "aggs": {"embedding_models": {"terms": {"field": "embedding_model", "size": 10}}},
+            }
 
             # Apply filters to model detection if any exist
             if filter_clauses:
@@ -1397,7 +1817,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             )
             if not models:
                 total_hits = result.get("hits", {}).get("total", {})
-                total_count = total_hits.get("value", 0) if isinstance(total_hits, dict) else total_hits
+                total_count = (
+                    total_hits.get("value", 0) if isinstance(total_hits, dict) else total_hits
+                )
                 logger.warning(
                     f"No embedding_model values found in index '{self.index_name}'. "
                     f"Total docs in index: {total_count}. "
@@ -1434,7 +1856,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         if not field_name:
             return False
         if properties is None:
-            logger.warning(f"Mapping metadata unavailable; assuming field '{field_name}' is usable.")
+            logger.warning(
+                f"Mapping metadata unavailable; assuming field '{field_name}' is usable."
+            )
             return True
         field_def = properties.get(field_name)
         if not isinstance(field_def, dict):
@@ -1445,7 +1869,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         nested_props = field_def.get("properties")
         return bool(isinstance(nested_props, dict) and nested_props.get("type") == "knn_vector")
 
-    def _get_field_dimension(self, properties: dict[str, Any] | None, field_name: str) -> int | None:
+    def _get_field_dimension(
+        self, properties: dict[str, Any] | None, field_name: str
+    ) -> int | None:
         """Get the dimension of a knn_vector field from the index mapping.
 
         Args:
@@ -1526,20 +1952,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         q = (query or "").strip()
 
         # Parse optional filter expression
-        filter_obj = None
-        if getattr(self, "filter_expression", "") and self.filter_expression.strip():
-            try:
-                filter_obj = json.loads(self.filter_expression)
-            except json.JSONDecodeError as e:
-                msg = f"Invalid filter_expression JSON: {e}"
-                raise ValueError(msg) from e
+        filter_obj = self._parse_filter_expression()
 
         if not self.embedding:
             msg = "Embedding is required to run hybrid search (KNN + keyword)."
             raise ValueError(msg)
 
         # Check if embedding is None (fail-safe mode)
-        if self.embedding is None or (isinstance(self.embedding, list) and all(e is None for e in self.embedding)):
+        if self.embedding is None or (
+            isinstance(self.embedding, list) and all(e is None for e in self.embedding)
+        ):
             logger.error("Embedding returned None (fail-safe mode enabled). Cannot perform search.")
             return []
 
@@ -1601,13 +2023,17 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         if model_str not in embedding_by_model:
                             # Use the dedicated embedding instance from the dict
                             embedding_by_model[model_str] = dedicated_embedding
-                            logger.info(f"Mapped available model '{model_str}' to dedicated embedding instance")
+                            logger.info(
+                                f"Mapped available model '{model_str}' to dedicated embedding instance"
+                            )
                         else:
                             # Conflict detected - track it
                             if model_str not in identifier_conflicts:
                                 identifier_conflicts[model_str] = [embedding_by_model[model_str]]
                             identifier_conflicts[model_str].append(dedicated_embedding)
-                            logger.warning(f"Available model '{model_str}' has conflict - used by multiple embeddings")
+                            logger.warning(
+                                f"Available model '{model_str}' has conflict - used by multiple embeddings"
+                            )
 
             # Also map traditional identifiers (for backward compatibility)
             if deployment:
@@ -1629,7 +2055,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     if identifier not in identifier_conflicts:
                         identifier_conflicts[identifier] = [embedding_by_model[identifier]]
                     identifier_conflicts[identifier].append(emb_obj)
-                    logger.warning(f"Identifier '{identifier}' has conflict - used by multiple embeddings")
+                    logger.warning(
+                        f"Identifier '{identifier}' has conflict - used by multiple embeddings"
+                    )
 
             # For embeddings with model+deployment, create combined identifier
             # This helps when deployment is the same but model differs
@@ -1637,7 +2065,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 combined_id = f"{deployment}:{model}"
                 if combined_id not in embedding_by_model:
                     embedding_by_model[combined_id] = emb_obj
-                    logger.info(f"Created combined identifier '{combined_id}' for embedding object {idx}")
+                    logger.info(
+                        f"Created combined identifier '{combined_id}' for embedding object {idx}"
+                    )
 
         # Log conflicts
         if identifier_conflicts:
@@ -1646,7 +2076,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 f"Consider using combined format 'deployment:model' or specifying unique model names."
             )
             for conflict_id, emb_list in identifier_conflicts.items():
-                logger.warning(f"  Conflict on '{conflict_id}': {len(emb_list)} embeddings use this identifier")
+                logger.warning(
+                    f"  Conflict on '{conflict_id}': {len(emb_list)} embeddings use this identifier"
+                )
 
         logger.info(f"Generating embeddings for {len(available_models)} models in index")
         logger.info(f"Available embedding identifiers: {list(embedding_by_model.keys())}")
@@ -1686,7 +2118,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     vec = emb_obj.embed_query(q)
                     query_embeddings[model_name] = vec
                     matched_models.append(model_name)
-                    logger.info(f"Generated embedding for model: {model_name} (actual dimensions: {len(vec)})")
+                    logger.info(
+                        f"Generated embedding for model: {model_name} (actual dimensions: {len(vec)})"
+                    )
                     self.log(f"[MATCH] Model '{model_name}' - generated {len(vec)}-dim embedding")
                 else:
                     # No matching embedding found for this model
@@ -1695,14 +2129,27 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         f"No matching embedding found for model '{model_name}'. "
                         f"This model will be skipped. Available identifiers: {list(embedding_by_model.keys())}"
                     )
-                    self.log(f"[NO MATCH] Model '{model_name}' - available: {list(embedding_by_model.keys())}")
-            except (RuntimeError, ValueError, ConnectionError, TimeoutError, AttributeError, KeyError) as e:
+                    self.log(
+                        f"[NO MATCH] Model '{model_name}' - available: {list(embedding_by_model.keys())}"
+                    )
+            except (
+                RuntimeError,
+                ValueError,
+                ConnectionError,
+                TimeoutError,
+                AttributeError,
+                KeyError,
+            ) as e:
                 logger.warning(f"Failed to generate embedding for {model_name}: {e}")
                 self.log(f"[ERROR] Embedding generation failed for '{model_name}': {e}")
 
         # Log summary of model matching
-        logger.info(f"Model matching summary: {len(matched_models)} matched, {len(unmatched_models)} unmatched")
-        self.log(f"[SUMMARY] Model matching: {len(matched_models)} matched, {len(unmatched_models)} unmatched")
+        logger.info(
+            f"Model matching summary: {len(matched_models)} matched, {len(unmatched_models)} unmatched"
+        )
+        self.log(
+            f"[SUMMARY] Model matching: {len(matched_models)} matched, {len(unmatched_models)} unmatched"
+        )
         if unmatched_models:
             self.log(f"[WARN] Unmatched models in index: {unmatched_models}")
 
@@ -1742,7 +2189,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"Skipping model {model_name}: field '{field_name}' is not mapped as knn_vector. "
                     f"Documents must be indexed with this embedding model before querying."
                 )
-                self.log(f"[SKIP] Field '{selected_field}' not a knn_vector - skipping model '{model_name}'")
+                self.log(
+                    f"[SKIP] Field '{selected_field}' not a knn_vector - skipping model '{model_name}'"
+                )
                 continue
 
             # Validate vector dimensions match the field dimensions
@@ -1753,7 +2202,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"Query vector has {vector_dim} dimensions but field '{selected_field}' expects {field_dim}. "
                     f"Skipping this model to prevent search errors."
                 )
-                self.log(f"[DIM MISMATCH] Model '{model_name}': query={vector_dim} vs field={field_dim} - skipping")
+                self.log(
+                    f"[DIM MISMATCH] Model '{model_name}': query={vector_dim} vs field={field_dim} - skipping"
+                )
                 continue
 
             logger.info(
@@ -1799,15 +2250,18 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         # Build exists filter - document must have at least one embedding field
         exists_any_embedding = {
-            "bool": {"should": [{"exists": {"field": f}} for f in set(embedding_fields)], "minimum_should_match": 1}
+            "bool": {
+                "should": [{"exists": {"field": f}} for f in set(embedding_fields)],
+                "minimum_should_match": 1,
+            }
         }
 
         # Combine user filters with exists filter
         all_filters = [*filter_clauses, exists_any_embedding]
 
         # Get limit and score threshold
-        limit = (filter_obj or {}).get("limit", self.number_of_results)
-        score_threshold = (filter_obj or {}).get("score_threshold", 0)
+        limit = self._resolve_limit(filter_obj, default_limit=self.number_of_results)
+        score_threshold = self._resolve_score_threshold(filter_obj)
 
         # Determine the best aggregation field for filename based on index mapping
         filename_agg_field = self._get_filename_agg_field(index_properties)
@@ -1854,18 +2308,21 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "embedding_model",
                 "allowed_users",
                 "allowed_groups",
+                "allowed_principals",
             ],
             "size": limit,
         }
 
-        if isinstance(score_threshold, (int, float)) and score_threshold > 0:
+        if score_threshold is not None:
             body["min_score"] = score_threshold
 
         logger.info(
             f"Executing multi-model hybrid search with {len(knn_queries_with_candidates)} embedding models: "
             f"{list(query_embeddings.keys())}"
         )
-        self.log(f"[EXEC] Executing search with {len(knn_queries_with_candidates)} KNN queries, limit={limit}")
+        self.log(
+            f"[EXEC] Executing search with {len(knn_queries_with_candidates)} KNN queries, limit={limit}"
+        )
         self.log(f"[EXEC] Embedding models used: {list(query_embeddings.keys())}")
         self.log(f"[EXEC] KNN fields being queried: {embedding_fields}")
 
@@ -1881,7 +2338,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 )
                 fallback_body = copy.deepcopy(body)
                 try:
-                    fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = knn_queries_without_candidates
+                    fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = (
+                        knn_queries_without_candidates
+                    )
                 except (KeyError, IndexError, TypeError) as inner_err:
                     raise e from inner_err
                 resp = client.search(
@@ -1941,21 +2400,24 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             for hit in hits
         ]
 
-    def search_documents(self) -> list[Data]:
-        """Search documents and return results as Data objects.
+    def search_documents(self) -> Table:
+
+        """Search documents and return results as a Table.
 
         This is the main interface method that performs the multi-model search using the
-        configured search_query and returns results in Langflow's Data format.
+        configured search_query and returns results in Langflow's Table (DataFrame) format
+        so downstream Parser components can consume them directly.
 
         Always builds the vector store (triggering ingestion if needed), then performs
         search only if a query is provided.
 
         Returns:
-            List of Data objects containing search results with text and metadata
+            Table containing search results with text and metadata
 
         Raises:
             Exception: If search operation fails
         """
+
         try:
             # Always build/cache the vector store to ensure ingestion happens
             logger.info(f"Search query: {self.search_query}")
@@ -1966,17 +2428,22 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             search_query = (self.search_query or "").strip()
             if not search_query:
                 self.log("No search query provided - ingestion completed, returning empty results")
-                return []
+
+                return Table(data=[])
 
             # Perform search with the provided query
             raw = self.search(search_query)
-            return [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
+            raw_list = [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
+            return Table(data=raw_list)
+
         except Exception as e:
             self.log(f"search_documents error: {e}")
             raise
 
     # -------- dynamic UI handling (auth switch) --------
-    async def update_build_config(self, build_config: dict, field_value: str, field_name: str | None = None) -> dict:
+    async def update_build_config(
+        self, build_config: dict, field_value: str, field_name: str | None = None
+    ) -> dict:
         """Dynamically update component configuration based on field changes.
 
         This method handles real-time UI updates, particularly for authentication
@@ -1995,6 +2462,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 mode = (field_value or "basic").strip().lower()
                 is_basic = mode == "basic"
                 is_jwt = mode == "jwt"
+                is_openrag = mode == "openrag"
 
                 build_config["username"]["show"] = is_basic
                 build_config["password"]["show"] = is_basic
@@ -2006,11 +2474,25 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 build_config["username"]["required"] = is_basic
                 build_config["password"]["required"] = is_basic
 
-                build_config["jwt_token"]["required"] = is_jwt
+                # build_config["jwt_token"]["required"] = is_jwt
                 build_config["jwt_header"]["required"] = is_jwt
                 build_config["bearer_prefix"]["required"] = False
 
-                if is_basic:
+                # In 'openrag' mode, expose the OPENRAG_* fields up front
+                # since they are the only credentials required.
+                for openrag_field in (
+                    "openrag_ingest_url",
+                    "openrag_ingest_token",
+                    "openrag_ingest_run_id",
+                    "openrag_ingest_batch_size",
+                ):
+                    if openrag_field in build_config:
+                        build_config[openrag_field]["advanced"] = not is_openrag
+                        build_config[openrag_field]["required"] = (
+                            is_openrag and openrag_field != "openrag_ingest_batch_size"
+                        )
+
+                if is_basic or is_openrag:
                     build_config["jwt_token"]["value"] = ""
 
                 return build_config

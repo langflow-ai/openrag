@@ -18,6 +18,7 @@ export interface UpdateSettingsRequest {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
 
@@ -50,7 +51,7 @@ export interface AffectedEmbeddingModel {
 // Typed error that preserves the structured 409 payload returned by
 // POST /api/settings when removing a provider whose embedding models are
 // still referenced by indexed documents.
-export class UpdateSettingsError extends Error {
+class UpdateSettingsError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly affectedProvider?: string;

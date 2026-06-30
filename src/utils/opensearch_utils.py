@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+from typing import Any
 
 import yaml
 from opensearchpy import AsyncOpenSearch
@@ -37,6 +38,33 @@ class OpenSearchDiskSpaceError(Exception):
     """Raised when OpenSearch operations fail due to insufficient disk space."""
 
 
+# Error strings emitted by OpenSearch when the presented credential is rejected.
+# This is an AUTHENTICATION failure (bad/expired/over-ridden credential), not an
+# authorization one — callers must surface it as 401, never 403 "insufficient
+# permissions", so the real cause isn't masked.
+_AUTH_ERROR_INDICATORS = [
+    "authenticationexception",
+    "unauthorized",
+    "authentication failed",
+]
+
+AUTH_ERROR_MESSAGE = (
+    "Authentication failed: OpenSearch rejected the credential. Please sign in again."
+)
+
+
+def is_opensearch_auth_error(error: Exception | str) -> bool:
+    """Whether *error* is an OpenSearch authentication failure (401).
+
+    Accepts an exception or an already-stringified error message. Distinct from
+    authorization ("only the owner can …"): this means the credential OpenRAG
+    presented was not accepted at all. Callers should map it to HTTP 401
+    (re-authenticate), not 403.
+    """
+    error_str = str(error).lower()
+    return any(indicator in error_str for indicator in _AUTH_ERROR_INDICATORS)
+
+
 def is_disk_space_error(error: Exception) -> bool:
     """Check whether an exception is caused by OpenSearch disk space constraints.
 
@@ -54,9 +82,57 @@ def is_disk_space_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in _DISK_SPACE_INDICATORS)
 
 
+def opensearch_error_reason(error: Exception) -> str | None:
+    """Return the most specific OpenSearch failure reason carried by an exception.
+
+    OpenSearch transport errors stringify to just ``TransportError(500, '')``; the
+    real cause (and, on mapping/parse failures, the offending field) lives in the
+    ``info`` body under ``error.root_cause[0].reason`` or ``error.reason``. Returns
+    ``None`` when the exception carries no such structured reason.
+    """
+    info = getattr(error, "info", None)
+    if not isinstance(info, dict):
+        return None
+    err = info.get("error")
+    if not isinstance(err, dict):
+        return None
+    root_cause = err.get("root_cause")
+    if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+        if root_cause[0].get("reason"):
+            return root_cause[0]["reason"]
+    return err.get("reason")
+
+
+def opensearch_error_fields(error: Exception) -> dict[str, Any]:
+    """Extract structured OpenSearch context from an exception for logging.
+
+    Surfaces ``opensearch_status``/``opensearch_error``/``opensearch_info`` (and
+    ``opensearch_root_cause`` when present) so every OpenSearch-touching call site
+    logs the same schema instead of an opaque ``str(e)``. Non-OpenSearch
+    exceptions yield an empty dict.
+    """
+    fields: dict[str, Any] = {}
+    status = getattr(error, "status_code", None)
+    if status is not None:
+        fields["opensearch_status"] = status
+    os_error = getattr(error, "error", None)
+    if os_error is not None:
+        fields["opensearch_error"] = os_error
+    info = getattr(error, "info", None)
+    if info is not None:
+        fields["opensearch_info"] = info
+        if isinstance(info, dict):
+            err = info.get("error")
+            if isinstance(err, dict):
+                root_cause = err.get("root_cause")
+                if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+                    fields["opensearch_root_cause"] = root_cause[0]
+    return fields
+
+
 async def wait_for_opensearch(
     opensearch_client: AsyncOpenSearch,
-    max_retries: int = 15,
+    max_retries: int = 30,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
 ) -> None:
@@ -87,12 +163,60 @@ async def wait_for_opensearch(
                 health = await opensearch_client.cluster.health()
                 status = health.get("status")
                 if status in ["green", "yellow"]:
-                    logger.info(
-                        "Successfully verified that OpenSearch is ready.",
-                        attempt=display_attempt,
-                        status=status,
+                    from config.settings import (
+                        OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                        OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                        OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                        OPENSEARCH_NODE_COUNT_CHECK_ENABLED,
                     )
-                    return
+
+                    if OPENSEARCH_NODE_COUNT_CHECK_ENABLED:
+                        data_node_count = health.get("number_of_data_nodes", 0)
+                        # Reachable cluster-manager (master) nodes.
+                        cm_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/cluster_manager:true/process,transport"
+                        )
+                        cluster_manager_count = cm_info.get("_nodes", {}).get("successful", 0)
+                        # Reachable coordinating-only nodes.
+                        coord_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/coordinating_only:true/process,transport"
+                        )
+                        coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
+
+                        if (
+                            data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
+                            or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
+                            or coordinating_count < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
+                        ):
+                            logger.warning(
+                                "OpenSearch healthy but cluster has not reached expected node count.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                                expected_data_nodes=OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                                expected_cluster_managers=OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                                expected_coordinating=OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                            )
+                            # Fall through to the retry/backoff below until nodes join.
+                        else:
+                            logger.info(
+                                "Successfully verified that OpenSearch is ready.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                            )
+                            return
+                    else:
+                        logger.info(
+                            "Successfully verified that OpenSearch is ready.",
+                            attempt=display_attempt,
+                            status=status,
+                        )
+                        return
                 else:
                     logger.warning(
                         "OpenSearch is up but cluster health is red.",

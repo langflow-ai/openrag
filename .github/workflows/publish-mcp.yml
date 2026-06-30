@@ -1,11 +1,6 @@
 name: Publish MCP (openrag-mcp)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'sdks/mcp/pyproject.toml'
   workflow_dispatch:
 
 jobs:

@@ -21,6 +21,7 @@ class SettingsUpdateBody(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    disable_ingest_with_langflow: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: str | None = Field(None, min_length=1)
@@ -128,6 +129,7 @@ class KnowledgeConfig(BaseModel):
     ocr: bool | None
     picture_descriptions: bool | None
     index_name: str | None
+    disable_ingest_with_langflow: bool | None
 
 
 class AgentConfig(BaseModel):
@@ -150,7 +152,8 @@ class SettingsResponse(BaseModel):
     langflow_public_url: str | None
     edited: bool
     onboarding: OnboardingStateConfig
-    providers: ProvidersConfig
+    # None when the caller lacks `providers:read` (RBAC redaction for non-admins).
+    providers: ProvidersConfig | None = None
     knowledge: KnowledgeConfig
     agent: AgentConfig
     localhost_url: str
@@ -158,6 +161,7 @@ class SettingsResponse(BaseModel):
     langflow_ingest_edit_url: str | None = None
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
+    show_provider_ingest_settings: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
 

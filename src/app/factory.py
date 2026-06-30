@@ -40,9 +40,10 @@ async def create_app():
     mcp_lifespan_ctx = register_all_routes(app)
     app.state.mcp_lifespan_ctx = mcp_lifespan_ctx
 
-    # Wire startup/shutdown via on_event handlers (not lifespan=) so that
-    # `app.router.startup()` / `app.router.shutdown()` triggers them — the
-    # integration tests rely on this contract.
+    # Wire startup/shutdown via on_event handlers (not lifespan=). FastAPI
+    # runs these through the ASGI lifespan; integration tests drive the same
+    # path by entering/exiting app.router.lifespan_context(app) directly,
+    # since Starlette 1.x removed the Router.startup()/shutdown() helpers.
     @app.on_event("startup")
     async def _startup():
         await run_startup(app)

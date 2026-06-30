@@ -94,10 +94,11 @@ endef
 ######################
 # PHONY TARGETS
 ######################
-.PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
+.PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
-       test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
+       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
@@ -181,6 +182,59 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make help_test$(NC)       - Testing commands"
 	@echo "  $(PURPLE)make help_local$(NC)      - Local development commands"
 	@echo "  $(PURPLE)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
+	@echo "  $(PURPLE)make help_operator$(NC)   - Kubernetes operator & kind commands"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+OPERATOR_DIR := kubernetes/operator
+
+help_operator: ## Show Kubernetes operator and kind local cluster commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)              KUBERNETES OPERATOR & KIND COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Docs:$(NC) $(OPERATOR_DIR)/README.md"
+	@echo ''
+	@echo "$(PURPLE)App images → kind (from repo root, Colima/Docker):$(NC)"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC)  - Build backend/frontend/langflow + load into kind"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC)  - Load already-built app images into kind"
+	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: openrag)"
+	@echo ''
+	@echo "$(PURPLE)Operator binary & CRD ($(OPERATOR_DIR)):$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deps$(NC)       - Install controller-gen, kustomize, envtest"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install OpenRAG CRD into current cluster"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make run$(NC)        - Run operator on host (uses kubeconfig)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make build$(NC)      - Compile operator to bin/manager"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make test$(NC)       - Operator unit tests (envtest)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make lint$(NC)       - golangci-lint"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make manifests$(NC)  - Regenerate CRD/RBAC YAML"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make generate$(NC)   - Regenerate DeepCopy code"
+	@echo ''
+	@echo "$(PURPLE)Operator in-cluster:$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deploy$(NC)     - Deploy operator (IMG=...)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make undeploy$(NC)   - Remove operator deployment"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make docker-build$(NC) - Build operator image (IMG=...)"
+	@echo "  $(PURPLE)kind load docker-image openrag-operator:dev --name openrag$(NC)"
+	@echo "  $(PURPLE)helm install openrag-operator ./kubernetes/helm/operator -n openrag-control --create-namespace$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Sample OpenRAG CR (after make run or make deploy):$(NC)"
+	@echo "  $(PURPLE)kubectl create namespace my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "                         (low CPU + imagePullPolicy: Never for local images)"
+	@echo "  $(PURPLE)kubectl get pods -n my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf$(NC)"
+	@echo "                         (after rebuilding and reloading images)"
+	@echo ''
+	@echo "$(PURPLE)Typical kind + local images workflow:$(NC)"
+	@echo "  1. $(CYAN)kind create cluster --name openrag$(NC)"
+	@echo "  2. $(CYAN)make kind-build-load-apps$(NC)"
+	@echo "  3. $(CYAN)cd $(OPERATOR_DIR) && make install && make run$(NC)"
+	@echo "  4. $(CYAN)kubectl create namespace my-tenant$(NC)"
+	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo ''
+	@echo "$(PURPLE)All operator Makefile targets:$(NC) $(CYAN)cd $(OPERATOR_DIR) && make help$(NC)"
 	@echo ''
 	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
@@ -231,6 +285,8 @@ help_docker: ## Show Docker and container commands
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=openrag)"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC) - Load already-built app images into kind"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
@@ -372,7 +428,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CP
 
 dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -383,7 +439,7 @@ dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure f
 
 dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -396,7 +452,7 @@ dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrast
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -407,9 +463,9 @@ dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrast
 
 dev-local-build-lf-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image with CPU only
 	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
-	$(COMPOSE_CMD) build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -534,6 +590,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Remove all volumes"; \
 	echo "  - Delete langflow-data directory"; \
 	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove OpenRAG images"; \
 	echo ""; \
@@ -558,6 +615,16 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		echo "Removing config..."; \
 		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
+	fi; \
+	if [ -d "data" ]; then \
+		echo "Removing data..."; \
+		rm -rf data; \
+		echo "$(PURPLE)data removed$(NC)"; \
+	fi; \
+	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+		echo "Removing $$OPENRAG_DATA_PATH..."; \
+		rm -rf "$$OPENRAG_DATA_PATH"; \
+		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
 	fi; \
 	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
@@ -641,6 +708,20 @@ build-lf: ## Build Langflow Docker image
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
 	@echo "$(PURPLE)Langflow image built.$(NC)"
 
+# kind cluster name for local Kubernetes (see kubernetes/operator/README.md)
+KIND_CLUSTER_NAME ?= openrag
+
+kind-load-app-images: ## Load OpenRAG app images into a kind cluster (Colima/Docker)
+	@command -v kind >/dev/null 2>&1 || { echo "$(RED)kind is not installed$(NC)"; exit 1; }
+	@echo "$(YELLOW)Loading app images into kind cluster '$(KIND_CLUSTER_NAME)'...$(NC)"
+	kind load docker-image langflowai/openrag-backend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-frontend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-langflow:latest --name $(KIND_CLUSTER_NAME)
+	@echo "$(PURPLE)Images loaded. Restart pods if they already exist:$(NC)"
+	@echo "  kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf"
+
+kind-build-load-apps: build-be build-fe build-lf kind-load-app-images ## Build app images and load into kind
+
 ######################
 # LOGGING
 ######################
@@ -701,6 +782,30 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(YELLOW)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/core/ -v
+
+ci-build-images: ## Build all OpenRAG images for CI artifact sharing
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .
+
+ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	mkdir -p .ci-artifacts; \
+	echo "$(YELLOW)Saving OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) save -o .ci-artifacts/openrag-ci-images.tar \
+		langflowai/openrag-opensearch:$$IMAGE_TAG \
+		langflowai/openrag-backend:$$IMAGE_TAG \
+		langflowai/openrag-frontend:$$IMAGE_TAG \
+		langflowai/openrag-langflow:$$IMAGE_TAG; \
+	ls -lh .ci-artifacts/openrag-ci-images.tar
+
+test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integration suite: TEST_SUITE=core|sdk-python|sdk-typescript
+	@scripts/ci/run_integration_suite.sh "$${TEST_SUITE:-core}"
 
 test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
@@ -791,6 +896,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
 	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
+	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \
@@ -915,6 +1021,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
 	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
+	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG; \

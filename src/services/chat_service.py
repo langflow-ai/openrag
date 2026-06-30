@@ -1,7 +1,9 @@
 import json
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
-from agent import async_chat, async_langflow, async_chat_stream
+from typing import Any
+
+from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
+from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -75,11 +77,7 @@ class ChatService:
             )
 
         # Prepare extra headers for JWT authentication and embedding model
-        extra_headers = {
-            "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
-        }
+        extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
@@ -90,6 +88,49 @@ class ChatService:
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+
+        # Configure ingest callback credentials/vars like ingestion does
+        import uuid
+
+        from config.settings import (
+            LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+            get_index_name,
+            get_ingest_callback_url,
+        )
+        from services.document_index_writer import DocumentIndexContext
+        from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+        doc_id = str(uuid.uuid4())
+        ingest_run_id = f"{doc_id}-{uuid.uuid4().hex}"
+        context = DocumentIndexContext(
+            document_id=doc_id,
+            filename="",
+            mimetype="",
+            embedding_model=embedding_model,
+            owner=owner,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            file_size=0,
+            connector_type="url",
+            source_url=None,
+            allowed_users=[],
+            allowed_groups=[],
+            allowed_principals=[],
+            allowed_principal_labels=[],
+            ingest_run_id=ingest_run_id,
+            is_sample_data=False,
+            index_name=get_index_name(),
+        )
+        token_service = LangflowIngestTokenService()
+        ingest_token = token_service.create_token(context)
+
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
+        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+            LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
+        )
+        extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -107,7 +148,7 @@ class ChatService:
         score_threshold = get_score_threshold()
 
         # Build the complete filter expression like the search service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         if filters:
             filter_clauses = []
             # Map frontend filter names to backend field names
@@ -222,7 +263,7 @@ class ChatService:
         )
 
         # Build the complete filter expression like the chat service does
-        filter_expression = {}
+        filter_expression: dict[str, Any] = {}
         has_user_filters = False
         filter_clauses = []
 
@@ -432,11 +473,7 @@ class ChatService:
 
         if endpoint == "langflow":
             # Prepare extra headers for JWT authentication and embedding model
-            extra_headers = {
-                "X-Langflow-Global-Var-OWNER": str(owner) if owner else "",
-                "X-Langflow-Global-Var-OWNER_NAME": str(owner_name) if owner_name else "",
-                "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email) if owner_email else "",
-            }
+            extra_headers = {}
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
@@ -447,6 +484,49 @@ class ChatService:
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+
+            # Configure ingest callback credentials/vars like ingestion does
+            import uuid
+
+            from config.settings import (
+                LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+                get_index_name,
+                get_ingest_callback_url,
+            )
+            from services.document_index_writer import DocumentIndexContext
+            from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+            doc_id = str(uuid.uuid4())
+            ingest_run_id = f"{doc_id}-{uuid.uuid4().hex}"
+            context = DocumentIndexContext(
+                document_id=doc_id,
+                filename="",
+                mimetype="",
+                embedding_model=embedding_model,
+                owner=owner,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                file_size=0,
+                connector_type="url",
+                source_url=None,
+                allowed_users=[],
+                allowed_groups=[],
+                allowed_principals=[],
+                allowed_principal_labels=[],
+                ingest_run_id=ingest_run_id,
+                is_sample_data=False,
+                index_name=get_index_name(),
+            )
+            token_service = LangflowIngestTokenService()
+            ingest_token = token_service.create_token(context)
+
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
+            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+                LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
+            )
+            extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
 
             # Add provider credentials to headers
             await add_provider_credentials_to_headers(

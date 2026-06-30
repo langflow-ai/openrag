@@ -80,12 +80,16 @@ export interface SearchResult {
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
 export { EMPTY_SEARCH_RESULT };
 
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
   const getFileIdentity = (chunk: ChunkResult): string => {
@@ -241,7 +245,7 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
@@ -252,6 +256,4 @@ export const useGetSearchQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

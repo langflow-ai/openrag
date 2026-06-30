@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetIBMModelsQuery,
@@ -25,8 +25,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
-import { deriveCloudLangflowUrl } from "@/lib/url-utils";
+import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
@@ -35,7 +36,7 @@ import { LangflowIcon } from "./langflow-icon";
 
 export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
-  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
@@ -45,6 +46,8 @@ export function IngestSettingsSection() {
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
   const [pictureDescriptions, setPictureDescriptions] =
+    useState<boolean>(false);
+  const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
     useState<boolean>(false);
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -80,35 +83,46 @@ export function IngestSettingsSection() {
       },
     );
 
-  const groupedEmbeddingModels = [
-    {
-      group: "OpenAI",
-      provider: "openai",
-      icon: getModelLogo("", "openai"),
-      models: openaiModels?.embedding_models || [],
-      configured: settings.providers?.openai?.configured === true,
-    },
-    {
-      group: "Ollama",
-      provider: "ollama",
-      icon: getModelLogo("", "ollama"),
-      models: ollamaModels?.embedding_models || [],
-      configured: settings.providers?.ollama?.configured === true,
-    },
-    {
-      group: "IBM watsonx.ai",
-      provider: "watsonx",
-      icon: getModelLogo("", "watsonx"),
-      models: watsonxModels?.embedding_models || [],
-      configured: settings.providers?.watsonx?.configured === true,
-    },
-  ]
-    .filter((p) => p.configured)
-    .map((p) => ({
-      group: p.group,
-      icon: p.icon,
-      options: p.models.map((m) => ({ ...m, provider: p.provider })),
-    }));
+  const groupedEmbeddingModels = useMemo(
+    () =>
+      [
+        {
+          group: "OpenAI",
+          provider: "openai",
+          icon: getModelLogo("", "openai"),
+          models: openaiModels?.embedding_models || [],
+          configured: settings.providers?.openai?.configured === true,
+        },
+        {
+          group: "Ollama",
+          provider: "ollama",
+          icon: getModelLogo("", "ollama"),
+          models: ollamaModels?.embedding_models || [],
+          configured: settings.providers?.ollama?.configured === true,
+        },
+        {
+          group: "IBM watsonx.ai",
+          provider: "watsonx",
+          icon: getModelLogo("", "watsonx"),
+          models: watsonxModels?.embedding_models || [],
+          configured: settings.providers?.watsonx?.configured === true,
+        },
+      ]
+        .filter((p) => p.configured)
+        .map((p) => ({
+          group: p.group,
+          icon: p.icon,
+          options: p.models.map((m) => ({ ...m, provider: p.provider })),
+        })),
+    [
+      openaiModels?.embedding_models,
+      ollamaModels?.embedding_models,
+      watsonxModels?.embedding_models,
+      settings.providers?.openai?.configured,
+      settings.providers?.ollama?.configured,
+      settings.providers?.watsonx?.configured,
+    ],
+  );
 
   const isLoadingAnyEmbeddingModels =
     openaiLoading || ollamaLoading || watsonxLoading;
@@ -121,6 +135,44 @@ export function IngestSettingsSection() {
       toast.error("Failed to update settings", { description: error.message });
     },
   });
+
+  const allEmbeddingOptions = useMemo(
+    () => groupedEmbeddingModels.flatMap((g) => g.options),
+    [groupedEmbeddingModels],
+  );
+
+  const handleEmbeddingModelChange = useCallback(
+    (newModel: string, provider?: string) => {
+      if (newModel && provider) {
+        updateSettingsMutation.mutate({
+          embedding_model: newModel,
+          embedding_provider: provider,
+        });
+      } else if (newModel) {
+        updateSettingsMutation.mutate({ embedding_model: newModel });
+      }
+    },
+    [updateSettingsMutation],
+  );
+
+  const autoSelectedEmbedding = useRef(false);
+  useEffect(() => {
+    if (settings.knowledge?.embedding_model) {
+      autoSelectedEmbedding.current = false;
+      return;
+    }
+    if (autoSelectedEmbedding.current) return;
+    if (allEmbeddingOptions.length > 0) {
+      autoSelectedEmbedding.current = true;
+      const fallback =
+        allEmbeddingOptions.find((o) => o.default) || allEmbeddingOptions[0];
+      handleEmbeddingModelChange(fallback.value, fallback.provider);
+    }
+  }, [
+    settings.knowledge?.embedding_model,
+    allEmbeddingOptions,
+    handleEmbeddingModelChange,
+  ]);
 
   useEffect(() => {
     if (settings.knowledge?.chunk_size !== undefined)
@@ -146,24 +198,22 @@ export function IngestSettingsSection() {
       setPictureDescriptions(settings.knowledge.picture_descriptions);
   }, [settings.knowledge?.picture_descriptions]);
 
+  useEffect(() => {
+    if (settings.knowledge?.disable_ingest_with_langflow !== undefined)
+      setDisableIngestWithLangflow(
+        settings.knowledge.disable_ingest_with_langflow,
+      );
+  }, [settings.knowledge?.disable_ingest_with_langflow]);
+
   const k = settings.knowledge;
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
-    pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions);
-
-  const handleEmbeddingModelChange = (newModel: string, provider?: string) => {
-    if (newModel && provider) {
-      updateSettingsMutation.mutate({
-        embedding_model: newModel,
-        embedding_provider: provider,
-      });
-    } else if (newModel) {
-      updateSettingsMutation.mutate({ embedding_model: newModel });
-    }
-  };
+    pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
+    disableIngestWithLangflow !==
+      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
@@ -176,6 +226,19 @@ export function IngestSettingsSection() {
   };
 
   const handleKnowledgeIngestSave = () => {
+    trackButton({
+      CTA: "Save Ingest Settings",
+      elementId: "save-ingest-settings-button",
+      namespace: "settings",
+      payload: {
+        chunk_size: chunkSize,
+        chunk_overlap: chunkOverlap,
+        table_structure: tableStructure,
+        ocr,
+        picture_descriptions: pictureDescriptions,
+        disable_ingest_with_langflow: disableIngestWithLangflow,
+      },
+    });
     if (chunkSize < 1) {
       const msg = "Chunk size must be at least 1";
       setChunkValidationError(msg);
@@ -195,31 +258,26 @@ export function IngestSettingsSection() {
         table_structure: tableStructure,
         ocr,
         picture_descriptions: pictureDescriptions,
+        disable_ingest_with_langflow: disableIngestWithLangflow,
       },
       { onSuccess: () => setChunkValidationError(null) },
     );
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
-    const cloudLangflowUrl =
-      isIbmAuthMode && typeof window !== "undefined"
-        ? deriveCloudLangflowUrl(window.location.origin)
-        : null;
-    const derivedFromWindow =
-      typeof window !== "undefined"
-        ? `${window.location.protocol}//${window.location.hostname}:7860`
-        : "";
-    const base = (
-      cloudLangflowUrl ||
-      settings.langflow_public_url ||
-      derivedFromWindow ||
-      "http://localhost:7860"
-    ).replace(/\/$/, "");
-    const computed = settings.ingest_flow_id
-      ? `${base}/flow/${settings.ingest_flow_id}`
-      : base;
+    trackButton({
+      CTA: "Edit in Langflow - Ingest",
+      elementId: "edit-langflow-ingest-button",
+      namespace: "settings",
+    });
     window.open(
-      settings.langflow_ingest_edit_url || computed,
+      resolveLangflowEditUrl({
+        flowId: settings.ingest_flow_id,
+        editUrlOverride: settings.langflow_ingest_edit_url,
+        publicUrl: settings.langflow_public_url,
+        isIbmAuthMode,
+        runMode,
+      }),
       "_blank",
       "noopener,noreferrer",
     );
@@ -227,6 +285,11 @@ export function IngestSettingsSection() {
   };
 
   const handleRestoreIngestFlow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Restore Flow - Ingest",
+      elementId: "restore-ingest-flow-button",
+      namespace: "settings",
+    });
     fetch("/api/reset-flow/ingest", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();
@@ -238,6 +301,7 @@ export function IngestSettingsSection() {
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
+        setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
         closeDialog();
       })
@@ -429,6 +493,25 @@ export function IngestSettingsSection() {
             </div>
           </div>
           <div>
+            <div className="flex items-center justify-between py-3 border-b border-border">
+              <div className="flex-1">
+                <Label
+                  htmlFor="disable-ingest-with-langflow"
+                  className="text-base font-medium cursor-pointer pb-3"
+                >
+                  Disable Langflow Ingestion
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Bypass Langflow for document ingestion and use traditional
+                  processing.
+                </div>
+              </div>
+              <Switch
+                id="disable-ingest-with-langflow"
+                checked={disableIngestWithLangflow}
+                onCheckedChange={setDisableIngestWithLangflow}
+              />
+            </div>
             <div className="flex items-center justify-between py-3 border-b border-border">
               <div className="flex-1">
                 <Label

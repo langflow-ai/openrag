@@ -64,7 +64,11 @@ const buildTask = (
 
 const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
   let currentTasks = initialTasks;
-  await page.route("**/api/tasks", async (route: Route) => {
+  await page.route("**/api/tasks**", async (route: Route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -77,13 +81,21 @@ const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
   };
 };
 
-const expandFirstFailureAccordion = async (page: Page) => {
-  const failureLog = page.getByText("Failure Log").first();
-  if (await failureLog.isVisible()) {
+/** Matches accordion summary, e.g. "1 success · 2 failed". */
+const FAILURE_SUMMARY_BUTTON = /\d+\s*success\s*[·,.]\s*\d+\s*failed/i;
+
+const expandFirstFailureAccordion = async (
+  page: Page,
+  expectedError?: string,
+) => {
+  if (
+    expectedError &&
+    (await page.getByText(expectedError).first().isVisible())
+  ) {
     return;
   }
   await page
-    .getByRole("button", { name: /\d+\s*success,\s*\d+\s*failed/i })
+    .getByRole("button", { name: FAILURE_SUMMARY_BUTTON })
     .first()
     .click();
 };
@@ -110,18 +122,17 @@ const openTasksPanel = async (page: Page) => {
 };
 
 const openPastTasksSection = async (page: Page) => {
-  const failureAccordionTrigger = page.getByRole("button", {
-    name: /\d+\s*success,\s*\d+\s*failed/i,
-  });
-  if (await failureAccordionTrigger.count()) {
-    return;
-  }
-
   const pastTasksToggle = page.getByRole("button", { name: /Past Tasks/i });
-  if (await pastTasksToggle.count()) {
+  await expect(pastTasksToggle.first()).toBeVisible({ timeout: 15000 });
+
+  const failureSummary = page.getByRole("button", {
+    name: FAILURE_SUMMARY_BUTTON,
+  });
+  if ((await failureSummary.count()) === 0) {
     await pastTasksToggle.first().click();
   }
-  await expect(failureAccordionTrigger.first()).toBeVisible({ timeout: 15000 });
+
+  await expect(failureSummary.first()).toBeVisible({ timeout: 15000 });
 };
 
 test("completed task with failures keeps failure log in Tasks panel", async ({
@@ -178,8 +189,10 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
   );
   await openTasksPanel(page);
   await openPastTasksSection(page);
-  await expandFirstFailureAccordion(page);
-  await expect(page.getByText("Failure Log")).toBeVisible();
+  await expandFirstFailureAccordion(
+    page,
+    "Synthetic ingestion failure for test",
+  );
   await expect(
     page.getByText("Synthetic ingestion failure for test"),
   ).toBeVisible();
@@ -228,8 +241,7 @@ test("completed task with failures requires View click to open tasks panel", asy
   );
   await openTasksPanel(page);
   await openPastTasksSection(page);
-  await expandFirstFailureAccordion(page);
-  await expect(page.getByText("Failure Log")).toBeVisible();
+  await expandFirstFailureAccordion(page, "Auto-open on partial success");
   await expect(page.getByText("Auto-open on partial success")).toBeVisible();
 });
 
@@ -274,8 +286,7 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
   );
   await openTasksPanel(page);
   await openPastTasksSection(page);
-  await expandFirstFailureAccordion(page);
-  await expect(page.getByText("Failure Log")).toBeVisible();
+  await expandFirstFailureAccordion(page, "Auto-open on failed task");
   await expect(page.getByText("Auto-open on failed task")).toBeVisible();
 });
 
@@ -325,6 +336,6 @@ test("unified panel shows all completed tasks in a single past tasks section", a
   await openTasksPanel(page);
   await expect(page.getByText("Task task-new...")).toBeVisible();
   await expect(page.getByText("Task task-old...")).toBeVisible();
-  // The most recent failure task auto-expands, hiding its INCOMPLETE pill; the older one stays collapsed.
-  await expect(page.getByText("INCOMPLETE")).toHaveCount(1);
+  // Failure summaries stay collapsed by default; both tasks show the Failed pill.
+  await expect(page.getByText("Failed", { exact: true })).toHaveCount(2);
 });

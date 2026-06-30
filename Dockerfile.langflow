@@ -1,19 +1,62 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:1.9.0
+# UBI 10 Python 3.14 base image for enterprise compliance
 
-# Install uv and pre-create the Langflow data directory.
-# The base image already runs as uid=1000 and owns /app, so no root or chown needed.
-RUN pip install uv \
-    && pip uninstall -y litellm \
-    && mkdir -p /app/langflow-data
+FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
-# Copy the entrypoint before switching to root so the COPY runs as uid=1000
-# (which owns /app), then switch to root so the entrypoint can correct
-# bind-mount permissions at runtime before dropping back to uid=1000.
+USER 0
+
+# Install runtime system packages and shadow-utils (for groupadd/useradd)
+RUN microdnf install -y \
+    ca-certificates \
+    shadow-utils \
+    && microdnf clean all
+
+# Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
+# ibm-watsonx-ai and langchain-ibm are needed because they are not included in the pip installation of langflow when python version is 3.14
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
+    "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    "ibm-watsonx-ai>=1.3.1,<2.0.0" \
+    "langchain-ibm~=1.1.0" \
+    uv \
+    && pip uninstall -y clickhouse-connect \
+    && pip uninstall -y ragstack-ai-knowledge-store
+
+# Create a symlink for backwards compatibility with the 'langflow' command
+RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
+
+# Create application directory and pre-create LANGFLOW_CONFIG_DIR
+WORKDIR /app
+RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /app/langflow
+
+# Copy flows with proper ownership from the start to prevent chown duplication
+COPY --chown=root:0 flows/ /app/flows/
+
+# Copy the entrypoint script
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
-USER root
+
+# Bake env vars into image — covers cases where entrypoint is bypassed
+ENV HOME=/tmp
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV MEM0_DIR=/tmp/.mem0
+ENV LANGFLOW_CONFIG_DIR=/app/langflow
+ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
+ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
+
+# Set proper ownership for the app directory with OpenShift compatibility
+# Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
+RUN if ! getent passwd 1000 >/dev/null; then \
+        useradd --uid 1000 --gid 0 --home-dir /tmp --no-create-home langflow; \
+    fi \
+    && chgrp -R 0 /app \
+    && chmod -R g+rwX /app
+
+# NOTE: Container runs as root initially so entrypoint can fix permissions
+# The entrypoint script drops to UID 1000 before executing the main process
 
 EXPOSE 7860
 
 ENTRYPOINT ["langflow-entrypoint"]
-CMD ["langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "-m", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

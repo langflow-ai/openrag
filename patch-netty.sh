@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-NETTY_VERSION="4.1.125.Final"
+NETTY_VERSION="4.2.15.Final"
 MAVEN_BASE_URL="https://repo1.maven.org/maven2/io/netty"
 DOWNLOAD_DIR="/tmp/netty-${NETTY_VERSION}"
 
@@ -27,130 +27,81 @@ download_with_retry() {
     return 1
 }
 
-# List of unique Netty artifacts
-# Some of them are not used below, but we'll keep the complete set here
-NETTY_ARTIFACTS=(
-    "netty-buffer"
-    "netty-codec"
-    "netty-codec-dns"
-    "netty-codec-http"
-    "netty-codec-http2"
-    "netty-codec-socks"
-    "netty-common"
-    "netty-handler"
-    "netty-handler-proxy"
-    "netty-resolver"
-    "netty-resolver-dns"
-    "netty-transport"
-    "netty-transport-classes-epoll"
-    "netty-transport-native-unix-common"
+# Whitelist of core Netty artifacts to match and patch
+declare -A CORE_NETTY_ARTIFACTS=(
+    ["netty-buffer"]=1
+    ["netty-codec"]=1
+    ["netty-codec-dns"]=1
+    ["netty-codec-http"]=1
+    ["netty-codec-http2"]=1
+    ["netty-codec-socks"]=1
+    ["netty-common"]=1
+    ["netty-handler"]=1
+    ["netty-handler-proxy"]=1
+    ["netty-resolver"]=1
+    ["netty-resolver-dns"]=1
+    ["netty-transport"]=1
+    ["netty-transport-classes-epoll"]=1
+    ["netty-transport-native-unix-common"]=1
 )
 
-echo "Downloading Netty ${NETTY_VERSION} artifacts..."
-for artifact in "${NETTY_ARTIFACTS[@]}"; do
-    jar_file="${artifact}-${NETTY_VERSION}.jar"
-    if [ ! -f "${DOWNLOAD_DIR}/${jar_file}" ]; then
-        echo "  Downloading ${artifact}..."
-        download_with_retry "${MAVEN_BASE_URL}/${artifact}/${NETTY_VERSION}/${jar_file}" \
-            "${DOWNLOAD_DIR}/${jar_file}"
+replaced_count=0
+matched_count=0
+
+echo "Searching for Netty jars to patch in /usr/share/opensearch..."
+
+# Find all Netty jars under /usr/share/opensearch
+shopt -s globstar
+for jar_path in /usr/share/opensearch/**/netty-*.jar; do
+    [ -f "$jar_path" ] || continue
+    filename=$(basename "$jar_path")
+    dir=$(dirname "$jar_path")
+    
+    # Match netty-<artifact>-<version>.jar
+    # Example: netty-buffer-4.2.12.Final.jar
+    if [[ "$filename" =~ ^(netty-[a-z0-9-]+)-([0-9]+\.[0-9]+\.[0-9]+\.?[a-zA-Z0-9]*)\.jar$ ]]; then
+        artifact="${BASH_REMATCH[1]}"
+        version="${BASH_REMATCH[2]}"
+        
+        # Check if the artifact is one of the core Netty artifacts we want to patch
+        if [[ -n "${CORE_NETTY_ARTIFACTS[$artifact]:-}" ]]; then
+            matched_count=$((matched_count + 1))
+            # If the version is already the target version, skip
+            if [ "$version" = "$NETTY_VERSION" ]; then
+                echo "  Skipping: ${filename} (already version ${NETTY_VERSION})"
+                continue
+            fi
+            
+            echo "  Found vulnerable Netty jar: ${filename} in ${dir}"
+            
+            new_jar="${DOWNLOAD_DIR}/${artifact}-${NETTY_VERSION}.jar"
+            
+            # Download the new version if it hasn't been downloaded yet
+            if [ ! -f "$new_jar" ]; then
+                echo "    Downloading ${artifact}-${NETTY_VERSION}.jar..."
+                if ! download_with_retry "${MAVEN_BASE_URL}/${artifact}/${NETTY_VERSION}/${artifact}-${NETTY_VERSION}.jar" "$new_jar"; then
+                    echo "ERROR: Failed to download patched dependency ${artifact}."
+                    exit 1
+                fi
+            fi
+            
+            # Replace the old jar with a hardlink to the new jar
+            rm -f "$jar_path"
+            new_filename="${dir}/${artifact}-${NETTY_VERSION}.jar"
+            ln "$new_jar" "$new_filename"
+            echo "    Replaced with: ${artifact}-${NETTY_VERSION}.jar"
+            replaced_count=$((replaced_count + 1))
+        fi
     fi
 done
 
-echo "Removing old Netty jars and replacing with ${NETTY_VERSION}..."
-
-# Function to replace jar with hardlink
-replace_jar() {
-    local old_jar="$1"
-    local artifact_name="$2"
-    local new_jar="${DOWNLOAD_DIR}/${artifact_name}-${NETTY_VERSION}.jar"
-
-    if [ -f "${old_jar}" ]; then
-        rm -f "${old_jar}"
-        # Extract directory path
-        local dir=$(dirname "${old_jar}")
-        # Create hardlink with the new version number in filename
-        local new_filename="${dir}/${artifact_name}-${NETTY_VERSION}.jar"
-        ln "${new_jar}" "${new_filename}"
-        echo "  Replaced: ${old_jar} -> ${new_filename}"
-    fi
-}
-
-# Replace transport-netty4 module jars (4.1.121.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-buffer-4.1.121.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-codec-4.1.121.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-codec-http-4.1.121.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-codec-http2-4.1.121.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-common-4.1.121.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-handler-4.1.121.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-resolver-4.1.121.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-transport-4.1.121.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/modules/transport-netty4/netty-transport-native-unix-common-4.1.121.Final.jar" "netty-transport-native-unix-common"
-
-# Replace opensearch-ml plugin jars (4.1.118.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-buffer-4.1.118.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-codec-4.1.118.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-codec-http-4.1.118.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-codec-http2-4.1.118.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-common-4.1.118.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-handler-4.1.118.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-resolver-4.1.118.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-transport-4.1.118.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-transport-classes-epoll-4.1.118.Final.jar" "netty-transport-classes-epoll"
-replace_jar "/usr/share/opensearch/plugins/opensearch-ml/netty-transport-native-unix-common-4.1.118.Final.jar" "netty-transport-native-unix-common"
-
-# Replace opensearch-notifications plugin jars (4.1.118.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-buffer-4.1.118.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-codec-4.1.118.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-codec-http-4.1.118.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-codec-http2-4.1.118.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-common-4.1.118.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-handler-4.1.118.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-resolver-4.1.118.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-transport-4.1.118.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-transport-classes-epoll-4.1.118.Final.jar" "netty-transport-classes-epoll"
-replace_jar "/usr/share/opensearch/plugins/opensearch-notifications/netty-transport-native-unix-common-4.1.118.Final.jar" "netty-transport-native-unix-common"
-
-# Replace opensearch-performance-analyzer plugin jars (4.1.121.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-buffer-4.1.121.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-codec-4.1.121.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-codec-http-4.1.121.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-codec-http2-4.1.121.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-codec-socks-4.1.121.Final.jar" "netty-codec-socks"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-common-4.1.121.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-handler-4.1.121.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-handler-proxy-4.1.121.Final.jar" "netty-handler-proxy"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-resolver-4.1.121.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-transport-4.1.121.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/plugins/opensearch-performance-analyzer/netty-transport-native-unix-common-4.1.121.Final.jar" "netty-transport-native-unix-common"
-
-# Replace opensearch-security plugin jars (4.1.121.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-buffer-4.1.121.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-codec-4.1.121.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-codec-http-4.1.121.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-codec-http2-4.1.121.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-common-4.1.121.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-handler-4.1.121.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-resolver-4.1.121.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-transport-4.1.121.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/plugins/opensearch-security/netty-transport-native-unix-common-4.1.121.Final.jar" "netty-transport-native-unix-common"
-
-# Replace repository-azure plugin jars (4.1.121.Final -> 4.1.125.Final)
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-buffer-4.1.121.Final.jar" "netty-buffer"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-codec-4.1.121.Final.jar" "netty-codec"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-codec-dns-4.1.121.Final.jar" "netty-codec-dns"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-codec-http-4.1.121.Final.jar" "netty-codec-http"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-codec-http2-4.1.121.Final.jar" "netty-codec-http2"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-codec-socks-4.1.121.Final.jar" "netty-codec-socks"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-common-4.1.121.Final.jar" "netty-common"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-handler-4.1.121.Final.jar" "netty-handler"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-handler-proxy-4.1.121.Final.jar" "netty-handler-proxy"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-resolver-4.1.121.Final.jar" "netty-resolver"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-resolver-dns-4.1.121.Final.jar" "netty-resolver-dns"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-transport-4.1.121.Final.jar" "netty-transport"
-replace_jar "/usr/share/opensearch/plugins/repository-azure/netty-transport-native-unix-common-4.1.121.Final.jar" "netty-transport-native-unix-common"
-
-# Remove the download directory after hardlinking
+# Clean up download directory
 rm -rf "${DOWNLOAD_DIR}"
 
-echo "Successfully replaced all old Netty jars with ${NETTY_VERSION}"
-echo "Hardlinks used to minimize disk space"
+echo "Netty patching complete. Replaced ${replaced_count} jars."
+
+# Fail-safe check: If no Netty jars were matched at all, we must fail the build.
+if [ "${matched_count}" -eq 0 ]; then
+    echo "ERROR: No Netty jars were found to be patched! This indicates that the script failed to find any expected jars."
+    exit 1
+fi

@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-
 OPENRAG_MCP_SERVER_NAME = "lf-starter_project"
 LANGFLOW_GLOBAL_VAR_PREFIX = "x-langflow-global-var-"
 
@@ -38,8 +37,7 @@ def _extract_server_urls(server_config: dict[str, Any]) -> list[str]:
         urls.extend(
             arg
             for arg in args
-            if isinstance(arg, str)
-            and (arg.startswith("http://") or arg.startswith("https://"))
+            if isinstance(arg, str) and (arg.startswith("http://") or arg.startswith("https://"))
         )
     return urls
 
@@ -50,11 +48,7 @@ def _extract_server_headers(server_config: dict[str, Any]) -> dict[str, str]:
     raw_headers = server_config.get("headers")
     if isinstance(raw_headers, dict):
         headers.update(
-            {
-                str(key): str(value)
-                for key, value in raw_headers.items()
-                if value is not None
-            }
+            {str(key): str(value) for key, value in raw_headers.items() if value is not None}
         )
 
     args = server_config.get("args", [])
@@ -97,8 +91,7 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
     servers = await mcp_service.list_mcp_servers()
     server_names = [_server_name(server) for server in servers]
     assert OPENRAG_MCP_SERVER_NAME in server_names, (
-        f"Expected OpenRAG MCP server {OPENRAG_MCP_SERVER_NAME!r}; "
-        f"found {server_names}"
+        f"Expected OpenRAG MCP server {OPENRAG_MCP_SERVER_NAME!r}; found {server_names}"
     )
 
     server_config = await mcp_service.get_mcp_server(OPENRAG_MCP_SERVER_NAME)
@@ -108,8 +101,7 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
     expected_base = (LANGFLOW_URL or os.environ.get("LANGFLOW_URL", "")).rstrip("/")
     if expected_base and "localhost" not in expected_base:
         assert any(url.startswith(expected_base) for url in urls), (
-            f"MCP server URLs were not rewritten to LANGFLOW_URL={expected_base!r}: "
-            f"{urls}"
+            f"MCP server URLs were not rewritten to LANGFLOW_URL={expected_base!r}: {urls}"
         )
 
     _assert_no_persisted_langflow_globals(_extract_server_headers(server_config))
@@ -141,13 +133,13 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
         "JWT",
         "OPENAI_API_KEY",
         "OPENSEARCH_URL",
-        "OWNER",
-        "OWNER_EMAIL",
-        "OWNER_NAME",
         "SELECTED_EMBEDDING_MODEL",
         "WATSONX_APIKEY",
         "WATSONX_PROJECT_ID",
         "OPENSEARCH_INDEX_NAME",
-        "CONNECTOR_TYPE",
+        "OPENRAG_INGEST_URL",
+        "OPENRAG_INGEST_TOKEN",
+        "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_BATCH_SIZE",
     ]:
         assert f"X-Langflow-Global-Var-{global_var_name}" in flow_text
