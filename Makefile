@@ -493,10 +493,10 @@ dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stac
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7861}"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
-	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9201}"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5602}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch and CPU only mode
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
@@ -509,10 +509,10 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7861}"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
-	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9201}"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5602}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
