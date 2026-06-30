@@ -814,6 +814,7 @@ test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integra
 
 test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
 	@set -e; \
+	TEST_RESULT=0; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --quiet --group dev; \
 	echo "::group::Cleanup, Pull & Build Images"; \
@@ -905,8 +906,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml; \
-	TEST_RESULT=$$?; \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
 	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
@@ -933,7 +933,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	echo ""; \
 	echo "::group::Test Failure Report"; \
-	uv run python scripts/ci/generate_test_report.py service-logs; \
+	uv run python scripts/ci/generate_test_report.py service-logs || true; \
 	echo "::endgroup::"; \
 	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
 	echo "$(YELLOW)Tearing down infra$(NC)"; \
@@ -943,6 +943,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 
 test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci but builds all images locally
 	@set -e; \
+	TEST_RESULT=0; \
 	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
 	uv sync --quiet --group dev; \
 	echo "::group::Cleanup & Build Images"; \
@@ -1035,8 +1036,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
-	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml; \
-	TEST_RESULT=$$?; \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
 	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
@@ -1071,7 +1071,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 		$(CONTAINER_RUNTIME) logs os > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
 	fi; \
 	echo "::group::Test Failure Report"; \
-	uv run python scripts/ci/generate_test_report.py service-logs; \
+	uv run python scripts/ci/generate_test_report.py service-logs || true; \
 	echo "::endgroup::"; \
 	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
 	echo "$(YELLOW)Tearing down infra$(NC)"; \
