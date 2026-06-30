@@ -205,6 +205,7 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
+          chmod +x scripts/ci/run_integration_suite.sh
           OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
