@@ -68,7 +68,9 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
     if not os.getenv("OPENAI_API_KEY"):
         pytest.skip("OPENAI_API_KEY is required for onboarding sample-doc ingestion")
     if not os.getenv("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY is required for onboarding sample-doc ingestion (ibm_anthropic.pdf)")
+        pytest.skip(
+            "ANTHROPIC_API_KEY is required for onboarding sample-doc ingestion (ibm_anthropic.pdf)"
+        )
 
     docs_dir = Path(__file__).resolve().parents[3] / "openrag-documents"
     expected_filenames = sorted(
