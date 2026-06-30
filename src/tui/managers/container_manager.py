@@ -719,24 +719,9 @@ class ContainerManager:
                     version = image_tag.split(":")[-1]
                     # If version is "latest", check .env file for OPENRAG_VERSION
                     if version == "latest":
-                        # Try to get version from .env file
-                        try:
-                            from pathlib import Path
-
-                            env_file = Path(".env")
-                            if env_file.exists():
-                                env_content = env_file.read_text()
-                                for line in env_content.splitlines():
-                                    line = line.strip()
-                                    if line.startswith("OPENRAG_VERSION"):
-                                        env_version = line.split("=", 1)[1].strip()
-                                        # Remove quotes if present
-                                        env_version = env_version.strip("'\"")
-                                        if env_version and env_version != "latest":
-                                            return env_version
-                        except Exception:
-                            pass
-                        # If still "latest", we can't determine version - return None
+                        env_version = env.get("OPENRAG_VERSION", "").strip().strip("'\"")
+                        if env_version and env_version != "latest":
+                            return env_version
                         return None
                     # Return version if it looks like a version number (not "latest")
                     if version and version != "latest":
