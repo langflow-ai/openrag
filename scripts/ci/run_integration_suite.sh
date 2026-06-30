@@ -68,20 +68,22 @@ test_jwt_opensearch() {
 }
 
 dump_logs() {
-  echo "${red}=== Tests failed, dumping container logs ===${nc}"
-  echo ""
-  echo "${yellow}=== Langflow logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs langflow 2>&1 | tail -500 || echo "${red}Could not get Langflow logs${nc}"
-  echo ""
-  echo "${yellow}=== Backend logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs openrag-backend 2>&1 | tail -500 || echo "${red}Could not get backend logs${nc}"
-  echo ""
-  echo "${yellow}=== Frontend logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs openrag-frontend 2>&1 | tail -300 || echo "${red}Could not get frontend logs${nc}"
-  echo ""
-  echo "${yellow}=== OpenSearch logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs os 2>&1 | tail -300 || echo "${red}Could not get OpenSearch logs${nc}"
-  echo ""
+  echo "${red}=== Tests failed, saving container logs to service-logs/ ===${nc}"
+  mkdir -p service-logs
+
+  redact() {
+    local pw="${OPENSEARCH_PASSWORD:-__unset__}"
+    pw=$(printf '%s\n' "$pw" | sed -E 's/([][\\/.*+?^$|()])/\\\1/g')
+    sed -E -e 's/Bearer [A-Za-z0-9._-]+/Bearer **REDACTED**/g' \
+           -e 's/token=[A-Za-z0-9._-]+/token=**REDACTED**/g' \
+           -e 's/sk-[A-Za-z0-9._-]+/sk-**REDACTED**/g' \
+           -e "s/${pw}/**REDACTED**/g"
+  }
+
+  "$container_runtime" logs --tail 10000 langflow 2>&1 | redact > service-logs/langflow.log || echo "${red}Could not get Langflow logs${nc}"
+  "$container_runtime" logs --tail 10000 openrag-backend 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
+  "$container_runtime" logs --tail 10000 openrag-frontend 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
+  "$container_runtime" logs --tail 10000 os 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
 }
 
 teardown() {

@@ -1051,14 +1051,12 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	echo ""; \
 	if [ $$TEST_RESULT -ne 0 ]; then \
-		echo "$(RED)=== Tests failed, dumping container logs ===$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)=== Langflow logs (last 500 lines) ===$(NC)"; \
-		$(CONTAINER_RUNTIME) logs langflow 2>&1 | tail -500 || echo "$(RED)Could not get Langflow logs$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)=== Backend logs (last 200 lines) ===$(NC)"; \
-		$(CONTAINER_RUNTIME) logs openrag-backend 2>&1 | tail -200 || echo "$(RED)Could not get backend logs$(NC)"; \
-		echo ""; \
+		echo "$(RED)=== Tests failed, saving container logs to service-logs/ ===$(NC)"; \
+		mkdir -p service-logs; \
+		$(CONTAINER_RUNTIME) logs langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs openrag-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs openrag-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs os > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
 	fi; \
 	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
 	echo "$(YELLOW)Tearing down infra$(NC)"; \

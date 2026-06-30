@@ -53,25 +53,14 @@ jobs:
         with:
           filters: |
             e2e:
-              - 'src/**'
-              - 'frontend/**'
-              - 'tests/**'
-              - 'scripts/**'
-              - 'flows/**'
-              - 'docker-compose.yml'
-              - 'Dockerfile*'
-              - 'Makefile'
-              - '.github/workflows/test-ci.yml'
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
             integration:
-              - 'src/**.py'
-              - 'tests/**.py'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - 'sdks/**'
-              - 'flows/**'
-              - 'Makefile'
-              - 'scripts/**'
-              - '.github/workflows/test-ci.yml'
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+              - '!**/*.md'
 
   build-images:
     needs: changes
@@ -224,6 +213,14 @@ jobs:
           OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs-${{ matrix.suite }}
+          path: service-logs/
+          retention-days: 7
 
   e2e-run:
     needs: [changes, build-images]
