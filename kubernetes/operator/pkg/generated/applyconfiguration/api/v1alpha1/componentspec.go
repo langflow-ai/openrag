@@ -54,6 +54,8 @@ type ComponentSpecApplyConfiguration struct {
 	SecretAnnotations         map[string]string             `json:"secretAnnotations,omitempty"`
 	Command                   []string                      `json:"command,omitempty"`
 	Args                      []string                      `json:"args,omitempty"`
+	InitContainers            []v1.Container                `json:"initContainers,omitempty"`
+	Sidecars                  []v1.Container                `json:"sidecars,omitempty"`
 }
 
 // ComponentSpecApplyConfiguration constructs a declarative configuration of the ComponentSpec type for use with
@@ -368,6 +370,26 @@ func (b *ComponentSpecApplyConfiguration) WithCommand(values ...string) *Compone
 func (b *ComponentSpecApplyConfiguration) WithArgs(values ...string) *ComponentSpecApplyConfiguration {
 	for i := range values {
 		b.Args = append(b.Args, values[i])
+	}
+	return b
+}
+
+// WithInitContainers adds the given value to the InitContainers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InitContainers field.
+func (b *ComponentSpecApplyConfiguration) WithInitContainers(values ...v1.Container) *ComponentSpecApplyConfiguration {
+	for i := range values {
+		b.InitContainers = append(b.InitContainers, values[i])
+	}
+	return b
+}
+
+// WithSidecars adds the given value to the Sidecars field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Sidecars field.
+func (b *ComponentSpecApplyConfiguration) WithSidecars(values ...v1.Container) *ComponentSpecApplyConfiguration {
+	for i := range values {
+		b.Sidecars = append(b.Sidecars, values[i])
 	}
 	return b
 }

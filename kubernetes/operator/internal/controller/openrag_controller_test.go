@@ -1572,3 +1572,112 @@ func TestReconcile_ImageDriftTriggersRevert(t *testing.T) {
 		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "test-ns"}, revertedDeploy))
 	assert.Equal(t, "langflowai/openrag-backend:v1.0.0", revertedDeploy.Spec.Template.Spec.Containers[0].Image)
 }
+
+// ---------------------------------------------------------------------------
+// Init Container tests
+// ---------------------------------------------------------------------------
+
+func TestPodBuilders_AppendInitContainersAndSidecars(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	userInit := corev1.Container{Name: "user-init", Image: "busybox:latest"}
+	userSidecar := corev1.Container{Name: "user-sidecar", Image: "busybox:latest"}
+
+	doclingCR := func() *openragv1alpha1.OpenRAG {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-serve:latest"}},
+			Worker:  &openragv1alpha1.DoclingWorkerSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-worker:latest"}},
+			Valkey:  &openragv1alpha1.ValkeySpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "valkey:latest"}},
+		}
+		return cr
+	}
+
+	cases := []struct {
+		name         string
+		expectedMain string // operator-managed main container name for this builder, guards against a builder reading the wrong component sub-spec.
+		build        func() corev1.PodSpec
+	}{
+		{"frontend", "frontend", func() corev1.PodSpec {
+			cr := minimalCR("x", "ns")
+			cr.Spec.Frontend.InitContainers = []corev1.Container{userInit}
+			cr.Spec.Frontend.Sidecars = []corev1.Container{userSidecar}
+			return r.frontendDeployment(cr, "ns").Spec.Template.Spec
+		}},
+		{"backend", "backend", func() corev1.PodSpec {
+			cr := minimalCR("x", "ns")
+			cr.Spec.Backend.InitContainers = []corev1.Container{userInit}
+			cr.Spec.Backend.Sidecars = []corev1.Container{userSidecar}
+			return r.backendDeployment(cr, "ns", "hash").Spec.Template.Spec
+		}},
+		{"langflow", "langflow", func() corev1.PodSpec {
+			cr := minimalCR("x", "ns")
+			cr.Spec.Langflow.InitContainers = []corev1.Container{userInit}
+			cr.Spec.Langflow.Sidecars = []corev1.Container{userSidecar}
+			return r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
+		}},
+		{"docling-serve", "docling-serve", func() corev1.PodSpec {
+			cr := doclingCR()
+			cr.Spec.DoclingComponents.Serve.InitContainers = []corev1.Container{userInit}
+			cr.Spec.DoclingComponents.Serve.Sidecars = []corev1.Container{userSidecar}
+			return r.doclingServeDeployment(cr, "ns").Spec.Template.Spec
+		}},
+		{"docling-worker", "docling-worker", func() corev1.PodSpec {
+			cr := doclingCR()
+			cr.Spec.DoclingComponents.Worker.InitContainers = []corev1.Container{userInit}
+			cr.Spec.DoclingComponents.Worker.Sidecars = []corev1.Container{userSidecar}
+			return r.doclingWorkerDeployment(cr, "ns").Spec.Template.Spec
+		}},
+		{"valkey", "valkey", func() corev1.PodSpec {
+			cr := doclingCR()
+			cr.Spec.DoclingComponents.Valkey.InitContainers = []corev1.Container{userInit}
+			cr.Spec.DoclingComponents.Valkey.Sidecars = []corev1.Container{userSidecar}
+			return r.valkeyStatefulSet(cr, "ns").Spec.Template.Spec
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ps := tc.build()
+
+			require.NotEmpty(t, ps.Containers, "%s pod must have at least the main container", tc.name)
+			assert.Equal(t, tc.expectedMain, ps.Containers[0].Name, "%s main container must remain first", tc.name)
+			assert.Len(t, ps.Containers, 2, "%s pod should have exactly main + one sidecar", tc.name)
+			assert.Len(t, ps.InitContainers, 1, "%s pod should have exactly the one user init container", tc.name)
+
+			assert.True(t, containsContainer(ps.InitContainers, "user-init"), "%s pod should include the user init container", tc.name)
+			assert.True(t, containsContainer(ps.Containers, "user-sidecar"), "%s pod should include the user sidecar", tc.name)
+
+			assert.False(t, containsContainer(ps.Containers, "user-init"), "%s init container must not leak into Containers", tc.name)
+			assert.False(t, containsContainer(ps.InitContainers, "user-sidecar"), "%s sidecar must not leak into InitContainers", tc.name)
+		})
+	}
+}
+
+// guards the one build with a pre-existing operator-manager init container: downloader must run first
+func TestLangflow_UserInitContainerAppendedAfterFlowsDownloader(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	cr := minimalCR("x", "ns")
+	cr.Spec.Langflow.FlowsRef = "main"
+	cr.Spec.Langflow.InitContainers = []corev1.Container{{Name: "user-init", Image: "busybox:latest"}}
+
+	ps := r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
+
+	require.Len(t, ps.InitContainers, 2, "expected flows downloader + init container")
+	assert.Equal(t, "download-flows", ps.InitContainers[0].Name, "operator-managed downloader must run first")
+	assert.Equal(t, "user-init", ps.InitContainers[1].Name, "user init container must be appended after")
+}
+
+func containsContainer(cs []corev1.Container, name string) bool {
+	for _, c := range cs {
+		if c.Name == name {
+			return true
+		}
+	}
+
+	return false
+}

@@ -743,7 +743,8 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
 					SecurityContext:    spec.PodSecurityContext,
-					Containers: []corev1.Container{
+					InitContainers:     spec.InitContainers,
+					Containers: append([]corev1.Container{
 						{
 							Name:            "frontend",
 							Image:           spec.Image,
@@ -757,7 +758,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							LivenessProbe:   httpProbe("/", 3000, 30, 10),
 							ReadinessProbe:  httpProbe("/", 3000, 10, 5),
 						},
-					},
+					}, spec.Sidecars...),
 				},
 			},
 		},
@@ -834,8 +835,9 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
 					SecurityContext:    spec.PodSecurityContext,
+					InitContainers:     spec.InitContainers,
 					Volumes:            volumes,
-					Containers: []corev1.Container{
+					Containers: append([]corev1.Container{
 						{
 							Name:            "backend",
 							Image:           spec.Image,
@@ -848,7 +850,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							LivenessProbe:   httpProbe("/health", 8000, 125, 30),
 							ReadinessProbe:  httpProbe("/health", 8000, 125, 15),
 						},
-					},
+					}, spec.Sidecars...),
 				},
 			},
 		},
@@ -957,9 +959,9 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Tolerations:        spec.Tolerations,
 					Affinity:           spec.Affinity,
 					SecurityContext:    spec.PodSecurityContext,
-					InitContainers:     initContainers,
+					InitContainers:     append(initContainers, spec.InitContainers...),
 					Volumes:            volumes,
-					Containers: []corev1.Container{
+					Containers: append([]corev1.Container{
 						{
 							Name:            "langflow",
 							Image:           spec.Image,
@@ -974,7 +976,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							LivenessProbe:   httpProbe("/health", 7860, 110, 30),
 							ReadinessProbe:  httpProbe("/health", 7860, 110, 30),
 						},
-					},
+					}, spec.Sidecars...),
 				},
 			},
 		},
@@ -1393,9 +1395,10 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 				NodeSelector:              spec.NodeSelector,
 				Tolerations:               spec.Tolerations,
 				Affinity:                  spec.Affinity,
+				InitContainers:            spec.InitContainers,
 				TopologySpreadConstraints: spec.TopologySpreadConstraints,
 				Volumes:                   volumes,
-				Containers: []corev1.Container{
+				Containers: append([]corev1.Container{
 					{
 						Name:            "docling-serve",
 						Image:           spec.Image,
@@ -1410,7 +1413,7 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 						LivenessProbe:   probeOrDefault(spec.LivenessProbe, httpProbe("/health", port, 30, 10)),
 						ReadinessProbe:  probeOrDefault(spec.ReadinessProbe, httpProbe("/health", port, 10, 5)),
 					},
-				},
+				}, spec.Sidecars...),
 			},
 		},
 	}
@@ -1568,9 +1571,10 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 				NodeSelector:              spec.NodeSelector,
 				Tolerations:               spec.Tolerations,
 				Affinity:                  spec.Affinity,
+				InitContainers:            spec.InitContainers,
 				TopologySpreadConstraints: spec.TopologySpreadConstraints,
 				Volumes:                   volumes,
-				Containers: []corev1.Container{
+				Containers: append([]corev1.Container{
 					{
 						Name:            "docling-worker",
 						Image:           spec.Image,
@@ -1584,7 +1588,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 						LivenessProbe:   spec.LivenessProbe,
 						ReadinessProbe:  spec.ReadinessProbe,
 					},
-				},
+				}, spec.Sidecars...),
 			},
 		},
 	}
@@ -1867,9 +1871,10 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 					Tolerations:               spec.Tolerations,
 					Affinity:                  spec.Affinity,
 					SecurityContext:           spec.PodSecurityContext,
+					InitContainers:            spec.InitContainers,
 					TopologySpreadConstraints: spec.TopologySpreadConstraints,
 					Volumes:                   volumes,
-					Containers: []corev1.Container{
+					Containers: append([]corev1.Container{
 						{
 							Name:            "valkey",
 							Image:           spec.Image,
@@ -1899,7 +1904,7 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 								PeriodSeconds:       5,
 							},
 						},
-					},
+					}, spec.Sidecars...),
 				},
 			},
 		},

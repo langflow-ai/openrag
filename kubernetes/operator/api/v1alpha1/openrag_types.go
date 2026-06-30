@@ -178,6 +178,27 @@ type ComponentSpec struct {
 	// Args overrides the container's command arguments.
 	// +optional
 	Args []string `json:"args,omitempty"`
+
+	// InitContainers are additional init containers appended to this component's pod.
+	// They run to completion, in order, before the main container starts — use them to
+	// inject custom startup logic (waiting on dependencies, fetching assets, migrations).
+	// This mirrors the pod's spec.initContainers and accepts the full Kubernetes
+	// container schema. To run a helper for the full lifetime of the pod as a native
+	// sidecar (Kubernetes 1.29+), add it here with restartPolicy: Always.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	InitContainers []corev1.Container `json:"initContainers,omitempty"`
+
+	// Sidecars are additional long-running containers co-located in this component's pod
+	// alongside the main container (classic sidecar pattern). They are appended to the
+	// pod's spec.containers and share the pod's network namespace and volumes — useful
+	// for log shippers, proxies, or metrics exporters. Accepts the full Kubernetes
+	// container schema.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	Sidecars []corev1.Container `json:"sidecars,omitempty"`
 }
 
 // FrontendSpec configures the OpenRAG frontend (Next.js).

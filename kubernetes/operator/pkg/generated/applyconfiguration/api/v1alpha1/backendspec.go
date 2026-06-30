@@ -350,6 +350,26 @@ func (b *BackendSpecApplyConfiguration) WithArgs(values ...string) *BackendSpecA
 	return b
 }
 
+// WithInitContainers adds the given value to the InitContainers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InitContainers field.
+func (b *BackendSpecApplyConfiguration) WithInitContainers(values ...v1.Container) *BackendSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.InitContainers = append(b.ComponentSpecApplyConfiguration.InitContainers, values[i])
+	}
+	return b
+}
+
+// WithSidecars adds the given value to the Sidecars field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Sidecars field.
+func (b *BackendSpecApplyConfiguration) WithSidecars(values ...v1.Container) *BackendSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.Sidecars = append(b.ComponentSpecApplyConfiguration.Sidecars, values[i])
+	}
+	return b
+}
+
 // WithJWTSigningKeySecret sets the JWTSigningKeySecret field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the JWTSigningKeySecret field is set to the value of the last call.

@@ -352,6 +352,26 @@ func (b *DoclingWorkerSpecApplyConfiguration) WithArgs(values ...string) *Doclin
 	return b
 }
 
+// WithInitContainers adds the given value to the InitContainers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InitContainers field.
+func (b *DoclingWorkerSpecApplyConfiguration) WithInitContainers(values ...v1.Container) *DoclingWorkerSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.InitContainers = append(b.ComponentSpecApplyConfiguration.InitContainers, values[i])
+	}
+	return b
+}
+
+// WithSidecars adds the given value to the Sidecars field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Sidecars field.
+func (b *DoclingWorkerSpecApplyConfiguration) WithSidecars(values ...v1.Container) *DoclingWorkerSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.Sidecars = append(b.ComponentSpecApplyConfiguration.Sidecars, values[i])
+	}
+	return b
+}
+
 // WithStorage sets the Storage field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Storage field is set to the value of the last call.

@@ -343,3 +343,23 @@ func (b *FrontendSpecApplyConfiguration) WithArgs(values ...string) *FrontendSpe
 	}
 	return b
 }
+
+// WithInitContainers adds the given value to the InitContainers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InitContainers field.
+func (b *FrontendSpecApplyConfiguration) WithInitContainers(values ...v1.Container) *FrontendSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.InitContainers = append(b.ComponentSpecApplyConfiguration.InitContainers, values[i])
+	}
+	return b
+}
+
+// WithSidecars adds the given value to the Sidecars field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Sidecars field.
+func (b *FrontendSpecApplyConfiguration) WithSidecars(values ...v1.Container) *FrontendSpecApplyConfiguration {
+	for i := range values {
+		b.ComponentSpecApplyConfiguration.Sidecars = append(b.ComponentSpecApplyConfiguration.Sidecars, values[i])
+	}
+	return b
+}
