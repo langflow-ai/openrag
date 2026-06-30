@@ -258,7 +258,18 @@ jobs:
       - name: Install Playwright Browsers
         working-directory: frontend
         run: |
-          npx playwright install --with-deps chromium
+          for i in 1 2 3; do
+            echo "Installing Playwright browsers (attempt $i)..."
+            if npx playwright install --with-deps chromium; then
+              break
+            fi
+            echo "Attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Failed to install Playwright browsers after 3 attempts."
+              exit 1
+            fi
+          done
 
       - name: Download OpenRAG image artifact
         uses: actions/download-artifact@v4
