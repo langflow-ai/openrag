@@ -27,6 +27,13 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
+  /** When true, request the ephemeral parse preview for the ingested files. */
+  preview?: boolean;
+  /**
+   * Called after ingestion is queued so a stable parent can own the preview
+   * dialog (this dialog unmounts on close, which would tear down its own).
+   */
+  onIngestStarted?: (taskId: string, filename: string) => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -42,6 +49,8 @@ export function FileBrowserDialog({
   connectorType,
   connectionId,
   buckets,
+  preview = false,
+  onIngestStarted,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -96,7 +105,7 @@ export function FileBrowserDialog({
     if (selectedFiles.length === 0) return;
 
     try {
-      await syncMutation.mutateAsync({
+      const result = await syncMutation.mutateAsync({
         connectorType,
         body: {
           selected_files: selectedFiles.map((f) => ({
@@ -105,12 +114,23 @@ export function FileBrowserDialog({
             mimeType: "",
             size: f.size,
           })),
+          preview,
         },
       });
 
       toast.success("Ingestion started", {
         description: `${selectedFiles.length} file(s) queued for ingestion.`,
       });
+
+      const taskId = result.task_ids?.[0];
+      if (preview && taskId) {
+        onIngestStarted?.(
+          taskId,
+          selectedFiles.length === 1
+            ? selectedFiles[0].name
+            : `${selectedFiles.length} files`,
+        );
+      }
 
       setSelectedFileIds(new Set());
       onOpenChange(false);
@@ -119,7 +139,14 @@ export function FileBrowserDialog({
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [selectedFiles, connectorType, syncMutation, onOpenChange]);
+  }, [
+    selectedFiles,
+    connectorType,
+    syncMutation,
+    onOpenChange,
+    preview,
+    onIngestStarted,
+  ]);
 
   const unIngestedCount = files.filter((f) => !f.is_ingested).length;
 

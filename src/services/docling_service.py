@@ -152,6 +152,7 @@ class DoclingService:
         *,
         ocr_override: bool | None = None,
         picture_descriptions_override: bool | None = None,
+        preview_mode: bool = False,
     ) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs.
 
@@ -170,7 +171,18 @@ class DoclingService:
             ),
         )
 
-        options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
+        image_export_mode = "embedded" if preview_mode else "placeholder"
+        options = {"to_formats": "json", "image_export_mode": image_export_mode, **preset}
+        if preview_mode:
+            # The live preview renders full-page screenshots with bounding-box
+            # overlays (docling-img). docling-serve only produces those when
+            # include_page_images is enabled (it defaults to false), so request
+            # both page renderings and picture images explicitly. Without this
+            # the preview shows neither the page image nor the parsed boxes.
+            # Non-paged formats (docx/pptx/…) still parse to JSON texts/tables,
+            # which the preview renders directly as labeled blocks.
+            options["include_page_images"] = True
+            options["include_images"] = True
         return options
 
     def _get_auth_headers(
@@ -195,6 +207,7 @@ class DoclingService:
         *,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
@@ -202,6 +215,7 @@ class DoclingService:
         options = self._build_docling_options(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
+            preview_mode=preview_mode,
         )
         headers = self._get_auth_headers(user_id, auth_header)
 
@@ -380,10 +394,10 @@ class DoclingService:
         if payload.get("status") == "failure" or payload.get("errors"):
             raise DoclingServeError(f"Docling processing failed: {_format_docling_error(payload)}")
 
-        doc_content = payload.get("document", {}).get("json_content")
-        if doc_content is None:
+        document = payload.get("document") or {}
+        if document.get("json_content") is None:
             raise DoclingServeError("docling-serve response missing document.json_content")
-        return doc_content
+        return document["json_content"]
 
     async def _poll_result(
         self,

@@ -464,7 +464,10 @@ class ConnectorService:
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor, original_filenames=original_filenames
+            user_id,
+            file_ids,
+            processor,
+            original_filenames=original_filenames,
         )
 
         return task_id
@@ -478,6 +481,7 @@ class ConnectorService:
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        preview_mode: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -633,6 +637,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            preview_mode=preview_mode,
         )
 
         # Create custom task using TaskService
@@ -650,7 +655,11 @@ class ConnectorService:
             }
 
         task_id = await self.task_service.create_custom_task(
-            user_id, expanded_file_ids, processor, original_filenames=original_filenames
+            user_id,
+            expanded_file_ids,
+            processor,
+            original_filenames=original_filenames,
+            preview_mode=preview_mode,
         )
 
         return task_id

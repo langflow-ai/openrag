@@ -17,6 +17,7 @@
     "prepare": "cd .. && npx husky frontend/.husky || true"
   },
   "dependencies": {
+    "@docling/docling-components": "^0.0.7",
     "@radix-ui/react-accordion": "^1.2.13",
     "@radix-ui/react-avatar": "^1.1.12",
     "@radix-ui/react-collapsible": "^1.1.13",

@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import { IngestPreviewDialog } from "@/components/ingest-preview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,6 +41,7 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
+import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 import {
   duplicateCheck,
   uploadFiles,
@@ -118,7 +120,7 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { isIbmAuthMode } = useAuth();
+  const { isIbmAuthMode, runMode } = useAuth();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -140,6 +142,12 @@ export function KnowledgeDropdown() {
   >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
+  const [previewFilename, setPreviewFilename] = useState<string>("");
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewFiles, setPreviewFiles] = useState<File[]>([]);
+  const [previewTaskIds, setPreviewTaskIds] = useState<string[]>([]);
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
     allFiles: File[];
     nonDuplicateFiles: File[];
@@ -299,6 +307,13 @@ export function KnowledgeDropdown() {
   ) => {
     const files = event.target.files;
 
+    if (files && files.length > 1) {
+      // Multi-file selection flows through the preview carousel as a single task.
+      await handleMultiFilePreviewUpload(Array.from(files));
+      resetFileInput();
+      return;
+    }
+
     if (files && files.length > 0) {
       const file = files[0];
 
@@ -332,8 +347,71 @@ export function KnowledgeDropdown() {
     resetFileInput();
   };
 
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
+
+  const handleMultiFilePreviewUpload = async (selected: File[]) => {
+    setFileUploading(true);
+    if (ingestPreviewEnabled) {
+      setPreviewFiles(selected);
+      setPreviewFile(null);
+      setPreviewFilename(`${selected.length} files`);
+      setPreviewTaskId(null);
+      setShowPreviewDialog(true);
+    }
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "file",
+      total_files: selected.length,
+    });
+
+    try {
+      const { taskId } = await uploadFiles(
+        selected,
+        false,
+        ingestPreviewEnabled,
+      );
+      refetchTasks();
+      if (ingestPreviewEnabled) {
+        setPreviewTaskId(taskId);
+      } else {
+        addTask(taskId, { source: "file" });
+      }
+    } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "file",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("ingestionFailed", {
+            detail: { source: "knowledge-dropdown" },
+          }),
+        );
+      }
+      toast.error("Upload failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+      setShowPreviewDialog(false);
+      setPreviewFiles([]);
+      setPreviewTaskId(null);
+    } finally {
+      setFileUploading(false);
+    }
+  };
+
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    if (ingestPreviewEnabled) {
+      setPreviewFile(file);
+      setPreviewFilename(file.name);
+      setPreviewTaskId(null);
+      setShowPreviewDialog(true);
+    }
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
@@ -343,8 +421,17 @@ export function KnowledgeDropdown() {
     });
 
     try {
-      await uploadFileUtil(file, replace);
+      const result = await uploadFileUtil(
+        file,
+        replace,
+        false,
+        undefined,
+        ingestPreviewEnabled,
+      );
       refetchTasks();
+      if (ingestPreviewEnabled && result.taskId) {
+        setPreviewTaskId(result.taskId);
+      }
     } catch (error) {
       trackProcessFailure({
         processType: "Ingestion",
@@ -382,6 +469,18 @@ export function KnowledgeDropdown() {
       total_files: filesToUpload.length,
     });
 
+    // In preview mode, open the live preview immediately with the local files
+    // so the user sees their documents while batches upload. Each batch becomes
+    // its own task; the carousel spans all of them.
+    if (ingestPreviewEnabled) {
+      setPreviewFile(null);
+      setPreviewFiles(filesToUpload);
+      setPreviewFilename(`${filesToUpload.length} files`);
+      setPreviewTaskId(null);
+      setPreviewTaskIds([]);
+      setShowPreviewDialog(true);
+    }
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
@@ -391,10 +490,19 @@ export function KnowledgeDropdown() {
       `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
     );
 
+    const collectedTaskIds: string[] = [];
     for (const batch of batches) {
       try {
-        const result = await uploadFiles(batch, replace);
-        addTask(result.taskId, { source: "folder" });
+        const result = await uploadFiles(batch, replace, ingestPreviewEnabled);
+        if (ingestPreviewEnabled) {
+          collectedTaskIds.push(result.taskId);
+          setPreviewTaskIds([...collectedTaskIds]);
+          // Surface the new batch task in the carousel without waiting for the
+          // whole folder to finish uploading.
+          refetchTasks();
+        } else {
+          addTask(result.taskId, { source: "folder" });
+        }
       } catch (error) {
         trackProcessFailure({
           processType: "Ingestion",
@@ -832,6 +940,7 @@ export function KnowledgeDropdown() {
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         onChange={handleFileChange}
         className="hidden"
         accept={SUPPORTED_EXTENSIONS.join(",")}
@@ -889,6 +998,24 @@ export function KnowledgeDropdown() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <IngestPreviewDialog
+        open={ingestPreviewEnabled && showPreviewDialog}
+        onOpenChange={(open) => {
+          setShowPreviewDialog(open);
+          if (!open) {
+            setPreviewFile(null);
+            setPreviewFiles([]);
+            setPreviewTaskId(null);
+            setPreviewTaskIds([]);
+          }
+        }}
+        taskId={previewTaskId}
+        taskIds={previewTaskIds.length > 0 ? previewTaskIds : undefined}
+        filename={previewFilename}
+        previewFile={previewFile}
+        previewFiles={previewFiles.length > 0 ? previewFiles : undefined}
+      />
 
       {/* Duplicate Handling Dialog */}
       <DuplicateHandlingDialog

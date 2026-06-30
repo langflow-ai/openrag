@@ -707,6 +707,7 @@ class ConnectorFileProcessor(TaskProcessor):
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         connector_type: str | None = None,
+        preview_mode: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -723,6 +724,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
+        self.preview_mode = preview_mode
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -992,6 +994,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_groups=allowed_groups,
                         allowed_principals=allowed_principals,
                         allowed_principal_labels=allowed_principal_labels,
+                        preview_mode=self.preview_mode,
+                        upload_task_id=upload_task.task_id,
+                        preview_user_id=self.user_id,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
@@ -1184,6 +1189,7 @@ class LangflowFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str = "local",
         docling_polling_service=None,
+        preview_mode: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1197,11 +1203,8 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
-        # Backend-side Docling polling coordinator. Injected by TaskService
-        # from the container; gating by ENABLE_BACKEND_DOCLING_POLLING happens
-        # at construction time in app.container. When None, the legacy
-        # single-call ingestion path is used.
         self.docling_polling_service = docling_polling_service
+        self.preview_mode = preview_mode
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -1273,6 +1276,8 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
+            file_hash = hash_id(item)
+
             # Process file using langflow service. Passing the polling
             # service triggers the two-phase model: backend polls Docling,
             # then invokes Langflow only after SUCCESS. file_task is passed
@@ -1289,11 +1294,14 @@ class LangflowFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
+                preview_mode=self.preview_mode,
+                upload_task_id=upload_task.task_id,
+                preview_user_id=self.owner_user_id,
+                document_id=file_hash,
             )
 
             # Langflow returns "success" even when no text was extracted.
             # Verify the document actually landed in OpenSearch.
-            file_hash = hash_id(item)
             if not await self.check_document_exists(
                 file_hash,
                 _verification_client(opensearch_client),

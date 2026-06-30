@@ -24,6 +24,11 @@ def is_run_mode_on_prem() -> bool:
     return get_run_mode() == RUN_MODE_ON_PREM
 
 
+def is_ingest_preview_enabled() -> bool:
+    """Ingest layout preview is an OSS-only onboarding/experimentation feature."""
+    return is_run_mode_oss()
+
+
 def get_run_mode() -> str:
     """Return the current OpenRAG run mode.
 
