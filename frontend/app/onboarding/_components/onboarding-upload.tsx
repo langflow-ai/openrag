@@ -98,7 +98,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       }
 
       clearTimeout(completeTimeoutRef.current);
-      completeTimeoutRef.current = undefined;
       setError(errorMessage);
       setCurrentStep(null);
       setUploadedTaskId(null);
@@ -167,7 +166,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
             if (!cancelled && !completeTimeoutRef.current) {
               completeTimeoutRef.current = setTimeout(() => {
-                completeTimeoutRef.current = undefined;
                 onComplete();
               }, 1000);
             }
@@ -176,7 +174,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         refetchNudges();
 
         completeTimeoutRef.current = setTimeout(() => {
-          completeTimeoutRef.current = undefined;
           onComplete();
         }, 1000);
       }
