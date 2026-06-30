@@ -5,14 +5,13 @@ services:
     #   context: .
     #   dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
-    depends_on:
-      - openrag-backend
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_BACKEND_PORT:-8000}}
+      - OPENRAG_BACKEND_HOST=${OPENRAG_BACKEND_HOST:-openrag-backend}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}
     # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
     # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
     # docker DNS — so the alias overrides docker-compose service-name
@@ -71,8 +70,6 @@ services:
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
-      - LANGFLOW_OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_INTERNAL_PORT:-${OPENSEARCH_INTERNAL_PORT:-9200}}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       # Single-node compose clusters don't meet the multi-node readiness counts,
@@ -199,9 +196,9 @@ services:
       - OPENRAG_INGEST_RUN_ID=OPENRAG_INGEST_RUN_ID
       - OPENRAG_INGEST_BATCH_SIZE=100
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_INTERNAL_PORT:-${OPENSEARCH_INTERNAL_PORT:-9200}}
-      - OPENSEARCH_URL=https://${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}:${LANGFLOW_OPENSEARCH_INTERNAL_PORT:-${OPENSEARCH_INTERNAL_PORT:-9200}}
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
+      - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
+      - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}

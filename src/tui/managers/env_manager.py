@@ -580,7 +580,7 @@ class EnvManager:
                         pass
 
                 if version_to_write:
-                    f.write(f"OPENRAG_VERSION={self._quote_env_value(version_to_write)}\n")
+                    f.write(f"OPENRAG_VERSION={version_to_write}\n")
 
                 # Write COMPOSE_PROJECT_NAME only if non-default
                 if (
