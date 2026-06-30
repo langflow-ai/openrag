@@ -27,6 +27,9 @@ HOST_GID := $(shell id -g)
 OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
 COMPOSE_PROJECT_NAME ?= openrag
 
+-include $(ENV_FILE)
+export
+
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
   COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE) -p $(COMPOSE_PROJECT_NAME)
