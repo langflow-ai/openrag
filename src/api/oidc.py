@@ -1,5 +1,4 @@
 import base64
-import logging
 
 from cryptography.hazmat.primitives import serialization
 from fastapi import Depends, Request
@@ -8,8 +7,9 @@ from pydantic import BaseModel
 
 from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
 from dependencies import get_session_manager
+from utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TokenIntrospectBody(BaseModel):
