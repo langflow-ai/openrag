@@ -635,6 +635,79 @@ async def test_container_status_no_restriction_shows_all_containers():
     assert names == ["docs", "images"]
 
 
+def _status_deps_with_counts(config, agg_buckets):
+    """Deps for azure_blob_container_status with a *working* OpenSearch aggregation.
+
+    Unlike `_status_endpoint_deps` (which raises so counts collapse to 0), this
+    returns an AsyncOpenSearch-shaped client whose ``search`` is awaitable and
+    yields ``agg_buckets``. Regression guard for the missing-``await`` bug: the
+    handler must ``await opensearch_client.search(...)`` — if it doesn't, the
+    coroutine's ``.get(...)`` raises, the bare ``except`` swallows it, and every
+    count silently reads 0 (which these assertions would then catch).
+    """
+    connection = MagicMock(user_id="u1", connector_type="azure_blob", config=config)
+    service = MagicMock()
+    service.connection_manager.get_connection = AsyncMock(return_value=connection)
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"aggregations": {"doc_ids": {"buckets": agg_buckets}}}
+    )
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+    return service, session_manager
+
+
+@pytest.mark.asyncio
+async def test_container_status_reports_ingested_counts():
+    """Per-container ingested_count / is_synced reflect the OpenSearch aggregation.
+
+    Guards against the missing-``await`` regression where every container falsely
+    reported ``ingested_count: 0, is_synced: false``.
+    """
+    buckets = [
+        {"key": "docs::a.pdf"},
+        {"key": "docs::b.pdf"},
+        {"key": "images::c.png"},
+    ]
+    service, session_manager = _status_deps_with_counts({"container_names": []}, buckets)
+    user = MagicMock(user_id="u1", jwt_token="t")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs", "images", "logs"]):
+        resp = await az_api.azure_blob_container_status(
+            "conn-1",
+            connector_service=service,
+            session_manager=session_manager,
+            user=user,
+        )
+
+    by_name = {c["name"]: c for c in json.loads(resp.body)["containers"]}
+    assert by_name["docs"]["ingested_count"] == 2
+    assert by_name["docs"]["is_synced"] is True
+    assert by_name["images"]["ingested_count"] == 1
+    assert by_name["images"]["is_synced"] is True
+    # No indexed docs → not synced.
+    assert by_name["logs"]["ingested_count"] == 0
+    assert by_name["logs"]["is_synced"] is False
+
+
+@pytest.mark.asyncio
+async def test_container_status_counts_zero_when_opensearch_unavailable():
+    """A failed aggregation degrades gracefully to zero counts (not a 500)."""
+    service, session_manager = _status_endpoint_deps({"container_names": []})
+    user = MagicMock(user_id="u1", jwt_token="t")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs"]):
+        resp = await az_api.azure_blob_container_status(
+            "conn-1",
+            connector_service=service,
+            session_manager=session_manager,
+            user=user,
+        )
+
+    entry = json.loads(resp.body)["containers"][0]
+    assert entry == {"name": "docs", "ingested_count": 0, "is_synced": False}
+
+
 # ---------------------------------------------------------------------------
 # azure_blob_list_containers endpoint (also honors the ingestion restriction)
 # ---------------------------------------------------------------------------
