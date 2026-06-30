@@ -12,6 +12,10 @@ export interface RemoteFile {
   size: number;
   modified_time: string;
   is_ingested: boolean;
+  /** Ingested, but the source version is newer than what we indexed. Such files
+   * stay selectable (to re-ingest the newer version) while unchanged ingested
+   * files are disabled. */
+  is_stale: boolean;
 }
 
 export interface BrowseConnectionFilesParams {

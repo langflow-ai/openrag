@@ -1066,6 +1066,20 @@ class ConnectorFileProcessor(TaskProcessor):
                             "status": "error",
                             "error": "No text content could be extracted from document",
                         }
+
+                    # Persist connector metadata (incl. modified_time) onto the
+                    # Langflow-indexed chunks (keyed by document_id) so bucket-connector
+                    # change detection has a stored timestamp to compare against on the
+                    # next sync. Mirrors the standard path's enrichment below.
+                    if result.get("status") != "error":
+                        await self.connector_service._update_connector_metadata(
+                            document,
+                            self.user_id,
+                            connector_type,
+                            self.jwt_token,
+                            id_field="document_id",
+                            indexed_filename=file_task.filename,
+                        )
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
