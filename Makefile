@@ -97,7 +97,7 @@ endef
 # PHONY TARGETS
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
-       dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
+       dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
        ci-build-images ci-save-images \
@@ -166,6 +166,8 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make setup$(NC)           - Initialize project (install dependencies, create .env)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo ''
 	@echo "$(PURPLE)Common Commands:$(NC)"
@@ -250,14 +252,14 @@ help_dev: ## Show development environment commands
 	@echo "$(PURPLE)Full Stack Development:$(NC)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo ''
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
-	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
-	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only"
-	@echo "  $(PURPLE)make dev-local-build-lf$(NC) - Start infrastructure, building only Langflow image"
-	@echo "  $(PURPLE)make dev-local-build-lf-cpu$(NC) - Same as above, with CPU only"
+	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend) and build OpenSearch and Langflow images"
+	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only and build OpenSearch and Langflow images"
 	@echo ''
 	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
@@ -387,6 +389,7 @@ help_utils: ## Show utility commands
 	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
 	@echo "  $(PURPLE)make clean-dev$(NC)       - Clean dev environment"
 	@echo "  $(PURPLE)make factory-reset$(NC)   - Complete reset (stop, remove volumes, clear data)"
+	@echo "  $(PURPLE)make factory-reset-clean-build$(NC) - Complete reset including removing images"
 	@echo ''
 	@echo "$(PURPLE)Flows:$(NC)"
 	@echo "  $(PURPLE)make flow-upload$(NC)     - Upload flow to Langflow"
@@ -428,7 +431,33 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CP
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
+dev-build: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU support, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
+	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-build-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
+	$(COMPOSE_CMD) build
+	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	$(COMPOSE_CMD) up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
 dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
+	@echo "$(YELLOW)Building Langflow and OpenSearch images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -439,30 +468,8 @@ dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure f
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only
-	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
-	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
-	@echo ""
-	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
-
-dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image
-	@echo "$(YELLOW)Building Langflow image...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
-	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
-	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
-	@echo ""
-	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
-
-dev-local-build-lf-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image with CPU only
-	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow
+	@echo "$(YELLOW)Building Langflow and OpenSearch images (CPU)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
@@ -581,8 +588,60 @@ clean: stop ## Stop containers and remove volumes
 	@$(MAKE) remove-openrag-images
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
-factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"; \
+factory-reset: ## Complete reset (stop, remove volumes, clear data)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG data!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete langflow-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo ""; \
+	echo ""; \
+	if [ "$(FORCE)" != "true" ]; then \
+		read -p "Are you sure? Type 'yes' to continue: " confirm; \
+		if [ "$$confirm" != "yes" ]; then \
+			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+			exit 0; \
+		fi; \
+	fi; \
+	echo ""; \
+	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v --remove-orphans || true; \
+	echo "$(YELLOW)Removing local data directories...$(NC)"; \
+	if [ -d "langflow-data" ]; then \
+		echo "Removing langflow-data..."; \
+		rm -rf langflow-data; \
+		echo "$(PURPLE)langflow-data removed$(NC)"; \
+	fi; \
+	if [ -d "config" ]; then \
+		echo "Removing config..."; \
+		rm -rf config; \
+		echo "$(PURPLE)config removed$(NC)"; \
+	fi; \
+	if [ -d "data" ]; then \
+		echo "Removing data..."; \
+		rm -rf data; \
+		echo "$(PURPLE)data removed$(NC)"; \
+	fi; \
+	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+		echo "Removing $$OPENRAG_DATA_PATH..."; \
+		rm -rf "$$OPENRAG_DATA_PATH"; \
+		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+	fi; \
+	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+		echo "Removing JWT keys..."; \
+		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
+		echo "$(PURPLE)JWT keys removed$(NC)"; \
+	fi; \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
+
+factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, remove images)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG and remove images!$(NC)"; \
 	echo "$(YELLOW)This will:$(NC)"; \
 	echo "  - Stop all containers"; \
 	echo "  - Remove all volumes"; \
