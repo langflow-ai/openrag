@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import jwt
 from cachetools import TTLCache
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from jwt.algorithms import RSAAlgorithm
 
 from utils.logging_config import get_logger
@@ -355,7 +356,9 @@ def verify_microsoft_access_token(
             raise JWTVerificationError(f"Signing key with kid '{kid}' not found in JWKS")
 
         signing_key_issuer = signing_key_entry.get("issuer", "")
-        signing_key = RSAAlgorithm.from_jwk(signing_key_entry)
+        # from_jwk() is typed as RSAPrivateKey | RSAPublicKey but JWKS endpoints
+        # only ever contain public keys — cast so mypy accepts it for jwt.decode().
+        signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(signing_key_entry))
 
         # Verify signature, expiry, and audience.
         # verify_iss=False: issuer validated manually below per Microsoft's algorithm.
