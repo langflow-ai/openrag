@@ -83,6 +83,9 @@ stringData:
     {{- if .Values.global.opensearch.indexName }}
     OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
     {{- end }}
+    LANGFLOW_OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
+    LANGFLOW_OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
+
 
     # Google OAuth
     {{- if .Values.global.oauth.google.clientId }}
