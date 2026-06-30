@@ -14,6 +14,7 @@ def _purge_modules():
     for mod in [
         "api.router",
         "api.connector_router",
+        "config.config_manager",  # reset cached OpenRAGConfig so env-var overrides take effect
         "config.settings",
         "auth_middleware",
         "main",
@@ -148,6 +149,12 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
             csv_path = tmp_path / "correlation_report.csv"
             csv_path.write_text("header1,header2\nvalue1,value2")
 
+            # DocumentFileProcessor computes document_id as hash_id(file_path), not
+            # from Docling's binary_hash field, so derive the expected id here.
+            from utils.hash_utils import hash_id as _hash_id
+
+            expected_document_id = _hash_id(str(csv_path))
+
             files = {
                 "file": (
                     csv_path.name,
@@ -182,7 +189,7 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
             # Check direct OpenSearch doc count for this document ID
             opensearch_resp = await clients.opensearch.search(
                 index=get_index_name(),
-                body={"query": {"term": {"document_id": "sha-csv-integration-123"}}},
+                body={"query": {"term": {"document_id": expected_document_id}}},
             )
             hits = opensearch_resp.get("hits", {}).get("hits", [])
 
@@ -191,7 +198,7 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
             assert len(hits) == 2, f"Expected 2 indexed chunks, but got {len(hits)}"
             for hit in hits:
                 source = hit.get("_source", {})
-                assert source.get("document_id") == "sha-csv-integration-123"
+                assert source.get("document_id") == expected_document_id
                 assert source.get("filename") == "correlation_report.csv"
                 assert source.get("mimetype") == "text/csv"
                 assert "testlargephrase" in source.get("text", "")
