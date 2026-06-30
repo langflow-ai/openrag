@@ -24,8 +24,8 @@ from .models import S3ConfigureBody
 
 def build_s3_config(
     body: S3ConfigureBody,
-    existing_config: Dict,
-) -> Tuple[Dict, Optional[str]]:
+    existing_config: dict,
+) -> tuple[dict, str | None]:
     """Resolve S3 credentials and build the connection config dict.
 
     Resolution order for each credential: request body → environment variable
@@ -48,7 +48,7 @@ def build_s3_config(
     if not access_key or not secret_key:
         return {}, "access_key and secret_key are required"
 
-    conn_config: Dict = {
+    conn_config: dict = {
         "access_key": access_key.strip(),
         "secret_key": secret_key.strip(),
     }

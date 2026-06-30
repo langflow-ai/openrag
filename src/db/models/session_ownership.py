@@ -33,4 +33,4 @@ class SessionOwnership(SQLModel, table=True):
     response_id: str = Field(primary_key=True, max_length=64)
     user_id: str = Field(max_length=64, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_accessed: Optional[datetime] = Field(default=None)
+    last_accessed: datetime | None = Field(default=None)

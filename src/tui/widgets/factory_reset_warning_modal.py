@@ -15,7 +15,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label
+from textual.widgets import Button, Label, Static
 
 
 class FactoryResetWarningModal(ModalScreen[bool]):
@@ -95,7 +95,7 @@ class FactoryResetWarningModal(ModalScreen[bool]):
                 "• All provider settings and configuration\n\n"
                 "This cannot be undone.\n\n"
                 "Do you want to continue?",
-                id="message"
+                id="message",
             )
             with Horizontal(id="button-row"):
                 yield Button("Cancel", id="cancel-btn")
@@ -111,4 +111,3 @@ class FactoryResetWarningModal(ModalScreen[bool]):
             self.dismiss(True)  # User wants to continue
         else:
             self.dismiss(False)  # User cancelled
-

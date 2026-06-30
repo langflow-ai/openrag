@@ -10,20 +10,20 @@
 # the U.S. Copyright Office.
 # ******************************************************************************
 
-from typing import Optional, Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
 
 from dependencies import (
     get_chat_service,
-    get_session_manager,
     get_current_user,
+    get_session_manager,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
-async def _assert_owns(session_id: Optional[str], user_id: str) -> None:
+async def _assert_owns(session_id: str | None, user_id: str) -> None:
     """Raise 403 if `session_id` is set but not owned by `user_id`.
 
     No-op when `session_id` is None (new conversation, nothing to check).
@@ -42,6 +42,7 @@ async def _assert_owns(session_id: Optional[str], user_id: str) -> None:
     if not session_id:
         return
     from services.session_ownership_service import session_ownership_service
+
     owner = await session_ownership_service.get_session_owner(session_id)
     if owner is None:
         raise HTTPException(status_code=404, detail={"error": "session_not_found"})
@@ -51,12 +52,12 @@ async def _assert_owns(session_id: Optional[str], user_id: str) -> None:
 
 class ChatBody(BaseModel):
     prompt: str
-    previous_response_id: Optional[str] = None
+    previous_response_id: str | None = None
     stream: bool = False
-    filters: Optional[Dict[str, Any]] = None
+    filters: dict[str, Any] | None = None
     limit: int = 10
     scoreThreshold: float = 0
-    filter_id: Optional[str] = None
+    filter_id: str | None = None
 
 
 async def chat_endpoint(
@@ -76,9 +77,11 @@ async def chat_endpoint(
 
     if body.filters:
         from auth_context import set_search_filters
+
         set_search_filters(body.filters)
 
-    from auth_context import set_search_limit, set_score_threshold
+    from auth_context import set_score_threshold, set_search_limit
+
     set_search_limit(body.limit)
     set_score_threshold(body.scoreThreshold)
 
@@ -131,9 +134,11 @@ async def langflow_endpoint(
 
     if body.filters:
         from auth_context import set_search_filters
+
         set_search_filters(body.filters)
 
-    from auth_context import set_search_limit, set_score_threshold
+    from auth_context import set_score_threshold, set_search_limit
+
     set_search_limit(body.limit)
     set_score_threshold(body.scoreThreshold)
 
@@ -177,9 +182,7 @@ async def langflow_endpoint(
 
     except Exception as e:
         logger.exception("[CHAT] Langflow request failed")
-        return JSONResponse(
-            {"error": f"Langflow request failed: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
 
 
 async def chat_history_endpoint(
@@ -192,9 +195,7 @@ async def chat_history_endpoint(
         return JSONResponse(history)
     except Exception as e:
         logger.exception("[CHAT] Failed to get chat history")
-        return JSONResponse(
-            {"error": f"Failed to get chat history: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get chat history: {str(e)}"}, status_code=500)
 
 
 async def langflow_history_endpoint(
@@ -207,9 +208,7 @@ async def langflow_history_endpoint(
         return JSONResponse(history)
     except Exception as e:
         logger.exception("[CHAT] Failed to get langflow history")
-        return JSONResponse(
-            {"error": f"Failed to get langflow history: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get langflow history: {str(e)}"}, status_code=500)
 
 
 async def delete_session_endpoint(
@@ -227,11 +226,8 @@ async def delete_session_endpoint(
             return JSONResponse({"message": "Session deleted successfully"})
         else:
             return JSONResponse(
-                {"error": result.get("error", "Failed to delete session")},
-                status_code=500
+                {"error": result.get("error", "Failed to delete session")}, status_code=500
             )
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
-        return JSONResponse(
-            {"error": f"Failed to delete session: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to delete session: {str(e)}"}, status_code=500)

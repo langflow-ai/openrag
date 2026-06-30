@@ -30,8 +30,10 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.migrations_runtime import RuntimeMigrationError, run as run_migration  # noqa: E402
-from db.models import MigrationStatus, User as UserRow  # noqa: E402
+from db.migrations_runtime import RuntimeMigrationError  # noqa: E402
+from db.migrations_runtime import run as run_migration
+from db.models import MigrationStatus  # noqa: E402
+from db.models import User as UserRow
 
 
 @pytest_asyncio.fixture

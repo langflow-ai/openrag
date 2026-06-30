@@ -57,13 +57,10 @@ async def _send_convert_request(
             f"Is it running? Start with: uvx docling-serve run"
         ) from exc
     except httpx.TimeoutException as exc:
-        raise DoclingServeError(
-            f"Timeout converting document via docling-serve: {exc}"
-        ) from exc
+        raise DoclingServeError(f"Timeout converting document via docling-serve: {exc}") from exc
     except httpx.HTTPStatusError as exc:
         raise DoclingServeError(
-            f"docling-serve returned HTTP {exc.response.status_code}: "
-            f"{exc.response.text[:500]}"
+            f"docling-serve returned HTTP {exc.response.status_code}: {exc.response.text[:500]}"
         ) from exc
 
     resp_json = response.json()
@@ -74,9 +71,7 @@ async def _send_convert_request(
 
     doc_content = resp_json.get("document", {}).get("json_content")
     if doc_content is None:
-        raise DoclingServeError(
-            "docling-serve response missing document.json_content"
-        )
+        raise DoclingServeError("docling-serve response missing document.json_content")
 
     logger.info(
         "Document converted via docling-serve",
@@ -93,8 +88,6 @@ async def convert_file(file_path: str, *, httpx_client: httpx.AsyncClient) -> di
     return await _send_convert_request(httpx_client, path.name, file_bytes)
 
 
-async def convert_bytes(
-    content: bytes, filename: str, *, httpx_client: httpx.AsyncClient
-) -> dict:
+async def convert_bytes(content: bytes, filename: str, *, httpx_client: httpx.AsyncClient) -> dict:
     """Convert in-memory bytes via docling-serve. Returns DoclingDocument dict."""
     return await _send_convert_request(httpx_client, filename, content)

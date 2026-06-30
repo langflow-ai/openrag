@@ -35,10 +35,7 @@ def is_valid_sharepoint_url(url: str) -> bool:
         # Validate that hostname ends with .sharepoint.com
         # This prevents attacks like: evil.sharepoint.com.attacker.com
         # Also ensure it's not just ".sharepoint.com" (no bare suffix)
-        return hostname.endswith(".sharepoint.com") and len(hostname) > len(
-            ".sharepoint.com"
-        )
+        return hostname.endswith(".sharepoint.com") and len(hostname) > len(".sharepoint.com")
     except (ValueError, AttributeError):
         # Invalid URL or parsing error
         return False
-

@@ -50,7 +50,7 @@ async def test_signature_fallback_uses_get_body_when_head_has_no_cache_headers(m
     monkeypatch.setattr("main.httpx.AsyncClient", FakeAsyncClient)
 
     signature = await _get_remote_docs_signature("https://docs.example")
-    expected = hashlib.sha256("docs-content-v1".encode("utf-8")).hexdigest()
+    expected = hashlib.sha256(b"docs-content-v1").hexdigest()
 
     assert signature == expected
     assert calls == ["head", "get"]

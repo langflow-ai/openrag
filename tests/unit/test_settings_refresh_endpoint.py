@@ -11,11 +11,10 @@
 # ******************************************************************************
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import api.settings as settings_api
-from fastapi import HTTPException
 from session_manager import User
 
 

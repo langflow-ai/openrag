@@ -12,7 +12,8 @@
 
 """Utility functions for showing error notifications with diagnostics button."""
 
-from typing import Literal, Callable
+from collections.abc import Callable
+from typing import Literal
 
 from textual.app import App
 

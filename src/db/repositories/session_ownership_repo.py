@@ -25,12 +25,10 @@ class SessionOwnershipRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, response_id: str) -> Optional[SessionOwnership]:
+    async def get(self, response_id: str) -> SessionOwnership | None:
         return await self.session.get(SessionOwnership, response_id)
 
-    async def claim(
-        self, response_id: str, user_id: str
-    ) -> SessionOwnership:
+    async def claim(self, response_id: str, user_id: str) -> SessionOwnership:
         """Idempotent claim. If the row exists, only update last_accessed
         — never silently re-assign ownership (that would be a security
         bug). The caller is responsible for ensuring the user_id matches
@@ -55,9 +53,7 @@ class SessionOwnershipRepo:
 
     async def list_for_user(self, user_id: str) -> list[str]:
         result = await self.session.execute(
-            select(SessionOwnership.response_id).where(
-                SessionOwnership.user_id == user_id
-            )
+            select(SessionOwnership.response_id).where(SessionOwnership.user_id == user_id)
         )
         return list(result.scalars().all())
 
@@ -78,8 +74,8 @@ class SessionOwnershipRepo:
         self,
         response_id: str,
         user_id: str,
-        created_at: Optional[datetime] = None,
-        last_accessed: Optional[datetime] = None,
+        created_at: datetime | None = None,
+        last_accessed: datetime | None = None,
     ) -> bool:
         """Used by the runtime migration to copy JSON rows verbatim
         without overwriting timestamps. Returns True when a row was inserted."""

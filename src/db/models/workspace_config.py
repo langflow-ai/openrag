@@ -34,11 +34,9 @@ class WorkspaceConfig(SQLModel, table=True):
     __tablename__ = "workspace_config"
 
     section: str = Field(primary_key=True, max_length=64)
-    value: Optional[dict[str, Any]] = Field(
+    value: dict[str, Any] | None = Field(
         default_factory=dict,
         sa_column=Column("value", JSON, nullable=False),
     )
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_by: Optional[str] = Field(
-        default=None, foreign_key="users.id", max_length=64
-    )
+    updated_by: str | None = Field(default=None, foreign_key="users.id", max_length=64)

@@ -27,8 +27,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
 from db import migrations_runtime  # noqa: E402
+from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -50,41 +50,49 @@ def staged_files(tmp_path, monkeypatch):
     so_path = tmp_path / "session_ownership.json"
     conv_path = tmp_path / "conversations.json"
 
-    so_path.write_text(json.dumps({
-        "sess-1": {
-            "user_id": "alice",
-            "created_at": "2026-04-01T10:00:00",
-            "last_accessed": "2026-04-02T11:00:00",
-        },
-        "sess-2": {
-            "user_id": "bob",
-            "created_at": "2026-04-03T09:00:00",
-            "last_accessed": "2026-04-03T09:00:00",
-        },
-    }))
+    so_path.write_text(
+        json.dumps(
+            {
+                "sess-1": {
+                    "user_id": "alice",
+                    "created_at": "2026-04-01T10:00:00",
+                    "last_accessed": "2026-04-02T11:00:00",
+                },
+                "sess-2": {
+                    "user_id": "bob",
+                    "created_at": "2026-04-03T09:00:00",
+                    "last_accessed": "2026-04-03T09:00:00",
+                },
+            }
+        )
+    )
 
-    conv_path.write_text(json.dumps({
-        "alice": {
-            "r-1": {
-                "title": "Project sync",
-                "endpoint": "chat",
-                "previous_response_id": None,
-                "filter_id": None,
-                "total_messages": 4,
-                "created_at": "2026-04-01T10:00:00",
-                "last_activity": "2026-04-02T11:00:00",
-            },
-        },
-        "bob": {
-            "r-2": {
-                "title": "Bug triage",
-                "endpoint": "langflow",
-                "total_messages": 1,
-                "created_at": "2026-04-03T09:00:00",
-                "last_activity": "2026-04-03T09:00:00",
-            },
-        },
-    }))
+    conv_path.write_text(
+        json.dumps(
+            {
+                "alice": {
+                    "r-1": {
+                        "title": "Project sync",
+                        "endpoint": "chat",
+                        "previous_response_id": None,
+                        "filter_id": None,
+                        "total_messages": 4,
+                        "created_at": "2026-04-01T10:00:00",
+                        "last_activity": "2026-04-02T11:00:00",
+                    },
+                },
+                "bob": {
+                    "r-2": {
+                        "title": "Bug triage",
+                        "endpoint": "langflow",
+                        "total_messages": 1,
+                        "created_at": "2026-04-03T09:00:00",
+                        "last_activity": "2026-04-03T09:00:00",
+                    },
+                },
+            }
+        )
+    )
 
     def _resolver(name):
         return str(tmp_path / name)

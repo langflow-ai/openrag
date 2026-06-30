@@ -44,6 +44,7 @@ async def wait_for_langflow(
     """
     if langflow_http_client is None:
         from config.settings import clients
+
         langflow_http_client = clients.langflow_http_client
 
     for attempt in range(max_retries):
@@ -83,7 +84,7 @@ async def wait_for_langflow(
             )
 
         if attempt < max_retries - 1:
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             delay = random.uniform(delay / 2, delay)
 
             logger.debug(

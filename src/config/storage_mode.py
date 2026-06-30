@@ -49,7 +49,9 @@ def get_storage_mode() -> StorageMode:
     # Legacy kill switch wins if explicitly set — operators may have it
     # baked into their deployment manifests.
     if os.getenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "").lower() in (
-        "true", "1", "yes",
+        "true",
+        "1",
+        "yes",
     ):
         return "files"
 

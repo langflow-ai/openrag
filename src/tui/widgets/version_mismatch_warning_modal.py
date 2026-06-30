@@ -15,7 +15,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label
+from textual.widgets import Button, Label, Static
 
 
 class VersionMismatchWarningModal(ModalScreen[bool]):
@@ -86,7 +86,7 @@ class VersionMismatchWarningModal(ModalScreen[bool]):
 
     def __init__(self, container_version: str, tui_version: str):
         """Initialize the warning modal.
-        
+
         Args:
             container_version: Version of existing containers
             tui_version: Current TUI version
@@ -108,7 +108,7 @@ class VersionMismatchWarningModal(ModalScreen[bool]):
                 f"   Customizations to OpenRAG built-in flows are backed up in ~/.openrag/flows/backup/\n"
                 f"   Other user created flows are not backed up automatically.\n\n"
                 f"Do you want to continue?",
-                id="message"
+                id="message",
             )
             with Horizontal(id="button-row"):
                 yield Button("Cancel", id="cancel-btn")
@@ -124,4 +124,3 @@ class VersionMismatchWarningModal(ModalScreen[bool]):
             self.dismiss(True)  # User wants to continue
         else:
             self.dismiss(False)  # User cancelled
-

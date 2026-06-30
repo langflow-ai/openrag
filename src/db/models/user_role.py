@@ -29,7 +29,5 @@ class UserRole(SQLModel, table=True):
         primary_key=True,
         max_length=64,
     )
-    granted_by: Optional[str] = Field(
-        default=None, foreign_key="users.id", max_length=64
-    )
+    granted_by: str | None = Field(default=None, foreign_key="users.id", max_length=64)
     granted_at: datetime = Field(default_factory=datetime.utcnow)

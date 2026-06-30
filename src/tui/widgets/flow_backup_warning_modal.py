@@ -15,12 +15,12 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, Checkbox
+from textual.widgets import Button, Checkbox, Label, Static
 
 
 class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
     """Modal dialog to warn about flow backups before upgrade/reset.
-    
+
     Returns tuple of (continue, delete_backups)
     """
 
@@ -100,7 +100,7 @@ class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
 
     def __init__(self, operation: str = "upgrade"):
         """Initialize the warning modal.
-        
+
         Args:
             operation: The operation being performed ("upgrade" or "reset")
         """
@@ -118,7 +118,7 @@ class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
                 f"Other user-created flows aren't backed up; you must export these flows to preserve them.\n"
                 f"Learn more: https://docs.langflow.org/concepts-flows-import\n\n"
                 f"Choose whether to keep or delete the backup files of the built-in flows:",
-                id="message"
+                id="message",
             )
             with Vertical(id="checkbox-container"):
                 yield Checkbox("Delete backup files", id="delete-backups-checkbox", value=False)

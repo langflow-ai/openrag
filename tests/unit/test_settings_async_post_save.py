@@ -145,4 +145,3 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
     kwargs = post_save_mock.call_args.kwargs
     assert kwargs["update_mcp_servers"] is True
     assert kwargs["update_model_values"] is True
-

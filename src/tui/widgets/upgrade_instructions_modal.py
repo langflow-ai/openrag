@@ -15,7 +15,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label
+from textual.widgets import Button, Label, Static
 
 
 class UpgradeInstructionsModal(ModalScreen[bool]):
@@ -85,7 +85,7 @@ class UpgradeInstructionsModal(ModalScreen[bool]):
 
     def __init__(self, current_version: str, latest_version: str):
         """Initialize the upgrade instructions modal.
-        
+
         Args:
             current_version: Current TUI version
             latest_version: Latest available version
@@ -109,7 +109,7 @@ class UpgradeInstructionsModal(ModalScreen[bool]):
                 "   • uvx --from openrag openrag\n"
                 "3. Restart: openrag\n\n"
                 "After upgrading, containers will automatically use the new version.",
-                id="message"
+                id="message",
             )
             with Horizontal(id="button-row"):
                 yield Button("Close", id="close-btn")
@@ -121,4 +121,3 @@ class UpgradeInstructionsModal(ModalScreen[bool]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         self.dismiss(True)  # Just close the modal
-

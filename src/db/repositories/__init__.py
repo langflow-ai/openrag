@@ -22,6 +22,8 @@ from db.repositories.session_ownership_repo import SessionOwnershipRepo
 from db.repositories.user_repo import UserRepo
 from db.repositories.workspace_config_repo import (
     SECTIONS as WORKSPACE_CONFIG_SECTIONS,
+)
+from db.repositories.workspace_config_repo import (
     WorkspaceConfigRepo,
 )
 

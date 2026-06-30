@@ -25,12 +25,10 @@ class ConversationRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, response_id: str) -> Optional[Conversation]:
+    async def get(self, response_id: str) -> Conversation | None:
         return await self.session.get(Conversation, response_id)
 
-    async def list_for_user(
-        self, user_id: str, limit: int = 200
-    ) -> list[Conversation]:
+    async def list_for_user(self, user_id: str, limit: int = 200) -> list[Conversation]:
         result = await self.session.execute(
             select(Conversation)
             .where(Conversation.user_id == user_id)
@@ -44,13 +42,13 @@ class ConversationRepo:
         *,
         response_id: str,
         user_id: str,
-        title: Optional[str] = None,
-        endpoint: Optional[str] = None,
-        previous_response_id: Optional[str] = None,
-        filter_id: Optional[str] = None,
+        title: str | None = None,
+        endpoint: str | None = None,
+        previous_response_id: str | None = None,
+        filter_id: str | None = None,
         total_messages: int = 0,
-        created_at: Optional[datetime] = None,
-        last_activity: Optional[datetime] = None,
+        created_at: datetime | None = None,
+        last_activity: datetime | None = None,
     ) -> Conversation:
         now = datetime.utcnow()
         existing = await self.get(response_id)

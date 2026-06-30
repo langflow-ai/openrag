@@ -16,7 +16,8 @@ DATABASE_URL is the single switch between SQLite (default) and Postgres.
 """
 
 import os
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -30,8 +31,8 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_engine: Optional[AsyncEngine] = None
-SessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
+_engine: AsyncEngine | None = None
+SessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_database_url() -> str:

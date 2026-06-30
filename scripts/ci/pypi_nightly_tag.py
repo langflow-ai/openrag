@@ -13,13 +13,15 @@
 import os
 import re
 import sys
-import requests
-from packaging.version import Version, InvalidVersion
-from pathlib import Path
 import tomllib
+from pathlib import Path
 from typing import Optional
 
-def get_latest_published_version(project_name: str) -> Optional[Version]:
+import requests
+from packaging.version import InvalidVersion, Version
+
+
+def get_latest_published_version(project_name: str) -> Version | None:
     url = f"https://pypi.org/pypi/{project_name}/json"
     try:
         res = requests.get(url, timeout=10)
@@ -33,6 +35,7 @@ def get_latest_published_version(project_name: str) -> Optional[Version]:
         return max(all_versions)
     except (requests.RequestException, KeyError, ValueError, InvalidVersion):
         return None
+
 
 def create_tag():
     # Read version from pyproject.toml
@@ -76,6 +79,7 @@ def create_tag():
     # Git tag uses a leading "v" prefix
     new_nightly_version = f"v{nightly_version_str}"
     return new_nightly_version
+
 
 if __name__ == "__main__":
     try:

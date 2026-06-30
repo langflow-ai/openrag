@@ -13,30 +13,31 @@
 """Configuration screen for OpenRAG TUI."""
 
 import os
-from zxcvbn import zxcvbn
+from pathlib import Path
+
+from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
+from textual.validation import ValidationResult, Validator
 from textual.widgets import (
-    Footer,
-    Static,
     Button,
+    Checkbox,
+    Footer,
     Input,
     Label,
-    Checkbox,
+    Static,
 )
-from textual.validation import ValidationResult, Validator
-from rich.text import Text
-from pathlib import Path
+from zxcvbn import zxcvbn
 
 from ..config_fields import CONFIG_SECTIONS, ConfigField
 from ..managers.env_manager import EnvManager
 from ..utils.validation import (
-    validate_openai_api_key,
     validate_anthropic_api_key,
-    validate_ollama_endpoint,
-    validate_watsonx_endpoint,
     validate_documents_paths,
+    validate_ollama_endpoint,
+    validate_openai_api_key,
+    validate_watsonx_endpoint,
 )
 
 
@@ -137,7 +138,9 @@ class PasswordValidator(Validator):
             elif suggestions:
                 return self.failure(f"Password is {current_strength}. {suggestions[0]}")
             else:
-                return self.failure(f"Password is {current_strength}. Use a longer, more unique password.")
+                return self.failure(
+                    f"Password is {current_strength}. Use a longer, more unique password."
+                )
 
         return self.success()
 
@@ -156,7 +159,7 @@ class ConfigScreen(Screen):
         self.mode = mode  # "no_auth" or "full"
         self.env_manager = EnvManager()
         self.inputs = {}
-        
+
         # Check if .env file exists
         self.has_env_file = self.env_manager.env_file.exists()
 
@@ -420,7 +423,6 @@ class ConfigScreen(Screen):
         self.inputs[field.name] = input_widget
         yield Static(" ")
 
-
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
         # Set initial visibility of username field based on password
@@ -493,14 +495,20 @@ class ConfigScreen(Screen):
 
         # Only generate OpenSearch password if empty
         if not self.env_manager.config.opensearch_password:
-            self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
+            self.env_manager.config.opensearch_password = (
+                self.env_manager.generate_secure_password()
+            )
 
         # Update secret keys
         if not self.env_manager.config.langflow_secret_key:
-            self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
+            self.env_manager.config.langflow_secret_key = (
+                self.env_manager.generate_langflow_secret_key()
+            )
 
         if not self.env_manager.config.openrag_encryption_key:
-            self.env_manager.config.openrag_encryption_key = self.env_manager.generate_openrag_encryption_key()
+            self.env_manager.config.openrag_encryption_key = (
+                self.env_manager.generate_openrag_encryption_key()
+            )
 
         # Update input fields with generated values
         if opensearch_input:
@@ -585,13 +593,9 @@ class ConfigScreen(Screen):
                 start = Path(first).expanduser()
 
         # Prefer SelectDirectory for directories; fallback to FileOpen
-        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
-            fsp, "FileOpen", None
-        )
+        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(fsp, "FileOpen", None)
         if PickerClass is None:
-            self.notify(
-                "No compatible picker found in textual-fspicker", severity="warning"
-            )
+            self.notify("No compatible picker found in textual-fspicker", severity="warning")
             return
         try:
             picker = PickerClass(location=start)
@@ -642,13 +646,9 @@ class ConfigScreen(Screen):
                 elif candidate.parent.exists():
                     start = candidate.parent
 
-        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
-            fsp, "FileOpen", None
-        )
+        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(fsp, "FileOpen", None)
         if PickerClass is None:
-            self.notify(
-                "No compatible picker found in textual-fspicker", severity="warning"
-            )
+            self.notify("No compatible picker found in textual-fspicker", severity="warning")
             return
         try:
             picker = PickerClass(location=start)
@@ -683,7 +683,7 @@ class ConfigScreen(Screen):
                     delattr(self, "_docs_pick_callback")
                 except Exception:
                     pass
-            
+
             # Handle OpenSearch data path picker callback
             cb = getattr(self, "_opensearch_data_pick_callback", None)
             if cb is not None:

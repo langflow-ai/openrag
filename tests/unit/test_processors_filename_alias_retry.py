@@ -28,7 +28,7 @@ async def test_check_filename_exists_does_not_requery_successfully_checked_alias
         candidate = body["query"]["term"]["filename"]
         if candidate == "report.md" and _search_side_effect.md_calls == 0:
             _search_side_effect.md_calls += 1
-            raise asyncio.TimeoutError("transient timeout")
+            raise TimeoutError("transient timeout")
         return {"hits": {"hits": []}}
 
     _search_side_effect.md_calls = 0

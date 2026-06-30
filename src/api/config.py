@@ -38,7 +38,7 @@ class OnboardingStatusResponse(BaseModel):
     # OnboardingState.current_step is an int (step index) in the legacy
     # config_manager dataclass; future schema may switch it to a string
     # name. Accept either to stay forward-compatible.
-    current_step: Optional[Union[int, str]] = None
+    current_step: int | str | None = None
 
 
 @router.get("/onboarding-status", response_model=OnboardingStatusResponse)

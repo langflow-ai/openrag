@@ -17,16 +17,18 @@ Revises:
 Create Date: 2026-05-01 00:00:00.000000
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "0001_initial"
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -78,9 +80,12 @@ def upgrade() -> None:
         "role_permissions",
         sa.Column("role_id", sa.String(length=64), nullable=False),
         sa.Column("permission_id", sa.String(length=64), nullable=False),
-        sa.ForeignKeyConstraint(["role_id"], ["roles.id"], name="fk_role_permissions_role_id_roles"),
         sa.ForeignKeyConstraint(
-            ["permission_id"], ["permissions.id"],
+            ["role_id"], ["roles.id"], name="fk_role_permissions_role_id_roles"
+        ),
+        sa.ForeignKeyConstraint(
+            ["permission_id"],
+            ["permissions.id"],
             name="fk_role_permissions_permission_id_permissions",
         ),
         sa.PrimaryKeyConstraint("role_id", "permission_id", name="pk_role_permissions"),

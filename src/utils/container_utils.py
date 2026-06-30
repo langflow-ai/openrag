@@ -122,6 +122,7 @@ def _get_gateway_ip_from_route() -> str | None:
     """
     import socket
     import struct
+
     try:
         with Path("/proc/net/route").open() as route_table:
             next(route_table)  # Skip header
@@ -148,6 +149,7 @@ def determine_docling_host() -> str:
         The hostname or IP address to use for docling-serve.
     """
     import socket
+
     container_type = detect_container_environment()
 
     # Container-specific env var (e.g. HOST_DOCKER_INTERNAL set explicitly)
@@ -182,12 +184,14 @@ def is_localhost_url(url: str) -> bool:
     localhost_patterns = ["localhost", "127.0.0.1"]
     return any(pattern in url for pattern in localhost_patterns)
 
+
 def replace_localhost_patterns(url: str, replacement: str) -> str:
     """Replace localhost patterns in a URL with a given string."""
     localhost_patterns = ["localhost", "127.0.0.1"]
     for pattern in localhost_patterns:
         url = url.replace(pattern, replacement)
     return url
+
 
 def transform_localhost_url(url: str) -> str:
     """Transform localhost URLs to container-accessible hostnames.
@@ -239,7 +243,7 @@ def guess_host_ip_for_containers(logger=None) -> str:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind((ip_addr, 0))  # Port 0 = let OS choose a free port
                 return True
-        except (OSError, socket.error) as e:
+        except OSError as e:
             log.debug("Cannot bind to %s: %s", ip_addr, e)
             return False
 
@@ -260,7 +264,11 @@ def guess_host_ip_for_containers(logger=None) -> str:
                         insp = run(["docker", "network", "inspect", name, "--format", "{{json .}}"])
                         if insp.returncode == 0 and insp.stdout.strip():
                             payload = insp.stdout.strip()
-                            nw = json.loads(payload)[0] if payload.startswith("[") else json.loads(payload)
+                            nw = (
+                                json.loads(payload)[0]
+                                if payload.startswith("[")
+                                else json.loads(payload)
+                            )
                             ipam = nw.get("IPAM", {})
                             containers = nw.get("Containers", {})
                             for cfg in ipam.get("Config", []) or []:
@@ -291,7 +299,7 @@ def guess_host_ip_for_containers(logger=None) -> str:
                         insp = run(["podman", "network", "inspect", name, "--format", "json"])
                         if insp.returncode == 0 and insp.stdout.strip():
                             arr = json.loads(insp.stdout)
-                            for item in (arr if isinstance(arr, list) else [arr]):
+                            for item in arr if isinstance(arr, list) else [arr]:
                                 for sn in item.get("subnets", []) or []:
                                     gw = sn.get("gateway")
                                     if not gw:
@@ -312,7 +320,9 @@ def guess_host_ip_for_containers(logger=None) -> str:
                 show = run(["ip", "-o", "-4", "addr", "show"])
                 if show.returncode == 0:
                     for line in show.stdout.splitlines():
-                        match = re.search(r"^\d+:\s+([\w_.:-]+)\s+.*\binet\s+(\d+\.\d+\.\d+\.\d+)/", line)
+                        match = re.search(
+                            r"^\d+:\s+([\w_.:-]+)\s+.*\binet\s+(\d+\.\d+\.\d+\.\d+)/", line
+                        )
                         if not match:
                             continue
                         ifname, ip_addr = match.group(1), match.group(2)

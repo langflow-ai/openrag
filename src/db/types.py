@@ -41,7 +41,7 @@ class EncryptedString(TypeDecorator):
         super().__init__(*args, **kwargs)
         self._tenant_id = tenant_id
 
-    def process_bind_param(self, value: Optional[str], dialect) -> Optional[str]:
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
         if value is None:
             return None
         if not isinstance(value, str):
@@ -55,7 +55,7 @@ class EncryptedString(TypeDecorator):
             return json.dumps(envelope, separators=(",", ":"))
         return envelope
 
-    def process_result_value(self, value: Optional[str], dialect) -> Optional[str]:
+    def process_result_value(self, value: str | None, dialect) -> str | None:
         if value is None:
             return None
         if not value:
