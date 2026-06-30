@@ -36,6 +36,7 @@ jobs:
       - uses: millionco/react-doctor@v2
         with:
           directory: frontend
+          version: "0.5.8"
         # Advisory by default: React Doctor reports findings on every PR — a
         # sticky summary comment, inline review comments, and a commit status
         # with the health score — but never fails the check, so it won't red-X
@@ -48,5 +49,4 @@ jobs:
         #   comment: false           # Disable the sticky PR summary comment
         #   review-comments: false   # Disable inline review comments on changed lines
         #   commit-status: false     # Disable the commit status (score + counts, links to the run)
-        #   version: "0.4.0"         # Pin to a specific react-doctor version instead of "latest"
         #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)

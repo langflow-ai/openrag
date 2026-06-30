@@ -28,8 +28,13 @@ async function rollbackOnboarding(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to rollback onboarding");
+    const text = await response.text();
+    let message = "Failed to rollback onboarding";
+    try {
+      const error = JSON.parse(text);
+      if (error.error) message = error.error;
+    } catch {}
+    throw new Error(message);
   }
 
   return response.json();
