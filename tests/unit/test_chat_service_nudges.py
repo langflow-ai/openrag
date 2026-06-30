@@ -1,8 +1,8 @@
 """Tests for ChatService langflow_nudges_chat extraction logic."""
 
 import sys
-from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from services.chat_service import ChatService
 import agent
+from services.chat_service import ChatService
 
 
 @pytest.mark.asyncio
