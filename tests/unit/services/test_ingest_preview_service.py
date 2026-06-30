@@ -148,7 +148,9 @@ async def test_get_index_proof_not_ready_while_ingesting():
     task_service = MagicMock()
     file_task = FileTask(file_path="/tmp/sample.pdf", filename="sample.pdf")
     file_task.phase = IngestionPhase.LANGFLOW
-    upload_task = UploadTask(task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task})
+    upload_task = UploadTask(
+        task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task}
+    )
     task_service.get_upload_task.return_value = upload_task
 
     proof = await service.get_index_proof(
@@ -171,7 +173,9 @@ async def test_get_index_proof_returns_chunks_when_indexed(monkeypatch):
     file_task = FileTask(file_path="/tmp/sample.pdf", filename="sample.pdf")
     file_task.phase = IngestionPhase.COMPLETE
     file_task.status = TaskStatus.COMPLETED
-    upload_task = UploadTask(task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task})
+    upload_task = UploadTask(
+        task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task}
+    )
 
     task_service = MagicMock()
     task_service.get_upload_task.return_value = upload_task

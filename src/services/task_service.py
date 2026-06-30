@@ -1231,10 +1231,7 @@ class TaskService:
                     # the list tidy. Preview-mode tasks instead need every file
                     # (including completed ones) so the live preview carousel can
                     # still enumerate them and render their cached Docling layout.
-                    if (
-                        file_task.status != TaskStatus.COMPLETED
-                        or upload_task.preview_mode
-                    ):
+                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)

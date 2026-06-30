@@ -24,10 +24,11 @@ async def test_langflow_upload_passes_preview_mode_to_task_service():
     mock_temp_file = MagicMock()
     mock_temp_file.name = "/tmp/sample.pdf"
 
-    with patch("api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file), patch(
-        "api.router.open", create=True
-    ), patch("utils.file_utils.safe_unlink"), patch(
-        "api.router.is_ingest_preview_enabled", return_value=True
+    with (
+        patch("api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file),
+        patch("api.router.open", create=True),
+        patch("utils.file_utils.safe_unlink"),
+        patch("api.router.is_ingest_preview_enabled", return_value=True),
     ):
         response = await _langflow_upload_ingest_task(
             upload_files=[mock_file],
@@ -68,12 +69,12 @@ async def test_upload_ingest_router_ignores_preview_outside_oss():
     mock_temp_file = MagicMock()
     mock_temp_file.name = "/tmp/sample.pdf"
 
-    with patch("api.router.get_openrag_config") as mock_cfg, patch(
-        "api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file
-    ), patch("api.router.open", create=True), patch(
-        "utils.file_utils.safe_unlink"
-    ), patch(
-        "api.router.is_ingest_preview_enabled", return_value=False
+    with (
+        patch("api.router.get_openrag_config") as mock_cfg,
+        patch("api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file),
+        patch("api.router.open", create=True),
+        patch("utils.file_utils.safe_unlink"),
+        patch("api.router.is_ingest_preview_enabled", return_value=False),
     ):
         mock_cfg.return_value.knowledge.disable_ingest_with_langflow = False
 

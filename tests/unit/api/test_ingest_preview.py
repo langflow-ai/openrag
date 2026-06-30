@@ -36,7 +36,9 @@ def preview_service():
             "chunk_count": 2,
             "embedding_model": "text-embedding-3-small",
             "embedding_dimensions": 1536,
-            "chunks": [{"chunk_id": "hash-1_0", "page": 1, "text_preview": "Hello", "char_count": 5}],
+            "chunks": [
+                {"chunk_id": "hash-1_0", "page": 1, "text_preview": "Hello", "char_count": 5}
+            ],
         }
     )
     return service
@@ -65,9 +67,7 @@ async def test_get_parse_preview_returns_docling_document(user, preview_service,
     body = response.body.decode()
     assert "document" in body
     assert "stats" in body
-    preview_service.get_docling_preview.assert_called_once_with(
-        "user-1", "task-1", file_path=None
-    )
+    preview_service.get_docling_preview.assert_called_once_with("user-1", "task-1", file_path=None)
 
 
 @pytest.mark.asyncio

@@ -827,10 +827,7 @@ class LangflowFileService:
         filename: str | None = None,
     ) -> None:
         if not (
-            preview_mode
-            and self.ingest_preview_service
-            and upload_task_id
-            and preview_user_id
+            preview_mode and self.ingest_preview_service and upload_task_id and preview_user_id
         ):
             return
         try:
