@@ -60,12 +60,13 @@ def test_non_ascii_values_become_ascii_encodable(value):
 
 
 def test_headers_dict_survives_httpx_normalization():
-    """Regression: a header dict carrying a non-ASCII filename must build into
-    httpx.Headers without raising (this is exactly where ingestion crashed)."""
-    raw_filename = "こんにちは こんにちは.pdf"
+    """Regression: a header dict carrying non-ASCII owner metadata must build
+    into httpx.Headers without raising (this is exactly where ingestion crashed).
+    X-Langflow-Global-Var-FILENAME was removed; OWNER_NAME/OWNER_EMAIL are the
+    remaining headers that can carry user-supplied non-ASCII values."""
     headers = {
-        "X-Langflow-Global-Var-FILENAME": ascii_safe_header_value(raw_filename),
-        "X-Langflow-Global-Var-OWNER_NAME": ascii_safe_header_value("José"),
+        "X-Langflow-Global-Var-OWNER_NAME": ascii_safe_header_value("José García"),
+        "X-Langflow-Global-Var-OWNER_EMAIL": ascii_safe_header_value("josé@例え.jp"),
     }
     # Previously raised UnicodeEncodeError here.
     httpx.Headers(headers)
