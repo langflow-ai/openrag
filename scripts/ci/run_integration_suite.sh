@@ -195,6 +195,7 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} Core Integration Tests${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
+    mkdir -p service-logs
     LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
       GOOGLE_OAUTH_CLIENT_ID="" \
       GOOGLE_OAUTH_CLIENT_SECRET="" \
@@ -202,7 +203,6 @@ case "$suite" in
       LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      mkdir -p service-logs
       uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --html=service-logs/report-core.html --self-contained-html || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
