@@ -111,6 +111,7 @@ fi
 
 echo "${yellow}Installing test dependencies...${nc}"
 uv sync --quiet --group dev
+uv pip install --quiet pytest-html
 
 echo "::group::Start Infrastructure"
 echo "${yellow}Cleaning up old containers and volumes...${nc}"
@@ -202,7 +203,7 @@ case "$suite" in
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
       mkdir -p service-logs
-      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG || test_result=1
+      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --html=service-logs/report-core.html --self-contained-html || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
     ;;
@@ -214,7 +215,7 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     uv pip install --quiet -e sdks/python
     mkdir -p service-logs
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG || test_result=1
+    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --html=service-logs/report-sdk.html --self-contained-html || test_result=1
     echo "::endgroup::"
     ;;
   sdk-typescript)
