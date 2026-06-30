@@ -23,7 +23,7 @@ def _verify_access_token(access_token: str | None, tenant_id: str | None = None)
     raw_token = access_token.removeprefix("Bearer ").strip()
 
     from config.settings import MICROSOFT_ALLOWED_TENANT_IDS, MICROSOFT_GRAPH_OAUTH_CLIENT_ID
-    from utils.jwt_verification import JWTVerificationError, verify_microsoft_access_token
+    from utils.jwt_verification import verify_microsoft_access_token
 
     if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
         logger.warning(
