@@ -35,7 +35,7 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
   # Single-node test cluster never reaches the multi-node readiness counts
-  OPENSEARCH_NODE_COUNT_CHECK: "false"
+  OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
 
 jobs:
   changes:
