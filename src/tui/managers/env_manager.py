@@ -567,11 +567,22 @@ class EnvManager:
                 f.write(
                     f"LANGFLOW_DATA_PATH={self._quote_env_value(expand_path(self.config.langflow_data_path))}\n"
                 )
-                # Set OPENRAG_VERSION to TUI version
-                if self.config.openrag_version:
-                    f.write(
-                        f"OPENRAG_VERSION={self._quote_env_value(self.config.openrag_version)}\n"
-                    )
+                # Write OPENRAG_VERSION once
+                version_to_write = self.config.openrag_version
+                if not version_to_write:
+                    try:
+                        from ..utils.version_check import get_current_version
+
+                        current_version = get_current_version()
+                        if current_version != "unknown":
+                            version_to_write = current_version
+                    except Exception:
+                        pass
+
+                if version_to_write:
+                    f.write(f"OPENRAG_VERSION={self._quote_env_value(version_to_write)}\n")
+
+                # Write COMPOSE_PROJECT_NAME only if non-default
                 if (
                     self.config.compose_project_name
                     and self.config.compose_project_name != "openrag"
@@ -579,16 +590,6 @@ class EnvManager:
                     f.write(
                         f"COMPOSE_PROJECT_NAME={self._quote_env_value(self.config.compose_project_name)}\n"
                     )
-                else:
-                    # Fallback: try to get current version
-                    try:
-                        from ..utils.version_check import get_current_version
-
-                        current_version = get_current_version()
-                        if current_version != "unknown":
-                            f.write(f"OPENRAG_VERSION={self._quote_env_value(current_version)}\n")
-                    except Exception:
-                        pass
                 f.write("\n")
 
                 # Provider API keys and endpoints (optional - can be set during onboarding)
