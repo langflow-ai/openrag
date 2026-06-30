@@ -581,3 +581,96 @@ async def test_azure_blob_test_connection_failure_returns_400_without_persisting
     assert resp.status_code == 400
     assert "Could not connect" in json.loads(resp.body)["error"]
     _assert_never_persisted(service)
+
+
+# ---------------------------------------------------------------------------
+# azure_blob_container_status endpoint (browse list honors ingestion restriction)
+# ---------------------------------------------------------------------------
+
+
+def _status_endpoint_deps(config):
+    """connector_service + session_manager mocks for azure_blob_container_status."""
+    connection = MagicMock(user_id="u1", connector_type="azure_blob", config=config)
+    service = MagicMock()
+    service.connection_manager.get_connection = AsyncMock(return_value=connection)
+    # OpenSearch client raises so doc-count aggregation is skipped (counts → 0).
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.side_effect = RuntimeError("no opensearch")
+    return service, session_manager
+
+
+@pytest.mark.asyncio
+async def test_container_status_restricts_to_allowed_containers():
+    """A non-empty container_names allowlist filters out unselected containers."""
+    service, session_manager = _status_endpoint_deps({"container_names": ["docs"]})
+    user = MagicMock(user_id="u1", jwt_token="t")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs", "images", "logs"]):
+        resp = await az_api.azure_blob_container_status(
+            "conn-1",
+            connector_service=service,
+            session_manager=session_manager,
+            user=user,
+        )
+
+    names = [c["name"] for c in json.loads(resp.body)["containers"]]
+    assert names == ["docs"]
+
+
+@pytest.mark.asyncio
+async def test_container_status_no_restriction_shows_all_containers():
+    """An empty/absent allowlist leaves every accessible container browsable."""
+    service, session_manager = _status_endpoint_deps({"container_names": []})
+    user = MagicMock(user_id="u1", jwt_token="t")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs", "images"]):
+        resp = await az_api.azure_blob_container_status(
+            "conn-1",
+            connector_service=service,
+            session_manager=session_manager,
+            user=user,
+        )
+
+    names = [c["name"] for c in json.loads(resp.body)["containers"]]
+    assert names == ["docs", "images"]
+
+
+# ---------------------------------------------------------------------------
+# azure_blob_list_containers endpoint (also honors the ingestion restriction)
+# ---------------------------------------------------------------------------
+
+
+def _list_endpoint_service(config):
+    """connector_service mock for azure_blob_list_containers."""
+    connection = MagicMock(user_id="u1", connector_type="azure_blob", config=config)
+    service = MagicMock()
+    service.connection_manager.get_connection = AsyncMock(return_value=connection)
+    return service
+
+
+@pytest.mark.asyncio
+async def test_list_containers_restricts_to_allowed_containers():
+    """A non-empty container_names allowlist filters out unselected containers."""
+    service = _list_endpoint_service({"container_names": ["docs"]})
+    user = MagicMock(user_id="u1")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs", "images", "logs"]):
+        resp = await az_api.azure_blob_list_containers(
+            "conn-1", connector_service=service, user=user
+        )
+
+    assert json.loads(resp.body)["containers"] == ["docs"]
+
+
+@pytest.mark.asyncio
+async def test_list_containers_no_restriction_shows_all_containers():
+    """An empty/absent allowlist leaves every accessible container listed."""
+    service = _list_endpoint_service({"container_names": []})
+    user = MagicMock(user_id="u1")
+
+    with patch.object(az_api, "_list_container_names", return_value=["docs", "images"]):
+        resp = await az_api.azure_blob_list_containers(
+            "conn-1", connector_service=service, user=user
+        )
+
+    assert json.loads(resp.body)["containers"] == ["docs", "images"]

@@ -157,7 +157,11 @@ async def azure_blob_list_containers(
     connector_service=Depends(get_connector_service),
     user: User = Depends(get_current_user),
 ):
-    """List all containers accessible with the stored Azure Blob credentials."""
+    """List containers for an Azure Blob connection, honoring the ingestion restriction.
+
+    When the connection has a non-empty container_names allowlist, only those
+    containers are returned; otherwise all accessible containers are listed.
+    """
     connection = await connector_service.connection_manager.get_connection(connection_id)
     if not connection or connection.user_id != user.user_id:
         return JSONResponse({"error": "Connection not found"}, status_code=404)
@@ -166,6 +170,10 @@ async def azure_blob_list_containers(
 
     try:
         containers = await asyncio.to_thread(_list_container_names, connection.config)
+        allowed_containers = connection.config.get("container_names") or []
+        if allowed_containers:
+            allowed_set = set(allowed_containers)
+            containers = [c for c in containers if c in allowed_set]
         return JSONResponse({"containers": containers})
     except Exception:
         logger.exception("Failed to list Azure Blob containers for connection %s", connection_id)
@@ -189,12 +197,19 @@ async def azure_blob_container_status(
     if connection.connector_type != "azure_blob":
         return JSONResponse({"error": "Not an Azure Blob connection"}, status_code=400)
 
-    # 1. List all containers.
+    # 1. List containers, honoring the saved ingestion restriction. When the
+    # connection has a non-empty container_names allowlist, only those
+    # containers are browsable; otherwise all accessible containers are shown.
     try:
         all_containers = await asyncio.to_thread(_list_container_names, connection.config)
     except Exception:
         logger.exception("Failed to list Azure Blob containers for connection %s", connection_id)
         return JSONResponse({"error": "Failed to list containers"}, status_code=500)
+
+    allowed_containers = connection.config.get("container_names") or []
+    if allowed_containers:
+        allowed_set = set(allowed_containers)
+        all_containers = [c for c in all_containers if c in allowed_set]
 
     # 2. Count indexed documents per container from OpenSearch.
     ingested_counts: dict = {}
