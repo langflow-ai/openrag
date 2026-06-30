@@ -317,3 +317,206 @@ async def test_bucket_filter_only_new_files_single_batch(monkeypatch):
     call = service.sync_specific_files.await_args
     assert call.args[2] == ["c::a", "c::b"]
     assert call.kwargs.get("replace_duplicates", False) is False
+
+
+# ---------------------------------------------------------------------------
+# bucket_changed_file_ids — updates-only change detection helper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bucket_changed_file_ids_filters_to_changed_ingested(monkeypatch):
+    """Only already-ingested blobs that are newer at source are returned; new
+    (un-ingested) blobs are ignored (updates-only)."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_id_to_modified_time_map",
+        AsyncMock(
+            return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}  # 2024-01-01
+        ),
+    )
+
+    connector = MagicMock()
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                {"id": "c::a", "modified_time": "2024-01-01T00:00:00Z"},  # unchanged
+                {"id": "c::b", "modified_time": "2024-06-01T00:00:00Z"},  # changed
+                {"id": "c::new", "modified_time": "2024-06-01T00:00:00Z"},  # new → ignored
+            ],
+            "next_page_token": None,
+        }
+    )
+
+    changed = await connectors_api.bucket_changed_file_ids(
+        connector,
+        "azure_blob",
+        "alice",
+        MagicMock(),
+        "token",
+        ["c::a", "c::b"],
+    )
+    assert changed == ["c::b"]
+
+
+@pytest.mark.asyncio
+async def test_bucket_changed_file_ids_empty_when_no_existing():
+    from api import connectors as connectors_api
+
+    connector = MagicMock()
+    connector.list_files = AsyncMock()
+    changed = await connectors_api.bucket_changed_file_ids(
+        connector, "azure_blob", "alice", MagicMock(), "token", []
+    )
+    assert changed == []
+    connector.list_files.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# connector_sync (Sync button, no selected_files/sync_all/bucket_filter) —
+# updates-only re-ingest for bucket connectors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_button_bucket_reingests_only_changed(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a", "c::b"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_id_to_modified_time_map",
+        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+    )
+
+    remote_files = [
+        {"id": "c::a", "modified_time": "2024-01-01T00:00:00Z"},  # unchanged
+        {"id": "c::b", "modified_time": "2024-06-01T00:00:00Z"},  # changed
+    ]
+    service = _bucket_sync_service(remote_files)
+
+    response = await connectors_api.connector_sync(
+        "azure_blob",
+        connectors_api.ConnectorSyncBody(),  # plain Sync: no files, no sync_all/bucket_filter
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
+    )
+
+    assert response.status_code == 201
+    service.sync_specific_files.assert_awaited_once()
+    call = service.sync_specific_files.await_args
+    assert call.args[2] == ["c::b"]
+    assert call.kwargs["replace_duplicates"] is True
+
+
+@pytest.mark.asyncio
+async def test_sync_button_bucket_all_unchanged_returns_no_files(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a", "c::b"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_id_to_modified_time_map",
+        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+    )
+
+    remote_files = [
+        {"id": "c::a", "modified_time": "2024-01-01T00:00:00Z"},
+        {"id": "c::b", "modified_time": "2024-01-01T00:00:00Z"},
+    ]
+    service = _bucket_sync_service(remote_files)
+
+    response = await connectors_api.connector_sync(
+        "azure_blob",
+        connectors_api.ConnectorSyncBody(),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
+    )
+
+    assert response.status_code == 200
+    body = _json(response)
+    assert body["status"] == "no_files"
+    assert "up to date" in body["message"]
+    service.sync_specific_files.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# sync_all_connectors — updates-only re-ingest for bucket connectors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_all_bucket_reingests_only_changed(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(
+        connectors_api,
+        "_allowed_connector_types_for_request",
+        AsyncMock(return_value=["azure_blob"]),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a", "c::b"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "reconcile_orphans_for_connector_type",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_id_to_modified_time_map",
+        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+    )
+
+    remote_files = [
+        {"id": "c::a", "modified_time": "2024-01-01T00:00:00Z"},  # unchanged
+        {"id": "c::b", "modified_time": "2024-06-01T00:00:00Z"},  # changed
+    ]
+    service = _bucket_sync_service(remote_files)
+
+    response = await connectors_api.sync_all_connectors(
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
+    )
+
+    assert response.status_code == 201
+    service.sync_specific_files.assert_awaited_once()
+    call = service.sync_specific_files.await_args
+    assert call.args[2] == ["c::b"]
+    assert call.kwargs["replace_duplicates"] is True

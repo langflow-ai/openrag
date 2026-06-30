@@ -21,6 +21,7 @@ from services.connector_access_service import (
     CONNECTOR_TYPES,
     filter_connectors_for_user,
     get_access_map,
+    is_bucket_connector_type,
     is_connector_access_policy_enforced,
     is_connector_allowed_for_request,
     list_access_for_admin,
@@ -315,6 +316,54 @@ def classify_remote_file_change(
     if remote_is_newer_than_synced(file_id, remote_modified_time, synced_modified_map):
         return "changed"
     return "unchanged"
+
+
+async def bucket_changed_file_ids(
+    connector,
+    connector_type: str,
+    user_id: str,
+    session_manager,
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+) -> list[str]:
+    """Return the already-ingested bucket file ids whose remote copy is newer.
+
+    Updates-only change detection for the Sync path: list the connector's blobs
+    once and keep the ids that are (a) already ingested and (b) strictly newer at
+    source than the stored ``modified_time``. New blobs that aren't ingested yet
+    are intentionally ignored — Sync reconciles existing files; new files are
+    added via the connector's "Add from" panel. Listing exceptions propagate to
+    the caller (same as the bucket_filter sync path).
+    """
+    existing_set = set(existing_file_ids)
+    if not existing_set:
+        return []
+
+    modified_map = await get_synced_id_to_modified_time_map(
+        connector_type=connector_type,
+        user_id=user_id,
+        session_manager=session_manager,
+        jwt_token=jwt_token,
+    )
+
+    changed_ids: list[str] = []
+    page_token = None
+    while True:
+        result = await connector.list_files(page_token=page_token)
+        for f in result.get("files", []):
+            fid = f.get("id")
+            if not fid or fid not in existing_set:
+                continue
+            if (
+                classify_remote_file_change(fid, f.get("modified_time"), True, modified_map)
+                == "changed"
+            ):
+                changed_ids.append(fid)
+        page_token = result.get("next_page_token")
+        if not page_token:
+            break
+
+    return changed_ids
 
 
 async def compute_orphans_for_connector_type(
@@ -1076,15 +1125,50 @@ async def connector_sync(
                         },
                         status_code=200,
                     )
-                task_id = await connector_service.sync_specific_files(
-                    working_connection.connection_id,
-                    user.user_id,
-                    ids_to_sync,
-                    jwt_token=jwt_token,
-                    ingest_settings=body.settings,
-                    replace_duplicates=_connector_sync_should_replace(connector_type),
-                    shared=body.shared,
-                )
+                if is_bucket_connector_type(connector_type):
+                    # Bucket Sync is updates-only: re-ingest just the blobs whose
+                    # remote copy is newer than what's indexed (deleting the stale
+                    # chunks via replace_duplicates). Unlike replace_duplicates=False
+                    # this actually propagates content changes; unlike replacing every
+                    # id it skips unchanged blobs instead of re-fetching the container.
+                    connector = await connector_service.get_connector(
+                        working_connection.connection_id
+                    )
+                    changed_ids = await bucket_changed_file_ids(
+                        connector,
+                        connector_type,
+                        user.user_id,
+                        session_manager,
+                        jwt_token,
+                        ids_to_sync,
+                    )
+                    if not changed_ids:
+                        return JSONResponse(
+                            {
+                                "status": "no_files",
+                                "message": f"All {connector_type} files are already up to date.",
+                            },
+                            status_code=200,
+                        )
+                    task_id = await connector_service.sync_specific_files(
+                        working_connection.connection_id,
+                        user.user_id,
+                        changed_ids,
+                        jwt_token=jwt_token,
+                        ingest_settings=body.settings,
+                        replace_duplicates=True,
+                        shared=body.shared,
+                    )
+                else:
+                    task_id = await connector_service.sync_specific_files(
+                        working_connection.connection_id,
+                        user.user_id,
+                        ids_to_sync,
+                        jwt_token=jwt_token,
+                        ingest_settings=body.settings,
+                        replace_duplicates=_connector_sync_should_replace(connector_type),
+                        shared=body.shared,
+                    )
             else:
                 # Fallback: use filename filtering (for Langflow-ingested files without document_id)
                 logger.info(
@@ -1632,13 +1716,39 @@ async def sync_all_connectors(
                     if not existing_file_ids:
                         deleted_only_connectors.append(connector_type)
                         continue
-                    task_id = await connector_service.sync_specific_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        existing_file_ids,
-                        jwt_token=jwt_token,
-                        replace_duplicates=_connector_sync_should_replace(connector_type),
-                    )
+                    if is_bucket_connector_type(connector_type):
+                        # Updates-only change detection (see connector_sync): re-ingest
+                        # only blobs that changed at source, replacing stale chunks.
+                        connector = await connector_service.get_connector(
+                            working_connection.connection_id
+                        )
+                        changed_ids = await bucket_changed_file_ids(
+                            connector,
+                            connector_type,
+                            user.user_id,
+                            session_manager,
+                            jwt_token,
+                            existing_file_ids,
+                        )
+                        if not changed_ids:
+                            # Nothing changed at source — already up to date.
+                            skipped_connectors.append(connector_type)
+                            continue
+                        task_id = await connector_service.sync_specific_files(
+                            working_connection.connection_id,
+                            user.user_id,
+                            changed_ids,
+                            jwt_token=jwt_token,
+                            replace_duplicates=True,
+                        )
+                    else:
+                        task_id = await connector_service.sync_specific_files(
+                            working_connection.connection_id,
+                            user.user_id,
+                            existing_file_ids,
+                            jwt_token=jwt_token,
+                            replace_duplicates=_connector_sync_should_replace(connector_type),
+                        )
                 else:
                     # Fallback: use filename filtering
                     logger.info(

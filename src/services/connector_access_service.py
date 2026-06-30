@@ -16,6 +16,11 @@ CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_conne
 _BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos", "azure_blob"})
 
 
+def is_bucket_connector_type(connector_type: str) -> bool:
+    """True for object-storage "bucket" connectors (S3, IBM COS, Azure Blob)."""
+    return connector_type in _BUCKET_CONNECTOR_TYPES
+
+
 def governable_connector_types() -> tuple[str, ...]:
     """Types shown in admin Connectors Permission — independent of the live connectors list."""
     from config.settings import IBM_AUTH_ENABLED, is_cloud_context
