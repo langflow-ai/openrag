@@ -677,9 +677,14 @@ backend: ## Run backend locally
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
-	cd frontend && npx next dev \
-		--port $${FRONTEND_PORT:-3000} \
-		--hostname $(hostname)
+	cd frontend && \
+		export ENV_FILE="$(abspath $(ENV_FILE))"; \
+		PORT=$${FRONTEND_PORT:-3000}; \
+		export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
+		echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+		npx next dev \
+			--port $$PORT \
+			--hostname $(hostname)
 
 docling: ## Start docling-serve for document processing
 	@echo "$(YELLOW)Starting docling-serve...$(NC)"

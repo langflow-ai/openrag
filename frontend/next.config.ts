@@ -2,8 +2,12 @@ import dotenv from "dotenv";
 import type { NextConfig } from "next";
 import path from "path";
 
-// Load environment variables from root .env file
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+// Load environment variables from the root env file. Honors ENV_FILE (set by
+// the Makefile) so per-instance env files like `.env.instance2` are respected;
+// defaults to `.env`. Absolute ENV_FILE paths are used as-is.
+dotenv.config({
+  path: path.resolve(__dirname, "..", process.env.ENV_FILE || ".env"),
+});
 
 function getAllowedDevOrigins(): string[] {
   const allowedDevOrigins = process.env.NEXT_ALLOWED_DEV_ORIGINS;
@@ -22,6 +26,11 @@ function getAllowedDevOrigins(): string[] {
 }
 
 const nextConfig: NextConfig = {
+  // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
+  // `next dev` servers can run simultaneously from this same directory: Next.js
+  // 16 acquires a lock at `<distDir>/lock` keyed on the project dir + distDir
+  // (not the port), so a second instance must use a distinct distDir.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Increase timeout for API routes
   experimental: {
     proxyTimeout: 300000, // 5 minutes
