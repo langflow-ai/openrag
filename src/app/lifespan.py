@@ -17,6 +17,8 @@ from config.settings import (
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
     OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
+    OPENSEARCH_WAIT_MAX_RETRIES,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
@@ -204,35 +206,61 @@ async def run_startup(app: FastAPI):
         logger.info("FastMCP lifespan started")
 
     # One-shot OpenSearch security bootstrap driven by the platform's
-    # service JWT. Runs synchronously (before startup_tasks) so the
-    # admin role mapping is in place before any other startup work
-    # talks to OpenSearch. The corresponding call inside startup_tasks
-    # is suppressed when this flag is on.
-    if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+    # service JWT and/or startup replica reconciliation. Runs synchronously (before
+    # startup_tasks) so the admin role mapping is in place before any other startup
+    # work talks to OpenSearch.
+    if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP or OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+        logger.info(
+            "OpenSearch startup tasks enabled",
+            security_bootstrap=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+            reconcile_replicas=OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
+        )
         service_token = get_openrag_service_token()
         if not service_token:
-            raise RuntimeError(
-                "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
-                "OPENRAG_SERVICE_TOKEN is not set"
+            if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                raise RuntimeError(
+                    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
+                    "OPENRAG_SERVICE_TOKEN is not set"
+                )
+            logger.warning(
+                "Skipping startup OpenSearch replica reconciliation: "
+                "requires OPENRAG_SERVICE_TOKEN, which is not set"
             )
-        from auth.ibm_auth import admin_username_from_service_jwt
-        from utils.opensearch_init import wait_for_opensearch
-        from utils.opensearch_utils import setup_opensearch_security
+        else:
+            from auth.ibm_auth import admin_username_from_service_jwt
+            admin_username = admin_username_from_service_jwt(service_token)
+            if not admin_username and OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                    "cannot bootstrap OpenSearch security"
+                )
+            
+            from utils.opensearch_init import wait_for_opensearch
+            
+            opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
+            try:
+                await wait_for_opensearch(opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES)
+                
+                if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                    from utils.opensearch_utils import setup_opensearch_security
+                    logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
+                    await setup_opensearch_security(opensearch_client, admin_username=admin_username)
+                    logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
+                
+                if OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+                    try:
+                        from utils.opensearch_init import ensure_openrag_index_replicas
 
-        admin_username = admin_username_from_service_jwt(service_token)
-        if not admin_username:
-            raise RuntimeError(
-                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
-                "cannot bootstrap OpenSearch security"
-            )
-        opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
-        try:
-            await wait_for_opensearch(opensearch_client)
-            logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
-            await setup_opensearch_security(opensearch_client, admin_username=admin_username)
-            logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
-        finally:
-            await opensearch_client.close()
+                        logger.info("Reconciling index replicas at startup")
+                        await ensure_openrag_index_replicas(opensearch_client)
+                    except Exception as e:
+                        logger.warning(
+                            "Index replica reconciliation at startup failed", error=str(e)
+                        )
+            finally:
+                await opensearch_client.close()
+    else:
+        logger.info("OpenSearch startup security/replica tasks disabled - skipping")
 
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))

@@ -102,3 +102,17 @@ class TestBuildKnnVectorFieldCallSitesMatch:
         chunk_field: Dict[str, Any] = INDEX_BODY["mappings"]["properties"]["chunk_embedding"]
         expected = build_knn_vector_field(VECTOR_DIM)
         assert chunk_field == expected
+
+    @pytest.mark.asyncio
+    async def test_create_index_body_uses_configured_shards_and_replicas(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("config.settings.OPENSEARCH_NUMBER_OF_SHARDS", 3)
+        monkeypatch.setattr("config.settings.OPENSEARCH_NUMBER_OF_REPLICAS", 2)
+
+        from utils.embeddings import create_index_body
+
+        body = await create_index_body()
+
+        assert body["settings"]["number_of_shards"] == 3
+        assert body["settings"]["number_of_replicas"] == 2

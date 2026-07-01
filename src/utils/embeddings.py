@@ -8,12 +8,16 @@ async def create_index_body() -> dict:
     Returns:
         OpenSearch index body configuration
     """
+    from config.settings import (
+        OPENSEARCH_NUMBER_OF_REPLICAS,
+        OPENSEARCH_NUMBER_OF_SHARDS,
+    )
 
     return {
         "settings": {
             "index": {"knn": True},
-            "number_of_shards": 1,
-            "number_of_replicas": 0
+            "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS
         },
         "mappings": {
             "properties": {
