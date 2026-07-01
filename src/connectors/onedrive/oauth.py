@@ -8,6 +8,42 @@ import msal
 logger = logging.getLogger(__name__)
 
 
+def _verify_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
+    """
+    Verify Microsoft access token signature, expiry, audience, and issuer domain.
+
+    Returns the verified claims dict on success.
+    Raises JWTVerificationError (or a subclass) if verification fails — callers
+    must NOT proceed with a token that fails this check.
+    Returns None only when no token is present or verification is not configured.
+    """
+    if not access_token:
+        return None
+
+    raw_token = access_token.removeprefix("Bearer ").strip()
+
+    from config.settings import MICROSOFT_ALLOWED_TENANT_IDS, MICROSOFT_GRAPH_OAUTH_CLIENT_ID
+    from utils.jwt_verification import verify_microsoft_access_token
+
+    if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
+        logger.warning(
+            "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - skipping access token verification"
+        )
+        return None
+
+    # Raises JWTVerificationError on any failure — intentionally not caught here
+    # so that callers (get_access_token) propagate the error and refuse to return
+    # an unverified token.
+    claims = verify_microsoft_access_token(
+        raw_token,
+        MICROSOFT_GRAPH_OAUTH_CLIENT_ID,
+        tenant_id=tenant_id,
+        allowed_tenant_ids=MICROSOFT_ALLOWED_TENANT_IDS,
+    )
+    logger.debug("OneDrive access token verified, tenant=%s", claims.get("tid"))
+    return claims
+
+
 class OneDriveOAuth:
     """Handles Microsoft Graph OAuth for OneDrive (personal Microsoft accounts by default)."""
 
@@ -342,8 +378,10 @@ class OneDriveOAuth:
                     self.RESOURCE_SCOPES, account=self._current_account
                 )
                 if result and "access_token" in result:
+                    access_token = result["access_token"]
+                    _verify_access_token(access_token)  # raises JWTVerificationError on failure
                     logger.info("OneDrive get_access_token: Success with current account")
-                    return result["access_token"]
+                    return access_token
                 else:
                     logger.warning(
                         f"OneDrive get_access_token: Failed with account, result: {result}"
@@ -353,8 +391,10 @@ class OneDriveOAuth:
             logger.info("OneDrive get_access_token: Fallback - trying without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
+                access_token = result["access_token"]
+                _verify_access_token(access_token)  # raises JWTVerificationError on failure
                 logger.info("OneDrive get_access_token: Fallback success")
-                return result["access_token"]
+                return access_token
 
             # If we get here, authentication has failed
             error_msg = (
