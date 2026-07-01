@@ -377,7 +377,7 @@ class LangflowFileService:
 
         # Pass metadata via tweaks to OpenSearch component
         metadata_tweaks = []
-        if owner or owner is None:
+        if owner:
             metadata_tweaks.append({"key": "owner", "value": owner})
         if owner_name:
             metadata_tweaks.append({"key": "owner_name", "value": owner_name})
@@ -422,9 +422,9 @@ class LangflowFileService:
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
-            "X-Langflow-Global-Var-OWNER": str(owner),
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+            "X-Langflow-Global-Var-OWNER": owner or "",
+            "X-Langflow-Global-Var-OWNER_NAME": owner_name or "",
+            "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
@@ -595,9 +595,9 @@ class LangflowFileService:
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
-            "X-Langflow-Global-Var-OWNER": str(owner),
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+            "X-Langflow-Global-Var-OWNER": owner or "",
+            "X-Langflow-Global-Var-OWNER_NAME": owner_name or "",
+            "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,

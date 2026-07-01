@@ -55,6 +55,16 @@ global:
     accessKeyId: ""
     secretAccessKey: ""
     region: ""
+  # Azure Blob Storage connector (Enterprise/SaaS; gated by backend.auth.ibmCloud.enabled
+  # like the other bucket connectors). Optional env defaults — credentials are
+  # normally entered per-connection in the UI. Provide EITHER a connection string
+  # OR account name + key (+ optional custom blob endpoint).
+  azureBlob:
+    enabled: false
+    connectionString: ""                # AZURE_STORAGE_CONNECTION_STRING
+    accountName: ""                     # AZURE_STORAGE_ACCOUNT_NAME
+    accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
+    endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
       
 # ============================================================================
 # Langflow Configuration

@@ -53,25 +53,13 @@ jobs:
         with:
           filters: |
             e2e:
-              - 'src/**'
-              - 'frontend/**'
-              - 'tests/**'
-              - 'scripts/**'
-              - 'flows/**'
-              - 'docker-compose.yml'
-              - 'Dockerfile*'
-              - 'Makefile'
-              - '.github/workflows/test-ci.yml'
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
             integration:
-              - 'src/**.py'
-              - 'tests/**.py'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - 'sdks/**'
-              - 'flows/**'
-              - 'Makefile'
-              - 'scripts/**'
-              - '.github/workflows/test-ci.yml'
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
 
   build-images:
     needs: changes
@@ -83,8 +71,6 @@ jobs:
 
       - name: Cleanup Docker cache
         run: |
-          docker system prune -af || true
-          docker builder prune -af || true
           docker compose -f docker-compose.yml down -v --remove-orphans || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
@@ -162,8 +148,6 @@ jobs:
 
       - name: Cleanup Docker cache
         run: |
-          docker system prune -af || true
-          docker builder prune -af || true
           docker compose -f docker-compose.yml down -v --remove-orphans || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
@@ -221,9 +205,18 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
+          chmod +x scripts/ci/run_integration_suite.sh
           OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs-${{ matrix.suite }}
+          path: service-logs/
+          retention-days: 7
 
   e2e-run:
     needs: [changes, build-images]
@@ -233,8 +226,6 @@ jobs:
     steps:
       - name: Cleanup Docker cache
         run: |
-          docker system prune -af || true
-          docker builder prune -af || true
           docker compose -f docker-compose.yml down -v --remove-orphans || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
@@ -268,7 +259,18 @@ jobs:
       - name: Install Playwright Browsers
         working-directory: frontend
         run: |
-          npx playwright install --with-deps chromium
+          for i in 1 2 3; do
+            echo "Installing Playwright browsers (attempt $i)..."
+            if npx playwright install --with-deps chromium; then
+              break
+            fi
+            echo "Attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Failed to install Playwright browsers after 3 attempts."
+              exit 1
+            fi
+          done
 
       - name: Download OpenRAG image artifact
         uses: actions/download-artifact@v4

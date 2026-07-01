@@ -43,6 +43,9 @@ export const useDeleteDocument = () => {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["search"] });
         queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+        // Connector "Browse Files" dialogs cache per-file ingestion state; drop
+        // it so a deleted file no longer shows as "Ingested"/disabled there.
+        queryClient.invalidateQueries({ queryKey: ["browseConnectionFiles"] });
       }, 1000);
     },
   });

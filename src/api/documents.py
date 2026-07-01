@@ -1,12 +1,22 @@
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from dependencies import get_current_user, get_session_manager, require_permission
+from dependencies import (
+    get_current_user,
+    get_rbac_service,
+    get_session_manager,
+    has_effective_permission,
+    require_any_permission,
+)
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+require_document_delete_permission = require_any_permission(
+    ("knowledge:delete:own", "knowledge:delete:anonymous")
+)
 
 
 class DeleteDocumentBody(BaseModel):
@@ -18,11 +28,18 @@ async def delete_documents_by_filename_core(
     session_manager,
     user_id: str,
     jwt_token: str | None,
+    can_delete_own: bool = True,
+    can_delete_anonymous: bool = False,
 ):
     """Shared delete-by-filename logic for v1 and non-v1 endpoints."""
     from config.settings import get_index_name
     from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-    from utils.opensearch_queries import build_filename_query, build_owned_filename_query
+    from utils.opensearch_queries import (
+        build_anonymous_filename_query,
+        build_filename_query,
+        build_owned_filename_query,
+        build_replace_filename_query,
+    )
 
     normalized_filename = (filename or "").strip()
     if not normalized_filename:
@@ -38,16 +55,58 @@ async def delete_documents_by_filename_core(
         )
 
     try:
-        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
         index_name = get_index_name()
+        from config.settings import clients
 
-        owned_document_ids = await collect_visible_document_ids(
-            opensearch_client,
-            index=index_name,
-            query=build_owned_filename_query(normalized_filename, user_id),
-        )
+        write_client = clients.opensearch
 
-        if not owned_document_ids:
+        if can_delete_own and can_delete_anonymous:
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch client is unavailable")
+            document_ids = await collect_visible_document_ids(
+                write_client,
+                index=index_name,
+                query=build_replace_filename_query(normalized_filename, user_id),
+            )
+        elif can_delete_anonymous:
+            if write_client is None:
+                raise RuntimeError("Backend OpenSearch client is unavailable")
+            document_ids = await collect_visible_document_ids(
+                write_client,
+                index=index_name,
+                query=build_anonymous_filename_query(normalized_filename),
+            )
+        elif can_delete_own:
+            opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+            document_ids = await collect_visible_document_ids(
+                opensearch_client,
+                index=index_name,
+                query=build_owned_filename_query(normalized_filename, user_id),
+            )
+        else:
+            return (
+                {
+                    "success": False,
+                    "deleted_chunks": 0,
+                    "filename": normalized_filename,
+                    "message": None,
+                    "error": "Access denied: insufficient permissions",
+                },
+                403,
+            )
+
+        if not document_ids:
+            if can_delete_anonymous:
+                return (
+                    {
+                        "success": False,
+                        "deleted_chunks": 0,
+                        "filename": normalized_filename,
+                        "message": None,
+                        "error": "No matching document chunks were deleted. The file may be missing or not deletable in the current user context.",
+                    },
+                    404,
+                )
             visible_check = await opensearch_client.search(
                 index=index_name,
                 body={
@@ -79,12 +138,12 @@ async def delete_documents_by_filename_core(
                 404,
             )
 
-        from config.settings import clients
-
+        if write_client is None:
+            raise RuntimeError("Backend OpenSearch client is unavailable")
         deleted_count = await delete_document_ids(
-            clients.opensearch,
+            write_client,
             index=index_name,
-            document_ids=owned_document_ids,
+            document_ids=document_ids,
         )
         logger.info(
             f"Deleted {deleted_count} chunks for filename {normalized_filename}",
@@ -243,14 +302,30 @@ async def check_filename_exists(
 
 async def delete_documents_by_filename(
     body: DeleteDocumentBody,
+    request: Request,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(require_permission("knowledge:delete:own")),
+    rbac=Depends(get_rbac_service),
+    user: User = Depends(require_document_delete_permission),
 ):
     """Delete all documents with a specific filename"""
+    can_delete_own = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:own",
+    )
+    can_delete_anonymous = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:anonymous",
+    )
     payload, status_code = await delete_documents_by_filename_core(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
         jwt_token=user.jwt_token,
+        can_delete_own=can_delete_own,
+        can_delete_anonymous=can_delete_anonymous,
     )
     return JSONResponse(payload, status_code=status_code)

@@ -15,6 +15,21 @@ export interface CancelTaskResponse {
   task_id: string;
 }
 
+async function cancelTask(
+  variables: CancelTaskRequest,
+): Promise<CancelTaskResponse> {
+  const response = await fetch(`/api/tasks/${variables.taskId}/cancel`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to cancel task");
+  }
+
+  return response.json();
+}
+
 export const useCancelTaskMutation = (
   options?: Omit<
     UseMutationOptions<CancelTaskResponse, Error, CancelTaskRequest>,
@@ -22,21 +37,6 @@ export const useCancelTaskMutation = (
   >,
 ) => {
   const queryClient = useQueryClient();
-
-  async function cancelTask(
-    variables: CancelTaskRequest,
-  ): Promise<CancelTaskResponse> {
-    const response = await fetch(`/api/tasks/${variables.taskId}/cancel`, {
-      method: "POST",
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to cancel task");
-    }
-
-    return response.json();
-  }
 
   const { onSuccess, onError, onSettled, ...restOptions } = options ?? {};
 

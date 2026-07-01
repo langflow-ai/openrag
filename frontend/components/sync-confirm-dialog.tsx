@@ -127,6 +127,20 @@ const normalize = (
   };
 };
 
+const OrphanList = ({ list }: { list: OrphanFile[] }) => (
+  <ul className="space-y-1 text-sm">
+    {list.map((o) => (
+      <li
+        key={o.document_id}
+        className="truncate"
+        title={o.filename || o.document_id}
+      >
+        {o.filename || o.document_id}
+      </li>
+    ))}
+  </ul>
+);
+
 const DeletesAlert = ({
   orphansByType,
   totalOrphans,
@@ -136,20 +150,6 @@ const DeletesAlert = ({
   totalOrphans: number;
   isSyncAll: boolean;
 }) => {
-  const renderList = (list: OrphanFile[]) => (
-    <ul className="space-y-1 text-sm">
-      {list.map((o) => (
-        <li
-          key={o.document_id}
-          className="truncate"
-          title={o.filename || o.document_id}
-        >
-          {o.filename || o.document_id}
-        </li>
-      ))}
-    </ul>
-  );
-
   const entries = Object.entries(orphansByType);
 
   return (
@@ -172,7 +172,7 @@ const DeletesAlert = ({
                     <div className="text-xs font-semibold uppercase tracking-wide mb-1">
                       {formatConnectorLabel(type)} ({list.length})
                     </div>
-                    {renderList(list)}
+                    <OrphanList list={list} />
                     {index < entries.length - 1 ? (
                       <Separator className="mt-3" />
                     ) : null}
@@ -180,7 +180,9 @@ const DeletesAlert = ({
                 ))}
               </div>
             ) : (
-              <div className="pr-2">{renderList(entries[0]?.[1] ?? [])}</div>
+              <div className="pr-2">
+                <OrphanList list={entries[0]?.[1] ?? []} />
+              </div>
             )}
           </ScrollArea>
           {totalOrphans > SCROLL_HINT_THRESHOLD ? (

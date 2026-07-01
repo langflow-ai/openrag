@@ -208,7 +208,7 @@ export const KnowledgeActionsDropdown = ({
             </TooltipProvider>
           )}
           <RequirePermission
-            anyOf={["knowledge:delete:own", "knowledge:delete:any"]}
+            anyOf={["knowledge:delete:own", "knowledge:delete:anonymous"]}
           >
             <DropdownMenuItem
               className="text-destructive focus:text-destructive cursor-pointer"

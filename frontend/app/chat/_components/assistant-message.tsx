@@ -17,10 +17,12 @@ import type {
   FunctionCall,
   TokenUsage as TokenUsageType,
 } from "../_types/types";
-import { FunctionCallsContainer } from "./function-calls";
+import { FunctionCallsContainer } from "./function-calls/container";
 import { Message } from "./message";
 import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
+
+const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
 
 interface AssistantMessageProps {
   content: string;
@@ -43,7 +45,7 @@ interface AssistantMessageProps {
 
 export function AssistantMessage({
   content,
-  functionCalls = [],
+  functionCalls = EMPTY_FUNCTION_CALLS,
   messageIndex,
   expandedFunctionCalls,
   onToggle,

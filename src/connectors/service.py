@@ -348,6 +348,7 @@ class ConnectorService:
         filename_filter: set = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -384,6 +385,9 @@ class ConnectorService:
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
 
         # Collect files to process (limited by max_files)
         files_to_process: list[dict[str, Any]] = []
@@ -450,6 +454,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -478,6 +483,7 @@ class ConnectorService:
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -506,6 +512,9 @@ class ConnectorService:
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
 
         if not file_ids:
             raise ValueError("No file IDs provided")
@@ -633,6 +642,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Create custom task using TaskService

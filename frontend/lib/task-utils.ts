@@ -178,7 +178,7 @@ export function sortTaskFileEntries(
   entries: Array<[string, TaskFileEntry]>,
   direction: TaskFileNameSort = "asc",
 ): Array<[string, TaskFileEntry]> {
-  const sorted = [...entries].sort(([pathA, infoA], [pathB, infoB]) =>
+  const sorted = entries.toSorted(([pathA, infoA], [pathB, infoB]) =>
     getTaskFileName(pathA, infoA).localeCompare(
       getTaskFileName(pathB, infoB),
       undefined,

@@ -5,7 +5,7 @@ Provides document ingestion and management.
 Uses API key authentication.
 """
 
-from fastapi import Depends, File, Form, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -16,14 +16,21 @@ from dependencies import (
     get_document_service,
     get_knowledge_filter_service,
     get_langflow_file_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
+    has_effective_permission,
+    require_api_key_any_permission,
     require_api_key_permission,
 )
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+require_document_delete_permission = require_api_key_any_permission(
+    ("knowledge:delete:own", "knowledge:delete:anonymous")
+)
 
 
 class DeleteDocV1Body(BaseModel):
@@ -128,8 +135,10 @@ async def task_status_enhanced_endpoint(
 
 async def delete_document_endpoint(
     body: DeleteDocV1Body,
+    request: Request,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(require_api_key_permission("knowledge:delete:own")),
+    rbac=Depends(get_rbac_service),
+    user: User = Depends(require_document_delete_permission),
     knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Delete document(s) from the knowledge base. DELETE /v1/documents
@@ -145,6 +154,19 @@ async def delete_document_endpoint(
             {"error": "Provide exactly one of `filename` or `filter_id`"},
             status_code=400,
         )
+
+    can_delete_own = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:own",
+    )
+    can_delete_anonymous = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:anonymous",
+    )
 
     if body.filter_id:
         resolved = await resolve_filter_id(
@@ -169,19 +191,24 @@ async def delete_document_endpoint(
                 session_manager=session_manager,
                 user_id=user.user_id,
                 jwt_token=user.jwt_token,
+                can_delete_own=can_delete_own,
+                can_delete_anonymous=can_delete_anonymous,
             )
             results.append(payload)
             statuses.append(_status)
             total_deleted += payload.get("deleted_chunks", 0) or 0
 
+        all_ok = all(200 <= status < 300 for status in statuses)
+        response_status = 200 if all_ok else max(statuses)
         return JSONResponse(
             {
-                "success": all(200 <= status < 300 for status in statuses),
+                "success": all_ok,
                 "deleted_chunks": total_deleted,
                 "filenames": filenames,
                 "filter_id": body.filter_id,
                 "per_file": results,
-            }
+            },
+            status_code=response_status,
         )
 
     payload, status_code = await delete_documents_by_filename_core(
@@ -189,5 +216,7 @@ async def delete_document_endpoint(
         session_manager=session_manager,
         user_id=user.user_id,
         jwt_token=user.jwt_token,
+        can_delete_own=can_delete_own,
+        can_delete_anonymous=can_delete_anonymous,
     )
     return JSONResponse(payload, status_code=status_code)
