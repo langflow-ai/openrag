@@ -295,18 +295,18 @@ class DoclingManager:
 
             cmd = [
                 "uvx",
+                "--python",
+                "3.13",
                 "--from",
-                "docling-serve[ui]==1.20.0",
+                "docling-serve[ui]==1.26.0",
                 "--with",
                 "onnxruntime",
                 "--with",
                 "easyocr",
                 "--with",
-                f"docling[{docling_extras}]==2.95.0",
+                f"docling[{docling_extras}]==2.108.0",
                 "--with",
-                "docling-core==2.77.1",
-                "--with",
-                "docling-jobkit==1.20.0",
+                "docling-core==2.85.0",
                 "--with",
                 "transformers>=5.8.1,<5.9.0",
             ]
