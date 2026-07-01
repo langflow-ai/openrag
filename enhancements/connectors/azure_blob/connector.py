@@ -235,7 +235,11 @@ class AzureBlobConnector(BaseConnector):
                         {
                             "id": _make_file_id(container_name, blob.name),
                             "name": basename(blob.name) or blob.name,
-                            "container": container_name,
+                            # "bucket" is the shared bucket-connector contract key
+                            # (matches aws_s3 / ibm_cos) that browse_connection_files
+                            # and the file browser read; Azure's domain term is
+                            # "container", preserved in the id and metadata.
+                            "bucket": container_name,
                             "key": blob.name,
                             "size": getattr(blob, "size", 0),
                             "modified_time": last_modified.isoformat() if last_modified else None,

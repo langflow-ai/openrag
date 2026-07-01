@@ -280,7 +280,9 @@ async def test_list_files_single_container(patched_factory):
     assert names == {"a.pdf", "b.txt"}
     first = next(f for f in result["files"] if f["name"] == "a.pdf")
     assert first["id"] == "docs::a.pdf"
-    assert first["container"] == "docs"
+    # "bucket" is the shared bucket-connector contract key (matches aws_s3/ibm_cos)
+    # that the file browser reads; carries the Azure container name.
+    assert first["bucket"] == "docs"
     assert first["modified_time"] == ts.isoformat()
 
 
@@ -321,7 +323,7 @@ async def test_list_files_auto_discovers_containers(patched_factory):
     )
     conn = AzureBlobConnector({})  # no container_names → auto-discover
     result = await conn.list_files()
-    assert {f["container"] for f in result["files"]} == {"c1", "c2"}
+    assert {f["bucket"] for f in result["files"]} == {"c1", "c2"}
 
 
 # ---------------------------------------------------------------------------
