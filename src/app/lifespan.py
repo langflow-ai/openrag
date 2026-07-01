@@ -228,25 +228,33 @@ async def run_startup(app: FastAPI):
             )
         else:
             from auth.ibm_auth import admin_username_from_service_jwt
+
             admin_username = admin_username_from_service_jwt(service_token)
             if not admin_username and OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                 raise RuntimeError(
                     "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
                     "cannot bootstrap OpenSearch security"
                 )
-            
+
             from utils.opensearch_init import wait_for_opensearch
-            
+
             opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
             try:
-                await wait_for_opensearch(opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES)
-                
+                await wait_for_opensearch(
+                    opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES
+                )
+
                 if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                     from utils.opensearch_utils import setup_opensearch_security
+
                     logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
-                    await setup_opensearch_security(opensearch_client, admin_username=admin_username)
-                    logger.info("OpenSearch security bootstrap completed", admin_username=admin_username)
-                
+                    await setup_opensearch_security(
+                        opensearch_client, admin_username=admin_username
+                    )
+                    logger.info(
+                        "OpenSearch security bootstrap completed", admin_username=admin_username
+                    )
+
                 if OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
                     try:
                         from utils.opensearch_init import ensure_openrag_index_replicas

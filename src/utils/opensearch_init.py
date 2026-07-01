@@ -253,7 +253,6 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             )
             await _ensure_index_replicas(os_client, API_KEYS_INDEX_NAME)
 
-
         await configure_alerting_security()
 
     except Exception as e:

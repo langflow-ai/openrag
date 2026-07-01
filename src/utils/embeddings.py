@@ -2,9 +2,10 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 async def create_index_body() -> dict:
     """Create a static index body configuration.
-        
+
     Returns:
         OpenSearch index body configuration
     """
@@ -17,7 +18,7 @@ async def create_index_body() -> dict:
         "settings": {
             "index": {"knn": True},
             "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
-            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS
+            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
         },
         "mappings": {
             "properties": {

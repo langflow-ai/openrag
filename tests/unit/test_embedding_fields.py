@@ -8,6 +8,7 @@ OpenRAG's ``knn_vector`` field mapping. Callers across ``config.settings``,
 JVector/DiskANN method configuration with only the dimension varying per
 embedding model.
 """
+
 from typing import Any, Dict
 
 import pytest
@@ -99,7 +100,7 @@ class TestBuildKnnVectorFieldCallSitesMatch:
     def test_index_body_uses_helper_output(self) -> None:
         from config.settings import INDEX_BODY, VECTOR_DIM
 
-        chunk_field: Dict[str, Any] = INDEX_BODY["mappings"]["properties"]["chunk_embedding"]
+        chunk_field: dict[str, Any] = INDEX_BODY["mappings"]["properties"]["chunk_embedding"]
         expected = build_knn_vector_field(VECTOR_DIM)
         assert chunk_field == expected
 
