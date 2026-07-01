@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,37 @@ import pytest
 import pytest_asyncio
 import yaml
 from sqlalchemy import func, select
+
+_RELOAD_MODULES = [
+    "api",
+    "api.connector_router",
+    "api.router",
+    "app.container",
+    "app.factory",
+    "app.lifespan",
+    "app.routes",
+    "app.routes.internal",
+    "auth_middleware",
+    "config.settings",
+    "dependencies",
+    "main",
+    "services",
+    "services.conversation_persistence_service",
+    "services.default_docs_service",
+    "services.rbac_service",
+    "services.search_service",
+    "services.session_ownership_service",
+    "services.startup_orchestrator",
+    "utils.opensearch_init",
+]
+
+_RELOAD_PREFIXES = ("api.", "app.", "services.")
+
+
+def _purge_reloaded_modules() -> None:
+    for mod in list(sys.modules):
+        if mod in _RELOAD_MODULES or mod.startswith(_RELOAD_PREFIXES):
+            sys.modules.pop(mod, None)
 
 
 @pytest_asyncio.fixture
@@ -34,6 +66,11 @@ async def legacy_migration_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENRAG_NOAUTH_ROLE", "admin")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
     monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
+
+    from db.engine import dispose_engine as dispose_existing_engine
+
+    await dispose_existing_engine()
+    _purge_reloaded_modules()
 
     from config.config_manager import config_manager
     from db.engine import dispose_engine
@@ -80,6 +117,7 @@ async def legacy_migration_workspace(tmp_path: Path, monkeypatch):
         session_ownership_service.ownership_file = old_ownership_file
         session_ownership_service.ownership_data = old_ownership_data
         session_ownership_service._session_factory = old_ownership_session_factory
+        _purge_reloaded_modules()
 
 
 def _write_legacy_files(*, config_dir: Path, data_dir: Path) -> None:
