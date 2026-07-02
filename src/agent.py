@@ -180,7 +180,7 @@ async def async_response_stream(
                     # openai SDK's event models declare/expect delta to be str so model_dump() will
                     # emit noisy logs (PydanticSerializationUnexpectedValue) for every chunk. Basically
                     # just reattach the raw (unvalidated) value afterwards to preserve same shape.
-                    # TODO: replace this with just chunk.model_dump() if langflow's /response SSE matches openai's 
+                    # TODO: replace this with just chunk.model_dump() if langflow's /response SSE matches openai's
                     # SDK's delta: str schema
                     chunk_data = chunk.model_dump(exclude={"delta"})
                     if hasattr(chunk, "delta"):
