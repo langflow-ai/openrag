@@ -9,6 +9,7 @@ class FakeTextDeltaEvent(BaseModel):
     delta: str
     type: str
 
+
 chunk = FakeTextDeltaEvent.model_construct(
     delta={"content": "Hello"}, type="response.output_text.delta"
 )
