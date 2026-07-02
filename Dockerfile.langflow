@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir \
     "langchain-ibm~=1.1.0" \
     uv \
     && pip uninstall -y clickhouse-connect \
-    && pip uninstall -y ragstack-ai-knowledge-store
+    && pip uninstall -y ragstack-ai-knowledge-store \
+    # Remediate GHSA-gr75-jv2w-4656: upgrade langchain and langchain-anthropic to fixed versions
+    && pip install --no-cache-dir "langchain>=1.3.9" "langchain-anthropic>=1.4.6"
 
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
