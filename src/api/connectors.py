@@ -68,7 +68,12 @@ async def get_synced_file_ids_for_connector(
             result.get("aggregations", {}).get("unique_connector_file_ids", {}).get("buckets", [])
         )
         connector_file_ids = [b["key"] for b in connector_file_id_buckets if b["key"]]
-
+        if len(connector_file_id_buckets) == 10000:
+            logger.warning(
+            "Connector file ID aggregation hit 10k limit - results may be truncated",
+            connector_type=connector_type,
+            returned_count=len(connector_file_ids),
+    )
         if connector_file_ids:
             file_ids = connector_file_ids
             id_field = "connector_file_id"
@@ -78,13 +83,18 @@ async def get_synced_file_ids_for_connector(
                 result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
             )
             file_ids = [b["key"] for b in doc_id_buckets if b["key"]]
+            if len(doc_id_buckets) == 10000:
+                logger.warning("Document ID aggregation hit 10k limit - results may be truncated",
+                connector_type=connector_type, returned_count=len(file_ids),)
             id_field = "document_id"
 
         filename_buckets = (
             result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
         )
         filenames = [b["key"] for b in filename_buckets if b["key"]]
-
+        if len(filename_buckets) == 10000:
+            logger.warning("Filename aggregation hit 10k limit - results may be truncated", 
+            connector_type=connector_type, returned_count=len(filenames),)
         logger.debug(
             "Found synced files for connector",
             connector_type=connector_type,
@@ -133,6 +143,9 @@ async def get_synced_id_to_filename_map(
 
         result = await opensearch_client.search(index=get_index_name(), body=query_body)
         buckets = result.get("aggregations", {}).get("by_document_id", {}).get("buckets", [])
+        if len(buckets) == 10000:
+            logger.warning("Document ID to filename mapping hit 10k limit - results may be truncated",
+            connector_type=connector_type, returned_count=len(buckets),)
 
         mapping: dict[str, str] = {}
         for bucket in buckets:
