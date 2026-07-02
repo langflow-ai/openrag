@@ -1,7 +1,7 @@
 import asyncio
 import copy
-import os
 import json
+import os
 import re
 from collections import Counter
 from typing import Any
@@ -596,10 +596,10 @@ class SearchService:
                     )
                 )
             }
-            
+
             # Determine if we should apply exact-token filtering
             should_filter_exact = bool(exact_files) or _is_exact_token_query(query)
-            
+
             if should_filter_exact:
                 if exact_files:
                     # Filter to only chunks from files with exact matches
