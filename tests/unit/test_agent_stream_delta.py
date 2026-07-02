@@ -21,7 +21,8 @@ def test_model_dump_without_exclusion_raises_serialization_warning() -> None:
         chunk.model_dump()
 
     assert any(
-        issubclass(w.category, UserWarning) and "PydanticSerializationUnexpectedValue" in str(w.message)
+        issubclass(w.category, UserWarning)
+        and "PydanticSerializationUnexpectedValue" in str(w.message)
         for w in recorded
     ), "expected a PydanticSerializationUnexpectedValue warning for the delta type mismatch"
 
