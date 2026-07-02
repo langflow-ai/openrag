@@ -271,7 +271,7 @@ class DoclingService:
                 ocr_override=ocr,
                 picture_descriptions_override=picture_descriptions,
             )
-        
+
         headers = self._get_auth_headers(user_id, auth_header)
 
         # Docling serve async multipart endpoint /v1/convert/file/async
