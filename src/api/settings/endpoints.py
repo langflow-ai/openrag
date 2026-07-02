@@ -1607,7 +1607,7 @@ async def update_docling_preset(
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
         raise HTTPException(
-            status_code=500, detail=f"Failed to update docling settings: {str(e)}"
+            status_code=500, detail="Failed to update docling settings"
         ) from e
 
 
