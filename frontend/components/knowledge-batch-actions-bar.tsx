@@ -15,7 +15,10 @@ export const KnowledgeBatchActionsBar = ({
   onCancel,
 }: KnowledgeBatchActionsBarProps) => {
   const { canAny } = usePermissions();
-  const canDelete = canAny(["knowledge:delete:own", "knowledge:delete:any"]);
+  const canDelete = canAny([
+    "knowledge:delete:own",
+    "knowledge:delete:anonymous",
+  ]);
   return (
     <div className="flex h-12 w-full items-stretch bg-primary text-primary-foreground">
       <button

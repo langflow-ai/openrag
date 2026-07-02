@@ -68,20 +68,29 @@ test_jwt_opensearch() {
 }
 
 dump_logs() {
-  echo "${red}=== Tests failed, dumping container logs ===${nc}"
-  echo ""
-  echo "${yellow}=== Langflow logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs langflow 2>&1 | tail -500 || echo "${red}Could not get Langflow logs${nc}"
-  echo ""
-  echo "${yellow}=== Backend logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs openrag-backend 2>&1 | tail -500 || echo "${red}Could not get backend logs${nc}"
-  echo ""
-  echo "${yellow}=== Frontend logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs openrag-frontend 2>&1 | tail -300 || echo "${red}Could not get frontend logs${nc}"
-  echo ""
-  echo "${yellow}=== OpenSearch logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs os 2>&1 | tail -300 || echo "${red}Could not get OpenSearch logs${nc}"
-  echo ""
+  echo "${red}=== Tests failed, saving container logs to service-logs/ ===${nc}"
+  mkdir -p service-logs
+
+  redact() {
+    local pw="${OPENSEARCH_PASSWORD:-__unset__}"
+    pw=$(printf '%s\n' "$pw" | sed -E 's/([][\\/.*+?^$|()])/\\\1/g')
+    sed -E -e 's/Bearer [A-Za-z0-9._-]+/Bearer **REDACTED**/g' \
+           -e 's/token=[A-Za-z0-9._-]+/token=**REDACTED**/g' \
+           -e 's/sk-[A-Za-z0-9._-]+/sk-**REDACTED**/g' \
+           -e "s/${pw}/**REDACTED**/g"
+  }
+
+  "$container_runtime" logs --tail 10000 langflow 2>&1 | redact > service-logs/langflow.log || echo "${red}Could not get Langflow logs${nc}"
+  "$container_runtime" logs --tail 10000 openrag-backend 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
+  "$container_runtime" logs --tail 10000 openrag-frontend 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
+  "$container_runtime" logs --tail 10000 os 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
+}
+
+generate_report() {
+  uv run python scripts/ci/generate_test_report.py service-logs || true
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f service-logs/test-failure-report.md ]]; then
+    cat service-logs/test-failure-report.md >> "$GITHUB_STEP_SUMMARY"
+  fi
 }
 
 teardown() {
@@ -89,6 +98,8 @@ teardown() {
   if [[ "$status" -ne 0 && "$test_result" -eq 0 ]]; then
     test_result="$status"
   fi
+
+  generate_report || true
 
   if [[ "$test_result" -ne 0 ]]; then
     dump_logs || true
@@ -108,7 +119,7 @@ if [[ -z "${OPENSEARCH_PASSWORD:-}" ]]; then
 fi
 
 echo "${yellow}Installing test dependencies...${nc}"
-uv sync --group dev
+uv sync --quiet --group dev
 
 echo "::group::Start Infrastructure"
 echo "${yellow}Cleaning up old containers and volumes...${nc}"
@@ -186,12 +197,15 @@ wait_for_url "Langflow" "http://localhost:7860/" 60
 wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60
 echo "::endgroup::"
 
+mkdir -p service-logs
+
 case "$suite" in
   core)
     echo "::group::Core Integration Tests"
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} Core Integration Tests${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
+    mkdir -p service-logs
     LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
       GOOGLE_OAUTH_CLIENT_ID="" \
       GOOGLE_OAUTH_CLIENT_SECRET="" \
@@ -199,7 +213,7 @@ case "$suite" in
       LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG || test_result=1
+      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
     ;;
@@ -209,8 +223,8 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} SDK Integration Tests (Python)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
-    uv pip install -e sdks/python
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || test_result=1
+    uv pip install --quiet -e sdks/python
+    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || test_result=1
     echo "::endgroup::"
     ;;
   sdk-typescript)
@@ -220,7 +234,7 @@ case "$suite" in
     echo "${purple} SDK Integration Tests (TypeScript)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
     cd sdks/typescript
-    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test || test_result=1
+    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || test_result=1
     cd ../..
     echo "::endgroup::"
     ;;

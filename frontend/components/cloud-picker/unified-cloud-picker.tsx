@@ -13,10 +13,12 @@ import {
   UnifiedCloudPickerProps,
 } from "./types";
 
+const EMPTY_FILES: CloudFile[] = [];
+
 export const UnifiedCloudPicker = ({
   provider,
   onFileSelected,
-  selectedFiles = [],
+  selectedFiles = EMPTY_FILES,
   isAuthenticated,
   isIngesting,
   accessToken,

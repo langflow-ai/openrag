@@ -9,6 +9,36 @@ export interface DoclingHealthResponse {
   message?: string;
 }
 
+async function checkDoclingHealth(): Promise<DoclingHealthResponse> {
+  try {
+    const response = await fetch("/api/docling/health", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.ok) {
+      return { status: "healthy" };
+    } else if (response.status === 503) {
+      return {
+        status: "unhealthy",
+        message: `Health check failed with status: ${response.status}`,
+      };
+    } else {
+      return {
+        status: "unhealthy",
+        message: `Health check failed with status: ${response.status}`,
+      };
+    }
+  } catch (error) {
+    return {
+      status: "backend-unavailable",
+      message: error instanceof Error ? error.message : "Connection failed",
+    };
+  }
+}
+
 export const useDoclingHealthQuery = (
   options?: Omit<
     UseQueryOptions<DoclingHealthResponse>,
@@ -16,40 +46,6 @@ export const useDoclingHealthQuery = (
   >,
 ) => {
   const queryClient = useQueryClient();
-
-  async function checkDoclingHealth(): Promise<DoclingHealthResponse> {
-    try {
-      // Call backend proxy endpoint instead of direct localhost
-      const response = await fetch("/api/docling/health", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.ok) {
-        return { status: "healthy" };
-      } else if (response.status === 503) {
-        // Backend is up but docling is down (backend returns 503 for docling issues)
-        return {
-          status: "unhealthy",
-          message: `Health check failed with status: ${response.status}`,
-        };
-      } else {
-        // Other backend errors - treat as docling unhealthy
-        return {
-          status: "unhealthy",
-          message: `Health check failed with status: ${response.status}`,
-        };
-      }
-    } catch (error) {
-      // Network error - backend is likely down, don't show docling banner
-      return {
-        status: "backend-unavailable",
-        message: error instanceof Error ? error.message : "Connection failed",
-      };
-    }
-  }
 
   return useQuery(
     {

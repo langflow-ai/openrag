@@ -81,20 +81,19 @@ export interface Settings {
   environment?: string;
 }
 
+async function getSettings(): Promise<Settings> {
+  const response = await fetch("/api/settings");
+  if (response.ok) {
+    return await response.json();
+  } else {
+    throw new Error("Failed to fetch settings");
+  }
+}
+
 export const useGetSettingsQuery = (
   options?: Omit<UseQueryOptions<Settings>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-
-  async function getSettings(): Promise<Settings> {
-    const response = await fetch("/api/settings");
-    if (response.ok) {
-      // Merge with defaults to ensure all properties exist
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch settings");
-    }
-  }
 
   return useQuery(
     {

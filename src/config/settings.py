@@ -247,6 +247,17 @@ def is_dev_connector_policy_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_azure_blob_enabled() -> bool:
+    """Local dev: enable Azure Blob connector without IBM_AUTH_ENABLED.
+
+    Allows testing the Azure Blob connector (e.g. against Azurite) in a local
+    environment where IBM auth is not configured. Never enable in production.
+    Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas
@@ -1241,6 +1252,17 @@ class AppClients:
             # Merge headers properly - passed headers take precedence over defaults
             default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
             headers = {**default_headers, **passed_headers}
+
+            # HTTP headers must be ASCII; non-ASCII free-text globals (e.g. a
+            # filename or owner name like こんにちは.pdf / José) would otherwise
+            # raise UnicodeEncodeError in httpx. Percent-encode such values so
+            # the request can be sent. ASCII values pass through unchanged.
+            from utils.langflow_headers import ascii_safe_header_value
+
+            headers = {
+                k: ascii_safe_header_value(v) if isinstance(v, str) else v
+                for k, v in headers.items()
+            }
 
             # Remove Content-Type if explicitly set to None (for file uploads)
             if headers.get("Content-Type") is None:

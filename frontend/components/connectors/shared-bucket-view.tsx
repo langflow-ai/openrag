@@ -28,6 +28,8 @@ export interface SharedBucketViewProps {
   ) => void;
   onBack: () => void;
   onDone: () => void;
+  /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
+  showShared?: boolean;
 }
 
 export function SharedBucketView({
@@ -41,6 +43,7 @@ export function SharedBucketView({
   addTask,
   onBack,
   onDone,
+  showShared = false,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -97,19 +100,26 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
+          shared: showShared ? (ingestSettings.shared ?? false) : undefined,
         },
       },
       {
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0], {
-              connectorType: connector.type,
-              source: "connector",
-            });
+            // The container path may return two tasks (new files + changed files);
+            // track them all.
+            for (const id of result.task_ids) {
+              addTask(id, {
+                connectorType: connector.type,
+                source: "connector",
+              });
+            }
             onDone();
           } else {
-            toast.info("No files found in the selected buckets.");
+            toast.info(
+              result.message ?? "No files found in the selected buckets.",
+            );
           }
         },
         onError: (err) => {
@@ -272,6 +282,7 @@ export function SharedBucketView({
             onOpenChange={setIsSettingsOpen}
             settings={ingestSettings}
             onSettingsChange={setIngestSettings}
+            showShared={showShared}
           />
         )}
       </div>

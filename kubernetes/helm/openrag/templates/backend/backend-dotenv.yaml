@@ -102,6 +102,20 @@ stringData:
     MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
     {{- end }}
 
+    # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB)
+    {{- if .Values.global.azureBlob.connectionString }}
+    AZURE_STORAGE_CONNECTION_STRING={{ .Values.global.azureBlob.connectionString | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountName }}
+    AZURE_STORAGE_ACCOUNT_NAME={{ .Values.global.azureBlob.accountName | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountKey }}
+    AZURE_STORAGE_ACCOUNT_KEY={{ .Values.global.azureBlob.accountKey | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.endpoint }}
+    AZURE_STORAGE_ENDPOINT={{ .Values.global.azureBlob.endpoint | quote }}
+    {{- end }}
+
     # Webhook (continuous ingest)
     {{- if .Values.backend.webhook.baseUrl }}
     WEBHOOK_BASE_URL={{ .Values.backend.webhook.baseUrl | quote }}
