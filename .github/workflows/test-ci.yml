@@ -72,6 +72,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |
@@ -149,6 +150,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |
@@ -227,6 +229,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |

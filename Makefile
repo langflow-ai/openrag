@@ -877,14 +877,10 @@ ci-build-images: ## Build all OpenRAG images for CI artifact sharing
 	@set -e; \
 	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
 	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile . & PID1=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend . & PID2=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend . & PID3=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow . & PID4=$$!; \
-	wait $$PID1 || exit 1; \
-	wait $$PID2 || exit 1; \
-	wait $$PID3 || exit 1; \
-	wait $$PID4 || exit 1; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
 	echo "$(GREEN)All images built successfully!$(NC)"
 
 ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
