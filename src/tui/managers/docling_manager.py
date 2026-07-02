@@ -336,16 +336,11 @@ class DoclingManager:
             self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
             log_file = open(self._log_file_path, "w")
 
-            env = os.environ.copy()
-            if "DOCLING_SERVE_SINGLE_USE_RESULTS" not in env:
-                env["DOCLING_SERVE_SINGLE_USE_RESULTS"] = "false"
-
             self._process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
                 start_new_session=True,  # Detach from parent process group
-                env=env,
             )
             # Close parent's copy of the fd; the child has its own
             log_file.close()
