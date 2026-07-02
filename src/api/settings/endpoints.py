@@ -245,7 +245,7 @@ async def get_settings(
             langflow_port=str(LANGFLOW_PORT),
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to retrieve settings")
         return JSONResponse({"error": "Failed to retrieve settings"}, status_code=500)
 
@@ -785,7 +785,7 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_UPDATE_FAILED
@@ -1126,9 +1126,11 @@ async def onboarding(
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to initialize OpenSearch index after onboarding")
-                return JSONResponse({"error": "Failed to initialize OpenSearch index after onboarding"})
+                return JSONResponse(
+                    {"error": "Failed to initialize OpenSearch index after onboarding"}
+                )
 
             # Handle sample data ingestion if requested
             if should_ingest_sample_data:
@@ -1522,7 +1524,7 @@ async def rollback_onboarding(
             deleted_conversations=deleted_conversations_count,
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to rollback onboarding configuration")
         return JSONResponse({"error": "Failed to rollback onboarding"}, status_code=500)
 
