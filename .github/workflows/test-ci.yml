@@ -93,25 +93,67 @@ jobs:
           echo "Workspace: ${GITHUB_WORKSPACE}"
           ls -la
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
           for i in 1 2 3; do
             echo "Build attempt $i..."
             if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
-              echo "Building PR images locally..."
-              if OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-build-images; then
+              echo "Building PR images locally using Buildx cache..."
+              
+              mkdir -p /tmp/.buildx-cache-new
+              
+              build_image() {
+                local name=$1
+                local dockerfile=$2
+                echo "Building langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
+                docker buildx build \
+                  --cache-from=type=local,src=/tmp/.buildx-cache \
+                  --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+                  --load \
+                  -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
+                  -f "$dockerfile" .
+              }
+              
+              if build_image "opensearch" "Dockerfile" && \
+                 build_image "backend" "Dockerfile.backend" && \
+                 build_image "frontend" "Dockerfile.frontend" && \
+                 build_image "langflow" "Dockerfile.langflow"; then
+                
+                # Overwrite cache with new build layer cache
+                rm -rf /tmp/.buildx-cache
+                mv /tmp/.buildx-cache-new /tmp/.buildx-cache
                 break
               fi
             else
               echo "Preparing DockerHub images..."
+              mkdir -p /tmp/.buildx-cache-new
               if docker pull langflowai/openrag-backend:latest && \
                  docker pull langflowai/openrag-frontend:latest && \
                  docker pull langflowai/openrag-langflow:latest && \
                  docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}" && \
                  docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}" && \
                  docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}" && \
-                 docker build --no-cache -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" -f Dockerfile .; then
+                 docker buildx build \
+                   --cache-from=type=local,src=/tmp/.buildx-cache \
+                   --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+                   --load \
+                   -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" \
+                   -f Dockerfile .; then
+                
+                rm -rf /tmp/.buildx-cache
+                mv /tmp/.buildx-cache-new /tmp/.buildx-cache
                 break
               fi
             fi
