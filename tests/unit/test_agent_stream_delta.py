@@ -9,12 +9,20 @@ class FakeTextDeltaEvent(BaseModel):
     delta: str
     type: str
 
+chunk = FakeTextDeltaEvent.model_construct(
+    delta={"content": "Hello"}, type="response.output_text.delta"
+)
+
+
+def test_model_dump_without_exclusion_raises_serialization_warning() -> None:
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        chunk.model_dump()
+
+    assert recorded, "expected a serialization warning when delta has a type mismatch"
+
 
 def test_model_dump_excluding_delta_avoids_warning_and_preserves_dict_shape() -> None:
-    chunk = FakeTextDeltaEvent.model_construct(
-        delta={"content": "Hello"}, type="response.output_text.delta"
-    )
-
     with warnings.catch_warnings():
         warnings.simplefilter("error")
 
