@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import json
 import os
 import re
 from collections import Counter
