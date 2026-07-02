@@ -32,6 +32,9 @@ class GoogleDriveOAuth:
         "https://www.googleapis.com/auth/admin.directory.group.readonly",
     ]
 
+    # Force "consent" so Google reliably returns a refresh token on (re)connect.
+    AUTH_PROMPT = "consent"
+
     AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 

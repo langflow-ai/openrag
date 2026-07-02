@@ -1,4 +1,8 @@
 import type { ConnectorUIDescriptor } from "@/lib/connectors/types";
+import { AzureBlobBucketView } from "./connectors/azure-blob/components/bucket-view";
+import AzureBlobIcon from "./connectors/azure-blob/icon";
+import AzureBlobSettingsDialog from "./connectors/azure-blob/settings-dialog";
+import { useAzureBlobDefaultsQuery } from "./connectors/azure-blob/useAzureBlobDefaultsQuery";
 import { IBMCOSBucketView } from "./connectors/ibm-cos/components/bucket-view";
 import IBMCOSIcon from "./connectors/ibm-cos/icon";
 import IBMCOSSettingsDialog from "./connectors/ibm-cos/settings-dialog";
@@ -22,5 +26,15 @@ export const ADDITIONAL_CONNECTORS: ConnectorUIDescriptor[] = [
     BucketView: IBMCOSBucketView,
     useDefaultsQuery: useIBMCOSDefaultsQuery,
     menuItem: { label: "IBM Cloud Object Storage", route: "/upload/ibm_cos" },
+  },
+  {
+    connectorType: "azure_blob",
+    name: "Azure Blob Storage",
+    Icon: AzureBlobIcon,
+    kind: "bucket",
+    SettingsDialog: AzureBlobSettingsDialog,
+    BucketView: AzureBlobBucketView,
+    useDefaultsQuery: useAzureBlobDefaultsQuery,
+    menuItem: { label: "Azure Blob Storage", route: "/upload/azure_blob" },
   },
 ];

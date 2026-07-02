@@ -5,11 +5,14 @@ import { ArrowLeft, FileSearch, FolderOpen, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
+import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 
 export interface SharedBucketViewProps {
   connector: any;
@@ -19,9 +22,14 @@ export interface SharedBucketViewProps {
   onRefetch: () => void;
   invalidateQueryKey: readonly unknown[];
   syncMutation: ReturnType<typeof useSyncConnector>;
-  addTask: (id: string, options?: { connectorType?: string }) => void;
+  addTask: (
+    id: string,
+    options?: { connectorType?: string; source?: string },
+  ) => void;
   onBack: () => void;
   onDone: () => void;
+  /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
+  showShared?: boolean;
 }
 
 export function SharedBucketView({
@@ -35,8 +43,16 @@ export function SharedBucketView({
   addTask,
   onBack,
   onDone,
+  showShared = false,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showIngestSettings =
+    apiSettings?.show_provider_ingest_settings ?? false;
+
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
@@ -68,6 +84,14 @@ export function SharedBucketView({
       toast.error("Could not start ingest", { description: chunkErr });
       return;
     }
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_buckets: selectedBuckets.size,
+    });
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -76,19 +100,37 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
+          shared: showShared ? (ingestSettings.shared ?? false) : undefined,
         },
       },
       {
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0], { connectorType: connector.type });
+            // The container path may return two tasks (new files + changed files);
+            // track them all.
+            for (const id of result.task_ids) {
+              addTask(id, {
+                connectorType: connector.type,
+                source: "connector",
+              });
+            }
             onDone();
           } else {
-            toast.info("No files found in the selected buckets.");
+            toast.info(
+              result.message ?? "No files found in the selected buckets.",
+            );
           }
         },
         onError: (err) => {
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            source: "connector",
+            connector_type: connector.type,
+            resultValue: err instanceof Error ? err.message : "Sync failed",
+          });
           toast.error(err instanceof Error ? err.message : "Sync failed");
         },
       },
@@ -234,12 +276,15 @@ export function SharedBucketView({
           </div>
         )}
 
-        <IngestSettings
-          isOpen={isSettingsOpen}
-          onOpenChange={setIsSettingsOpen}
-          settings={ingestSettings}
-          onSettingsChange={setIngestSettings}
-        />
+        {showIngestSettings && (
+          <IngestSettings
+            isOpen={isSettingsOpen}
+            onOpenChange={setIsSettingsOpen}
+            settings={ingestSettings}
+            onSettingsChange={setIngestSettings}
+            showShared={showShared}
+          />
+        )}
       </div>
 
       <div className="max-w-3xl mx-auto mt-6 sticky bottom-0 left-0 right-0 pb-6 bg-background pt-4">

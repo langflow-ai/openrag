@@ -5,10 +5,12 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
+    split_chunks_by_max_tokens,
 )
 from utils.file_utils import (
     auto_cleanup_tempfile,
@@ -37,6 +39,26 @@ def _verification_client(fallback_client):
     JWKS lazily, so the first user-JWT queries after a cold start can 401).
     Falls back to the caller's client when the writer is unavailable."""
     return clients.opensearch if clients.opensearch is not None else fallback_client
+
+
+def resolve_shared_owner_fields(
+    user_id: str | None,
+    owner_name: str | None,
+    owner_email: str | None,
+    shared: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (owner, owner_name, owner_email) for indexing.
+
+    When shared=True, owner is None so the indexed chunk omits the owner field
+    entirely, triggering the OpenSearch DLS must_not-exists-owner clause that
+    makes the document visible to all users in the instance. owner_name and
+    owner_email are set to AnonymousUser values, matching how default/sample
+    documents are loaded.
+    """
+    if shared:
+        _anon = AnonymousUser()
+        return None, _anon.name, _anon.email
+    return user_id, owner_name, owner_email
 
 
 class TaskProcessor:
@@ -185,13 +207,17 @@ class TaskProcessor:
         filename: str,
         opensearch_client,
         owner_user_id: str | None = None,
+        shared: bool = False,
     ) -> None:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-        from utils.opensearch_queries import build_owned_filename_query
+        from utils.opensearch_queries import (
+            build_owned_filename_query,
+            build_replace_filename_query,
+        )
 
         try:
             write_client = clients.opensearch
@@ -213,11 +239,18 @@ class TaskProcessor:
                     filename=filename,
                 )
                 return
+
+            # When shared=True the document being replaced may have previously
+            # been ingested without an owner field (also shared), so the normal
+            # owner-scoped query would miss those chunks.  Use a broader query
+            # that covers both owned and ownerless chunks for this filename.
+            build_query = build_replace_filename_query if shared else build_owned_filename_query
+
             for candidate in candidate_filenames:
                 document_ids = await collect_visible_document_ids(
                     opensearch_client,
                     index=get_index_name(),
-                    query=build_owned_filename_query(candidate, owner_user_id),
+                    query=build_query(candidate, owner_user_id),
                 )
                 deleted_count += await delete_document_ids(
                     write_client,
@@ -238,6 +271,7 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str,
         keep_filenames: list[str] | None = None,
+        shared: bool = False,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
@@ -258,6 +292,11 @@ class TaskProcessor:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch write client is unavailable")
 
+            owner_filter = (
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                if shared
+                else {"term": {"owner": owner_user_id}}
+            )
             query: dict[str, Any] = {
                 "bool": {
                     "filter": [
@@ -270,7 +309,7 @@ class TaskProcessor:
                                 "minimum_should_match": 1,
                             }
                         },
-                        {"term": {"owner": owner_user_id}},
+                        owner_filter,
                     ]
                 }
             }
@@ -312,6 +351,9 @@ class TaskProcessor:
         is_sample_data: bool = False,
         acl: "DocumentACL | None" = None,
         connector_file_id: str | None = None,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
+        shared: bool = False,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -324,6 +366,8 @@ class TaskProcessor:
                 chunks (non-Langflow path, e.g. connector UI ``chunkSize``).
             chunk_overlap: Overlap between windows; must be less than ``chunk_size``.
             acl: DocumentACL instance with access control information
+            ocr: Per-request OCR override (None = use global config).
+            picture_descriptions: Per-request picture descriptions override.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -361,7 +405,11 @@ class TaskProcessor:
             slim_doc = process_text_file(file_path)
         else:
             full_doc = await self.docling_service.convert_file(
-                file_path, user_id=owner_user_id, auth_header=jwt_token
+                file_path,
+                user_id=owner_user_id,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
 
@@ -388,7 +436,6 @@ class TaskProcessor:
         # This ensures the length of chunks matches the length of the embeddings array,
         # since chunk_texts_for_embeddings also drops empty texts.
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
-        texts = [c["text"] for c in slim_doc["chunks"]]
 
         litellm_embedding_model = (
             await self.models_service.get_litellm_model_name(embedding_model)
@@ -397,10 +444,21 @@ class TaskProcessor:
         )
 
         # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        if "ollama" in litellm_embedding_model:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=2000)
-        else:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
+        max_tokens = (
+            2000
+            if litellm_embedding_model and "ollama" in litellm_embedding_model.lower()
+            else 8000
+        )
+
+        # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
+        slim_doc["chunks"] = split_chunks_by_max_tokens(
+            slim_doc["chunks"], max_tokens, litellm_embedding_model
+        )
+        # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
+        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
+        texts = [c["text"] for c in slim_doc["chunks"]]
+
+        text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
         for batch in text_batches:
@@ -463,9 +521,11 @@ class TaskProcessor:
                 error=str(e),
             )
 
-        # Owner is always the authenticated uploading/syncing user. Upstream ACL
-        # owners/authors only contribute read access through allowed principals.
-        owner = owner_user_id
+        # Owner is always the authenticated uploading/syncing user unless shared=True,
+        # in which case owner fields are omitted so DLS makes the doc visible to all users.
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            owner_user_id, owner_name, owner_email, shared
+        )
         if acl:
             allowed_users = acl.allowed_users or []
             allowed_groups = acl.allowed_groups or []
@@ -698,6 +758,8 @@ class ConnectorFileProcessor(TaskProcessor):
         models_service=None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        connector_type: str | None = None,
+        shared: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -713,6 +775,8 @@ class ConnectorFileProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
+        self.connector_type = connector_type
+        self.shared = shared
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -729,6 +793,8 @@ class ConnectorFileProcessor(TaskProcessor):
             )
             if not connector or not connection:
                 raise ValueError(f"Connection '{self.connection_id}' not found")
+
+            connector_type = self.connector_type or connection.connector_type
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {
@@ -790,7 +856,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         )
                     )
                     deleted_chunks = await self._delete_connector_chunks(
-                        file_id, opensearch_client, self.user_id
+                        file_id, opensearch_client, self.user_id, shared=self.shared
                     )
 
                     logger.warning(
@@ -844,17 +910,21 @@ class ConnectorFileProcessor(TaskProcessor):
             # filename differs from the current one. If any were removed (a real
             # rename), force a re-ingest below so the file is re-indexed under
             # the new name instead of short-circuiting as "unchanged".
+            # Match against file_task.filename — the cleaned name the file is
+            # actually indexed under — so duplicate/rename detection lines up
+            # with how chunks are keyed.
             renamed = (
                 await self._delete_connector_chunks(
                     document.id,
                     opensearch_client,
                     self.user_id,
-                    keep_filenames=get_filename_aliases(document.filename),
+                    keep_filenames=get_filename_aliases(file_task.filename),
+                    shared=self.shared,
                 )
                 > 0
             )
 
-            if await self.check_filename_exists(document.filename, opensearch_client):
+            if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
@@ -867,13 +937,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
                 await self.delete_document_by_filename(
-                    document.filename,
+                    file_task.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
+                    shared=self.shared,
                 )
 
             # Create temporary file from document content
-            suffix = os.path.splitext(document.filename)[1]
+            suffix = os.path.splitext(file_task.filename)[1]
             if not suffix:
                 suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -929,17 +1000,21 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     # Ingest via unified Langflow pipeline (two-phase Docling + Langflow run)
                     langflow_filename, processed_mimetype = langflow_safe_filename_and_mimetype(
-                        document.filename, document.mimetype
+                        file_task.filename, document.mimetype
                     )
                     file_tuple = (langflow_filename, document.content, processed_mimetype)
 
                     # Extract ACL information
                     allowed_users: list[str] = []
                     allowed_groups: list[str] = []
+                    allowed_principals: list[str] = []
+                    allowed_principal_labels: list[dict[str, Any]] = []
                     if document.acl:
                         try:
                             allowed_users = document.acl.allowed_users or []
                             allowed_groups = document.acl.allowed_groups or []
+                            allowed_principals = document.acl.allowed_principals or []
+                            allowed_principal_labels = document.acl.allowed_principal_labels or []
                         except AttributeError:
                             pass
 
@@ -953,16 +1028,21 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
+                    effective_owner, effective_owner_name, effective_owner_email = (
+                        resolve_shared_owner_fields(
+                            self.user_id, self.owner_name, self.owner_email, self.shared
+                        )
+                    )
                     result = await self.connector_service.langflow_service.upload_and_ingest_file(
                         file_tuple=file_tuple,
                         session_id=None,
                         tweaks=tweaks,
                         settings=self.ingest_settings,
                         jwt_token=self.jwt_token,
-                        owner=self.user_id,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
-                        connector_type=connection.connector_type,
+                        owner=effective_owner,
+                        owner_name=effective_owner_name,
+                        owner_email=effective_owner_email,
+                        connector_type=connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
                         else None,
@@ -971,6 +1051,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
+                        allowed_principals=allowed_principals,
+                        allowed_principal_labels=allowed_principal_labels,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
@@ -984,6 +1066,20 @@ class ConnectorFileProcessor(TaskProcessor):
                             "status": "error",
                             "error": "No text content could be extracted from document",
                         }
+
+                    # Persist connector metadata (incl. modified_time) onto the
+                    # Langflow-indexed chunks (keyed by document_id) so bucket-connector
+                    # change detection has a stored timestamp to compare against on the
+                    # next sync. Mirrors the standard path's enrichment below.
+                    if result.get("status") != "error":
+                        await self.connector_service._update_connector_metadata(
+                            document,
+                            self.user_id,
+                            connector_type,
+                            self.jwt_token,
+                            id_field="document_id",
+                            indexed_filename=file_task.filename,
+                        )
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -1002,19 +1098,24 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
+                        if "ocr" in s:
+                            standard_kwargs["ocr"] = bool(s["ocr"])
+                        if "pictureDescriptions" in s:
+                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
                         file_hash=file_hash,
                         owner_user_id=self.user_id,
-                        original_filename=document.filename,
+                        original_filename=file_task.filename,
                         jwt_token=self.jwt_token,
                         owner_name=self.owner_name,
                         owner_email=self.owner_email,
                         file_size=len(document.content),
-                        connector_type=connection.connector_type,
+                        connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
+                        shared=self.shared,
                         **standard_kwargs,
                     )
 
@@ -1023,9 +1124,10 @@ class ConnectorFileProcessor(TaskProcessor):
                         await self.connector_service._update_connector_metadata(
                             document,
                             self.user_id,
-                            connection.connector_type,
+                            connector_type,
                             self.jwt_token,
                             id_field="connector_file_id",
+                            indexed_filename=file_task.filename,
                         )
 
                     # Add connector-specific metadata

@@ -164,10 +164,11 @@ function ChatPage() {
   });
 
   // Show warning if waiting too long (20 seconds)
+  const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isChatStreaming && !streamingMessage) {
+    if (isChatStreaming && !hasStreamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -178,7 +179,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, streamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -201,7 +202,7 @@ function ChatPage() {
       );
 
       if (result.type === "task") {
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "file" });
         return { type: "task-queued" as const };
       }
 
@@ -295,6 +296,7 @@ function ChatPage() {
 
   // Load conversation data from context
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     // Only load conversation data when:
     // 1. conversationData exists AND
     // 2. (It's a different conversation OR we're not streaming and data has changed) AND
@@ -486,13 +488,15 @@ function ChatPage() {
       }));
 
       // Focus input when loading a conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     } else if (!conversationData) {
       // No conversation selected (new conversation)
       lastLoadedConversationRef.current = null;
     }
+
+    return () => clearTimeout(focusTimeoutId);
   }, [
     conversationData,
     isUserInteracting,
@@ -504,16 +508,18 @@ function ChatPage() {
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
       console.log("Starting new conversation");
       setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     }
+    return () => clearTimeout(focusTimeoutId);
   }, [placeholderConversation, currentConversationId]);
 
   const { isOnboardingComplete } = useOnboardingState();

@@ -1,7 +1,7 @@
 # Development Dockerfile for building Langflow from source
 # Allows building from any Git branch/repo for testing
 
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive

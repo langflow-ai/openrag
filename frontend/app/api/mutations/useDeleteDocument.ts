@@ -13,7 +13,7 @@ interface DeleteDocumentResponse {
   message: string;
 }
 
-export async function deleteDocumentByFilename(
+async function deleteDocumentByFilename(
   filename: string,
 ): Promise<DeleteDocumentResponse> {
   const response = await fetch("/api/documents/delete-by-filename", {
@@ -43,6 +43,9 @@ export const useDeleteDocument = () => {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["search"] });
         queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+        // Connector "Browse Files" dialogs cache per-file ingestion state; drop
+        // it so a deleted file no longer shows as "Ingested"/disabled there.
+        queryClient.invalidateQueries({ queryKey: ["browseConnectionFiles"] });
       }, 1000);
     },
   });

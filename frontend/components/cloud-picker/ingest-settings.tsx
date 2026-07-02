@@ -42,6 +42,8 @@ interface IngestSettingsProps {
   onOpenChange: (open: boolean) => void;
   settings?: IngestSettingsType;
   onSettingsChange?: (settings: IngestSettingsType) => void;
+  /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
+  showShared?: boolean;
 }
 
 export const IngestSettings = ({
@@ -49,6 +51,7 @@ export const IngestSettings = ({
   onOpenChange,
   settings,
   onSettingsChange,
+  showShared = false,
 }: IngestSettingsProps) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
@@ -244,7 +247,13 @@ export const IngestSettings = ({
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div
+            className={
+              showShared
+                ? "flex items-center justify-between border-b pb-3 mb-3"
+                : "flex items-center justify-between"
+            }
+          >
             <div>
               <div className="text-sm pb-2 font-semibold">
                 Picture descriptions
@@ -260,6 +269,26 @@ export const IngestSettings = ({
               }
             />
           </div>
+
+          {showShared && (
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm pb-2 font-semibold">
+                  Make documents available to all users
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Shared documents are visible to all users in this OpenRAG
+                  instance.
+                </div>
+              </div>
+              <Switch
+                checked={currentSettings.shared ?? false}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ shared: checked })
+                }
+              />
+            </div>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>

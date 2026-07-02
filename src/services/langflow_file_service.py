@@ -377,7 +377,7 @@ class LangflowFileService:
 
         # Pass metadata via tweaks to OpenSearch component
         metadata_tweaks = []
-        if owner or owner is None:
+        if owner:
             metadata_tweaks.append({"key": "owner", "value": owner})
         if owner_name:
             metadata_tweaks.append({"key": "owner_name", "value": owner_name})
@@ -422,11 +422,10 @@ class LangflowFileService:
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
-            "X-Langflow-Global-Var-OWNER": str(owner),
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+            "X-Langflow-Global-Var-OWNER": owner or "",
+            "X-Langflow-Global-Var-OWNER_NAME": owner_name or "",
+            "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
-            "X-Langflow-Global-Var-FILENAME": filename,
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
@@ -596,9 +595,9 @@ class LangflowFileService:
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
-            "X-Langflow-Global-Var-OWNER": str(owner),
-            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
-            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+            "X-Langflow-Global-Var-OWNER": owner or "",
+            "X-Langflow-Global-Var-OWNER_NAME": owner_name or "",
+            "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
@@ -607,7 +606,6 @@ class LangflowFileService:
             "X-Langflow-Global-Var-ALLOWED_GROUPS": json.dumps([]),
             "X-Langflow-Global-Var-ALLOWED_PRINCIPALS": json.dumps([]),
             "X-Langflow-Global-Var-DOCLING_TASK_ID": "",
-            "X-Langflow-Global-Var-FILENAME": str(docs_url),
             "X-Langflow-Global-Var-MIMETYPE": "text/html",
             "X-Langflow-Global-Var-FILESIZE": "0",
             "X-Langflow-Global-Var-DOCLING_SERVE_VERIFY_SSL": str(DOCLING_SERVE_VERIFY_SSL).lower(),
@@ -817,6 +815,9 @@ class LangflowFileService:
         content: bytes,
         jwt_token: str | None = None,
         owner: str | None = None,
+        *,
+        ocr: bool | None = None,
+        picture_descriptions: bool | None = None,
     ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
@@ -831,7 +832,12 @@ class LangflowFileService:
             )
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
-                filename, content, user_id=owner, auth_header=jwt_token
+                filename,
+                content,
+                user_id=owner,
+                auth_header=jwt_token,
+                ocr=ocr,
+                picture_descriptions=picture_descriptions,
             )
             logger.debug(
                 "[LF] Docling submission accepted",
@@ -894,12 +900,24 @@ class LangflowFileService:
 
         filename, content, _ = file_tuple
 
+        ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        pic_desc_override = (
+            settings.get("pictureDescriptions") if isinstance(settings, dict) else None
+        )
+
         # ── Phase 1: submit to Docling ──────────────────────────────────
         if file_task is not None:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(filename, content, owner=owner, jwt_token=jwt_token)
+        task_id = await self.submit_to_docling(
+            filename,
+            content,
+            owner=owner,
+            jwt_token=jwt_token,
+            ocr=ocr_override,
+            picture_descriptions=pic_desc_override,
+        )
 
         if file_task is not None:
             file_task.docling_task_id = task_id
@@ -970,6 +988,11 @@ class LangflowFileService:
         if file_task is not None:
             file_task.phase = IngestionPhase.LANGFLOW
 
+        _raw_em = settings.get("embeddingModel") if isinstance(settings, dict) else None
+        selected_embedding = (
+            _raw_em.strip() if isinstance(_raw_em, str) and _raw_em.strip() else None
+        )
+
         try:
             total_start_time = time.time()
             ingest_result = await self.run_ingestion_flow(
@@ -985,6 +1008,7 @@ class LangflowFileService:
                 docling_task_id=task_id,
                 document_id=document_id,
                 source_url=source_url,
+                selected_embedding_model=selected_embedding,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
