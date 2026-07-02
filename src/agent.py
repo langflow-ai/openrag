@@ -175,8 +175,16 @@ async def async_response_stream(
             try:
                 # Try to serialize the chunk object
                 if hasattr(chunk, "model_dump"):
-                    # Pydantic model
-                    chunk_data = chunk.model_dump()
+                    # Pydantic model. Exclude "delta" from serialization since Langflow's
+                    # /response SSE wraps text deltas as {"content": "..."} for every provider but
+                    # openai SDK's event models declare/expect delta to be str so model_dump() will
+                    # emit noisy logs (PydanticSerializationUnexpectedValue) for every chunk. Basically
+                    # just reattach the raw (unvalidated) value afterwards to preserve same shape.
+                    # TODO: replace this with just chunk.model_dump() if langflow's /response SSE matches openai's 
+                    # SDK's delta: str schema
+                    chunk_data = chunk.model_dump(exclude={"delta"})
+                    if hasattr(chunk, "delta"):
+                        chunk_data["delta"] = chunk.delta
                 elif hasattr(chunk, "__dict__"):
                     chunk_data = chunk.__dict__
                 else:
