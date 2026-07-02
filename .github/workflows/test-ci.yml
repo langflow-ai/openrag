@@ -302,10 +302,11 @@ jobs:
         if: failure()
         run: |
           mkdir -p service-logs
-          docker logs os > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
           docker logs openrag-backend > service-logs/backend.log 2>&1 || true
-          docker logs langflow > service-logs/langflow.log 2>&1 || true
-          docker logs openrag-backend-proxy > service-logs/backend-proxy.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
 
       - name: Upload service logs
         uses: actions/upload-artifact@v4

@@ -1153,10 +1153,11 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	if [ $$TEST_RESULT -ne 0 ]; then \
 		echo "$(RED)=== Tests failed, saving container logs to service-logs/ ===$(NC)"; \
 		mkdir -p service-logs; \
-		$(CONTAINER_RUNTIME) logs langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs openrag-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs openrag-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs os > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-opensearch > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
+		if [ -f ~/.openrag/tui/docling-serve.log ]; then cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>/dev/null || echo "$(RED)Could not get Docling logs$(NC)"; fi; \
 	fi; \
 	echo "::group::Test Failure Report"; \
 	uv run python scripts/ci/generate_test_report.py service-logs || true; \
