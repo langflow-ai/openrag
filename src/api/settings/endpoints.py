@@ -1129,7 +1129,8 @@ async def onboarding(
             except Exception:
                 logger.exception("Failed to initialize OpenSearch index after onboarding")
                 return JSONResponse(
-                    {"error": "Failed to initialize OpenSearch index after onboarding"}, status_code=500
+                    {"error": "Failed to initialize OpenSearch index after onboarding"},
+                    status_code=500,
                 )
 
             # Handle sample data ingestion if requested
