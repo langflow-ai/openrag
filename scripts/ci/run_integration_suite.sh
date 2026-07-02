@@ -11,6 +11,22 @@ else
   compose_cmd=("$container_runtime" compose)
 fi
 
+# Load variables from env file to find COMPOSE_PROJECT_NAME and OPENSEARCH_PORT
+COMPOSE_PROJECT_NAME=""
+OPENSEARCH_PORT=""
+LANGFLOW_PORT=""
+if [[ -f "$env_file" ]]; then
+  COMPOSE_PROJECT_NAME="$(grep -E '^COMPOSE_PROJECT_NAME=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  OPENSEARCH_PORT="$(grep -E '^OPENSEARCH_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+fi
+
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
+OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
+LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
+
+compose_cmd+=("-p" "$COMPOSE_PROJECT_NAME")
+
 red=$'\033[0;31m'
 purple=$'\033[38;2;119;62;255m'
 yellow=$'\033[1;33m'
@@ -52,7 +68,7 @@ test_jwt_opensearch() {
     -o "$response_file" \
     -H "Authorization: Bearer $test_token" \
     -H "Content-Type: application/json" \
-    https://localhost:9200/documents/_search \
+    https://localhost:${OPENSEARCH_PORT}/documents/_search \
     -d '{"query":{"match_all":{}}}'; then
     echo "${red}curl command failed (network error or HTTP 4xx/5xx)${nc}"
     head -c 400 "$response_file" 2>/dev/null || true
@@ -151,7 +167,7 @@ uv run python scripts/docling_ctl.py status 2>&1 || true
 
 echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
 for i in $(seq 1 60); do
-  if "$container_runtime" exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+  if "${compose_cmd[@]}" exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
     break
   fi
   if [[ "$i" -eq 60 ]]; then
@@ -166,7 +182,7 @@ echo "${yellow}Fixing JWT key ownership for test runner (host UID $(id -u))...${
 
 echo "${yellow}Waiting for OpenSearch security config to be fully applied...${nc}"
 for i in $(seq 1 60); do
-  if "$container_runtime" logs os 2>&1 | grep -q "Security configuration applied successfully"; then
+  if "${compose_cmd[@]}" logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then
     echo "${purple}Security configuration applied${nc}"
     break
   fi
@@ -179,7 +195,7 @@ done
 
 echo "${yellow}Verifying OIDC authenticator is active in OpenSearch...${nc}"
 for i in $(seq 1 30); do
-  authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
+  authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:${OPENSEARCH_PORT}/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
   if echo "$authc_config" | grep -q "openid_auth_domain"; then
     echo "${purple}OIDC authenticator configured${nc}"
     echo "$authc_config" | grep -A 5 "openid_auth_domain" || true
@@ -193,7 +209,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-wait_for_url "Langflow" "http://localhost:7860/" 60
+wait_for_url "Langflow" "http://localhost:${LANGFLOW_PORT}/" 60
 wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60
 echo "::endgroup::"
 
@@ -209,8 +225,7 @@ case "$suite" in
     LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
       GOOGLE_OAUTH_CLIENT_ID="" \
       GOOGLE_OAUTH_CLIENT_SECRET="" \
-      OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
-      LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
+      OPENSEARCH_HOST=localhost OPENSEARCH_PORT=${OPENSEARCH_PORT} \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
       uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || test_result=1

@@ -1,12 +1,15 @@
-import os
-
-from fastapi import Depends, Request
-from pydantic import BaseModel
-from fastapi.responses import JSONResponse
 import base64
-from cryptography.hazmat.primitives import serialization
 
+from cryptography.hazmat.primitives import serialization
+from fastapi import Depends, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
 from dependencies import get_session_manager
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class TokenIntrospectBody(BaseModel):
@@ -18,9 +21,8 @@ async def oidc_discovery(
     session_manager=Depends(get_session_manager),
 ):
     """OIDC discovery endpoint"""
-    openrag_fqdn = os.getenv("OPENRAG_FQDN")
-    if openrag_fqdn:
-        base_url = f"http://{openrag_fqdn}:8000"
+    if OPENRAG_FQDN:
+        base_url = f"http://{OPENRAG_FQDN}:{OPENRAG_BACKEND_PORT}"
     else:
         base_url = str(request.base_url).rstrip("/")
 
@@ -36,8 +38,16 @@ async def oidc_discovery(
         "scopes_supported": ["openid", "email", "profile"],
         "token_endpoint_auth_methods_supported": ["client_secret_basic"],
         "claims_supported": [
-            "sub", "iss", "aud", "exp", "iat", "auth_time",
-            "email", "email_verified", "name", "preferred_username",
+            "sub",
+            "iss",
+            "aud",
+            "exp",
+            "iat",
+            "auth_time",
+            "email",
+            "email_verified",
+            "name",
+            "preferred_username",
         ],
     }
 
@@ -74,10 +84,9 @@ async def jwks_endpoint(
 
         return JSONResponse({"keys": [jwk]})
 
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to generate JWKS: {str(e)}"}, status_code=500
-        )
+    except Exception:
+        logger.exception("Failed to generate JWKS")
+        return JSONResponse({"error": "Failed to generate JWKS"}, status_code=500)
 
 
 async def token_introspection(
@@ -105,7 +114,6 @@ async def token_introspection(
         else:
             return JSONResponse({"active": False})
 
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"Token introspection failed: {str(e)}"}, status_code=500
-        )
+    except Exception:
+        logger.exception("Token introspection failed")
+        return JSONResponse({"error": "Token introspection failed"}, status_code=500)

@@ -1,16 +1,17 @@
 services:
   opensearch:
     image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    container_name: os
-    depends_on:
-      - openrag-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
+      - OPENRAG_BACKEND_HOST=${OPENRAG_BACKEND_HOST:-openrag-backend}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}
     # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
     # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
     # docker DNS — so the alias overrides docker-compose service-name
@@ -20,8 +21,8 @@ services:
     # run `make backend` on the host need the alias and should add it via
     # an override file (see AGENTS.md → Operational constraints).
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "${OPENSEARCH_PORT:-9200}:9200"
+      - "${OPENSEARCH_PERF_PORT:-9600}:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
     stop_grace_period: 2m
@@ -35,28 +36,28 @@ services:
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:3.6.0
-    container_name: osdash
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch
     environment:
-      OPENSEARCH_HOSTS: '["https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}"]'
+      OPENSEARCH_HOSTS: '["https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}"]'
       OPENSEARCH_USERNAME: "${OPENSEARCH_USERNAME:-admin}"
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
-      - "5601:5601"
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
 
   openrag-backend:
     image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: openrag-backend
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-backend
     depends_on:
       - langflow
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:8000}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_BACKEND_PORT:-8000}}
       - OPENRAG_BACKEND_ROUTER_ENABLE=${OPENRAG_BACKEND_ROUTER_ENABLE:-false}
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
@@ -68,9 +69,7 @@ services:
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
-      - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
-      - LANGFLOW_OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
+      - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       # Single-node compose clusters don't meet the multi-node readiness counts,
@@ -142,7 +141,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: openrag-frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-frontend
     depends_on:
       - openrag-backend
     environment:
@@ -155,7 +154,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.langflow
-    container_name: langflow
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-langflow
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
@@ -197,9 +196,9 @@ services:
       - OPENRAG_INGEST_RUN_ID=OPENRAG_INGEST_RUN_ID
       - OPENRAG_INGEST_BATCH_SIZE=100
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
-      - OPENSEARCH_URL=https://${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}:${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
+      - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
+      - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}

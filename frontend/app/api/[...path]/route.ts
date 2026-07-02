@@ -41,12 +41,13 @@ export async function PATCH(
 
 async function proxyRequest(request: NextRequest, params: { path: string[] }) {
   const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL || false;
+  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
+  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
   const path = params.path.join("/");
   const searchParams = request.nextUrl.searchParams.toString();
-  let backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ""}`;
+  let backendUrl = `http://${backendHost}:${backendPort}/${path}${searchParams ? `?${searchParams}` : ""}`;
   if (backendSSL) {
-    backendUrl = `https://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ""}`;
+    backendUrl = `https://${backendHost}:${backendPort}/${path}${searchParams ? `?${searchParams}` : ""}`;
   }
   const requestId = getRequestId(request);
   const start = performance.now();

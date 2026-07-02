@@ -61,6 +61,7 @@ from config.settings import (
     INGEST_SAMPLE_DATA,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
+    LANGFLOW_PORT,
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
@@ -241,6 +242,7 @@ async def get_settings(
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
+            langflow_port=str(LANGFLOW_PORT),
         )
 
     except Exception as e:

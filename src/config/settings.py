@@ -33,8 +33,8 @@ OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 
 # Optional: Langflow-specific OpenSearch endpoint
-LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST", OPENSEARCH_HOST)
-LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PORT)
+LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
+LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
@@ -75,7 +75,8 @@ def get_opensearch_password() -> str | None:
 
 
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
-LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
+LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
+LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
@@ -85,9 +86,10 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
-    "http://openrag-backend:8000",
+    f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
 
 # --- Backend ingestion-callback proxy router ------------------------------

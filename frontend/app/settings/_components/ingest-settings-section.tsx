@@ -275,6 +275,7 @@ export function IngestSettingsSection() {
         flowId: settings.ingest_flow_id,
         editUrlOverride: settings.langflow_ingest_edit_url,
         publicUrl: settings.langflow_public_url,
+        langflowPort: settings.langflow_port,
         isIbmAuthMode,
         runMode,
       }),

@@ -86,6 +86,7 @@ stringData:
     LANGFLOW_OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
     LANGFLOW_OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
 
+
     # Google OAuth
     {{- if .Values.global.oauth.google.clientId }}
     GOOGLE_OAUTH_CLIENT_ID={{ .Values.global.oauth.google.clientId | quote }}

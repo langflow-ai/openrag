@@ -25,11 +25,13 @@ CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" 
 HOST_UID := $(shell id -u)
 HOST_GID := $(shell id -g)
 OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
+COMPOSE_PROJECT_NAME ?= openrag
+
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
-  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE)
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE) -p $(COMPOSE_PROJECT_NAME)
 else
-  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose -p $(COMPOSE_PROJECT_NAME)
 endif
 
 ######################
@@ -165,6 +167,8 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make setup$(NC)           - Initialize project (install dependencies, create .env)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo ''
 	@echo "$(PURPLE)Common Commands:$(NC)"
@@ -249,14 +253,14 @@ help_dev: ## Show development environment commands
 	@echo "$(PURPLE)Full Stack Development:$(NC)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo ''
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
-	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
-	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only"
-	@echo "  $(PURPLE)make dev-local-build-lf$(NC) - Start infrastructure, building only Langflow image"
-	@echo "  $(PURPLE)make dev-local-build-lf-cpu$(NC) - Same as above, with CPU only"
+	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend) and build OpenSearch and Langflow images"
+	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only and build OpenSearch and Langflow images"
 	@echo ''
 	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
@@ -388,6 +392,7 @@ help_utils: ## Show utility commands
 	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
 	@echo "  $(PURPLE)make clean-dev$(NC)       - Clean dev environment"
 	@echo "  $(PURPLE)make factory-reset$(NC)   - Complete reset (stop, remove volumes, clear data)"
+	@echo "  $(PURPLE)make factory-reset-clean-build$(NC) - Complete reset including removing images"
 	@echo ''
 	@echo "$(PURPLE)Flows:$(NC)"
 	@echo "  $(PURPLE)make flow-upload$(NC)     - Upload flow to Langflow"
@@ -414,66 +419,66 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-build: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU support, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
+	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-build-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
+	$(COMPOSE_CMD) build
+	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	$(COMPOSE_CMD) up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
+	@echo "$(YELLOW)Building Langflow and OpenSearch images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only
+	@echo "$(YELLOW)Building Langflow and OpenSearch images (CPU)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
-	@echo ""
-	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
-
-dev-local-build-lf: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image
-	@echo "$(YELLOW)Building Langflow image...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
-	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
-	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
-	@echo ""
-	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
-
-dev-local-build-lf-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, building only Langflow image with CPU only
-	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow
-	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch openrag-backend dashboards langflow
-	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
@@ -494,10 +499,10 @@ dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stac
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
-	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
-	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch and CPU only mode
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
@@ -510,10 +515,10 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
-	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
-	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
@@ -586,8 +591,65 @@ clean: stop ## Stop containers and remove volumes
 	@$(MAKE) remove-openrag-images
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
-factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"; \
+define FACTORY_RESET_SCRIPT
+set -e; \
+if [ "$(FORCE)" != "true" ]; then \
+	read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+		exit 0; \
+	fi; \
+fi; \
+echo ""; \
+echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+$(COMPOSE_CMD) down -v --remove-orphans || true; \
+echo "$(YELLOW)Removing local data directories...$(NC)"; \
+if [ -d "langflow-data" ]; then \
+	echo "Removing langflow-data..."; \
+	rm -rf langflow-data; \
+	echo "$(PURPLE)langflow-data removed$(NC)"; \
+fi; \
+if [ -d "config" ]; then \
+	echo "Removing config..."; \
+	rm -rf config; \
+	echo "$(PURPLE)config removed$(NC)"; \
+fi; \
+if [ -d "data" ]; then \
+	echo "Removing data..."; \
+	rm -rf data; \
+	echo "$(PURPLE)data removed$(NC)"; \
+fi; \
+if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+	echo "Removing $$OPENRAG_DATA_PATH..."; \
+	rm -rf "$$OPENRAG_DATA_PATH"; \
+	echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+fi; \
+if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+	echo "Removing JWT keys..."; \
+	rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
+	echo "$(PURPLE)JWT keys removed$(NC)"; \
+fi
+endef
+
+factory-reset: ## Complete reset (stop, remove volumes, clear data)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG data!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete langflow-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo ""; \
+	echo ""; \
+	$(FACTORY_RESET_SCRIPT); \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
+
+factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, remove images)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG and remove images!$(NC)"; \
 	echo "$(YELLOW)This will:$(NC)"; \
 	echo "  - Stop all containers"; \
 	echo "  - Remove all volumes"; \
@@ -663,8 +725,14 @@ backend: ## Run backend locally
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
-	cd frontend && npx next dev \
-		--hostname $(hostname)
+	cd frontend && \
+		export ENV_FILE="$(abspath $(ENV_FILE))"; \
+		PORT=$${FRONTEND_PORT:-3000}; \
+		export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
+		echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+		npx next dev \
+			--port $$PORT \
+			--hostname $(hostname)
 
 docling: ## Start docling-serve for document processing
 	@echo "$(YELLOW)Starting docling-serve...$(NC)"
@@ -871,13 +939,13 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
 	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+		if $(COMPOSE_CMD) logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then \
 			echo "$(PURPLE)Security configuration applied$(NC)"; \
 			break; \
 		fi; \
@@ -885,7 +953,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
 	for i in $$(seq 1 30); do \
-		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:$${OPENSEARCH_PORT:-9200}/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
 		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
 			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
 			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
@@ -900,7 +968,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s http://localhost:$${LANGFLOW_PORT:-7860}/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Waiting for docling-serve at $$DOCLING_ENDPOINT...$(NC)"; \
 	for i in $$(seq 1 60); do \
@@ -924,8 +992,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
-	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
-	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=$${OPENSEARCH_PORT:-9200} \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
@@ -1001,13 +1068,13 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
 	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+		if $(COMPOSE_CMD) logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then \
 			echo "$(PURPLE)Security configuration applied$(NC)"; \
 			break; \
 		fi; \
@@ -1015,7 +1082,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
 	for i in $$(seq 1 30); do \
-		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:$${OPENSEARCH_PORT:-9200}/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
 		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
 			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
 			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
@@ -1030,7 +1097,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s http://localhost:$${LANGFLOW_PORT:-7860}/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Waiting for docling-serve at $$DOCLING_ENDPOINT...$(NC)"; \
 	for i in $$(seq 1 60); do \
@@ -1054,8 +1121,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
-	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
-	LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=$${OPENSEARCH_PORT:-9200} \
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
@@ -1134,11 +1200,11 @@ health: ## Check health of all services
 	@printf "$(CYAN)Frontend:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Backend:$(NC)    "
-	@if curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Langflow:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${LANGFLOW_PORT:-7860}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)OpenSearch:$(NC) "
-	@RESULTS=$$(curl -s -k -u "admin:$$OPENSEARCH_PASSWORD" https://127.0.0.1:9200/_cluster/health 2>/dev/null); \
+	@RESULTS=$$(curl -s -k -u "admin:$$OPENSEARCH_PASSWORD" https://127.0.0.1:$${OPENSEARCH_PORT:-9200}/_cluster/health 2>/dev/null); \
 	if [ -z "$$RESULTS" ]; then \
 		printf "$(RED)Not responding$(NC)\n"; \
 	else \
@@ -1158,8 +1224,8 @@ health: ## Check health of all services
 
 db-reset: ## Reset OpenSearch indices
 	@echo "$(YELLOW)Resetting OpenSearch indices...$(NC)"
-	curl -X DELETE "http://localhost:9200/documents" -u admin:$${OPENSEARCH_PASSWORD} || true
-	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
+	curl -k -X DELETE "https://localhost:$${OPENSEARCH_PORT:-9200}/documents" -u admin:$${OPENSEARCH_PASSWORD} || true
+	curl -k -X DELETE "https://localhost:$${OPENSEARCH_PORT:-9200}/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
 	@echo "$(PURPLE)Indices reset. Restart backend to recreate.$(NC)"
 
 clear-os-data: ## Clear OpenSearch data volume
@@ -1174,7 +1240,7 @@ clear-os-data: ## Clear OpenSearch data volume
 flow-upload: ## Upload flow to Langflow
 	@echo "$(YELLOW)Uploading flow to Langflow...$(NC)"
 	@if [ -z "$(FLOW_FILE)" ]; then echo "$(RED)Usage: make flow-upload FLOW_FILE=path/to/flow.json$(NC)"; exit 1; fi
-	curl -X POST "http://localhost:7860/api/v1/flows" \
+	curl -X POST "http://localhost:$${LANGFLOW_PORT:-7860}/api/v1/flows" \
 		-H "Content-Type: application/json" \
 		-d @$(FLOW_FILE)
 	@echo "$(PURPLE)Flow uploaded.$(NC)"

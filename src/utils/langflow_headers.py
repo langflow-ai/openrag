@@ -96,9 +96,10 @@ async def add_provider_credentials_to_headers(
     # Inject OpenSearch URL so Langflow flows always use the correct endpoint
     from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT
 
-    headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = (
-        f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
-    )
+    if LANGFLOW_OPENSEARCH_HOST and LANGFLOW_OPENSEARCH_PORT:
+        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = (
+            f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
+        )
 
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
     from config.settings import IBM_AUTH_ENABLED
