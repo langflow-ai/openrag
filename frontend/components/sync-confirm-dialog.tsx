@@ -127,25 +127,29 @@ const normalize = (
   };
 };
 
-const DeletesAlert: React.FC<{
+const OrphanList = ({ list }: { list: OrphanFile[] }) => (
+  <ul className="space-y-1 text-sm">
+    {list.map((o) => (
+      <li
+        key={o.document_id}
+        className="truncate"
+        title={o.filename || o.document_id}
+      >
+        {o.filename || o.document_id}
+      </li>
+    ))}
+  </ul>
+);
+
+const DeletesAlert = ({
+  orphansByType,
+  totalOrphans,
+  isSyncAll,
+}: {
   orphansByType: Record<string, OrphanFile[]>;
   totalOrphans: number;
   isSyncAll: boolean;
-}> = ({ orphansByType, totalOrphans, isSyncAll }) => {
-  const renderList = (list: OrphanFile[]) => (
-    <ul className="space-y-1 text-sm">
-      {list.map((o) => (
-        <li
-          key={o.document_id}
-          className="truncate"
-          title={o.filename || o.document_id}
-        >
-          {o.filename || o.document_id}
-        </li>
-      ))}
-    </ul>
-  );
-
+}) => {
   const entries = Object.entries(orphansByType);
 
   return (
@@ -168,7 +172,7 @@ const DeletesAlert: React.FC<{
                     <div className="text-xs font-semibold uppercase tracking-wide mb-1">
                       {formatConnectorLabel(type)} ({list.length})
                     </div>
-                    {renderList(list)}
+                    <OrphanList list={list} />
                     {index < entries.length - 1 ? (
                       <Separator className="mt-3" />
                     ) : null}
@@ -176,7 +180,9 @@ const DeletesAlert: React.FC<{
                 ))}
               </div>
             ) : (
-              <div className="pr-2">{renderList(entries[0]?.[1] ?? [])}</div>
+              <div className="pr-2">
+                <OrphanList list={entries[0]?.[1] ?? []} />
+              </div>
             )}
           </ScrollArea>
           {totalOrphans > SCROLL_HINT_THRESHOLD ? (
@@ -190,9 +196,7 @@ const DeletesAlert: React.FC<{
   );
 };
 
-const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
-  connectors,
-}) => (
+const UnavailableAlert = ({ connectors }: { connectors: string[] }) => (
   <Alert>
     <AlertTriangle className="size-5" />
     <AlertTitle>Couldn&apos;t check for deletions</AlertTitle>
@@ -210,11 +214,15 @@ const UnavailableAlert: React.FC<{ connectors: string[] }> = ({
   </Alert>
 );
 
-const UpdatesAlert: React.FC<{
+const UpdatesAlert = ({
+  updatesByType,
+  totalUpdates,
+  isSyncAll,
+}: {
   updatesByType: Record<string, number>;
   totalUpdates: number;
   isSyncAll: boolean;
-}> = ({ updatesByType, totalUpdates, isSyncAll }) => {
+}) => {
   const entries = Object.entries(updatesByType);
 
   return (
@@ -237,7 +245,7 @@ const UpdatesAlert: React.FC<{
   );
 };
 
-export const SyncConfirmDialog: React.FC<SyncConfirmDialogProps> = ({
+export const SyncConfirmDialog = ({
   open,
   onOpenChange,
   onConfirm,
@@ -250,7 +258,7 @@ export const SyncConfirmDialog: React.FC<SyncConfirmDialogProps> = ({
   syncedCountByType,
   connectorType,
   isSyncAll = false,
-}) => {
+}: SyncConfirmDialogProps) => {
   const handleConfirm = async () => {
     await onConfirm();
     onOpenChange(false);

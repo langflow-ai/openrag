@@ -80,7 +80,22 @@ export interface SearchResult {
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
 export { EMPTY_SEARCH_RESULT };
+
+const getFileIdentity = (chunk: ChunkResult): string => {
+  const normalizedFilename = chunk.filename?.trim();
+  if (normalizedFilename) {
+    return normalizedFilename;
+  }
+
+  const normalizedSourceUrl = chunk.source_url?.trim();
+  if (normalizedSourceUrl) {
+    return normalizedSourceUrl;
+  }
+
+  return "Untitled source";
+};
 
 export const useGetSearchQuery = (
   query: string,
@@ -91,19 +106,6 @@ export const useGetSearchQuery = (
   >,
 ) => {
   const queryClient = useQueryClient();
-  const getFileIdentity = (chunk: ChunkResult): string => {
-    const normalizedFilename = chunk.filename?.trim();
-    if (normalizedFilename) {
-      return normalizedFilename;
-    }
-
-    const normalizedSourceUrl = chunk.source_url?.trim();
-    if (normalizedSourceUrl) {
-      return normalizedSourceUrl;
-    }
-
-    return "Untitled source";
-  };
 
   // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
@@ -244,7 +246,7 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
@@ -255,6 +257,4 @@ export const useGetSearchQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

@@ -15,7 +15,7 @@ import {
 } from "@/lib/brand";
 
 /** Prefix for all connector list queries (see `connectorsQueryKey`). */
-export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
+const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
 
 /**
  * Cache key from policy + deployment filter context (inputs to `getConnectors`).
@@ -23,7 +23,7 @@ export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
  * `applyWorkspacePolicy`: SaaS workspace policy path in the query fn.
  * `isCloudBrand` / `isIbmAuthMode`: client deployment visibility (`isConnectorTypeVisible`).
  */
-export function connectorsQueryKey(
+function connectorsQueryKey(
   cloudContext: boolean,
   applyWorkspacePolicy: boolean,
   isCloudBrand: boolean,
@@ -80,7 +80,7 @@ export function updateAllConnectorQueries(
 }
 
 /** Shared policy context for connector list query key + optimistic updates. */
-export function useConnectorsQueryKey() {
+function useConnectorsQueryKey() {
   const { isIbmAuthMode, cloudContext } = useAuth();
   const { brand } = useBrand();
   const isCloudBrand = useIsCloudBrand();
@@ -260,7 +260,7 @@ export interface ConnectorAccessItem {
 
 export const CONNECTOR_USER_ACCESS_KEY = ["connector-user-access"] as const;
 
-export function connectorUserAccessQueryKey(
+function connectorUserAccessQueryKey(
   isCloudBrand: boolean,
   isIbmAuthMode: boolean,
 ) {

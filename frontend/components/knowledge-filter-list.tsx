@@ -31,6 +31,22 @@ interface KnowledgeFilterListProps {
   onFilterSelect: (filter: KnowledgeFilter | null) => void;
 }
 
+const parseQueryData = (queryData: string): ParsedQueryData => {
+  const parsed = JSON.parse(queryData);
+  return {
+    query: parsed.query ?? "",
+    filters: {
+      data_sources: parsed.filters?.data_sources ?? ["*"],
+      document_types: parsed.filters?.document_types ?? ["*"],
+      owners: parsed.filters?.owners ?? ["*"],
+    },
+    limit: parsed.limit ?? 10,
+    scoreThreshold: parsed.scoreThreshold ?? 0,
+    color: parsed.color ?? "zinc",
+    icon: parsed.icon ?? "filter",
+  };
+};
+
 export function KnowledgeFilterList({
   selectedFilter,
   onFilterSelect,
@@ -54,23 +70,6 @@ export function KnowledgeFilterList({
   const handleCreateNew = () => {
     closeMenu();
     startCreateMode();
-  };
-
-  const parseQueryData = (queryData: string): ParsedQueryData => {
-    const parsed = JSON.parse(queryData);
-    // Provide defaults for missing fields to handle API-created filters
-    return {
-      query: parsed.query ?? "",
-      filters: {
-        data_sources: parsed.filters?.data_sources ?? ["*"],
-        document_types: parsed.filters?.document_types ?? ["*"],
-        owners: parsed.filters?.owners ?? ["*"],
-      },
-      limit: parsed.limit ?? 10,
-      scoreThreshold: parsed.scoreThreshold ?? 0,
-      color: parsed.color ?? "zinc",
-      icon: parsed.icon ?? "filter",
-    };
   };
 
   return (

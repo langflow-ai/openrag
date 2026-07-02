@@ -8,7 +8,7 @@ import {
   GooglePickerDocument,
 } from "./types";
 
-export class GoogleDriveHandler {
+class GoogleDriveHandler {
   private accessToken: string;
   private onPickerStateChange?: (isOpen: boolean) => void;
 
@@ -154,7 +154,7 @@ export class GoogleDriveHandler {
   }
 }
 
-export class OneDriveHandler {
+class OneDriveHandler {
   private accessToken: string;
   private clientId: string;
   private provider: CloudProvider;

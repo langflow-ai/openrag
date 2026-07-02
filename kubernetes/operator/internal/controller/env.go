@@ -147,6 +147,14 @@ func NewEnvVarManager() *EnvVarManager {
 			"WATSONX_ENDPOINT":         "",
 			"WATSONX_PROJECT_ID":       "",
 			"DOCLING_SERVE_VERIFY_SSL": "false",
+
+			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB for local dev).
+			// Optional env defaults — credentials are normally entered per-connection
+			// in the UI. Override via the CR spec.env when env-based defaults are wanted.
+			"AZURE_STORAGE_CONNECTION_STRING": "",
+			"AZURE_STORAGE_ACCOUNT_NAME":      "",
+			"AZURE_STORAGE_ACCOUNT_KEY":       "",
+			"AZURE_STORAGE_ENDPOINT":          "",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

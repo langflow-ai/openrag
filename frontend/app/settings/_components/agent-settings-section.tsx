@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
@@ -84,42 +85,55 @@ export function AgentSettingsSection() {
       },
     );
 
-  const groupedLlmModels = [
-    {
-      group: "OpenAI",
-      provider: "openai",
-      icon: getModelLogo("", "openai"),
-      models: openaiModels?.language_models || [],
-      configured: settings.providers?.openai?.configured === true,
-    },
-    {
-      group: "Anthropic",
-      provider: "anthropic",
-      icon: getModelLogo("", "anthropic"),
-      models: anthropicModels?.language_models || [],
-      configured: settings.providers?.anthropic?.configured === true,
-    },
-    {
-      group: "Ollama",
-      provider: "ollama",
-      icon: getModelLogo("", "ollama"),
-      models: ollamaModels?.language_models || [],
-      configured: settings.providers?.ollama?.configured === true,
-    },
-    {
-      group: "IBM watsonx.ai",
-      provider: "watsonx",
-      icon: getModelLogo("", "watsonx"),
-      models: watsonxModels?.language_models || [],
-      configured: settings.providers?.watsonx?.configured === true,
-    },
-  ]
-    .filter((p) => p.configured)
-    .map((p) => ({
-      group: p.group,
-      icon: p.icon,
-      options: p.models.map((m) => ({ ...m, provider: p.provider })),
-    }));
+  const groupedLlmModels = useMemo(
+    () =>
+      [
+        {
+          group: "OpenAI",
+          provider: "openai",
+          icon: getModelLogo("", "openai"),
+          models: openaiModels?.language_models || [],
+          configured: settings.providers?.openai?.configured === true,
+        },
+        {
+          group: "Anthropic",
+          provider: "anthropic",
+          icon: getModelLogo("", "anthropic"),
+          models: anthropicModels?.language_models || [],
+          configured: settings.providers?.anthropic?.configured === true,
+        },
+        {
+          group: "Ollama",
+          provider: "ollama",
+          icon: getModelLogo("", "ollama"),
+          models: ollamaModels?.language_models || [],
+          configured: settings.providers?.ollama?.configured === true,
+        },
+        {
+          group: "IBM watsonx.ai",
+          provider: "watsonx",
+          icon: getModelLogo("", "watsonx"),
+          models: watsonxModels?.language_models || [],
+          configured: settings.providers?.watsonx?.configured === true,
+        },
+      ]
+        .filter((p) => p.configured)
+        .map((p) => ({
+          group: p.group,
+          icon: p.icon,
+          options: p.models.map((m) => ({ ...m, provider: p.provider })),
+        })),
+    [
+      openaiModels?.language_models,
+      anthropicModels?.language_models,
+      ollamaModels?.language_models,
+      watsonxModels?.language_models,
+      settings.providers?.openai?.configured,
+      settings.providers?.anthropic?.configured,
+      settings.providers?.ollama?.configured,
+      settings.providers?.watsonx?.configured,
+    ],
+  );
 
   const isLoadingAnyLlmModels =
     openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
@@ -132,6 +146,39 @@ export function AgentSettingsSection() {
       toast.error("Failed to update settings", { description: error.message });
     },
   });
+
+  const allLlmOptions = useMemo(
+    () => groupedLlmModels.flatMap((g) => g.options),
+    [groupedLlmModels],
+  );
+
+  const handleModelChange = useCallback(
+    (newModel: string, provider?: string) => {
+      if (newModel && provider) {
+        updateSettingsMutation.mutate({
+          llm_model: newModel,
+          llm_provider: provider,
+        });
+      } else if (newModel) {
+        updateSettingsMutation.mutate({ llm_model: newModel });
+      }
+    },
+    [updateSettingsMutation],
+  );
+
+  const autoSelectedLlm = useRef(false);
+  useEffect(() => {
+    if (settings.agent?.llm_model) {
+      autoSelectedLlm.current = false;
+      return;
+    }
+    if (autoSelectedLlm.current) return;
+    if (allLlmOptions.length > 0) {
+      autoSelectedLlm.current = true;
+      const fallback = allLlmOptions.find((o) => o.default) || allLlmOptions[0];
+      handleModelChange(fallback.value, fallback.provider);
+    }
+  }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
 
   useEffect(() => {
     if (settings.agent?.system_prompt) {
@@ -148,31 +195,32 @@ export function AgentSettingsSection() {
       const newParams = new URLSearchParams(searchParams.toString());
       newParams.delete("focusLlmModel");
       router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
-      setTimeout(() => setOpenLlmSelector(false), 100);
+      const timeoutId = setTimeout(() => setOpenLlmSelector(false), 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [focusLlmModel, searchParams, router, pathname]);
 
-  const handleModelChange = (newModel: string, provider?: string) => {
-    if (newModel && provider) {
-      updateSettingsMutation.mutate({
-        llm_model: newModel,
-        llm_provider: provider,
-      });
-    } else if (newModel) {
-      updateSettingsMutation.mutate({ llm_model: newModel });
-    }
-  };
-
   const handleSystemPromptSave = () => {
+    trackButton({
+      CTA: "Save Agent Instructions",
+      elementId: "save-agent-instructions-button",
+      namespace: "settings",
+    });
     updateSettingsMutation.mutate({ system_prompt: systemPrompt });
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Edit in Langflow - Agent",
+      elementId: "edit-langflow-agent-button",
+      namespace: "settings",
+    });
     window.open(
       resolveLangflowEditUrl({
         flowId: settings.flow_id,
         editUrlOverride: settings.langflow_edit_url,
         publicUrl: settings.langflow_public_url,
+        langflowPort: settings.langflow_port,
         isIbmAuthMode,
         runMode,
       }),
@@ -183,6 +231,11 @@ export function AgentSettingsSection() {
   };
 
   const handleRestoreRetrievalFlow = (closeDialog: () => void) => {
+    trackButton({
+      CTA: "Restore Flow - Agent",
+      elementId: "restore-agent-flow-button",
+      namespace: "settings",
+    });
     fetch("/api/reset-flow/retrieval", { method: "POST" })
       .then((res) => {
         if (res.ok) return res.json();

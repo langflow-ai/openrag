@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
@@ -64,7 +64,16 @@ export function ModelSelector({
   ...props
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [prevDefaultOpen, setPrevDefaultOpen] = useState(defaultOpen);
+  if (defaultOpen !== prevDefaultOpen) {
+    setPrevDefaultOpen(defaultOpen);
+    if (defaultOpen) {
+      setOpen(true);
+    }
+  }
+
   const [searchValue, setSearchValue] = useState("");
+  const listboxId = useId();
 
   // Flatten grouped options or use regular options
   const allOptions =
@@ -88,13 +97,6 @@ export function ModelSelector({
     }
   }, [allOptions, value, custom, onValueChange]);
 
-  // Update open state when defaultOpen changes
-  useEffect(() => {
-    if (defaultOpen) {
-      setOpen(true);
-    }
-  }, [defaultOpen]);
-
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
@@ -103,6 +105,7 @@ export function ModelSelector({
           role="combobox"
           disabled={disabled || allOptions.length === 0}
           aria-expanded={open}
+          aria-controls={listboxId}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
             hasError && "!border-destructive",
@@ -143,6 +146,7 @@ export function ModelSelector({
             onValueChange={setSearchValue}
           />
           <CommandList
+            id={listboxId}
             className="max-h-[300px] overflow-y-auto"
             onWheel={(e) => e.stopPropagation()}
           >

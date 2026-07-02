@@ -36,5 +36,3 @@ export function BrandSwitcher() {
     </div>
   );
 }
-
-export default BrandSwitcher;

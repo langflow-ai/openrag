@@ -33,11 +33,32 @@ OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 
 # Optional: Langflow-specific OpenSearch endpoint
-LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST", OPENSEARCH_HOST)
-LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PORT)
+LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
+LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+
+# Gate the OpenSearch node-count readiness check ("OS node_count" flag).
+# Enabled by default; set to false on small/single-node clusters.
+OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
+    "OPENSEARCH_NODE_COUNT_CHECK_ENABLED", "true"
+).strip().lower() in ("true", "1", "yes")
+
+# Expected cluster size, used only when the node-count check is enabled.
+OPENSEARCH_EXPECTED_DATA_NODE_COUNT = get_env_int("OPENSEARCH_EXPECTED_DATA_NODE_COUNT", 3)
+# Minimum reachable cluster-manager (master) nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT", 3
+)
+# Minimum reachable coordinating-only nodes, gated by the same flag.
+OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT = get_env_int(
+    "OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT", 3
+)
+# Max readiness-probe attempts for the lifespan startup bootstrap (exponential
+# backoff between tries). Higher than other callers because a large cluster can
+# take longer to fully form; raise further for very large clusters.
+OPENSEARCH_WAIT_MAX_RETRIES = get_env_int("OPENSEARCH_WAIT_MAX_RETRIES", 100)
 
 
 def get_opensearch_username() -> str:
@@ -54,7 +75,8 @@ def get_opensearch_password() -> str | None:
 
 
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
-LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
+LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
+LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
@@ -64,9 +86,10 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
-    "http://openrag-backend:8000",
+    f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
 
 # --- Backend ingestion-callback proxy router ------------------------------
@@ -226,6 +249,17 @@ def is_dev_connector_policy_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_azure_blob_enabled() -> bool:
+    """Local dev: enable Azure Blob connector without IBM_AUTH_ENABLED.
+
+    Allows testing the Azure Blob connector (e.g. against Azurite) in a local
+    environment where IBM auth is not configured. Never enable in production.
+    Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas
@@ -359,6 +393,13 @@ OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
     "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
+# Reconcile replica counts on existing OpenRAG indices at startup so they match
+# OPENSEARCH_NUMBER_OF_REPLICAS. Defaults to true for production (multi-node)
+# deployments; single-node dev (docker-compose) overrides it to false.
+OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
+    "OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
+).lower() in ("true", "1", "yes")
+
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
 # on the FastAPI app instance). Named explicitly so it isn't confused with
 # logging-level "debug" or other unrelated debug flags.
@@ -461,6 +502,11 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
     "1",
     "yes",
 )
+
+# Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
+OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
+    "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
 
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
@@ -568,16 +614,24 @@ WEBHOOK_RENEWAL_THRESHOLD_SECONDS = max(60, _raw_webhook_renewal_threshold)
 # actual frontend origin that is carried in the OAuth state parameter.
 OAUTH_BROKER_URL = os.getenv("OAUTH_BROKER_URL")
 
+
+def _get_min_env_int(key: str, default: int, minimum: int) -> int:
+    """Read an integer env var, clamped to a minimum valid value."""
+    return max(get_env_int(key, default), minimum)
+
+
 # OpenSearch configuration
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
+OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
+OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
 
 INDEX_BODY = {
     "settings": {
         "index": {"knn": True},
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
@@ -613,7 +667,10 @@ INDEX_BODY = {
 DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
 DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
     "settings": {
-        "index": {"number_of_replicas": 0, "number_of_shards": 1},
+        "index": {
+            "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
+            "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        },
     },
     "mappings": {
         "properties": {
@@ -632,8 +689,8 @@ DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
 API_KEYS_INDEX_NAME = "api_keys"
 API_KEYS_INDEX_BODY = {
     "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
+        "number_of_shards": OPENSEARCH_NUMBER_OF_SHARDS,
+        "number_of_replicas": OPENSEARCH_NUMBER_OF_REPLICAS,
     },
     "mappings": {
         "properties": {
@@ -1197,6 +1254,17 @@ class AppClients:
             # Merge headers properly - passed headers take precedence over defaults
             default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
             headers = {**default_headers, **passed_headers}
+
+            # HTTP headers must be ASCII; non-ASCII free-text globals (e.g. a
+            # filename or owner name like こんにちは.pdf / José) would otherwise
+            # raise UnicodeEncodeError in httpx. Percent-encode such values so
+            # the request can be sent. ASCII values pass through unchanged.
+            from utils.langflow_headers import ascii_safe_header_value
+
+            headers = {
+                k: ascii_safe_header_value(v) if isinstance(v, str) else v
+                for k, v in headers.items()
+            }
 
             # Remove Content-Type if explicitly set to None (for file uploads)
             if headers.get("Content-Type") is None:

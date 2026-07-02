@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -24,6 +25,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
+from db.models import (  # noqa: E402
+    Permission,
+    Role,
+    RolePermission,
+)
 from db.models import User as UserRow  # noqa: E402
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
@@ -33,6 +39,7 @@ from dependencies import (  # noqa: E402
     get_current_user,
     get_rbac_service,
     require_all_permissions,
+    require_any_permission,
     require_permission,
 )
 from services.rbac_service import RBACService  # noqa: E402
@@ -41,6 +48,9 @@ from session_manager import User  # noqa: E402
 
 # Map role-name -> User dataclass we hand to overrides
 PERSONAS: dict[str, User] = {}
+require_document_delete_permission = require_any_permission(
+    ("knowledge:delete:own", "knowledge:delete:anonymous")
+)
 
 
 @pytest_asyncio.fixture
@@ -88,6 +98,34 @@ async def app(monkeypatch):
         await role_repo.revoke_role(viewer_db.id, user_role.id)
         await role_repo.assign_role(viewer_db.id, viewer_role.id)
 
+        delete_any_db = await ensure_user_row(
+            s,
+            User(
+                user_id="delete-any-sub",
+                email="delete-any@x.com",
+                name="Delete Any",
+                provider="google",
+            ),
+        )
+        await role_repo.revoke_role(delete_any_db.id, user_role.id)
+        delete_any_role = Role(
+            id="role-delete-any-only",
+            name="delete-any-only",
+            description="Legacy unrestricted delete permission only",
+        )
+        s.add(delete_any_role)
+        await s.flush()
+        delete_any_permission = (
+            await s.execute(select(Permission).where(Permission.name == "knowledge:delete:any"))
+        ).scalar_one()
+        s.add(
+            RolePermission(
+                role_id=delete_any_role.id,
+                permission_id=delete_any_permission.id,
+            )
+        )
+        await role_repo.assign_role(delete_any_db.id, delete_any_role.id)
+
         aliased_db = UserRow(
             id="db-aliased-user",
             oauth_provider="google",
@@ -112,6 +150,12 @@ async def app(monkeypatch):
         )
         PERSONAS["viewer"] = User(
             user_id=viewer_db.id, email="v@x.com", name="V", provider="google"
+        )
+        PERSONAS["delete_any"] = User(
+            user_id=delete_any_db.id,
+            email="delete-any@x.com",
+            name="Delete Any",
+            provider="google",
         )
         PERSONAS["aliased"] = User(
             user_id="oauth-aliased-sub",
@@ -158,6 +202,12 @@ async def app(monkeypatch):
     ):
         return JSONResponse({"user_id": user.user_id})
 
+    @app.post("/test/delete-document")
+    async def delete_document_gate(
+        user=Depends(require_document_delete_permission),
+    ):
+        return JSONResponse({"user_id": user.user_id})
+
     @app.post("/test/whoami")
     async def whoami(user=Depends(require_permission("chat:use"))):
         return JSONResponse({"user_id": user.user_id, "db_user_id": user.db_user_id})
@@ -198,6 +248,11 @@ async def app(monkeypatch):
         # upload-context is both ingestion and chat behavior
         ("user", "/test/upload-context", 200),
         ("viewer", "/test/upload-context", 403),
+        # delete accepts either own or anonymous-document scope
+        ("admin", "/test/delete-document", 200),
+        ("user", "/test/delete-document", 200),
+        ("viewer", "/test/delete-document", 403),
+        ("delete_any", "/test/delete-document", 403),
     ],
 )
 async def test_permission_enforcement(app, persona, perm_path, expected):
@@ -226,6 +281,18 @@ async def test_all_permissions_response_lists_required_permissions(app):
         r = await c.post("/test/upload-context", headers={"X-Test-Persona": "viewer"})
     assert r.status_code == 403
     assert r.json()["detail"]["required"] == ["knowledge:upload", "chat:use"]
+
+
+@pytest.mark.asyncio
+async def test_any_permission_response_lists_alternatives(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/test/delete-document", headers={"X-Test-Persona": "viewer"})
+    assert r.status_code == 403
+    assert r.json()["detail"]["required"] == [
+        "knowledge:delete:own",
+        "knowledge:delete:anonymous",
+    ]
 
 
 @pytest.mark.asyncio
