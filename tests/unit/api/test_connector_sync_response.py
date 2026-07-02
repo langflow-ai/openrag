@@ -61,9 +61,7 @@ async def test_connector_sync_reports_one_connection_with_multiple_active(monkey
 
     service = MagicMock()
     service.connection_manager = MagicMock()
-    service.connection_manager.list_connections = AsyncMock(
-        return_value=[conn1, conn2, conn3]
-    )
+    service.connection_manager.list_connections = AsyncMock(return_value=[conn1, conn2, conn3])
 
     async def _get_connector(connection_id):
         return {
@@ -107,4 +105,3 @@ async def test_connector_sync_reports_one_connection_with_multiple_active(monkey
     service.sync_specific_files.assert_awaited_once()
     args = service.sync_specific_files.await_args.args
     assert args[0] == "conn-1"  # connection_id of first connector
-
