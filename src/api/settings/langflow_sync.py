@@ -206,18 +206,12 @@ async def _update_langflow_model_values(
             for provider in llm_providers:
                 # Use configured model for current provider, or None (first available) for others
                 provider_llm_model = (
-                    config.agent.llm_model
-                    if provider == current_llm_provider
-                    else None
+                    config.agent.llm_model if provider == current_llm_provider else None
                 )
                 await flows_service.change_langflow_model_value(
-                        provider,
-                        llm_model=provider_llm_model,
-                        force_llm_update=True
-                    )
-                logger.info(
-                    f"Successfully updated Langflow flows for LLM provider {provider}"
+                    provider, llm_model=provider_llm_model, force_llm_update=True
                 )
+                logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
 
             # 2. Update ALL configured embedding providers
             embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
