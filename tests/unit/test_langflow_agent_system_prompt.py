@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
+_REPO_ROOT = Path(__file__).parent.parent.parent
+
+
 def _load_flow(flow_path: str) -> dict:
-    """Load a Langflow flow JSON file from the given path."""
-    return json.loads(Path(flow_path).read_text(encoding="utf-8"))
+    """Load a Langflow flow JSON file resolved relative to the repository root."""
+    return json.loads((_REPO_ROOT / flow_path).read_text(encoding="utf-8"))
 
 
 def _find_node_by_display_name(flow: dict, display_name: str):
