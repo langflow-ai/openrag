@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,7 +29,9 @@ def test_agent_flow_has_agent_node_with_system_prompt():
 
     assert agent_node is not None, "No node with display_name='Agent' found in openrag_agent.json"
     template = agent_node.get("data", {}).get("node", {}).get("template", {})
-    assert "system_prompt" in template, "Agent node does not have a system_prompt field in its template"
+    assert "system_prompt" in template, (
+        "Agent node does not have a system_prompt field in its template"
+    )
 
 
 @pytest.mark.asyncio
@@ -45,9 +47,14 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
     monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 
-    await FlowsService().update_chat_flow_system_prompt("updated system prompt for testing purposes")
+    await FlowsService().update_chat_flow_system_prompt(
+        "updated system prompt for testing purposes"
+    )
 
     sent_flow = request.call_args_list[1].kwargs["json"]
     agent_node = _find_node_by_display_name(sent_flow, "Agent")
     assert agent_node is not None, "Agent node missing from PATCHed flow data"
-    assert agent_node["data"]["node"]["template"]["system_prompt"]["value"] == "updated system prompt for testing purposes"
+    assert (
+        agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+        == "updated system prompt for testing purposes"
+    )

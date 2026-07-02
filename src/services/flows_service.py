@@ -711,7 +711,10 @@ class FlowsService:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
 
         await self._update_flow_field(
-            LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt, node_display_name=AGENT_COMPONENT_DISPLAY_NAME
+            LANGFLOW_CHAT_FLOW_ID,
+            "system_prompt",
+            system_prompt,
+            node_display_name=AGENT_COMPONENT_DISPLAY_NAME,
         )
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
