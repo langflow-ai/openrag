@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).parent.parent.parent
 
 
