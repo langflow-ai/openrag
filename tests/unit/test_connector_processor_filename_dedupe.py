@@ -459,9 +459,7 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
-    _wire_langflow_processor(
-        processor, document, filename_exists=True, connector_id_exists=True
-    )
+    _wire_langflow_processor(processor, document, filename_exists=True, connector_id_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
