@@ -96,29 +96,42 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Generate Image Cache Keys
+        id: cache-keys
+        run: |
+          OPENSEARCH_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile patch-netty.sh securityconfig cloud_securityconfig opensearch-entrypoint-wrapper.sh)
+          BACKEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.backend src enhancements flows securityconfig cloud_securityconfig alembic.ini alembic openrag-documents scripts/backend-entrypoint.sh pyproject.toml uv.lock)
+          FRONTEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.frontend frontend)
+          LANGFLOW_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.langflow flows scripts/langflow-entrypoint.py)
+          
+          echo "opensearch=$OPENSEARCH_HASH" >> $GITHUB_OUTPUT
+          echo "backend=$BACKEND_HASH" >> $GITHUB_OUTPUT
+          echo "frontend=$FRONTEND_HASH" >> $GITHUB_OUTPUT
+          echo "langflow=$LANGFLOW_HASH" >> $GITHUB_OUTPUT
+
       - name: Cache OpenSearch Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/opensearch.tar
-          key: ${{ runner.os }}-image-opensearch-${{ hashFiles('Dockerfile', 'patch-netty.sh', 'securityconfig/**', 'cloud_securityconfig/**', 'opensearch-entrypoint-wrapper.sh') }}
+          key: ${{ runner.os }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/backend.tar
-          key: ${{ runner.os }}-image-backend-${{ hashFiles('Dockerfile.backend', 'src/**', 'enhancements/**', 'flows/**', 'securityconfig/**', 'cloud_securityconfig/**', 'alembic.ini', 'alembic/**', 'openrag-documents/**', 'scripts/backend-entrypoint.sh', 'pyproject.toml', 'uv.lock') }}
+          key: ${{ runner.os }}-image-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/frontend.tar
-          key: ${{ runner.os }}-image-frontend-${{ hashFiles('Dockerfile.frontend', 'frontend/package-lock.json', 'frontend/package.json', 'frontend/app/**', 'frontend/components/**', 'frontend/contexts/**', 'frontend/hooks/**', 'frontend/lib/**', 'frontend/public/**', 'frontend/stubs/**', 'frontend/next.config.ts', 'frontend/tailwind.config.ts', 'frontend/tsconfig.json', 'frontend/biome.json') }}
+          key: ${{ runner.os }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/langflow.tar
-          key: ${{ runner.os }}-image-langflow-${{ hashFiles('Dockerfile.langflow', 'flows/**', 'scripts/langflow-entrypoint.py') }}
+          key: ${{ runner.os }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
