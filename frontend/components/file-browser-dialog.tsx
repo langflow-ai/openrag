@@ -27,6 +27,7 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
+  shared?: boolean;
 }
 
 function formatFileSize(bytes: number): string {
@@ -42,6 +43,7 @@ export function FileBrowserDialog({
   connectorType,
   connectionId,
   buckets,
+  shared,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -105,6 +107,7 @@ export function FileBrowserDialog({
             mimeType: "",
             size: f.size,
           })),
+          ...(shared !== undefined && { shared }),
         },
       });
 

@@ -314,6 +314,7 @@ export function SharedBucketView({
           connectorType={connector.type}
           connectionId={connector.connectionId}
           buckets={[browseDialogBucket]}
+          shared={showShared ? (ingestSettings.shared ?? false) : undefined}
         />
       )}
     </>
