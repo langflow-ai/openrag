@@ -52,9 +52,9 @@ export const preprocessCitations = (
   // Patterns: (Source: chunk_id) or [Source: chunk_id]
   const regex = /\[Source:\s*([^\]]+)\]|\(Source:\s*([^)]+)\)/g;
 
-  const processedText = text.replace(regex, (match, p1, p2) => {
+  const processedText = text.replace(regex, (_match, p1, p2) => {
     const rawIds = p1 || p2;
-    if (!rawIds) return match;
+    if (!rawIds) return "";
 
     // Split by comma in case LLM grouped multiple chunk citations
     const ids = rawIds.split(",").map((id: string) => id.trim());
@@ -90,7 +90,7 @@ export const preprocessCitations = (
       return replacementBadges.join("");
     }
 
-    return match;
+    return "";
   });
 
   return { text: processedText, citedSources: citedSourcesList };
