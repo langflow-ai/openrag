@@ -14,7 +14,9 @@ from services.docling_service import DoclingConfig
 
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$")
+    llm_provider: str | None = Field(
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+    )
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
@@ -23,7 +25,9 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$")
+    embedding_provider: str | None = Field(
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+    )
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
@@ -45,9 +49,13 @@ class SettingsUpdateBody(BaseModel):
 
 
 class OnboardingBody(BaseModel):
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$")
+    llm_provider: str | None = Field(
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+    )
     llm_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$")
+    embedding_provider: str | None = Field(
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+    )
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)

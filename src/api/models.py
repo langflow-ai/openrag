@@ -192,22 +192,30 @@ async def get_azure_ai_foundry_models(
 
         if not api_key:
             return JSONResponse(
-                {"error": "Azure AI Foundry API key is required either in request body or in configuration"},
+                {
+                    "error": "Azure AI Foundry API key is required either in request body or in configuration"
+                },
                 status_code=400,
             )
         if not endpoint:
             return JSONResponse(
-                {"error": "Azure AI Foundry endpoint is required either in request body or in configuration"},
+                {
+                    "error": "Azure AI Foundry endpoint is required either in request body or in configuration"
+                },
                 status_code=400,
             )
 
         # Validate credentials with a lightweight HEAD/GET to the models endpoint
         import httpx
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     endpoint.rstrip("/"),
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                     timeout=10.0,
                 )
                 # 200 or 404 (no models listed yet) both indicate valid credentials
@@ -218,7 +226,9 @@ async def get_azure_ai_foundry_models(
                     )
                 if response.status_code == 403:
                     return JSONResponse(
-                        {"error": "Access denied. Verify the API key has the required permissions."},
+                        {
+                            "error": "Access denied. Verify the API key has the required permissions."
+                        },
                         status_code=400,
                     )
         except httpx.TimeoutException:
@@ -242,7 +252,10 @@ async def get_azure_ai_foundry_models(
             async with httpx.AsyncClient() as client:
                 list_response = await client.get(
                     endpoint.rstrip("/"),
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                     timeout=10.0,
                 )
                 logger.info(f"Azure AI Foundry GET /models status: {list_response.status_code}")
@@ -260,7 +273,9 @@ async def get_azure_ai_foundry_models(
                             embedding_models.append(item)
                         else:
                             language_models.append(item)
-                    logger.info(f"Azure AI Foundry models parsed: {len(language_models)} LLM, {len(embedding_models)} embedding")
+                    logger.info(
+                        f"Azure AI Foundry models parsed: {len(language_models)} LLM, {len(embedding_models)} embedding"
+                    )
         except Exception as e:
             logger.warning(f"Azure AI Foundry GET /models failed: {e}")
             pass  # Fall through to config-based fallback below
@@ -280,7 +295,11 @@ async def get_azure_ai_foundry_models(
                 if config.knowledge.embedding_provider == "azure_ai_foundry" and embed_model:
                     embedding_models.append({"value": embed_model, "label": embed_model})
 
-        return JSONResponse({"language_models": language_models, "embedding_models": embedding_models})
+        return JSONResponse(
+            {"language_models": language_models, "embedding_models": embedding_models}
+        )
     except Exception as e:
         logger.error(f"Failed to get Azure AI Foundry models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve Azure AI Foundry models"}, status_code=500)
+        return JSONResponse(
+            {"error": "Failed to retrieve Azure AI Foundry models"}, status_code=500
+        )

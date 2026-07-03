@@ -625,13 +625,17 @@ async def update_settings(
             provider_updated = True
 
         if body.azure_ai_foundry_api_key is not None and body.azure_ai_foundry_api_key.strip():
-            current_config.providers.azure_ai_foundry.api_key = body.azure_ai_foundry_api_key.strip()
+            current_config.providers.azure_ai_foundry.api_key = (
+                body.azure_ai_foundry_api_key.strip()
+            )
             current_config.providers.azure_ai_foundry.configured = True
             config_updated = True
             provider_updated = True
 
         if body.azure_ai_foundry_endpoint is not None:
-            current_config.providers.azure_ai_foundry.endpoint = body.azure_ai_foundry_endpoint.strip()
+            current_config.providers.azure_ai_foundry.endpoint = (
+                body.azure_ai_foundry_endpoint.strip()
+            )
             current_config.providers.azure_ai_foundry.configured = True
             config_updated = True
             provider_updated = True
@@ -776,7 +780,9 @@ async def update_settings(
                     "azure_ai_foundry", session_manager, user, models_service
                 )
                 if affected:
-                    return _embedding_conflict_response("Azure AI Foundry", "azure_ai_foundry", affected)
+                    return _embedding_conflict_response(
+                        "Azure AI Foundry", "azure_ai_foundry", affected
+                    )
             current_config.providers.azure_ai_foundry.api_key = ""
             current_config.providers.azure_ai_foundry.endpoint = ""
             current_config.providers.azure_ai_foundry.configured = False

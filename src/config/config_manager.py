@@ -327,7 +327,13 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama", "azure_ai_foundry"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "azure_ai_foundry",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -402,7 +408,9 @@ class ConfigManager:
             config_data["providers"]["azure_ai_foundry"]["api_key"] = os.getenv("AZURE_AI_API_KEY")
             config_data["providers"]["azure_ai_foundry"]["configured"] = True
         if os.getenv("AZURE_AI_API_BASE"):
-            config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv("AZURE_AI_API_BASE")
+            config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
+                "AZURE_AI_API_BASE"
+            )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):

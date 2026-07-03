@@ -167,7 +167,9 @@ async def check_provider_health(
                     "details": {
                         "llm_model": llm_model,
                         "embedding_model": embedding_model,
-                        "endpoint": endpoint if provider in ["ollama", "watsonx", "azure_ai_foundry"] else None,
+                        "endpoint": endpoint
+                        if provider in ["ollama", "watsonx", "azure_ai_foundry"]
+                        else None,
                     },
                 },
                 status_code=200,
