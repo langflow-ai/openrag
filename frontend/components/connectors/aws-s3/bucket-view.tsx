@@ -2,6 +2,7 @@
 
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery";
+import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import { SharedBucketView } from "../shared-bucket-view";
 
 export interface S3BucketViewProps {
@@ -25,6 +26,7 @@ export function S3BucketView({
     error: bucketsError,
     refetch,
   } = useS3BucketStatusQuery(connector.connectionId, { enabled: true });
+  const { data: defaults } = useS3DefaultsQuery({ enabled: true });
   return (
     <SharedBucketView
       connector={connector}
@@ -37,6 +39,11 @@ export function S3BucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      initialSelectedBuckets={
+        defaults?.connection_id === connector.connectionId
+          ? defaults?.bucket_names
+          : undefined
+      }
     />
   );
 }
