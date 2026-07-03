@@ -112,14 +112,14 @@ class ExportDoclingDocumentComponent(Component):
         results: list[Data] = []
         for page_no in sorted(pages_dict.keys()):
             try:
-                # Try standard page_no first (docling-core 2.x+)
-                page_content = doc.export_to_markdown(
-                    image_mode=image_mode,
-                    image_placeholder=self.md_image_placeholder,
-                    page_no=page_no,
-                )
-            except TypeError:
                 try:
+                    # Try standard page_no first (docling-core 2.x+)
+                    page_content = doc.export_to_markdown(
+                        image_mode=image_mode,
+                        image_placeholder=self.md_image_placeholder,
+                        page_no=page_no,
+                    )
+                except TypeError:
                     # Fallback to from_page/to_page parameters
                     page_content = doc.export_to_markdown(
                         image_mode=image_mode,
@@ -127,9 +127,9 @@ class ExportDoclingDocumentComponent(Component):
                         from_page=page_no,
                         to_page=page_no,
                     )
-                except TypeError:
-                    # If both fail, let it fall back to whole-document export
-                    return []
+            except Exception:
+                # Any exception from either attempt: fall back to whole-document export
+                return []
 
             if page_content and page_content.strip():
                 meta = {**base_meta, "page": int(page_no)}
