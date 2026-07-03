@@ -1,0 +1,79 @@
+import type { ToolCallResult } from "@/app/chat/_types/types";
+
+export interface CitedSource {
+  item: ToolCallResult;
+  index: number;
+}
+
+const addLookupKey = (
+  sourceLookup: Map<string, ToolCallResult>,
+  key: string | undefined,
+  source: ToolCallResult,
+) => {
+  if (key) sourceLookup.set(key, source);
+};
+
+const buildSourceLookup = (sources: ToolCallResult[]) => {
+  const sourceLookup = new Map<string, ToolCallResult>();
+
+  for (const source of sources) {
+    addLookupKey(sourceLookup, source.chunk_id, source);
+    addLookupKey(sourceLookup, source.id, source);
+    addLookupKey(sourceLookup, source.data?.file_path, source);
+    addLookupKey(sourceLookup, source.filename, source);
+  }
+
+  return sourceLookup;
+};
+
+export const preprocessCitations = (
+  text: string,
+  sources: ToolCallResult[] | undefined,
+): { text: string; citedSources: CitedSource[] } => {
+  if (!sources || sources.length === 0) {
+    return { text, citedSources: [] };
+  }
+
+  const sourceLookup = buildSourceLookup(sources);
+  const citedSourcesMap = new Map<string, number>();
+  const citedSourcesList: CitedSource[] = [];
+  let nextIndex = 1;
+
+  // Patterns: (Source: chunk_id) or [Source: chunk_id]
+  const regex = /\[Source:\s*([^\]]+)\]|\(Source:\s*([^)]+)\)/g;
+
+  const processedText = text.replace(regex, (_match, p1, p2) => {
+    const rawIds = p1 || p2;
+    if (!rawIds) return "";
+
+    const ids = rawIds.split(",").map((id: string) => id.trim());
+    const replacementBadges: string[] = [];
+
+    for (const rawId of ids) {
+      const foundSource = sourceLookup.get(rawId);
+
+      if (foundSource) {
+        const uniqueKey = (foundSource.chunk_id ||
+          foundSource.id ||
+          foundSource.filename ||
+          JSON.stringify(foundSource)) as string;
+
+        let index = citedSourcesMap.get(uniqueKey);
+        if (index === undefined) {
+          index = nextIndex++;
+          citedSourcesMap.set(uniqueKey, index);
+          citedSourcesList.push({ item: foundSource, index });
+        }
+        replacementBadges.push(`[\\[${index}\\]](#citation-${index})`);
+      }
+    }
+
+    if (replacementBadges.length > 0) {
+      return replacementBadges.join("");
+    }
+
+    return "";
+  });
+
+  return { text: processedText, citedSources: citedSourcesList };
+};

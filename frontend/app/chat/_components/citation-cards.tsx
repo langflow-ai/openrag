@@ -1,8 +1,7 @@
 "use client";
 
 import { ExternalLink, FileText } from "lucide-react";
-import type { CitedSource } from "@/components/markdown-renderer";
-import { getChunkNumber } from "@/components/markdown-renderer";
+import type { CitedSource } from "@/components/markdown-citations";
 
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -51,7 +50,13 @@ export function CitationCards({
         return (
           <button
             type="button"
-            key={index}
+            key={
+              item.chunk_id ||
+              item.id ||
+              item.data?.file_path ||
+              item.filename ||
+              index
+            }
             ref={(element) => onCardRef?.(index, element)}
             onClick={handleClick}
             className={`group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${

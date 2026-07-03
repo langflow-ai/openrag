@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
-import { preprocessCitations } from "@/components/markdown-renderer";
+import { preprocessCitations } from "@/components/markdown-citations";
 import { ChunkPopup } from "./chunk-popup";
 import { CitationCards } from "./citation-cards";
 
@@ -86,7 +86,10 @@ export function AssistantMessage({
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const [chunkAnchorElement, setChunkAnchorElement] =
     useState<HTMLElement | null>(null);
-  const citationCardRefs = useRef(new Map<number, HTMLButtonElement>());
+  const citationCardRefs = useRef<Map<number, HTMLButtonElement> | null>(null);
+  if (citationCardRefs.current === null) {
+    citationCardRefs.current = new Map();
+  }
 
   const openChunkPopover = (index: number, anchorElement: HTMLElement) => {
     setActiveChunkIndex(index);
@@ -99,7 +102,7 @@ export function AssistantMessage({
   ) => {
     openChunkPopover(
       index,
-      citationCardRefs.current.get(index) ?? citationElement,
+      citationCardRefs.current?.get(index) ?? citationElement,
     );
   };
 
@@ -108,9 +111,9 @@ export function AssistantMessage({
     element: HTMLButtonElement | null,
   ) => {
     if (element) {
-      citationCardRefs.current.set(index, element);
+      citationCardRefs.current?.set(index, element);
     } else {
-      citationCardRefs.current.delete(index);
+      citationCardRefs.current?.delete(index);
     }
   };
 
@@ -130,16 +133,17 @@ export function AssistantMessage({
   };
 
   // Extract all retrieved search results from function calls
-  const retrievalSources =
-    functionCalls
-      ?.filter((call) => call.status === "completed" && call.result)
-      ?.flatMap((call) => {
-        const res = call.result;
-        if (!res) return [];
+  const retrievalSources: ToolCallResult[] = [];
+  for (const call of functionCalls ?? EMPTY_FUNCTION_CALLS) {
+    if (call.status !== "completed" || !call.result) continue;
 
-        const items = hasNestedResults(res) ? res[0].results : res;
-        return Array.isArray(items) ? items : [];
-      }) || [];
+    const items = hasNestedResults(call.result)
+      ? call.result[0].results
+      : call.result;
+    if (Array.isArray(items)) {
+      retrievalSources.push(...items);
+    }
+  }
 
   const renderContent = isStreaming
     ? hideStreamingSourceMarkers(content)
