@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import rehypeMathjax from "rehype-mathjax";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import type { ToolCallResult } from "@/app/chat/_types/types";
 import { cn } from "@/lib/utils";
 
 const CodeComponent = dynamic(() => import("./code-component"), {
@@ -15,6 +16,84 @@ const CodeComponent = dynamic(() => import("./code-component"), {
 type MarkdownRendererProps = {
   chatMessage: string;
   className?: string;
+  onCitationClick?: (index: number, anchorElement: HTMLElement) => void;
+};
+
+// Helper to extract a clean chunk index from chunk_id (0-based in ID, 1-based output)
+export const getChunkNumber = (chunkId: string | undefined): number | null => {
+  if (!chunkId) return null;
+  const parts = chunkId.split("_");
+  if (parts.length > 1) {
+    const lastPart = parts[parts.length - 1];
+    if (/^\d+$/.test(lastPart)) {
+      return parseInt(lastPart, 10) + 1;
+    }
+  }
+  return null;
+};
+
+export interface CitedSource {
+  item: ToolCallResult;
+  index: number;
+}
+
+export const preprocessCitations = (
+  text: string,
+  sources: ToolCallResult[] | undefined,
+): { text: string; citedSources: CitedSource[] } => {
+  if (!sources || sources.length === 0) {
+    return { text, citedSources: [] };
+  }
+
+  const citedSourcesMap = new Map<string, number>();
+  const citedSourcesList: CitedSource[] = [];
+  let nextIndex = 1;
+
+  // Patterns: (Source: chunk_id) or [Source: chunk_id]
+  const regex = /\[Source:\s*([^\]]+)\]|\(Source:\s*([^)]+)\)/g;
+
+  const processedText = text.replace(regex, (match, p1, p2) => {
+    const rawIds = p1 || p2;
+    if (!rawIds) return match;
+
+    // Split by comma in case LLM grouped multiple chunk citations
+    const ids = rawIds.split(",").map((id: string) => id.trim());
+    const replacementBadges: string[] = [];
+
+    for (const rawId of ids) {
+      // Find matching source by chunk_id, id, file_path, or filename
+      const foundSource = sources.find(
+        (s) =>
+          s.chunk_id === rawId ||
+          s.id === rawId ||
+          s.data?.file_path === rawId ||
+          s.filename === rawId,
+      );
+
+      if (foundSource) {
+        const uniqueKey = (foundSource.chunk_id ||
+          foundSource.id ||
+          foundSource.filename ||
+          JSON.stringify(foundSource)) as string;
+
+        let index = citedSourcesMap.get(uniqueKey);
+        if (index === undefined) {
+          index = nextIndex++;
+          citedSourcesMap.set(uniqueKey, index);
+          citedSourcesList.push({ item: foundSource, index });
+        }
+        replacementBadges.push(`[\\[${index}\\]](#citation-${index})`);
+      }
+    }
+
+    if (replacementBadges.length > 0) {
+      return replacementBadges.join("");
+    }
+
+    return match;
+  });
+
+  return { text: processedText, citedSources: citedSourcesList };
 };
 
 const preprocessChatMessage = (text: string): string => {
@@ -56,9 +135,11 @@ export const cleanupTableEmptyCells = (text: string): string => {
     })
     .join("\n");
 };
+
 export const MarkdownRenderer = ({
   chatMessage,
   className,
+  onCitationClick,
 }: MarkdownRendererProps) => {
   // Process the chat message to handle <think> tags and clean up tables
   const processedChatMessage = preprocessChatMessage(chatMessage);
@@ -117,6 +198,21 @@ export const MarkdownRenderer = ({
             );
           },
           a({ node, ...props }) {
+            const href = props.href || "";
+            if (href.startsWith("#citation-")) {
+              const index = parseInt(href.replace("#citation-", ""), 10);
+              return (
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    onCitationClick?.(index, event.currentTarget)
+                  }
+                  className="inline-flex items-center justify-center mx-0.5 px-1 py-px text-[10px] font-bold text-violet-300 bg-violet-950/60 border border-violet-800/60 rounded hover:bg-violet-900/85 transition-all cursor-pointer select-none align-baseline transform translate-y-[-2px] shadow-sm shadow-violet-950/20"
+                >
+                  {props.children}
+                </button>
+              );
+            }
             return (
               <a {...props} target="_blank" rel="noopener noreferrer">
                 {props.children}

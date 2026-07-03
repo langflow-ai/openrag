@@ -56,6 +56,7 @@ export function OnboardingContent({
           role: msg.role as "user" | "assistant",
           content: msg.content,
           timestamp: new Date(msg.timestamp),
+          functionCalls: msg.functionCalls || undefined,
         };
       }
       return null;
@@ -73,6 +74,7 @@ export function OnboardingContent({
         role: msg.role as "user" | "assistant",
         content: msg.content,
         timestamp: new Date(msg.timestamp),
+        functionCalls: msg.functionCalls || undefined,
       });
     }
   }, [settings?.onboarding]);
@@ -99,6 +101,7 @@ export function OnboardingContent({
           role: message.role,
           content: message.content,
           timestamp: message.timestamp.toISOString(),
+          functionCalls: message.functionCalls || [],
         },
       });
 

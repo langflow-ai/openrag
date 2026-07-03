@@ -1,7 +1,11 @@
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
+import { useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
+import { preprocessCitations } from "@/components/markdown-renderer";
+import { ChunkPopup } from "./chunk-popup";
+import { CitationCards } from "./citation-cards";
 
 const MarkdownRenderer = dynamic(
   () =>
@@ -16,6 +20,7 @@ import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
   TokenUsage as TokenUsageType,
+  ToolCallResult,
 } from "../_types/types";
 import { FunctionCallsContainer } from "./function-calls/container";
 import { Message } from "./message";
@@ -23,6 +28,22 @@ import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
 
 const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
+
+const hasNestedResults = (
+  value: unknown,
+): value is [{ results: ToolCallResult[] }] => {
+  if (!Array.isArray(value) || value.length !== 1) return false;
+  const first = value[0];
+  if (typeof first !== "object" || first === null || !("results" in first)) {
+    return false;
+  }
+  return Array.isArray((first as { results?: unknown }).results);
+};
+
+const hideStreamingSourceMarkers = (text: string): string =>
+  text
+    .replace(/\s*(?:\[Source:\s*[^\]]*\]|\(Source:\s*[^)]*\))/gi, "")
+    .replace(/\s*(?:\[Source:\s*[^\]]*|\(Source:\s*[^)]*)$/gi, "");
 
 interface AssistantMessageProps {
   content: string;
@@ -61,6 +82,20 @@ export function AssistantMessage({
   timestamp,
   showFeedback = true,
 }: AssistantMessageProps) {
+  const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
+  const [chunkAnchorElement, setChunkAnchorElement] =
+    useState<HTMLElement | null>(null);
+
+  const openChunkPopover = (index: number, anchorElement: HTMLElement) => {
+    setActiveChunkIndex(index);
+    setChunkAnchorElement(anchorElement);
+  };
+
+  const closeChunkPopover = () => {
+    setActiveChunkIndex(null);
+    setChunkAnchorElement(null);
+  };
+
   const trackFeedback = (feedback: "like" | "dislike") => {
     trackButton({
       action: feedback,
@@ -70,6 +105,39 @@ export function AssistantMessage({
       timestamp: timestamp?.getTime(),
     });
   };
+
+  // Extract all retrieved search results from function calls
+  const retrievalSources =
+    functionCalls
+      ?.filter((call) => call.status === "completed" && call.result)
+      ?.flatMap((call) => {
+        const res = call.result;
+        if (!res) return [];
+
+        const items = hasNestedResults(res) ? res[0].results : res;
+        return Array.isArray(items) ? items : [];
+      }) || [];
+
+  const renderContent = isStreaming
+    ? hideStreamingSourceMarkers(content)
+    : content;
+
+  // Parse citations and preprocess content
+  const { text: processedContent, citedSources } = preprocessCitations(
+    renderContent,
+    retrievalSources,
+  );
+
+  const displayMessageText = isStreaming
+    ? processedContent.trim()
+      ? processedContent +
+        ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
+      : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
+    : processedContent;
+
+  const activeCitedSource = citedSources.find(
+    (s) => s.index === activeChunkIndex,
+  );
 
   return (
     <motion.div
@@ -160,15 +228,19 @@ export function AssistantMessage({
                 "text-sm py-1.5 transition-colors duration-300",
                 isCompleted ? "text-placeholder-foreground" : "text-foreground",
               )}
-              chatMessage={
-                isStreaming
-                  ? content.trim()
-                    ? content +
-                      ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
-                    : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
-                  : content
-              }
+              chatMessage={displayMessageText}
+              onCitationClick={openChunkPopover}
             />
+
+            {/* Citation Cards */}
+            {!isStreaming && (
+              <CitationCards
+                citedSources={citedSources}
+                activeCardIndex={activeChunkIndex}
+                onCardClick={openChunkPopover}
+              />
+            )}
+
             {usage && !isStreaming && <TokenUsage usage={usage} />}
             {!isInitialGreeting && showFeedback && !isStreaming && (
               <MessageActions trackFeedback={trackFeedback} />
@@ -176,6 +248,32 @@ export function AssistantMessage({
           </motion.div>
         </div>
       </Message>
+
+      {/* Chunk Details Popup Modal */}
+      {activeCitedSource && (
+        <ChunkPopup
+          isOpen={activeChunkIndex !== null}
+          onClose={closeChunkPopover}
+          anchorElement={chunkAnchorElement}
+          chunkNumber={activeCitedSource.index}
+          filename={
+            activeCitedSource.item.data?.file_path?.split("/").pop() ||
+            activeCitedSource.item.filename ||
+            "Document"
+          }
+          score={
+            activeCitedSource.item.score !== undefined
+              ? activeCitedSource.item.score
+              : 0
+          }
+          sourceText={
+            activeCitedSource.item.data?.text ||
+            activeCitedSource.item.text ||
+            ""
+          }
+          item={activeCitedSource.item}
+        />
+      )}
     </motion.div>
   );
 }

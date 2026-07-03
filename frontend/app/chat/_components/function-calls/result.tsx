@@ -8,6 +8,8 @@ type ToolResultItem = {
   score?: number;
   source_url?: string | null;
   text?: string;
+  chunk_id?: string;
+  id?: string;
 };
 
 interface FunctionCallResultProps {
