@@ -64,8 +64,8 @@ export function CitationCards({
             onClick={handleClick}
             className={`group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${
               isActive
-                ? "bg-muted border-primary-hover/50"
-                : "bg-muted/50 hover:bg-muted border-muted hover:border-primary-hover/50"
+                ? "bg-muted border-foreground/50"
+                : "bg-muted/50 hover:bg-muted border-muted hover:border-foreground/50"
             }`}
             title={
               hasUrl
@@ -85,7 +85,7 @@ export function CitationCards({
 
             {/* Document details */}
             <div className="flex flex-col min-w-0 pr-1">
-              <span className="text-mmd text-primary-hover truncate max-w-[160px] leading-tight">
+              <span className="text-mmd text-foreground truncate max-w-[160px] leading-tight">
                 {filename}
               </span>
               <span className="text-xxs text-muted-foreground mt-1 leading-none">

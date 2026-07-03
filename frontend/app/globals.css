@@ -187,6 +187,7 @@
   /* IBM Light */
   [data-theme="ibm"] {
     --background: 0 0% 100%; /* same as OSS light #ffffff */
+    --background-dark: 0 0% 96%;
     --foreground: 0 0% 15%; /* IBM Gray 100 #262626 */
     --card: 0 0% 96%; /* IBM Gray 10 #f4f4f4 */
     --card-foreground: 0 0% 15%;
@@ -290,6 +291,7 @@
   /* IBM Dark */
   [data-theme="ibm"].dark {
     --background: 0 0% 8.6%; /* IBM Gray 100 #161616 */
+    --background-dark: 0 0% 8.6%;
     --foreground: 0 0% 97%; /* IBM Gray 10 #f4f4f4 */
     --card: 0 0% 15%; /* IBM Gray 90 #262626 */
     --card-foreground: 0 0% 97%;
@@ -510,6 +512,14 @@
 
   [data-theme="ibm"].dark .ibm-chat-bubble {
     background-color: #262626;
+  }
+
+  [data-theme="ibm"] .rounded-2xl {
+    border-radius: 0;
+  }
+
+  [data-theme="ibm"] .rounded-xl {
+    border-radius: 0;
   }
 
   /*
