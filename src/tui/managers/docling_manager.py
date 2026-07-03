@@ -337,7 +337,7 @@ class DoclingManager:
             log_file = open(self._log_file_path, "w")
 
             env = os.environ.copy()
-            
+
             # Add docling serve environment variable to change Tenant Id header name
             # so that it's not used to enforce ownership locally.
             if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
