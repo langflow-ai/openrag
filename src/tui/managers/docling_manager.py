@@ -345,6 +345,7 @@ class DoclingManager:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
                 start_new_session=True,  # Detach from parent process group
+                env=env,
             )
             # Close parent's copy of the fd; the child has its own
             log_file.close()
