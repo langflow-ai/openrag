@@ -1,8 +1,7 @@
-import os
 import json
 import logging
-from typing import Optional, Dict, Any
-
+import os
+from typing import Any
 
 import msal
 
@@ -26,16 +25,20 @@ class SharePointOAuth:
         "Files.Read.All",  # Access all files user can access
         "Files.Read.Selected",
         "Sites.Read.All",  # Read SharePoint sites (for File Picker)
-        "offline_access"
+        "offline_access",
     ]
     RESOURCE_SCOPES = [
         "User.Read",
         "Files.Read",
         "Files.Read.All",
         "Files.Read.Selected",
-        "Sites.Read.All"
+        "Sites.Read.All",
     ]
     SCOPES = AUTH_SCOPES  # Backward compatibility alias
+
+    # OAuth prompt for interactive auth. Use "select_account" (not "consent") so a
+    # one-time tenant admin consent is reused instead of re-prompting every user/login.
+    AUTH_PROMPT = "select_account"
 
     # Kept for reference; MSAL derives endpoints from `authority`
     AUTH_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
@@ -67,7 +70,7 @@ class SharePointOAuth:
         self.authority = authority
         self.allow_json_refresh = allow_json_refresh
         self.token_cache = msal.SerializableTokenCache()
-        self._current_account = None
+        self._current_account: dict[str, Any] | None = None
 
         # Initialize MSAL Confidential Client
         self.app = msal.ConfidentialClientApplication(
@@ -81,7 +84,7 @@ class SharePointOAuth:
         """Load existing credentials from token file (async)."""
         try:
             from utils.encryption import read_encrypted_file
-            
+
             logger.debug(f"SharePoint OAuth loading credentials from: {self.token_file}")
             cache_data, needs_upgrade = await read_encrypted_file(self.token_file)
 
@@ -113,14 +116,20 @@ class SharePointOAuth:
                 logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(f"Set current account: {self._current_account.get('username', 'no username')}")
-                    
+                    logger.debug(
+                        f"Set current account: {accounts[0].get('username', 'no username')}"
+                    )
+
                     if needs_upgrade:
                         await self.save_cache()
 
                     # IMPORTANT: Use RESOURCE_SCOPES (no reserved scopes) for silent acquisition
-                    result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
-                    logger.debug(f"Silent token acquisition result keys: {list(result.keys()) if result else 'None'}")
+                    result = self.app.acquire_token_silent(
+                        self.RESOURCE_SCOPES, account=self._current_account
+                    )
+                    logger.debug(
+                        f"Silent token acquisition result keys: {list(result.keys()) if result else 'None'}"
+                    )
                     if result and "access_token" in result:
                         logger.debug("Silent token acquisition successful")
                         if getattr(self.token_cache, "has_state_changed", False):
@@ -134,7 +143,7 @@ class SharePointOAuth:
 
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] SharePoint credential load failed")
             return False
 
@@ -170,14 +179,22 @@ class SharePointOAuth:
                 logger.debug(f"After refresh, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(f"Set current account after refresh: {self._current_account.get('username', 'no username')}")
+                    logger.debug(
+                        f"Set current account after refresh: {accounts[0].get('username', 'no username')}"
+                    )
                 return True
 
             # Error handling
-            err = (result or {}).get("error_description") or (result or {}).get("error") or "Unknown error"
+            err = (
+                (result or {}).get("error_description")
+                or (result or {}).get("error")
+                or "Unknown error"
+            )
             logger.error(f"Refresh token failed: {err}")
 
-            if any(code in err for code in ("AADSTS70000", "invalid_grant", "interaction_required")):
+            if any(
+                code in err for code in ("AADSTS70000", "invalid_grant", "interaction_required")
+            ):
                 logger.warning(
                     "Refresh denied due to unauthorized/expired scopes or invalid grant. "
                     "Delete the token file and perform interactive sign-in with correct scopes."
@@ -185,7 +202,7 @@ class SharePointOAuth:
 
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] SharePoint JSON token refresh failed")
             return False
 
@@ -200,18 +217,19 @@ class SharePointOAuth:
             cache_data = self.token_cache.serialize()
             if cache_data:
                 from utils.encryption import write_encrypted_file
+
                 await write_encrypted_file(self.token_file, cache_data)
-                
+
                 logger.debug(f"Token cache saved to {self.token_file}")
         except Exception as e:
             logger.error(f"Failed to save token cache: {e}")
 
-    def create_authorization_url(self, redirect_uri: str, state: Optional[str] = None) -> str:
+    def create_authorization_url(self, redirect_uri: str, state: str | None = None) -> str:
         """Create authorization URL for OAuth flow."""
         # Store redirect URI for later use in callback
         self._redirect_uri = redirect_uri
 
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             # IMPORTANT: interactive auth includes offline_access
             "scopes": self.AUTH_SCOPES,
             "redirect_uri": redirect_uri,
@@ -249,7 +267,11 @@ class SharePointOAuth:
                 logger.info("SharePoint OAuth authorization successful")
                 return True
 
-            error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "Unknown error"
+            error_msg = (
+                (result or {}).get("error_description")
+                or (result or {}).get("error")
+                or "Unknown error"
+            )
             logger.error(f"SharePoint OAuth authorization failed: {error_msg}")
             return False
 
@@ -267,31 +289,49 @@ class SharePointOAuth:
                 load_result = await self.load_credentials()
                 logger.info(f"SharePoint is_authenticated: load_credentials returned {load_result}")
 
-            logger.info(f"SharePoint is_authenticated: current_account={self._current_account is not None}")
+            logger.info(
+                f"SharePoint is_authenticated: current_account={self._current_account is not None}"
+            )
 
             # If we have an account, try to get a token (MSAL will refresh if needed)
             if self._current_account:
-                logger.info(f"SharePoint is_authenticated: Trying acquire_token_silent with account {self._current_account.get('username', 'unknown')}")
+                logger.info(
+                    f"SharePoint is_authenticated: Trying acquire_token_silent with account {self._current_account.get('username', 'unknown')}"
+                )
                 logger.info(f"SharePoint is_authenticated: RESOURCE_SCOPES={self.RESOURCE_SCOPES}")
                 # IMPORTANT: use RESOURCE_SCOPES here
-                result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
+                result = self.app.acquire_token_silent(
+                    self.RESOURCE_SCOPES, account=self._current_account
+                )
                 if result and "access_token" in result:
-                    logger.info("SharePoint is_authenticated: Successfully acquired token with account")
+                    logger.info(
+                        "SharePoint is_authenticated: Successfully acquired token with account"
+                    )
                     if getattr(self.token_cache, "has_state_changed", False):
                         await self.save_cache()
                     return True
                 else:
-                    error_msg = (result or {}).get("error") or (result or {}).get("error_description") or "No result returned"
-                    logger.warning(f"SharePoint is_authenticated: Token acquisition failed for current account: {error_msg}")
+                    error_msg = (
+                        (result or {}).get("error")
+                        or (result or {}).get("error_description")
+                        or "No result returned"
+                    )
+                    logger.warning(
+                        f"SharePoint is_authenticated: Token acquisition failed for current account: {error_msg}"
+                    )
                     logger.warning(f"SharePoint is_authenticated: Full result: {result}")
 
             # Fallback: try without specific account
-            logger.info("SharePoint is_authenticated: Fallback - trying acquire_token_silent without account")
+            logger.info(
+                "SharePoint is_authenticated: Fallback - trying acquire_token_silent without account"
+            )
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
                 # Update current account if this worked
                 accounts = self.app.get_accounts()
-                logger.info(f"SharePoint is_authenticated: Fallback succeeded, found {len(accounts)} accounts")
+                logger.info(
+                    f"SharePoint is_authenticated: Fallback succeeded, found {len(accounts)} accounts"
+                )
                 if accounts:
                     self._current_account = accounts[0]
                 if getattr(self.token_cache, "has_state_changed", False):
@@ -301,23 +341,31 @@ class SharePointOAuth:
             logger.warning(f"SharePoint is_authenticated: Fallback also failed, result: {result}")
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] SharePoint is_authenticated failed")
             return False
 
     def get_access_token(self) -> str:
         """Get an access token for Microsoft Graph (simplified like Google Drive)."""
-        logger.info(f"SharePoint get_access_token: Starting, current_account={self._current_account is not None}")
+        logger.info(
+            f"SharePoint get_access_token: Starting, current_account={self._current_account is not None}"
+        )
         try:
             # Try with current account first
             if self._current_account:
-                logger.info(f"SharePoint get_access_token: Trying with account {self._current_account.get('username', 'unknown')}")
-                result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
+                logger.info(
+                    f"SharePoint get_access_token: Trying with account {self._current_account.get('username', 'unknown')}"
+                )
+                result = self.app.acquire_token_silent(
+                    self.RESOURCE_SCOPES, account=self._current_account
+                )
                 if result and "access_token" in result:
                     logger.info("SharePoint get_access_token: Success with current account")
                     return result["access_token"]
                 else:
-                    logger.warning(f"SharePoint get_access_token: Failed with account, result: {result}")
+                    logger.warning(
+                        f"SharePoint get_access_token: Failed with account, result: {result}"
+                    )
 
             # Fallback: try without specific account
             logger.info("SharePoint get_access_token: Fallback - trying without account")
@@ -327,48 +375,66 @@ class SharePointOAuth:
                 return result["access_token"]
 
             # If we get here, authentication has failed
-            error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "No valid authentication"
+            error_msg = (
+                (result or {}).get("error_description")
+                or (result or {}).get("error")
+                or "No valid authentication"
+            )
             logger.error(f"SharePoint get_access_token: All attempts failed, error: {error_msg}")
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
-        except Exception as e:
+        except Exception:
             logger.exception("[CONNECTOR] SharePoint get_access_token failed")
             raise
 
     def get_access_token_for_resource(self, resource_url: str) -> str:
         """
         Get an access token for a specific SharePoint resource.
-        
+
         The SharePoint File Picker v8 requires a token with the SharePoint URL as the audience,
         not Microsoft Graph. This method acquires a token with SharePoint-specific scopes.
-        
+
         Args:
             resource_url: The SharePoint site URL (e.g., https://contoso.sharepoint.com)
-        
+
         Returns:
             Access token with the SharePoint resource as the audience
         """
         logger.info(f"SharePoint get_access_token_for_resource: resource_url={resource_url}")
-        
+
         # Use /.default to request whatever permissions are configured for this resource
         # in the Azure AD app registration
         sharepoint_scopes = [f"{resource_url.rstrip('/')}/.default"]
         logger.info(f"SharePoint get_access_token_for_resource: scopes={sharepoint_scopes}")
-        
+
         try:
             # Try with current account first
             if self._current_account:
-                logger.info(f"SharePoint get_access_token_for_resource: Trying with account {self._current_account.get('username', 'unknown')}")
-                result = self.app.acquire_token_silent(sharepoint_scopes, account=self._current_account)
+                logger.info(
+                    f"SharePoint get_access_token_for_resource: Trying with account {self._current_account.get('username', 'unknown')}"
+                )
+                result = self.app.acquire_token_silent(
+                    sharepoint_scopes, account=self._current_account
+                )
                 if result and "access_token" in result:
-                    logger.info("SharePoint get_access_token_for_resource: Success with current account")
+                    logger.info(
+                        "SharePoint get_access_token_for_resource: Success with current account"
+                    )
                     return result["access_token"]
                 else:
-                    error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "Unknown error"
-                    logger.warning(f"SharePoint get_access_token_for_resource: Failed with account: {error_msg}")
+                    error_msg = (
+                        (result or {}).get("error_description")
+                        or (result or {}).get("error")
+                        or "Unknown error"
+                    )
+                    logger.warning(
+                        f"SharePoint get_access_token_for_resource: Failed with account: {error_msg}"
+                    )
 
             # Fallback: try without specific account
-            logger.info("SharePoint get_access_token_for_resource: Fallback - trying without account")
+            logger.info(
+                "SharePoint get_access_token_for_resource: Fallback - trying without account"
+            )
             result = self.app.acquire_token_silent(sharepoint_scopes, account=None)
             if result and "access_token" in result:
                 logger.info("SharePoint get_access_token_for_resource: Fallback success")
@@ -376,23 +442,29 @@ class SharePointOAuth:
 
             # If silent acquisition fails, we may need to acquire interactively or via refresh
             # Try using the refresh token if available
-            error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "No valid authentication"
-            logger.error(f"SharePoint get_access_token_for_resource: All attempts failed: {error_msg}")
-            
+            error_msg = (
+                (result or {}).get("error_description")
+                or (result or {}).get("error")
+                or "No valid authentication"
+            )
+            logger.error(
+                f"SharePoint get_access_token_for_resource: All attempts failed: {error_msg}"
+            )
+
             # Provide helpful error message
             if "AADSTS65001" in str(error_msg) or "consent" in str(error_msg).lower():
                 raise ValueError(
                     f"Admin consent required for SharePoint API access. "
                     f"Please grant consent in Azure AD for the SharePoint resource: {resource_url}"
                 )
-            
+
             raise ValueError(f"Failed to acquire SharePoint token: {error_msg}")
 
         except ValueError:
             raise
         except Exception as e:
             logger.exception("[CONNECTOR] SharePoint get_access_token_for_resource failed")
-            raise ValueError(f"Failed to acquire SharePoint token: {str(e)}")
+            raise ValueError(f"Failed to acquire SharePoint token: {e}") from e
 
     async def revoke_credentials(self):
         """Clear token cache and remove token file (like Google Drive)."""

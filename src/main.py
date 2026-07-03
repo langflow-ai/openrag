@@ -29,7 +29,7 @@ import atexit
 import httpx  # noqa: F401
 
 from app.factory import create_app
-from config.settings import ACCESS_LOG_ENABLED
+from config.settings import ACCESS_LOG_ENABLED, OPENRAG_BACKEND_PORT
 from services.default_docs_service import (
     _get_remote_docs_signature,
     _should_use_url_default_docs_ingest,
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         app,
         workers=1,
         host="0.0.0.0",
-        port=8000,
+        port=OPENRAG_BACKEND_PORT,
         reload=False,
         access_log=ACCESS_LOG_ENABLED,
         log_config=None,

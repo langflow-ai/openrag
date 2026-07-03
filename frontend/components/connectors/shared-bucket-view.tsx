@@ -107,13 +107,19 @@ export function SharedBucketView({
         onSuccess: (result) => {
           invalidate();
           if (result.task_ids?.length) {
-            addTask(result.task_ids[0], {
-              connectorType: connector.type,
-              source: "connector",
-            });
+            // The container path may return two tasks (new files + changed files);
+            // track them all.
+            for (const id of result.task_ids) {
+              addTask(id, {
+                connectorType: connector.type,
+                source: "connector",
+              });
+            }
             onDone();
           } else {
-            toast.info("No files found in the selected buckets.");
+            toast.info(
+              result.message ?? "No files found in the selected buckets.",
+            );
           }
         },
         onError: (err) => {

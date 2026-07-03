@@ -109,6 +109,8 @@ RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo 'if [ -z "$HASH" ]; then echo "[ERROR] Failed to generate admin hash"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
     echo 'sed -i "s|^  hash: \".*\"|  hash: \"$HASH\"|" /usr/share/opensearch/securityconfig/internal_users.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Updated internal_users.yml with runtime-generated admin hash"' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'BACKEND_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'sed -i "s|http://openrag-backend:8000|$BACKEND_URL|g" /usr/share/opensearch/securityconfig/config.yml /usr/share/opensearch/cloud_securityconfig/config.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Applying OIDC and DLS security configuration..."' >> /usr/share/opensearch/setup-security.sh && \
     echo '/usr/share/opensearch/plugins/opensearch-security/tools/securityadmin.sh \' >> /usr/share/opensearch/setup-security.sh && \
     echo '  -cd /usr/share/opensearch/securityconfig \' >> /usr/share/opensearch/setup-security.sh && \

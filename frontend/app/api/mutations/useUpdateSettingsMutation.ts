@@ -87,6 +87,25 @@ export interface UpdateSettingsResponse {
   settings: Settings;
 }
 
+async function updateSettings(
+  variables: UpdateSettingsRequest,
+): Promise<UpdateSettingsResponse> {
+  const response = await fetch("/api/settings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(variables),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new UpdateSettingsError(response.status, errorData);
+  }
+
+  return response.json();
+}
+
 export const useUpdateSettingsMutation = (
   options?: Omit<
     UseMutationOptions<UpdateSettingsResponse, Error, UpdateSettingsRequest>,
@@ -95,25 +114,6 @@ export const useUpdateSettingsMutation = (
 ) => {
   const queryClient = useQueryClient();
   const { refetch: refetchModels } = useGetCurrentProviderModelsQuery();
-
-  async function updateSettings(
-    variables: UpdateSettingsRequest,
-  ): Promise<UpdateSettingsResponse> {
-    const response = await fetch("/api/settings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(variables),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new UpdateSettingsError(response.status, errorData);
-    }
-
-    return response.json();
-  }
 
   return useMutation({
     mutationFn: updateSettings,

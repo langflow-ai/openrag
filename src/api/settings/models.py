@@ -164,6 +164,7 @@ class SettingsResponse(BaseModel):
     show_provider_ingest_settings: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
+    langflow_port: str | None = None
 
 
 class OnboardingResponse(BaseModel):

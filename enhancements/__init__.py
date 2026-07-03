@@ -8,6 +8,7 @@ Strip the imports below to ship a bare OSS build.
 
 from connectors.base import BaseConnector
 
+from .connectors.azure_blob import AzureBlobConnector
 from .connectors.ibm_cos import IBMCOSConnector
 
-ADDITIONAL_CONNECTORS: list[type[BaseConnector]] = [IBMCOSConnector]
+ADDITIONAL_CONNECTORS: list[type[BaseConnector]] = [IBMCOSConnector, AzureBlobConnector]

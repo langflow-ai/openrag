@@ -2,7 +2,7 @@ import json
 import uuid
 from typing import Any
 
-from config.settings import clients
+from config.settings import OPENRAG_BACKEND_INTERNAL_URL, clients
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 class MonitorService:
     def __init__(self, session_manager=None, webhook_base_url: str = None):
         self.session_manager = session_manager
-        self.webhook_base_url = webhook_base_url or "http://openrag-backend:8000"
+        self.webhook_base_url = webhook_base_url or OPENRAG_BACKEND_INTERNAL_URL
 
     def _trusted_opensearch_client(self):
         if clients.opensearch is None:

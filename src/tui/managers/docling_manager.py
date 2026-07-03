@@ -21,12 +21,12 @@ class DoclingManager:
     _instance = None
     _initialized = False
 
-    def __new__(cls):
+    def __new__(cls) -> Any:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Only initialize once
         if self._initialized:
             return
@@ -58,7 +58,7 @@ class DoclingManager:
         # Try to recover existing process from PID file
         self._recover_from_pid_file()
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Cleanup resources but keep docling-serve running across sessions."""
         # Don't stop the process on exit - let it persist
         # Just clean up our references
@@ -295,6 +295,8 @@ class DoclingManager:
 
             cmd = [
                 "uvx",
+                "--python",
+                "3.13",
                 "--from",
                 "docling-serve[ui]==1.20.0",
                 "--with",
@@ -444,10 +446,10 @@ class DoclingManager:
                     pass
             return False, f"Error starting docling serve: {str(e)}"
 
-    def _start_output_capture(self):
-        """Start a thread to tail the docling-serve log file."""
+    def _start_output_capture(self) -> None:
+        """Start a thread to capture log file output."""
 
-        def tail_log_file():
+        def tail_log_file() -> None:
             if not self._log_file_path.exists():
                 self._add_log_entry("No log file available")
                 return

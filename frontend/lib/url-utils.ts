@@ -5,6 +5,8 @@ export interface LangflowEditUrlParams {
   editUrlOverride?: string | null;
   /** Operator-configured public Langflow URL (settings.langflow_public_url). */
   publicUrl?: string | null;
+  /** Port for Langflow, provided by the backend (settings.langflow_port). */
+  langflowPort?: number | string | null;
   /** Whether the deployment is in IBM auth mode. */
   isIbmAuthMode: boolean;
   /** Backend run mode ("oss" | "saas" | "on_prem"), used to pick the IBM URL derivation. */
@@ -26,6 +28,7 @@ export function resolveLangflowEditUrl({
   flowId,
   editUrlOverride,
   publicUrl,
+  langflowPort,
   isIbmAuthMode,
   runMode,
   locationOrigin = typeof window !== "undefined" ? window.location.origin : "",
@@ -37,11 +40,12 @@ export function resolveLangflowEditUrl({
         : deriveCloudLangflowUrl(locationOrigin)
       : null;
 
+  const portToUse = langflowPort || "7860";
   let derivedFromOrigin = "";
   if (locationOrigin) {
     try {
       const url = new URL(locationOrigin);
-      derivedFromOrigin = `${url.protocol}//${url.hostname}:7860`;
+      derivedFromOrigin = `${url.protocol}//${url.hostname}:${portToUse}`;
     } catch {
       derivedFromOrigin = "";
     }
@@ -51,7 +55,7 @@ export function resolveLangflowEditUrl({
     ibmLangflowUrl ||
     publicUrl ||
     derivedFromOrigin ||
-    "http://localhost:7860"
+    `http://localhost:${portToUse}`
   ).replace(/\/$/, "");
   const computed = flowId ? `${base}/flow/${flowId}` : base;
   return editUrlOverride || computed;

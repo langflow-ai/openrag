@@ -23,7 +23,7 @@
     "@mdx-js/react": "^3.1.1",
     "clsx": "^2.1.1",
     "docusaurus-plugin-image-zoom": "^3.0.1",
-    "lucide-react": "^1.17.0",
+    "lucide-react": "^1.22.0",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -32,7 +32,7 @@
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
-    "baseline-browser-mapping": "^2.10.35",
+    "baseline-browser-mapping": "^2.10.40",
     "typescript": "~6.0.3"
   },
   "overrides": {
