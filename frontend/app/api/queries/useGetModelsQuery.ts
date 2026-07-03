@@ -34,6 +34,11 @@ export interface IBMModelsParams {
   projectId?: string;
 }
 
+export interface AzureAIFoundryModelsParams {
+  endpoint?: string;
+  apiKey?: string;
+}
+
 export const useGetOpenAIModelsQuery = (
   params?: OpenAIModelsParams,
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
@@ -197,6 +202,49 @@ export const useGetIBMModelsQuery = (
   );
 };
 
+export const useGetAzureAIFoundryModelsQuery = (
+  params?: AzureAIFoundryModelsParams,
+  options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
+) => {
+  const queryClient = useQueryClient();
+
+  async function getAzureAIFoundryModels(): Promise<ModelsResponse> {
+    const url = new URL("/api/models/azure-ai-foundry", window.location.origin);
+    const body: { endpoint?: string; api_key?: string } = {};
+    if (params?.endpoint) {
+      body.endpoint = params.endpoint;
+    }
+    if (params?.apiKey) {
+      body.api_key = params.apiKey;
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      return await response.json();
+    } else {
+      throw new Error("Failed to validate Azure AI Foundry credentials");
+    }
+  }
+
+  return useQuery(
+    {
+      queryKey: ["models", "azure_ai_foundry", params],
+      queryFn: getAzureAIFoundryModels,
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+      ...options,
+    },
+    queryClient,
+  );
+};
+
 /**
  * Hook that automatically fetches models for the current LLM provider
  * based on the settings configuration
@@ -251,6 +299,20 @@ export const useGetCurrentProviderModelsQuery = (
     },
   );
 
+  const azureModels = useGetAzureAIFoundryModelsQuery(
+    {
+      endpoint: settings?.providers?.azure_ai_foundry?.endpoint,
+      apiKey: "",
+    },
+    {
+      enabled:
+        currentProvider === "azure_ai_foundry" &&
+        !!settings?.providers?.azure_ai_foundry?.endpoint &&
+        options?.enabled !== false,
+      ...options,
+    },
+  );
+
   // Return the appropriate query result based on current provider
   switch (currentProvider) {
     case "openai":
@@ -261,6 +323,8 @@ export const useGetCurrentProviderModelsQuery = (
       return ollamaModels;
     case "watsonx":
       return ibmModels;
+    case "azure_ai_foundry":
+      return azureModels;
     default:
       // Return a default/disabled query if no provider is set
       return {

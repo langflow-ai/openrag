@@ -35,6 +35,7 @@ from api.settings.langflow_sync import (
 from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
+    AzureAIFoundryProviderConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
     IngestionDefaultsConfig,
@@ -215,6 +216,11 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
+                azure_ai_foundry=AzureAIFoundryProviderConfig(
+                    has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
+                    endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
+                    configured=openrag_config.providers.azure_ai_foundry.configured,
+                ),
             )
             if show_providers
             else None,
@@ -282,6 +288,8 @@ async def update_settings(
             "watsonx_endpoint",
             "watsonx_project_id",
             "ollama_endpoint",
+            "azure_ai_foundry_api_key",
+            "azure_ai_foundry_endpoint",
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
@@ -616,6 +624,18 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.azure_ai_foundry_api_key is not None and body.azure_ai_foundry_api_key.strip():
+            current_config.providers.azure_ai_foundry.api_key = body.azure_ai_foundry_api_key.strip()
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_ai_foundry_endpoint is not None:
+            current_config.providers.azure_ai_foundry.endpoint = body.azure_ai_foundry_endpoint.strip()
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+            provider_updated = True
+
         if body.remove_ollama_config:
             other_providers_configured = (
                 current_config.providers.openai.configured
@@ -732,6 +752,40 @@ async def update_settings(
                 current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(current_config, "watsonx")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_azure_ai_foundry_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {
+                        "error": "Cannot remove Azure AI Foundry configuration: configure another model provider first."
+                    },
+                    status_code=400,
+                )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "azure_ai_foundry", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("Azure AI Foundry", "azure_ai_foundry", affected)
+            current_config.providers.azure_ai_foundry.api_key = ""
+            current_config.providers.azure_ai_foundry.endpoint = ""
+            current_config.providers.azure_ai_foundry.configured = False
+            if current_config.agent.llm_provider == "azure_ai_foundry":
+                fb = _first_configured_llm_provider(current_config, "azure_ai_foundry")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = _default_llm_model(fb)
+            if current_config.knowledge.embedding_provider == "azure_ai_foundry":
+                fb = _first_configured_embedding_provider(current_config, "azure_ai_foundry")
                 current_config.knowledge.embedding_provider = fb
                 current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True

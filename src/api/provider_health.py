@@ -25,7 +25,7 @@ async def check_provider_health(
     Check if the configured provider is healthy and properly validated.
 
     Query parameters:
-        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
+        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic', 'azure_ai_foundry').
                            If not provided, checks the currently configured provider.
         test_completion (optional): If true, performs full validation with completion/embedding tests.
 
@@ -48,7 +48,7 @@ async def check_provider_health(
             provider = current_config.agent.llm_provider
 
         # Validate provider name
-        valid_providers = ["openai", "ollama", "watsonx", "anthropic"]
+        valid_providers = ["openai", "ollama", "watsonx", "anthropic", "azure_ai_foundry"]
         if provider not in valid_providers:
             return JSONResponse(
                 {
@@ -167,7 +167,7 @@ async def check_provider_health(
                     "details": {
                         "llm_model": llm_model,
                         "embedding_model": embedding_model,
-                        "endpoint": endpoint if provider in ["ollama", "watsonx"] else None,
+                        "endpoint": endpoint if provider in ["ollama", "watsonx", "azure_ai_foundry"] else None,
                     },
                 },
                 status_code=200,

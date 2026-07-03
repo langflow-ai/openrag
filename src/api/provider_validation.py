@@ -189,6 +189,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_lightweight_health(api_key, endpoint)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -210,6 +212,8 @@ async def test_completion_with_tools(
         await _test_ollama_completion_with_tools(llm_model, endpoint)
     elif provider == "anthropic":
         await _test_anthropic_completion_with_tools(api_key, llm_model)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_completion(api_key, llm_model, endpoint)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -229,6 +233,8 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_embedding(api_key, embedding_model, endpoint)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -805,4 +811,119 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
+        raise
+
+
+# Azure AI Foundry validation functions
+async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str) -> None:
+    """Test Azure AI Foundry credentials with a lightweight GET to the models endpoint."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                endpoint.rstrip("/"),
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            if response.status_code == 401:
+                raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+            if response.status_code == 403:
+                raise Exception("Access denied. Verify the API key has the required permissions.")
+            # 200 or 404 (empty catalog) both confirm the endpoint is reachable and the key is accepted.
+            logger.info("Azure AI Foundry lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry health check timed out")
+        raise Exception("Azure AI Foundry endpoint did not respond. Check the endpoint URL.")
+    except Exception as e:
+        logger.error(f"Azure AI Foundry health check failed: {str(e)}")
+        raise
+
+
+async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoint: str) -> None:
+    """Test Azure AI Foundry chat completion with the given deployment."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+    if not llm_model:
+        raise Exception("A deployment name is required to test Azure AI Foundry completion.")
+
+    try:
+        completions_url = f"{endpoint.rstrip('/')}/{llm_model}/chat/completions"
+        payload = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 10,
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                completions_url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+                if response.status_code == 403:
+                    raise Exception("Access denied. Verify the API key has the required permissions.")
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Deployment '{llm_model}' not found. Check that the deployment name matches exactly what was created in Azure AI Foundry."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure AI Foundry rate limit exceeded.")
+                raise Exception(f"Azure AI Foundry API error: {error_details}")
+            logger.info("Azure AI Foundry completion test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry completion test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"Azure AI Foundry completion test failed: {str(e)}")
+        raise
+
+
+async def _test_azure_ai_foundry_embedding(api_key: str, embedding_model: str, endpoint: str) -> None:
+    """Test Azure AI Foundry embedding generation with the given deployment."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+    if not embedding_model:
+        raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
+
+    try:
+        embeddings_url = f"{endpoint.rstrip('/')}/{embedding_model}/embeddings"
+        payload = {"input": ["test"]}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                embeddings_url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Embedding deployment '{embedding_model}' not found. Check that the deployment name matches exactly what was created in Azure AI Foundry."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure AI Foundry rate limit exceeded.")
+                raise Exception(f"Azure AI Foundry embedding error: {error_details}")
+            logger.info("Azure AI Foundry embedding test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry embedding test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"Azure AI Foundry embedding test failed: {str(e)}")
         raise

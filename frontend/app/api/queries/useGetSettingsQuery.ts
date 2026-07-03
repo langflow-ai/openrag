@@ -40,6 +40,11 @@ export interface ProviderSettings {
     endpoint?: string;
     configured?: boolean;
   };
+  azure_ai_foundry?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    configured?: boolean;
+  };
 }
 
 export interface OnboardingState {

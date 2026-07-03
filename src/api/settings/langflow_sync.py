@@ -71,6 +71,19 @@ async def _update_langflow_global_variables(config, flows_service=None):
             await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
             logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
+        # Azure AI Foundry global variables
+        if config.providers.azure_ai_foundry.api_key:
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_API_KEY", config.providers.azure_ai_foundry.api_key, modify=True
+            )
+            logger.info("Set AZURE_AI_API_KEY global variable in Langflow")
+
+        if config.providers.azure_ai_foundry.endpoint:
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_API_BASE", config.providers.azure_ai_foundry.endpoint, modify=True
+            )
+            logger.info("Set AZURE_AI_API_BASE global variable in Langflow")
+
         if config.knowledge.embedding_model:
             await clients._create_langflow_global_variable(
                 "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model, modify=True
@@ -199,6 +212,8 @@ async def _update_langflow_model_values(
                 embedding_providers.append("watsonx")
             if config.providers.ollama.configured:
                 embedding_providers.append("ollama")
+            if config.providers.azure_ai_foundry.configured:
+                embedding_providers.append("azure_ai_foundry")
 
             current_embedding_provider = config.knowledge.embedding_provider.lower()
             for provider in embedding_providers:

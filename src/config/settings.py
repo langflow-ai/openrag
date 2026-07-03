@@ -1040,6 +1040,14 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Set Azure AI Foundry credentials
+                if config.providers.azure_ai_foundry.api_key:
+                    os.environ["AZURE_AI_API_KEY"] = config.providers.azure_ai_foundry.api_key
+                    logger.debug("Loaded Azure AI Foundry API key from config")
+                if config.providers.azure_ai_foundry.endpoint:
+                    os.environ["AZURE_AI_API_BASE"] = config.providers.azure_ai_foundry.endpoint
+                    logger.debug("Loaded Azure AI Foundry endpoint from config")
+
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = config.knowledge.embedding_provider or "openai"
