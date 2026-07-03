@@ -41,23 +41,25 @@ export function FunctionCallResult({ result }: FunctionCallResultProps) {
       <div className="mt-1 space-y-2">
         {items.map((item, idx) => (
           <div key={idx} className="fc-result p-2 bg-muted/30 rounded">
-            {item.data?.file_path && (
-              <div className="font-medium text-blue-400 mb-1 text-xs">
-                📄 {item.data.file_path || "Unknown file"}
-              </div>
-            )}
-
-            {item.filename && !item.data?.file_path && (
-              <div className="font-medium text-blue-400 mb-1 text-xs">
-                📄 {item.filename}
-                {item.page && ` (page ${item.page})`}
-                {item.score && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    Score: {item.score.toFixed(3)}
-                  </span>
-                )}
-              </div>
-            )}
+            {(() => {
+              const displayFilename = item.data?.file_path || item.filename;
+              if (!displayFilename) return null;
+              return (
+                <div className="font-medium text-blue-400 mb-1 text-xs">
+                  📄 {displayFilename}
+                  {typeof item.page === "number" && item.page > 0 && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Page: {item.page}
+                    </span>
+                  )}
+                  {item.score && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Score: {item.score.toFixed(3)}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {item.data?.text && (
               <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
