@@ -13,6 +13,19 @@ const addLookupKey = (
   if (key) sourceLookup.set(key, source);
 };
 
+/**
+ * Derives a display filename from citation data.
+ * Extracts the filename from a file path or uses the filename field directly.
+ */
+export const deriveDisplayFilename = (
+  filePath: string | undefined,
+  filename: string | undefined,
+  fallback: string = "Document",
+): string => {
+  const path = filePath || filename || fallback;
+  return path.split("/").pop() || path;
+};
+
 const buildSourceLookup = (sources: ToolCallResult[]) => {
   const sourceLookup = new Map<string, ToolCallResult>();
 

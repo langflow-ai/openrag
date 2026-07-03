@@ -2,7 +2,7 @@
 
 import { ExternalLink, FileText } from "lucide-react";
 import type { CitedSource } from "@/components/markdown-citations";
-import { deriveDisplayFilename } from "@/components/markdown-renderer";
+import { deriveDisplayFilename } from "@/components/markdown-citations";
 
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;

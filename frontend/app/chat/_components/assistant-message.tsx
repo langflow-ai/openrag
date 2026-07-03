@@ -16,7 +16,7 @@ const MarkdownRenderer = dynamic(
 );
 
 // Import the shared filename derivation helper
-import { deriveDisplayFilename } from "@/components/markdown-renderer";
+import { deriveDisplayFilename } from "@/components/markdown-citations";
 
 import { Separator } from "@/components/ui/separator";
 import { trackButton } from "@/lib/analytics";
