@@ -174,7 +174,7 @@ class ExportDoclingDocumentComponent(Component):
                 results.append(Data(text=content, data={"text": content, **base_meta}))
 
         except Exception as e:
-            msg = f"Error splitting text: {e}"
+            msg = f"Error exporting DoclingDocument: {e}"
             raise TypeError(msg) from e
 
         return results
