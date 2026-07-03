@@ -90,7 +90,11 @@ export function CitationCards({
               </span>
               <span className="text-xxs text-muted-foreground mt-1 leading-none">
                 {page !== null && page !== undefined ? `page ${page}` : ""}
-                {page !== null && page !== undefined && score !== undefined && score > 0 && ` • `}
+                {page !== null &&
+                  page !== undefined &&
+                  score !== undefined &&
+                  score > 0 &&
+                  ` • `}
                 {score !== undefined &&
                   score > 0 &&
                   `score ${score.toFixed(2)}`}
