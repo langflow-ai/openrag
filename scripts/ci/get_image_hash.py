@@ -37,11 +37,11 @@ def get_hash(paths):
             try:
                 # Include filename in hash to distinguish different file structures
                 hasher.update(os.path.relpath(fp).encode("utf-8"))
-                hasher.update(b'\0')
+                hasher.update(b"\0")
                 with open(fp, "rb") as f:
                     while chunk := f.read(65536):
                         hasher.update(chunk)
-                hasher.update(b'\0')
+                hasher.update(b"\0")
             except (PermissionError, FileNotFoundError):
                 continue
 
