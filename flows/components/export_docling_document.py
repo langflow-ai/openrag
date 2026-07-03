@@ -51,7 +51,7 @@ class ExportDoclingDocumentComponent(Component):
         StrInput(
             name="md_page_break_placeholder",
             display_name="Page break placeholder",
-            info="Add this placeholder betweek pages in the markdown output.",
+            info="Add this placeholder between pages in the markdown output.",
             value="",
             advanced=True,
         ),
