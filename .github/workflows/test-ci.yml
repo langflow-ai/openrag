@@ -136,34 +136,39 @@ jobs:
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
+          
+          mkdir -p /tmp/image-cache
+          
+          build_or_load_image() {
+            local name=$1
+            local dockerfile=$2
+            local tar_path="/tmp/image-cache/${name}.tar"
+            
+            if [ -f "$tar_path" ]; then
+              echo "Cache hit for ${name}. Loading image from ${tar_path}..."
+              docker load -i "$tar_path"
+              echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
+              docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
+            else
+              echo "Cache miss for ${name}. Building..."
+              if docker buildx build \
+                --load \
+                -t "langflowai/openrag-${name}:cached" \
+                -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
+                -f "$dockerfile" .; then
+                echo "Saving built image to ${tar_path}..."
+                docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
+              else
+                echo "Build failed for ${name}."
+                return 1
+              fi
+            fi
+          }
+
           for i in 1 2 3; do
             echo "Build attempt $i..."
             if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
               echo "Building PR images locally..."
-              
-              mkdir -p /tmp/image-cache
-              
-              build_or_load_image() {
-                local name=$1
-                local dockerfile=$2
-                local tar_path="/tmp/image-cache/${name}.tar"
-                
-                if [ -f "$tar_path" ]; then
-                  echo "Cache hit for ${name}. Loading image from ${tar_path}..."
-                  docker load -i "$tar_path"
-                  echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
-                  docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
-                else
-                  echo "Cache miss for ${name}. Building..."
-                  docker buildx build \
-                    --load \
-                    -t "langflowai/openrag-${name}:cached" \
-                    -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
-                    -f "$dockerfile" .
-                  echo "Saving built image to ${tar_path}..."
-                  docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
-                fi
-              }
               
               if build_or_load_image "opensearch" "Dockerfile" && \
                  build_or_load_image "backend" "Dockerfile.backend" && \
@@ -173,29 +178,6 @@ jobs:
               fi
             else
               echo "Preparing DockerHub images..."
-              mkdir -p /tmp/image-cache
-              
-              build_or_load_image() {
-                local name=$1
-                local dockerfile=$2
-                local tar_path="/tmp/image-cache/${name}.tar"
-                
-                if [ -f "$tar_path" ]; then
-                  echo "Cache hit for ${name}. Loading image from ${tar_path}..."
-                  docker load -i "$tar_path"
-                  echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
-                  docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
-                else
-                  echo "Cache miss for ${name}. Building..."
-                  docker buildx build \
-                    --load \
-                    -t "langflowai/openrag-${name}:cached" \
-                    -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
-                    -f "$dockerfile" .
-                  echo "Saving built image to ${tar_path}..."
-                  docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
-                fi
-              }
               
               if docker pull langflowai/openrag-backend:latest && \
                  docker pull langflowai/openrag-frontend:latest && \
