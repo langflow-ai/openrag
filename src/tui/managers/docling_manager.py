@@ -336,6 +336,10 @@ class DoclingManager:
             self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
             log_file = open(self._log_file_path, "w")
 
+            env = os.environ.copy()
+            if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
+                env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"
+
             self._process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
