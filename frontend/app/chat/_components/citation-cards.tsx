@@ -54,10 +54,10 @@ export function CitationCards({
             key={index}
             ref={(element) => onCardRef?.(index, element)}
             onClick={handleClick}
-            className={`group relative flex items-center p-2.5 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${
+            className={`group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${
               isActive
-                ? "bg-violet-950/30 border-violet-550 ring-2 ring-violet-500/35 scale-[1.01] shadow-md shadow-violet-950/25"
-                : "bg-violet-950/12 hover:bg-violet-950/24 border-violet-900/30 hover:border-violet-850/55"
+                ? "bg-muted border-primary-hover/50"
+                : "bg-muted/50 hover:bg-muted border-muted hover:border-primary-hover/50"
             }`}
             title={
               hasUrl
@@ -66,19 +66,21 @@ export function CitationCards({
             }
           >
             {/* Index Badge */}
-            <div className="flex items-center justify-center shrink-0 w-5 h-5 rounded bg-violet-950/40 border border-violet-900/50 text-[10px] font-bold text-violet-400 mr-2.5">
+            <div className="flex items-center justify-center shrink-0 text-mmd text-accent-purple-foreground mr-2.5">
               {index}
             </div>
 
             {/* File Icon */}
-            <FileText className="w-4 h-4 text-violet-400/90 mr-2 shrink-0" />
+            <div className="bg-muted p-0.5 rounded flex mr-3 shrink-0">
+              <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
+            </div>
 
             {/* Document details */}
             <div className="flex flex-col min-w-0 pr-1">
-              <span className="text-xs font-semibold text-zinc-100 truncate max-w-[160px] leading-tight">
+              <span className="text-mmd text-primary-hover truncate max-w-[160px] leading-tight">
                 {filename}
               </span>
-              <span className="text-[10px] text-zinc-400 font-medium mt-0.5 leading-none">
+              <span className="text-xxs text-muted-foreground mt-1 leading-none">
                 {page !== null ? `page ${page}` : ""}
                 {page !== null && score !== undefined && score > 0 && ` • `}
                 {score !== undefined &&
@@ -89,7 +91,7 @@ export function CitationCards({
 
             {/* External link indicator */}
             {hasUrl && (
-              <ExternalLink className="w-2.5 h-2.5 text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 shrink-0" />
+              <ExternalLink className="w-2.5 h-2.5 text-accent-purple-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 shrink-0" />
             )}
           </button>
         );

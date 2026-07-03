@@ -15,6 +15,7 @@ const MarkdownRenderer = dynamic(
   { ssr: false },
 );
 
+import { Separator } from "@/components/ui/separator";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type {
@@ -173,6 +174,7 @@ export function AssistantMessage({
       className={isCompleted ? "opacity-50" : ""}
     >
       <Message
+        isAssistant
         icon={
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
             {/* Dog icon with bark animation when greeting */}
@@ -264,10 +266,18 @@ export function AssistantMessage({
               />
             )}
 
-            {usage && !isStreaming && <TokenUsage usage={usage} />}
-            {!isInitialGreeting && showFeedback && !isStreaming && (
-              <MessageActions trackFeedback={trackFeedback} />
-            )}
+            {!isStreaming &&
+              (usage || (!isInitialGreeting && showFeedback)) && (
+                <>
+                  <Separator className="my-4 w-full bg-border" />
+                  <div className="flex justify-end gap-4">
+                    {usage && !isStreaming && <TokenUsage usage={usage} />}
+                    {!isInitialGreeting && showFeedback && !isStreaming && (
+                      <MessageActions trackFeedback={trackFeedback} />
+                    )}
+                  </div>
+                </>
+              )}
           </motion.div>
         </div>
       </Message>

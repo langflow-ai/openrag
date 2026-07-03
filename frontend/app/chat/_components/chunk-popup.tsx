@@ -107,9 +107,7 @@ const formatScore = (
     (numericFallback !== undefined && numericFallback > 0
       ? numericFallback
       : undefined);
-  return resolvedScore === undefined
-    ? "Score --"
-    : `Score ${resolvedScore.toFixed(2)}`;
+  return resolvedScore === undefined ? "--" : `${resolvedScore.toFixed(2)}`;
 };
 
 const formatPage = (item: ToolCallResult): string | null => {
@@ -235,11 +233,11 @@ export function ChunkPopup({
             top: position?.top ?? 12,
             width: "min(calc(100vw - 24px), 32rem)",
           }}
-          className="fixed z-50 bg-zinc-950/95 border border-zinc-800/80 rounded-xl shadow-2xl flex flex-col max-h-[min(72vh,34rem)] overflow-hidden text-zinc-100 backdrop-blur-xl"
+          className="fixed z-50 bg-background-dark border border-border rounded-xl shadow-2xl flex flex-col max-h-[min(72vh,34rem)] overflow-hidden text-foreground backdrop-blur-xl"
         >
           {position && (
             <div
-              className={`absolute h-3 w-3 rotate-45 bg-zinc-950 border-zinc-800/80 ${
+              className={`absolute h-3 w-3 rotate-45 bg-background-dark border-border ${
                 position.placement === "above"
                   ? "-bottom-1.5 border-b border-r"
                   : "-top-1.5 border-l border-t"
@@ -251,28 +249,28 @@ export function ChunkPopup({
           {/* Header */}
           <div className="flex items-center justify-between p-4 pb-3">
             <div className="flex items-center gap-2.5 min-w-0 pr-4">
-              <span className="shrink-0 bg-violet-900/35 border border-violet-850/65 text-violet-400 font-bold px-2.5 py-0.5 rounded-full text-xs">
+              <span className="shrink-0 bg-muted/80 text-accent-purple-foreground font-semibold px-2.5 py-0.5 rounded-full text-xs">
                 Chunk {chunkNumber}
               </span>
               <h3
-                className="text-sm font-bold text-zinc-100 truncate"
+                className="text-sm font-bold text-foreground truncate"
                 title={filename}
               >
                 {filename}
               </h3>
               {pageLabel && (
-                <span className="shrink-0 text-zinc-500 text-[10px] font-bold">
+                <span className="shrink-0 text-muted-foreground text-xxs font-semibold">
                   {pageLabel}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <span className="bg-violet-950/60 border border-violet-900/40 text-violet-400 font-semibold px-2 py-0.5 rounded text-xs select-none">
+              <span className="bg-accent-purple/20 border border-accent-purple text-accent-purple-foreground font-mono px-2 py-0.5 rounded text-xs select-none">
                 {scoreLabel}
               </span>
               <button
                 onClick={onClose}
-                className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 hover:bg-zinc-900/80 rounded-md"
+                className="text-muted-foreground hover:text-foreground transition-colors p-1 hover:bg-muted rounded-md"
                 aria-label="Close dialog"
               >
                 <X className="w-4 h-4" />
@@ -281,15 +279,15 @@ export function ChunkPopup({
           </div>
 
           {/* Metadata Sub-header */}
-          <div className="grid grid-cols-3 border-y border-zinc-900 bg-zinc-950/40 text-[10px] text-zinc-400 py-2.5 px-4 font-semibold select-none">
+          <div className="grid grid-cols-3 border-y border-border text-xs text-muted-foreground py-2.5 px-4  select-none">
             <div
-              className="border-r border-zinc-900 text-center truncate pr-1"
+              className="border-r border-border text-center truncate pr-1"
               title={parser}
             >
               {parser}
             </div>
             <div
-              className="border-r border-zinc-900 text-center truncate px-1"
+              className="border-r border-border text-center truncate px-1"
               title={splitConfig}
             >
               {splitConfig}
@@ -303,7 +301,7 @@ export function ChunkPopup({
           <div className="p-4 flex-1 overflow-y-auto min-h-0">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-zinc-500 text-[10px] font-extrabold uppercase tracking-wider block">
+                <span className="text-muted-foreground text-[10px] font-extrabold uppercase tracking-wider block">
                   Source text
                 </span>
                 <div className="flex items-center gap-3">
@@ -316,7 +314,7 @@ export function ChunkPopup({
                           "noopener,noreferrer",
                         )
                       }
-                      className="text-violet-400 hover:text-violet-300 text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
+                      className="text-accent-purple-foreground hover:text-primary-hover text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
                     >
                       <ExternalLink className="w-3 h-3" />
                       View document
@@ -324,20 +322,10 @@ export function ChunkPopup({
                   )}
                 </div>
               </div>
-              <div className="bg-zinc-900/40 text-xs text-zinc-300 p-4 rounded-lg border border-zinc-800/40 leading-relaxed font-normal whitespace-pre-wrap select-text max-h-72 overflow-y-auto">
+              <div className="bg-background/40 text-xs text-foreground p-4 rounded-lg border border-border leading-relaxed font-normal whitespace-pre-wrap select-text max-h-72 overflow-y-auto">
                 {sourceText}
               </div>
             </div>
-          </div>
-
-          {/* Footer (No feedback buttons) */}
-          <div className="p-3 bg-zinc-950 border-t border-zinc-900 flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
-            >
-              Close
-            </button>
           </div>
         </motion.div>
       </>
