@@ -1,7 +1,7 @@
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
 import { preprocessCitations } from "@/components/markdown-renderer";
 import { ChunkPopup } from "./chunk-popup";
@@ -85,10 +85,32 @@ export function AssistantMessage({
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const [chunkAnchorElement, setChunkAnchorElement] =
     useState<HTMLElement | null>(null);
+  const citationCardRefs = useRef(new Map<number, HTMLButtonElement>());
 
   const openChunkPopover = (index: number, anchorElement: HTMLElement) => {
     setActiveChunkIndex(index);
     setChunkAnchorElement(anchorElement);
+  };
+
+  const openChunkPopoverFromText = (
+    index: number,
+    citationElement: HTMLElement,
+  ) => {
+    openChunkPopover(
+      index,
+      citationCardRefs.current.get(index) ?? citationElement,
+    );
+  };
+
+  const setCitationCardRef = (
+    index: number,
+    element: HTMLButtonElement | null,
+  ) => {
+    if (element) {
+      citationCardRefs.current.set(index, element);
+    } else {
+      citationCardRefs.current.delete(index);
+    }
   };
 
   const closeChunkPopover = () => {
@@ -229,7 +251,7 @@ export function AssistantMessage({
                 isCompleted ? "text-placeholder-foreground" : "text-foreground",
               )}
               chatMessage={displayMessageText}
-              onCitationClick={openChunkPopover}
+              onCitationClick={openChunkPopoverFromText}
             />
 
             {/* Citation Cards */}
@@ -238,6 +260,7 @@ export function AssistantMessage({
                 citedSources={citedSources}
                 activeCardIndex={activeChunkIndex}
                 onCardClick={openChunkPopover}
+                onCardRef={setCitationCardRef}
               />
             )}
 

@@ -17,12 +17,14 @@ interface CitationCardsProps {
   citedSources: CitedSource[];
   activeCardIndex?: number | null;
   onCardClick?: (index: number, anchorElement: HTMLElement) => void;
+  onCardRef?: (index: number, element: HTMLButtonElement | null) => void;
 }
 
 export function CitationCards({
   citedSources,
   activeCardIndex,
   onCardClick,
+  onCardRef,
 }: CitationCardsProps) {
   if (!citedSources || citedSources.length === 0) return null;
 
@@ -37,9 +39,7 @@ export function CitationCards({
         const filename = filePath.split("/").pop() || filePath;
         const score = toNumber(item.score);
 
-        // Extract chunk index safely
-        const chunkId = item.chunk_id || item.id;
-        const chunkNum = getChunkNumber(chunkId);
+        const page = item.page;
 
         const hasUrl = !!item.source_url;
         const isActive = index === activeCardIndex;
@@ -52,6 +52,7 @@ export function CitationCards({
           <button
             type="button"
             key={index}
+            ref={(element) => onCardRef?.(index, element)}
             onClick={handleClick}
             className={`group relative flex items-center p-2.5 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${
               isActive
@@ -78,10 +79,11 @@ export function CitationCards({
                 {filename}
               </span>
               <span className="text-[10px] text-zinc-400 font-medium mt-0.5 leading-none">
-                {chunkNum !== null ? `chunk ${chunkNum}` : "chunk 1"}
+                {page !== null ? `page ${page}` : ""}
+                {page !== null && score !== undefined && score > 0 && ` • `}
                 {score !== undefined &&
                   score > 0 &&
-                  ` • score ${score.toFixed(2)}`}
+                  `score ${score.toFixed(2)}`}
               </span>
             </div>
 

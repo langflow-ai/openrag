@@ -207,7 +207,7 @@ export const MarkdownRenderer = ({
                   onClick={(event) =>
                     onCitationClick?.(index, event.currentTarget)
                   }
-                  className="inline-flex items-center justify-center mx-0.5 px-1 py-px text-[10px] font-bold text-violet-300 bg-violet-950/60 border border-violet-800/60 rounded hover:bg-violet-900/85 transition-all cursor-pointer select-none align-baseline transform translate-y-[-2px] shadow-sm shadow-violet-950/20"
+                  className="inline-flex items-center justify-center px-0.5 text-mmd text-accent-purple-foreground transition-all cursor-pointer select-none align-baseline"
                 >
                   {props.children}
                 </button>
