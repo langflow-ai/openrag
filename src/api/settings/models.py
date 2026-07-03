@@ -58,6 +58,7 @@ class AssistantMessage(BaseModel):
     role: str
     content: str
     timestamp: str
+    functionCalls: list[dict] | None = None
 
 
 class OnboardingStateBody(BaseModel):

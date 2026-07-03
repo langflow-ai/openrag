@@ -427,6 +427,9 @@ class SearchService:
                 "connector_type",
                 "embedding_model",  # Include embedding model in results
                 "embedding_dimensions",
+                "parser",
+                "chunk_size",
+                "chunk_overlap",
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
@@ -556,6 +559,11 @@ class SearchService:
                     "connector_type": source.get("connector_type"),
                     "embedding_model": source.get("embedding_model"),  # Include in results
                     "embedding_dimensions": source.get("embedding_dimensions"),
+                    "parser": source.get("parser"),
+                    "chunk_size": source.get("chunk_size"),
+                    "chunk_overlap": source.get("chunk_overlap"),
+                    "chunk_id": hit.get("_id"),
+                    "id": hit.get("_id"),
                     # ACL fields (may be missing for some documents)
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),

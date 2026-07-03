@@ -27,6 +27,9 @@ from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
 
+DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
+TEXT_PARSER_LABEL = "Text Parser"
+
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
@@ -403,6 +406,7 @@ class TaskProcessor:
                 file_hash=file_hash,
             )
             slim_doc = process_text_file(file_path)
+            slim_doc["parser"] = TEXT_PARSER_LABEL
         else:
             full_doc = await self.docling_service.convert_file(
                 file_path,
@@ -412,6 +416,7 @@ class TaskProcessor:
                 picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
+            slim_doc["parser"] = DOCLING_PARSER_LABEL
 
         # Override filename with original_filename if provided
         if original_filename:
@@ -554,13 +559,28 @@ class TaskProcessor:
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
         )
+        parser_name = slim_doc.get("parser")
+        if not parser_name:
+            if file_ext in (".txt", ".md"):
+                parser_name = TEXT_PARSER_LABEL
+            else:
+                parser_name = DOCLING_PARSER_LABEL
+
+        chunk_metadata = {"parser": parser_name}
+        if chunk_size is not None:
+            chunk_metadata["chunk_size"] = chunk_size
+        if chunk_overlap is not None:
+            chunk_metadata["chunk_overlap"] = chunk_overlap
+        if connector_file_id:
+            chunk_metadata["connector_file_id"] = connector_file_id
+
         index_chunks = [
             DocumentIndexChunk(
                 chunk_id=f"{file_hash}_{i}",
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
-                metadata={"connector_file_id": connector_file_id} if connector_file_id else {},
+                metadata=chunk_metadata,
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]

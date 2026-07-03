@@ -164,6 +164,9 @@ class LangflowIngestTokenService:
             "ingest_run_id": context.ingest_run_id,
             "is_sample_data": context.is_sample_data,
             "index_name": context.index_name,
+            "parser": context.parser,
+            "chunk_size": context.chunk_size,
+            "chunk_overlap": context.chunk_overlap,
         }
 
     @staticmethod
@@ -192,4 +195,7 @@ class LangflowIngestTokenService:
             ingest_run_id=payload.get("ingest_run_id"),
             is_sample_data=bool(payload.get("is_sample_data")),
             index_name=payload.get("index_name"),
+            parser=payload.get("parser"),
+            chunk_size=payload.get("chunk_size"),
+            chunk_overlap=payload.get("chunk_overlap"),
         )
