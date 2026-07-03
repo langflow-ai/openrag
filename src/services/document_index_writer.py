@@ -233,7 +233,8 @@ class DocumentIndexWriter:
             try:
                 doc[field_name] = int(value)
             except (TypeError, ValueError):
-                doc[field_name] = value
+                # Skip assignment if coercion fails to avoid type conflicts
+                pass
 
         if context.owner is not None:
             doc["owner"] = context.owner

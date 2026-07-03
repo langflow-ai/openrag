@@ -128,6 +128,7 @@ export function ChunkPopup({
 }: ChunkPopupProps) {
   const { data: settings } = useGetSettingsQuery();
   const popoverRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   const updatePositionRef = useRef<() => void>(() => {});
   const [position, setPosition] = useState<PopoverPosition | null>(null);
@@ -206,6 +207,12 @@ export function ChunkPopup({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && closeButtonRef.current) {
+      closeButtonRef.current.focus();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const hasUrl = !!item.source_url;
@@ -236,6 +243,8 @@ export function ChunkPopup({
 
           <m.div
             ref={popoverRef}
+            role="dialog"
+            aria-modal="true"
             initial={{ opacity: 0, scale: 0.98, y: 6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 6 }}
@@ -281,6 +290,7 @@ export function ChunkPopup({
                   {scoreLabel}
                 </span>
                 <button
+                  ref={closeButtonRef}
                   type="button"
                   onClick={onClose}
                   className="text-muted-foreground hover:text-foreground transition-colors p-1 hover:bg-muted rounded-md"

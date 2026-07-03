@@ -15,6 +15,9 @@ const MarkdownRenderer = dynamic(
   { ssr: false },
 );
 
+// Import the shared filename derivation helper
+import { deriveDisplayFilename } from "@/components/markdown-renderer";
+
 import { Separator } from "@/components/ui/separator";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -293,11 +296,11 @@ export function AssistantMessage({
           onClose={closeChunkPopover}
           anchorElement={chunkAnchorElement}
           chunkNumber={activeCitedSource.index}
-          filename={
-            activeCitedSource.item.data?.file_path?.split("/").pop() ||
-            activeCitedSource.item.filename ||
-            "Document"
-          }
+          filename={deriveDisplayFilename(
+            activeCitedSource.item.data?.file_path,
+            activeCitedSource.item.filename,
+            "Document",
+          )}
           score={
             activeCitedSource.item.score !== undefined
               ? activeCitedSource.item.score

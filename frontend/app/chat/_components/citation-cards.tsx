@@ -2,6 +2,7 @@
 
 import { ExternalLink, FileText } from "lucide-react";
 import type { CitedSource } from "@/components/markdown-citations";
+import { deriveDisplayFilename } from "@/components/markdown-renderer";
 
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -33,12 +34,14 @@ export function CitationCards({
       data-testid="citation-cards"
     >
       {citedSources.map(({ item, index }) => {
-        const filePath = item.data?.file_path || item.filename || "document";
-        // Extract just the filename from path
-        const filename = filePath.split("/").pop() || filePath;
+        const filename = deriveDisplayFilename(
+          item.data?.file_path,
+          item.filename,
+          "document",
+        );
         const score = toNumber(item.score);
 
-        const page = item.page;
+        const page = item.page ?? item.data?.page;
 
         const hasUrl = !!item.source_url;
         const isActive = index === activeCardIndex;
@@ -86,8 +89,8 @@ export function CitationCards({
                 {filename}
               </span>
               <span className="text-xxs text-muted-foreground mt-1 leading-none">
-                {page !== null ? `page ${page}` : ""}
-                {page !== null && score !== undefined && score > 0 && ` • `}
+                {page !== null && page !== undefined ? `page ${page}` : ""}
+                {page !== null && page !== undefined && score !== undefined && score > 0 && ` • `}
                 {score !== undefined &&
                   score > 0 &&
                   `score ${score.toFixed(2)}`}
