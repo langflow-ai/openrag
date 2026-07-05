@@ -55,6 +55,7 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
+from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_index_name
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -557,6 +558,15 @@ async def update_settings(
         if body.index_name is not None:
             old_index_name = current_config.knowledge.index_name
             new_index_name = body.index_name.strip()
+            if not is_permitted_index_name(new_index_name):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Index name '{new_index_name}' is not permitted. The OpenSearch "
+                        "security role only grants search access to indices starting "
+                        f"with {' or '.join(ALLOWED_INDEX_NAME_PREFIXES)}."
+                    ),
+                )
             current_config.knowledge.index_name = new_index_name
             config_updated = True
             await TelemetryClient.send_event(
@@ -785,6 +795,10 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
+    except HTTPException:
+        # Preserve intentional client-error status codes (e.g. 422 validation
+        # failures) instead of letting the catch-all below flatten them to 500.
+        raise
     except Exception as e:
         logger.error("Failed to update settings", error=str(e))
         await TelemetryClient.send_event(
