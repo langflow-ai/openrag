@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FileSearch, FolderOpen, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
@@ -30,6 +30,8 @@ export interface SharedBucketViewProps {
   onDone: () => void;
   /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
   showShared?: boolean;
+  /** Buckets to pre-select once `buckets` has loaded, e.g. from saved connector defaults. */
+  initialSelectedBuckets?: string[];
 }
 
 export function SharedBucketView({
@@ -44,6 +46,7 @@ export function SharedBucketView({
   onBack,
   onDone,
   showShared = false,
+  initialSelectedBuckets,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -56,11 +59,30 @@ export function SharedBucketView({
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
   );
+  const hasAppliedInitial = useRef(false);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (
+      !hasAppliedInitial.current &&
+      buckets?.length &&
+      initialSelectedBuckets?.length
+    ) {
+      hasAppliedInitial.current = true;
+      if (selectedBuckets.size === 0) {
+        const valid = initialSelectedBuckets.filter((name) =>
+          buckets.some((b) => b.name === name),
+        );
+        if (valid.length) {
+          setSelectedBuckets(new Set(valid));
+        }
+      }
+    }
+  }, [buckets, initialSelectedBuckets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });

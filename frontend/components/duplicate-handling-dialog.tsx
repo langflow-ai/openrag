@@ -43,9 +43,12 @@ export const DuplicateHandlingDialog = ({
   };
 
   const namesProvided = duplicateNames && duplicateNames.length > 0;
-  const effectiveCount = namesProvided
-    ? duplicateNames!.length
-    : duplicateCount;
+  const effectiveCount =
+    typeof duplicateCount === "number"
+      ? duplicateCount
+      : namesProvided
+        ? duplicateNames!.length
+        : undefined;
 
   const description =
     typeof effectiveCount === "number"
@@ -81,8 +84,8 @@ export const DuplicateHandlingDialog = ({
 
         {namesProvided && (
           <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5">
-            {visibleNames.map((name) => (
-              <li key={name} className="break-all">
+            {visibleNames.map((name, index) => (
+              <li key={`${name}-${index}`} className="break-all">
                 {name}
               </li>
             ))}
