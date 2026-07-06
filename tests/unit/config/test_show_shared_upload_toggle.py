@@ -3,6 +3,7 @@
 This flag lets deployments expose the COS "Make documents available to all
 users" toggle independently of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS, which
 gates the rest of the per-upload ingest tuning knobs (chunk size, OCR, etc.).
+Make sure to update this test when the flag is removed.
 """
 
 import os
