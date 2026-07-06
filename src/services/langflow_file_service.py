@@ -196,6 +196,9 @@ class LangflowFileService:
         allowed_groups: list[str] | None,
         allowed_principals: list[str] | None,
         allowed_principal_labels: list[dict[str, Any]] | None = None,
+        parser: str | None = None,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
             logger.warning(
@@ -228,6 +231,9 @@ class LangflowFileService:
             ingest_run_id=ingest_run_id,
             is_sample_data=connector_type == "openrag_docs",
             index_name=get_index_name(),
+            parser=parser,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -420,6 +426,12 @@ class LangflowFileService:
         if selected_embedding_model:
             embedding_model = selected_embedding_model
 
+        split_tweaks = tweaks.get("SplitText-QIKhg", {}) if isinstance(tweaks, dict) else {}
+        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
+        chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
+
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
             "X-Langflow-Global-Var-OWNER": owner or "",
@@ -461,6 +473,9 @@ class LangflowFileService:
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
             allowed_principal_labels=allowed_principal_labels,
+            parser="Docling Serve 1.20.0",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
         headers.update(
             self._ingest_callback_global_var_headers(
@@ -593,6 +608,11 @@ class LangflowFileService:
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
+        split_tweaks = tweaks.get("SplitText-QIKhg", {}) if isinstance(tweaks, dict) else {}
+        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
+        chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
             "X-Langflow-Global-Var-OWNER": owner or "",
@@ -625,6 +645,9 @@ class LangflowFileService:
             allowed_groups=[],
             allowed_principals=[],
             allowed_principal_labels=[],
+            parser="URL Ingester",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
         headers.update(
             self._ingest_callback_global_var_headers(

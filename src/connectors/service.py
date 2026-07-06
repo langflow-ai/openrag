@@ -653,7 +653,7 @@ class ConnectorService:
         if all_infos:
             original_filenames = {
                 f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype", "")
+                    f["name"], f.get("mimeType") or f.get("mime_type") or f.get("mimetype", "")
                 )
                 for f in all_infos
                 if "id" in f and "name" in f
