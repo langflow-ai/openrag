@@ -761,6 +761,10 @@ class DocumentFileProcessor(TaskProcessor):
                         except (TypeError, ValueError):
                             pass
 
+            config = get_openrag_config()
+            standard_kwargs["ocr"] = config.knowledge.ocr
+            standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
+
             # Use consolidated standard processing
             result = await self.process_document_standard(
                 file_path=item,
@@ -1082,6 +1086,15 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
+                    config = get_openrag_config()
+                    effective_ingest_settings = (
+                        dict(self.ingest_settings) if self.ingest_settings else {}
+                    )
+                    effective_ingest_settings["ocr"] = config.knowledge.ocr
+                    effective_ingest_settings["pictureDescriptions"] = (
+                        config.knowledge.picture_descriptions
+                    )
+
                     effective_owner, effective_owner_name, effective_owner_email = (
                         resolve_shared_owner_fields(
                             self.user_id, self.owner_name, self.owner_email, self.shared
@@ -1091,7 +1104,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_tuple=file_tuple,
                         session_id=None,
                         tweaks=tweaks,
-                        settings=self.ingest_settings,
+                        settings=effective_ingest_settings,
                         jwt_token=self.jwt_token,
                         owner=effective_owner,
                         owner_name=effective_owner_name,
@@ -1156,10 +1169,9 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
-                        if "ocr" in s:
-                            standard_kwargs["ocr"] = bool(s["ocr"])
-                        if "pictureDescriptions" in s:
-                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
+                    config = get_openrag_config()
+                    standard_kwargs["ocr"] = config.knowledge.ocr
+                    standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
@@ -1407,6 +1419,13 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
+            # Build settings with fresh OCR/pictureDescriptions from live
+            # config so retries pick up configuration changes.
+            config = get_openrag_config()
+            effective_settings = dict(self.settings) if self.settings else {}
+            effective_settings["ocr"] = config.knowledge.ocr
+            effective_settings["pictureDescriptions"] = config.knowledge.picture_descriptions
+
             # Process file using langflow service. Passing the polling
             # service triggers the two-phase model: backend polls Docling,
             # then invokes Langflow only after SUCCESS. file_task is passed
@@ -1415,7 +1434,7 @@ class LangflowFileProcessor(TaskProcessor):
                 file_tuple=file_tuple,
                 session_id=self.session_id,
                 tweaks=final_tweaks,
-                settings=self.settings,
+                settings=effective_settings,
                 jwt_token=effective_jwt,
                 owner=self.owner_user_id,
                 owner_name=self.owner_name,
