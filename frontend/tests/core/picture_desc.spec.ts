@@ -1,3 +1,4 @@
+import * as path from "path";
 import { OPENAI_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
@@ -55,7 +56,9 @@ test("Picture Description Configuration @33219221", async ({
 
   // Ingest first PDF with picture descriptions enabled
   logger.info("📄 Ingesting cat1.pdf with picture descriptions ON...");
-  const fileName = await knowledge.ingestFile("test-data/cat1.pdf");
+  const fileName = await knowledge.ingestFile(
+    path.join(__dirname, "../test-data/cat1.pdf"),
+  );
 
   // Wait for document to be fully processed and active
   await knowledge.verifyDocumentActive(fileName);
@@ -77,7 +80,9 @@ test("Picture Description Configuration @33219221", async ({
 
   // Ingest second PDF with picture descriptions disabled
   logger.info("📄 Ingesting cat2.pdf with picture descriptions OFF...");
-  const fileName2 = await knowledge.ingestFile("test-data/cat2.pdf");
+  const fileName2 = await knowledge.ingestFile(
+    path.join(__dirname, "../test-data/cat2.pdf"),
+  );
 
   // Wait for document to be fully processed and active
   await knowledge.verifyDocumentActive(fileName2);

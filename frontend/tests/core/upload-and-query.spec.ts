@@ -258,7 +258,7 @@ test.describe("Document Upload and Query @33219204 , @34548303 , @34548305 , @34
     await navigateToKnowledge(page);
 
     const testFile = "kubernetes.pdf";
-    const filePath = path.join(process.cwd(), "test-data", testFile);
+    const filePath = path.join(__dirname, "../test-data", testFile);
 
     await knowledge.ingestFile(filePath, true);
     await chat.open();

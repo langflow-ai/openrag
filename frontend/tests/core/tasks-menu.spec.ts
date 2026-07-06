@@ -116,7 +116,7 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     }
 
     // Upload docling.pdf and wait for completion
-    const filePath1 = path.join(process.cwd(), "test-data", file1);
+    const filePath1 = path.join(__dirname, "../test-data", file1);
     await knowledge.ingestFile(filePath1, true);
     logger.info(`   Upload completed for ${file1}`);
 
@@ -163,7 +163,7 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     }
 
     // Upload industry.csv and wait for completion
-    const filePath2 = path.join(process.cwd(), "test-data", file2);
+    const filePath2 = path.join(__dirname, "../test-data", file2);
     await knowledge.ingestFile(filePath2, true);
     logger.info(`   Upload completed for ${file2}`);
 

@@ -1,3 +1,4 @@
+import * as path from "path";
 import { OPENAI_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
@@ -46,7 +47,9 @@ test.describe("Financial Document - OpenAI @33219232", () => {
     await settings.setTableStructure(true);
 
     await knowledge.open();
-    const fileName = await knowledge.ingestFile(`test-data/${testDocument}`);
+    const fileName = await knowledge.ingestFile(
+      path.join(__dirname, "../test-data", testDocument),
+    );
     await knowledge.verifyDocumentActive(fileName);
 
     // ── Test 1: Table data retrieval ──────────────────────────────────────────
