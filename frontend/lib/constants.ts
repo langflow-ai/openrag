@@ -22,7 +22,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
  * UI Constants
  */
 export const UI_CONSTANTS = {
-  MAX_SYSTEM_PROMPT_CHARS: 4000,
+  MAX_SYSTEM_PROMPT_CHARS: 5000,
 } as const;
 
 /**
