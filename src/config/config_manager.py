@@ -176,7 +176,6 @@ class KnowledgeConfig:
     vlm_max_tokens: int = 5000
     vlm_concurrency: int = 4
     vlm_timeout: int = 120  # per-page VLM API timeout, seconds
-    vlm_openai_url: str = "https://api.openai.com/v1/chat/completions"
     vlm_watsonx_api_version: str = "2023-05-29"
 
 

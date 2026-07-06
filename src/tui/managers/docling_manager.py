@@ -338,6 +338,10 @@ class DoclingManager:
 
             env = os.environ.copy()
 
+            # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
+            env["TORCH_COMPILE_DISABLE"] = "1"
+            env["TORCH_DYNAMO_DISABLE"] = "1"
+
             # Add docling serve environment variables
             if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
                 env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"

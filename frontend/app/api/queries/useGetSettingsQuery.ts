@@ -28,7 +28,6 @@ export interface KnowledgeSettings {
   vlm_max_tokens?: number;
   vlm_concurrency?: number;
   vlm_timeout?: number;
-  vlm_openai_url?: string;
   vlm_watsonx_api_version?: string;
 }
 
@@ -89,6 +88,7 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  local_vlm_models?: string[];
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

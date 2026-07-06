@@ -11,7 +11,6 @@ import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
-import { DoclingVlmSettingsSection } from "../_components/docling-vlm-settings-section";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import ModelProviders from "../_components/model-providers";
 
@@ -19,7 +18,6 @@ const VALID_TABS = [
   "connectors",
   "providers",
   "langflow",
-  "ingestion",
   "api-keys",
   "connector-access",
 ] as const;
@@ -109,12 +107,6 @@ export default async function SettingsTabPage({
   ) {
     redirect("/settings/connectors");
   }
-  if (
-    tab === "ingestion" &&
-    !canShowRbacGatedSettingsTab("providers:write", tabAccess)
-  ) {
-    redirect("/settings/connectors");
-  }
 
   const queryClient = getQueryClient();
   try {
@@ -155,7 +147,6 @@ export default async function SettingsTabPage({
           <IngestSettingsSection />
         </div>
       )}
-      {tab === "ingestion" && <DoclingVlmSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>

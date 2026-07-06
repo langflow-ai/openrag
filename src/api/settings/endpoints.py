@@ -97,6 +97,31 @@ from utils.version_utils import OPENRAG_VERSION
 logger = get_logger(__name__)
 
 
+def _detect_local_vlm_models() -> list[str]:
+    import os
+    from pathlib import Path
+    local_models = []
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    hf_home = os.getenv("HF_HOME")
+    if hf_home:
+        hf_cache = Path(hf_home) / "hub"
+    if hf_cache.exists():
+        for p in hf_cache.glob("models--*"):
+            if p.is_dir() and ("smolvlm" in p.name.lower() or "granite-docling" in p.name.lower()) and "mlx" not in p.name.lower():
+                parts = p.name.split("--")
+                if len(parts) >= 3:
+                    owner = parts[1]
+                    model = "--".join(parts[2:])
+                    model_id = f"{owner}/{model}"
+                    if model_id not in local_models:
+                        local_models.append(model_id)
+    # Ensure HuggingFaceTB/SmolVLM-256M-Instruct is first if present
+    if "HuggingFaceTB/SmolVLM-256M-Instruct" in local_models:
+        local_models.remove("HuggingFaceTB/SmolVLM-256M-Instruct")
+        local_models.insert(0, "HuggingFaceTB/SmolVLM-256M-Instruct")
+    return local_models
+
+
 async def get_settings(
     request: Request,
     session_manager=Depends(get_session_manager),
@@ -236,7 +261,6 @@ async def get_settings(
                 vlm_max_tokens=knowledge_config.vlm_max_tokens,
                 vlm_concurrency=knowledge_config.vlm_concurrency,
                 vlm_timeout=knowledge_config.vlm_timeout,
-                vlm_openai_url=knowledge_config.vlm_openai_url,
                 vlm_watsonx_api_version=knowledge_config.vlm_watsonx_api_version,
             ),
             agent=AgentConfig(
@@ -250,6 +274,7 @@ async def get_settings(
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
+            local_vlm_models=_detect_local_vlm_models(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
@@ -307,7 +332,6 @@ async def update_settings(
             "vlm_max_tokens",
             "vlm_concurrency",
             "vlm_timeout",
-            "vlm_openai_url",
             "vlm_watsonx_api_version",
         ]
         vlm_update = any(getattr(body, field) is not None for field in vlm_update_fields)
@@ -613,29 +637,33 @@ async def update_settings(
         # intentionally NOT synced into the Langflow flow JSON.
         if body.vlm_enabled:
             effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
-            vlm_provider_config = current_config.providers.get_provider_config(
-                effective_vlm_provider
-            )
-            vlm_provider_missing = (
-                not getattr(vlm_provider_config, "api_key", "")
-                or not vlm_provider_config.configured
-            )
-            if effective_vlm_provider == "watsonx":
+            if effective_vlm_provider in ("openai", "watsonx", "anthropic"):
+                vlm_provider_config = current_config.providers.get_provider_config(
+                    effective_vlm_provider
+                )
                 vlm_provider_missing = (
-                    vlm_provider_missing
-                    or not vlm_provider_config.endpoint
-                    or not vlm_provider_config.project_id
+                    not getattr(vlm_provider_config, "api_key", "")
+                    or not vlm_provider_config.configured
                 )
-            if vlm_provider_missing:
-                return JSONResponse(
-                    {
-                        "error": (
-                            f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
-                            "is not configured. Configure it in Settings > Providers first."
-                        )
-                    },
-                    status_code=400,
-                )
+                if effective_vlm_provider == "watsonx":
+                    vlm_provider_missing = (
+                        vlm_provider_missing
+                        or not vlm_provider_config.endpoint
+                        or not vlm_provider_config.project_id
+                    )
+                if vlm_provider_missing:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
+                                "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+            elif effective_vlm_provider == "local":
+                # Local provider does not require any credentials
+                pass
             effective_vlm_model = body.vlm_model or current_config.knowledge.vlm_model
             if not effective_vlm_model.strip():
                 return JSONResponse(

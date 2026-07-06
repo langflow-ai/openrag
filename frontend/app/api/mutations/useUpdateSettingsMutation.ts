@@ -31,7 +31,6 @@ export interface UpdateSettingsRequest {
   vlm_max_tokens?: number;
   vlm_concurrency?: number;
   vlm_timeout?: number;
-  vlm_openai_url?: string;
   vlm_watsonx_api_version?: string;
 
   // Provider-specific settings (for dialogs)
