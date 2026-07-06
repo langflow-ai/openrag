@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, use, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   type Brand,
@@ -61,9 +61,9 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useBrand = () => useContext(BrandContext);
+export const useBrand = () => use(BrandContext);
 
 export const useIsCloudBrand = () => {
-  const { brand } = useContext(BrandContext);
+  const { brand } = use(BrandContext);
   return isCloudBrand(brand);
 };
