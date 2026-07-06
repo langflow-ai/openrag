@@ -21,8 +21,8 @@ export function Message({
       <div
         className={
           isAssistant && !unstyledContent
-            ? "px-5 py-4 bg-secondary/20 rounded-2xl"
-            : ""
+            ? "px-5 py-4 bg-secondary/20 rounded-2xl flex-1"
+            : "flex-1"
         }
       >
         <div className="flex-1 min-w-0">{children}</div>
