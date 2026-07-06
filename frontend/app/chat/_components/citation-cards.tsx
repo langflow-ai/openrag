@@ -43,7 +43,8 @@ export function CitationCards({
         );
         const score = toNumber(item.score);
 
-        const page = item.page ?? item.data?.page;
+        const page = toNumber(item.page ?? item.data?.page);
+        const pageLabel = page !== undefined && page > 0 ? `page ${page}` : "";
 
         const hasUrl = interactive && !!item.source_url;
         const isActive = index === activeCardIndex;
@@ -76,12 +77,8 @@ export function CitationCards({
                 {filename}
               </span>
               <span className="text-xxs text-muted-foreground mt-1 leading-none">
-                {page !== null && page !== undefined ? `page ${page}` : ""}
-                {page !== null &&
-                  page !== undefined &&
-                  score !== undefined &&
-                  score > 0 &&
-                  ` • `}
+                {pageLabel}
+                {pageLabel && score !== undefined && score > 0 && ` • `}
                 {score !== undefined &&
                   score > 0 &&
                   `score ${score.toFixed(2)}`}

@@ -353,6 +353,7 @@ export function OnboardingContent({
                 showFeedback={false}
                 interactiveCitations={false}
                 showFunctionCalls={false}
+                unstyledMessageContent
               />
             )}
 

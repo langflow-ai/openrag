@@ -68,6 +68,7 @@ interface AssistantMessageProps {
   showFeedback?: boolean;
   interactiveCitations?: boolean;
   showFunctionCalls?: boolean;
+  unstyledMessageContent?: boolean;
 }
 
 export function AssistantMessage({
@@ -89,6 +90,7 @@ export function AssistantMessage({
   showFeedback = true,
   interactiveCitations = true,
   showFunctionCalls = true,
+  unstyledMessageContent = false,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const [chunkAnchorElement, setChunkAnchorElement] =
@@ -183,6 +185,7 @@ export function AssistantMessage({
     >
       <Message
         isAssistant
+        unstyledContent={unstyledMessageContent}
         icon={
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
             {/* Dog icon with bark animation when greeting */}
