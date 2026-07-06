@@ -1276,8 +1276,8 @@ async def connector_sync(
             {
                 "task_ids": task_ids,
                 "status": "sync_started",
-                "message": f"Started syncing files from {len(active_connections)} {connector_type} connection(s)",
-                "connections_synced": len(active_connections),
+                "message": f"Started syncing files from 1 {connector_type} connection",
+                "connections_synced": len(task_ids),
             },
             status_code=201,
         )
