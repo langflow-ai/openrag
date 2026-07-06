@@ -100,6 +100,7 @@ logger = get_logger(__name__)
 def _detect_local_vlm_models() -> list[str]:
     import os
     from pathlib import Path
+
     local_models = []
     hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
     hf_home = os.getenv("HF_HOME")
@@ -107,7 +108,11 @@ def _detect_local_vlm_models() -> list[str]:
         hf_cache = Path(hf_home) / "hub"
     if hf_cache.exists():
         for p in hf_cache.glob("models--*"):
-            if p.is_dir() and ("smolvlm" in p.name.lower() or "granite-docling" in p.name.lower()) and "mlx" not in p.name.lower():
+            if (
+                p.is_dir()
+                and ("smolvlm" in p.name.lower() or "granite-docling" in p.name.lower())
+                and "mlx" not in p.name.lower()
+            ):
                 parts = p.name.split("--")
                 if len(parts) >= 3:
                     owner = parts[1]
