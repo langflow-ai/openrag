@@ -87,9 +87,7 @@ class AzureBlobConnector(BaseConnector):
         # Enterprise/SaaS gate still applies -- IBM_AUTH_ENABLED like the other
         # bucket connectors (aws_s3, ibm_cos), or OPENRAG_DEV_AZURE_BLOB=true to
         # bypass IBM auth for local dev (e.g. against Azurite; never in production).
-        return is_azure_blob_enabled() and (
-            IBM_AUTH_ENABLED or is_dev_azure_blob_enabled()
-        )
+        return is_azure_blob_enabled() and (IBM_AUTH_ENABLED or is_dev_azure_blob_enabled())
 
     @classmethod
     def register_routes(cls, app) -> None:
