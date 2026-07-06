@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { FunctionCall } from "@/app/chat/_types/types";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -58,6 +59,7 @@ export interface OnboardingState {
     role: string;
     content: string;
     timestamp: string;
+    functionCalls?: FunctionCall[] | null;
   } | null;
   selected_nudge?: string | null;
   card_steps?: Record<string, unknown> | null;

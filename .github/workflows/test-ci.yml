@@ -72,6 +72,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |
@@ -92,25 +93,99 @@ jobs:
           echo "Workspace: ${GITHUB_WORKSPACE}"
           ls -la
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Image Cache Keys
+        id: cache-keys
+        run: |
+          OPENSEARCH_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile patch-netty.sh securityconfig cloud_securityconfig opensearch-entrypoint-wrapper.sh)
+          BACKEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.backend src enhancements flows securityconfig cloud_securityconfig alembic.ini alembic openrag-documents scripts/backend-entrypoint.sh pyproject.toml uv.lock)
+          FRONTEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.frontend frontend)
+          LANGFLOW_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.langflow flows scripts/langflow-entrypoint.py)
+          
+          echo "opensearch=$OPENSEARCH_HASH" >> $GITHUB_OUTPUT
+          echo "backend=$BACKEND_HASH" >> $GITHUB_OUTPUT
+          echo "frontend=$FRONTEND_HASH" >> $GITHUB_OUTPUT
+          echo "langflow=$LANGFLOW_HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache OpenSearch Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/opensearch.tar
+          key: ${{ runner.os }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
+
+      - name: Cache Backend Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/backend.tar
+          key: ${{ runner.os }}-image-backend-${{ steps.cache-keys.outputs.backend }}
+
+      - name: Cache Frontend Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/frontend.tar
+          key: ${{ runner.os }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
+
+      - name: Cache Langflow Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/langflow.tar
+          key: ${{ runner.os }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
+
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
+          
+          mkdir -p /tmp/image-cache
+          
+          build_or_load_image() {
+            local name=$1
+            local dockerfile=$2
+            local tar_path="/tmp/image-cache/${name}.tar"
+            
+            if [ -f "$tar_path" ]; then
+              echo "Cache hit for ${name}. Loading image from ${tar_path}..."
+              docker load -i "$tar_path"
+              echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
+              docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
+            else
+              echo "Cache miss for ${name}. Building..."
+              if docker buildx build \
+                --load \
+                -t "langflowai/openrag-${name}:cached" \
+                -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
+                -f "$dockerfile" .; then
+                echo "Saving built image to ${tar_path}..."
+                docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
+              else
+                echo "Build failed for ${name}."
+                return 1
+              fi
+            fi
+          }
+
           for i in 1 2 3; do
             echo "Build attempt $i..."
             if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
               echo "Building PR images locally..."
-              if OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-build-images; then
+              
+              if build_or_load_image "opensearch" "Dockerfile" && \
+                 build_or_load_image "backend" "Dockerfile.backend" && \
+                 build_or_load_image "frontend" "Dockerfile.frontend" && \
+                 build_or_load_image "langflow" "Dockerfile.langflow"; then
                 break
               fi
             else
               echo "Preparing DockerHub images..."
+              
               if docker pull langflowai/openrag-backend:latest && \
                  docker pull langflowai/openrag-frontend:latest && \
                  docker pull langflowai/openrag-langflow:latest && \
                  docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}" && \
                  docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}" && \
                  docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}" && \
-                 docker build --no-cache -t "langflowai/openrag-opensearch:${CI_IMAGE_TAG}" -f Dockerfile .; then
+                 build_or_load_image "opensearch" "Dockerfile"; then
                 break
               fi
             fi
@@ -149,6 +224,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |
@@ -227,6 +303,7 @@ jobs:
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
 
       - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
         run: |
@@ -302,10 +379,11 @@ jobs:
         if: failure()
         run: |
           mkdir -p service-logs
-          docker logs os > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
           docker logs openrag-backend > service-logs/backend.log 2>&1 || true
-          docker logs langflow > service-logs/langflow.log 2>&1 || true
-          docker logs openrag-backend-proxy > service-logs/backend-proxy.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
 
       - name: Upload service logs
         uses: actions/upload-artifact@v4

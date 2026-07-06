@@ -42,9 +42,44 @@ export interface ToolCallResult {
   data?: {
     file_path?: string;
     text?: string;
+    page?: number | string;
+    score?: number | string;
+    embedding_model?: string;
+    parser?: string;
+    chunk_size?: number | string;
+    chunk_overlap?: number | string;
+    metadata?: {
+      embedding_model?: string;
+      parser?: string;
+      page?: number | string;
+      score?: number | string;
+      chunk_size?: number | string;
+      chunk_overlap?: number | string;
+      [key: string]: unknown;
+    };
     [key: string]: unknown;
   };
   default_value?: string;
+  chunk_id?: string;
+  id?: string;
+  filename?: string;
+  page?: number | string;
+  score?: number | string;
+  source_url?: string | null;
+  text?: string;
+  embedding_model?: string;
+  parser?: string;
+  chunk_size?: number | string;
+  chunk_overlap?: number | string;
+  metadata?: {
+    embedding_model?: string;
+    parser?: string;
+    page?: number | string;
+    score?: number | string;
+    chunk_size?: number | string;
+    chunk_overlap?: number | string;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 

@@ -87,6 +87,8 @@ class ChatService:
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
+        chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+        chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
 
         # Configure ingest callback credentials/vars like ingestion does
@@ -120,6 +122,9 @@ class ChatService:
             ingest_run_id=ingest_run_id,
             is_sample_data=False,
             index_name=get_index_name(),
+            parser="URL Ingester",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
         token_service = LangflowIngestTokenService()
         ingest_token = token_service.create_token(context)
@@ -499,6 +504,8 @@ class ChatService:
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
+            chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+            chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
 
             # Configure ingest callback credentials/vars like ingestion does
@@ -532,6 +539,9 @@ class ChatService:
                 ingest_run_id=ingest_run_id,
                 is_sample_data=False,
                 index_name=get_index_name(),
+                parser="URL Ingester",
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
             )
             token_service = LangflowIngestTokenService()
             ingest_token = token_service.create_token(context)

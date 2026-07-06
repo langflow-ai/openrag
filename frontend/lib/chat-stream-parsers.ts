@@ -18,6 +18,41 @@ function getDeltaText(delta: unknown): string {
   return "";
 }
 
+function parseArguments(value: unknown): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value !== "string") return undefined;
+
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function findFunctionCallByEvent(
+  calls: FunctionCall[],
+  c: Chunk,
+): FunctionCall | undefined {
+  const itemId = c.item_id || c.call_id || c.id;
+  if (typeof itemId === "string") {
+    const match = calls.find((fc) => fc.id === itemId);
+    if (match) return match;
+  }
+
+  const outputIndex =
+    typeof c.output_index === "number" ? (c.output_index as number) : undefined;
+  if (
+    outputIndex !== undefined &&
+    outputIndex >= 0 &&
+    outputIndex < calls.length
+  ) {
+    return calls[outputIndex];
+  }
+
+  return calls[calls.length - 1];
+}
+
 export function parseOpenAIChatChunk(
   chunk: unknown,
   content: { value: string },
@@ -43,11 +78,10 @@ export function parseOpenAIChatChunk(
         last.argumentsString =
           (last.argumentsString ?? "") + (fc.arguments as string);
         if (last.argumentsString.includes("}")) {
-          try {
-            last.arguments = JSON.parse(last.argumentsString);
+          const parsedArguments = parseArguments(last.argumentsString);
+          if (parsedArguments) {
+            last.arguments = parsedArguments;
             last.status = "completed";
-          } catch {
-            // arguments not yet complete
           }
         }
       }
@@ -78,11 +112,10 @@ export function parseOpenAIChatChunk(
           target.argumentsString =
             (target.argumentsString ?? "") + (fn.arguments as string);
           if (target.argumentsString.includes("}")) {
-            try {
-              target.arguments = JSON.parse(target.argumentsString);
+            const parsedArguments = parseArguments(target.argumentsString);
+            if (parsedArguments) {
+              target.arguments = parsedArguments;
               target.status = "completed";
-            } catch {
-              // arguments not yet complete
             }
           }
         }
@@ -95,10 +128,11 @@ export function parseOpenAIChatChunk(
   if (delta.finish_reason) {
     for (const fc of calls) {
       if (fc.status === "pending" && fc.argumentsString) {
-        try {
-          fc.arguments = JSON.parse(fc.argumentsString);
+        const parsedArguments = parseArguments(fc.argumentsString);
+        if (parsedArguments) {
+          fc.arguments = parsedArguments;
           fc.status = "completed";
-        } catch {
+        } else {
           fc.arguments = { raw: fc.argumentsString };
           fc.status = "error";
         }
@@ -121,6 +155,47 @@ export function parseRealtimeChunk(
 
   const item = c.item as Chunk | undefined;
 
+  if (type === "response.function_call_arguments.delta") {
+    const functionCall = findFunctionCallByEvent(calls, c);
+    if (functionCall) {
+      functionCall.argumentsString =
+        (functionCall.argumentsString ?? "") + getDeltaText(c.delta);
+    } else {
+      calls.push({
+        name: "function_call",
+        status: "pending",
+        argumentsString: getDeltaText(c.delta),
+        id: typeof c.item_id === "string" ? (c.item_id as string) : undefined,
+        type: "function_call",
+      });
+    }
+    return true;
+  }
+
+  if (type === "response.function_call_arguments.done") {
+    const functionCall = findFunctionCallByEvent(calls, c);
+    const argumentsString =
+      typeof c.arguments === "string"
+        ? (c.arguments as string)
+        : functionCall?.argumentsString;
+
+    if (functionCall) {
+      functionCall.argumentsString = argumentsString ?? "";
+      const parsedArguments = parseArguments(argumentsString);
+      if (parsedArguments) functionCall.arguments = parsedArguments;
+    } else {
+      calls.push({
+        name: "function_call",
+        arguments: parseArguments(argumentsString),
+        status: "pending",
+        argumentsString: argumentsString ?? "",
+        id: typeof c.item_id === "string" ? (c.item_id as string) : undefined,
+        type: "function_call",
+      });
+    }
+    return true;
+  }
+
   if (type === "response.output_item.added" && item?.type === "function_call") {
     let existing = calls.find((fc) => fc.id === item.id);
     if (!existing) {
@@ -137,16 +212,20 @@ export function parseRealtimeChunk(
       existing.id = item.id as string;
       existing.type = item.type as string;
       existing.name = (item.tool_name || item.name || existing.name) as string;
-      existing.arguments = (item.inputs || existing.arguments) as Record<
-        string,
-        unknown
-      >;
+      existing.arguments = ((item.inputs as
+        | Record<string, unknown>
+        | undefined) ||
+        parseArguments(item.arguments) ||
+        existing.arguments) as Record<string, unknown> | undefined;
     } else {
       calls.push({
         name: (item.tool_name || item.name || "unknown") as string,
-        arguments: item.inputs as Record<string, unknown> | undefined,
+        arguments:
+          (item.inputs as Record<string, unknown> | undefined) ||
+          parseArguments(item.arguments),
         status: "pending",
-        argumentsString: "",
+        argumentsString:
+          typeof item.arguments === "string" ? (item.arguments as string) : "",
         id: item.id as string,
         type: item.type as string,
       });
@@ -208,8 +287,11 @@ export function parseRealtimeChunk(
       functionCall.name = (item.tool_name ||
         item.name ||
         functionCall.name) as string;
-      functionCall.arguments = (item.inputs ||
-        functionCall.arguments) as Record<string, unknown>;
+      functionCall.arguments = ((item.inputs as
+        | Record<string, unknown>
+        | undefined) ||
+        parseArguments(item.arguments) ||
+        functionCall.arguments) as Record<string, unknown> | undefined;
       if (item.results)
         functionCall.result = item.results as FunctionCall["result"];
     }
@@ -275,6 +357,8 @@ export function parseOpenRAGChunk(
     content.value += c.output_text as string;
     return true;
   }
+
+  if (typeof c.type === "string") return false;
 
   if (c.delta) {
     const deltaText = getDeltaText(c.delta);
