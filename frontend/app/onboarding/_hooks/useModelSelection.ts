@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ModelsResponse } from "../../api/queries/useGetModelsQuery";
 
 export function useModelSelection(
@@ -8,18 +8,17 @@ export function useModelSelection(
   const [languageModel, setLanguageModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
 
-  // Update default selections when models are loaded
-  useEffect(() => {
+  // Set default selections when models first load (render-time adjustment)
+  const [prevModelsData, setPrevModelsData] = useState<
+    ModelsResponse | undefined
+  >();
+  if (modelsData !== prevModelsData) {
+    setPrevModelsData(modelsData);
     if (modelsData) {
-      const defaultLangModel = isEmbedding
-        ? undefined
-        : modelsData.language_models.find((m) => m.default);
-      const defaultEmbedModel = isEmbedding
-        ? modelsData.embedding_models.find((m) => m.default)
-        : undefined;
-
-      // Set language model: prefer default, fallback to first available
       if (!languageModel && !isEmbedding) {
+        const defaultLangModel = modelsData.language_models.find(
+          (m) => m.default,
+        );
         if (defaultLangModel) {
           setLanguageModel(defaultLangModel.value);
         } else if (modelsData.language_models.length > 0) {
@@ -27,8 +26,10 @@ export function useModelSelection(
         }
       }
 
-      // Set embedding model: prefer default, fallback to first available
       if (!embeddingModel && isEmbedding) {
+        const defaultEmbedModel = modelsData.embedding_models.find(
+          (m) => m.default,
+        );
         if (defaultEmbedModel) {
           setEmbeddingModel(defaultEmbedModel.value);
         } else if (modelsData.embedding_models.length > 0) {
@@ -36,7 +37,7 @@ export function useModelSelection(
         }
       }
     }
-  }, [modelsData, languageModel, embeddingModel, isEmbedding]);
+  }
 
   return {
     languageModel,

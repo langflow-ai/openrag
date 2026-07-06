@@ -4,58 +4,69 @@ Public API v1 Documents endpoint.
 Provides document ingestion and management.
 Uses API key authentication.
 """
-from typing import List, Optional
 
-from fastapi import Depends, File, Form, UploadFile
-from pydantic import BaseModel
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from api.documents import delete_documents_by_filename_core
+from pydantic import BaseModel
 
+from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
-from utils.logging_config import get_logger
+from api.v1._filter_resolution import resolve_filter_id
 from dependencies import (
     get_document_service,
-    get_task_service,
-    get_session_manager,
+    get_knowledge_filter_service,
     get_langflow_file_service,
-    get_api_key_user_async,
+    get_rbac_service,
+    get_session_manager,
+    get_task_service,
+    has_effective_permission,
+    require_api_key_any_permission,
+    require_api_key_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+require_document_delete_permission = require_api_key_any_permission(
+    ("knowledge:delete:own", "knowledge:delete:anonymous")
+)
+
 
 class DeleteDocV1Body(BaseModel):
-    filename: str
+    filename: str | None = None
+    filter_id: str | None = None
 
 
 async def ingest_endpoint(
-    file: List[UploadFile] = File(...),
-    session_id: Optional[str] = Form(None),
-    settings: Optional[str] = Form(None),
-    tweaks: Optional[str] = Form(None),
-    delete_after_ingest: str = Form("true"),
+    file: list[UploadFile] = File(...),
+    session_id: str | None = Form(None),
+    settings: str | None = Form(None),
+    tweaks: str | None = Form(None),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("knowledge:upload")),
 ):
     """
     Ingest a document into the knowledge base.
 
     POST /v1/documents/ingest
     Request: multipart/form-data with "file" field
+
+    NOTE: `create_filter` is upload-router/onboarding metadata. The router
+    echoes it in the upload response so onboarding can create a saved knowledge
+    filter after ingestion completes. It does not affect task creation or
+    ingestion behavior, and the v1 SDK does not expose this option.
     """
-    # Delegate to the router which handles both Langflow and traditional paths
     return await upload_ingest_router(
         file=file,
         session_id=session_id,
         settings_json=settings,
         tweaks_json=tweaks,
-        delete_after_ingest=delete_after_ingest,
         replace_duplicates=replace_duplicates,
         create_filter=create_filter,
         document_service=document_service,
@@ -66,10 +77,30 @@ async def ingest_endpoint(
     )
 
 
+async def all_tasks_enhanced_endpoint(
+    task_service=Depends(get_task_service),
+    user: User = Depends(require_api_key_permission("knowledge:read:own")),
+):
+    """Get all ingestion tasks with structured failure metadata on failed files.
+
+    GET /v1/tasks/enhanced
+
+    Returns the same list as GET /v1/tasks/{task_id} would across all tasks,
+    with component, failure_phase, user_facing_message, and actionable_by
+    added to any failed file entry whose cause can be classified.
+
+    Note: completed files are omitted from each task's ``files`` dict to
+    reduce payload size; use GET /v1/tasks/{task_id}/enhanced for the full
+    file list of a specific task.
+    """
+    tasks = task_service.get_all_tasks2(user.user_id)
+    return JSONResponse({"tasks": tasks})
+
+
 async def task_status_endpoint(
     task_id: str,
     task_service=Depends(get_task_service),
-    user: User = Depends(get_api_key_user_async),
+    user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
     """Get the status of an ingestion task. GET /v1/tasks/{task_id}"""
     task_status = task_service.get_task_status(user.user_id, task_id)
@@ -78,16 +109,114 @@ async def task_status_endpoint(
     return JSONResponse(task_status)
 
 
+async def task_status_enhanced_endpoint(
+    task_id: str,
+    task_service=Depends(get_task_service),
+    user: User = Depends(require_api_key_permission("knowledge:read:own")),
+):
+    """Get the status of an ingestion task with structured failure metadata.
+
+    GET /v1/tasks/{task_id}/enhanced
+
+    Returns the same baseline task and file status information as
+    GET /v1/tasks/{task_id}, and additionally includes component,
+    failure_phase, user_facing_message, and actionable_by on any file
+    entry whose status is 'failed' and whose failure cause can be
+    classified.
+
+    Note: unlike GET /v1/tasks/enhanced, this endpoint includes completed
+    files in the task's ``files`` dict.
+    """
+    task_status = task_service.get_task_status2(user.user_id, task_id)
+    if not task_status:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
+    return JSONResponse(task_status)
+
+
 async def delete_document_endpoint(
     body: DeleteDocV1Body,
+    request: Request,
     session_manager=Depends(get_session_manager),
-    user: User = Depends(get_api_key_user_async),
+    rbac=Depends(get_rbac_service),
+    user: User = Depends(require_document_delete_permission),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
-    """Delete a document from the knowledge base. DELETE /v1/documents"""
+    """Delete document(s) from the knowledge base. DELETE /v1/documents
+
+    Provide exactly one of:
+      - `filename`: delete all chunks for that filename.
+      - `filter_id`: resolve the filter's `data_sources` and delete chunks for
+        each concrete filename. Empty `data_sources` or a list containing the
+        wildcard value `"*"` is rejected to prevent mass deletion.
+    """
+    if bool(body.filename) == bool(body.filter_id):
+        return JSONResponse(
+            {"error": "Provide exactly one of `filename` or `filter_id`"},
+            status_code=400,
+        )
+
+    can_delete_own = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:own",
+    )
+    can_delete_anonymous = await has_effective_permission(
+        request,
+        user,
+        rbac,
+        "knowledge:delete:anonymous",
+    )
+
+    if body.filter_id:
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+        )
+        filenames = resolved["filters"].get("data_sources") or []
+        if not filenames:
+            return JSONResponse(
+                {"error": "Filter has no specific data_sources to delete"},
+                status_code=400,
+            )
+
+        results = []
+        total_deleted = 0
+        statuses = []
+        for fname in filenames:
+            payload, _status = await delete_documents_by_filename_core(
+                filename=fname,
+                session_manager=session_manager,
+                user_id=user.user_id,
+                jwt_token=user.jwt_token,
+                can_delete_own=can_delete_own,
+                can_delete_anonymous=can_delete_anonymous,
+            )
+            results.append(payload)
+            statuses.append(_status)
+            total_deleted += payload.get("deleted_chunks", 0) or 0
+
+        all_ok = all(200 <= status < 300 for status in statuses)
+        response_status = 200 if all_ok else max(statuses)
+        return JSONResponse(
+            {
+                "success": all_ok,
+                "deleted_chunks": total_deleted,
+                "filenames": filenames,
+                "filter_id": body.filter_id,
+                "per_file": results,
+            },
+            status_code=response_status,
+        )
+
     payload, status_code = await delete_documents_by_filename_core(
         filename=body.filename,
         session_manager=session_manager,
         user_id=user.user_id,
-        jwt_token=None,
+        jwt_token=user.jwt_token,
+        can_delete_own=can_delete_own,
+        can_delete_anonymous=can_delete_anonymous,
     )
     return JSONResponse(payload, status_code=status_code)

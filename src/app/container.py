@@ -1,0 +1,237 @@
+"""Service container — constructs all application services and wires their dependencies.
+
+Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
+"""
+
+from config.settings import (
+    ENABLE_BACKEND_DOCLING_POLLING,
+    INGESTION_TIMEOUT,
+    JWT_SIGNING_KEY,
+    SESSION_SECRET,
+    clients,
+    config_manager,
+    get_embedding_model,
+    get_index_name,
+    is_dev_azure_blob_enabled,
+    is_no_auth_mode,
+)
+from connectors.service import ConnectorService
+from services.api_key_service import APIKeyService
+from services.auth_service import AuthService
+from services.chat_service import ChatService
+from services.dls_principal_service import DLSPrincipalService
+from services.docling_polling_service import DoclingPollingService
+from services.document_index_writer import DocumentIndexWriter
+from services.document_service import DocumentService
+from services.flows_service import FlowsService
+from services.group_acl_service import GroupACLService
+from services.knowledge_filter_service import KnowledgeFilterService
+from services.langflow_file_service import LangflowFileService
+from services.langflow_ingest_token_service import LangflowIngestTokenService
+from services.langflow_mcp_service import LangflowMCPService
+from services.models_service import ModelsService
+from services.monitor_service import MonitorService
+from services.search_service import SearchService, register_search_service
+from services.task_service import TaskService
+from session_manager import SessionManager
+from utils.jwt_keygen import generate_jwt_keys
+from utils.logging_config import get_logger
+from utils.telemetry import Category, MessageId, TelemetryClient
+
+logger = get_logger(__name__)
+
+
+def _should_load_persisted_connections() -> bool:
+    """Whether to load persisted connector connections at startup.
+
+    Normally skipped in no-auth mode because OAuth connectors are unusable
+    there — but dev bucket connectors (e.g. Azure Blob via
+    OPENRAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
+    connections. Without loading them, a saved connection silently disappears
+    on restart (the in-memory dict empties), leaving the UI stuck on "Connect".
+    OR in those dev flags so their connections survive a restart.
+    """
+    return not is_no_auth_mode() or is_dev_azure_blob_enabled()
+
+
+async def initialize_services():
+    """Initialize all services and their dependencies"""
+    await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
+    from config.settings import IBM_AUTH_ENABLED
+
+    if IBM_AUTH_ENABLED:
+        logger.info("IBM auth mode enabled — JWT validation delegated to Traefik")
+
+    # Generate JWT keys if they don't exist, a JWT signing key isn't specified,
+    # and IBM auth is not enabled (IBM mode delegates all auth to Traefik)
+    if not JWT_SIGNING_KEY and not IBM_AUTH_ENABLED:
+        generate_jwt_keys()
+
+    # Initialize clients (now async to generate Langflow API key)
+    try:
+        await clients.initialize()
+    except Exception as e:
+        logger.error("Failed to initialize clients", error=str(e))
+        await TelemetryClient.send_event(
+            Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_OS_CLIENT_FAIL
+        )
+        raise
+
+    session_manager = SessionManager(SESSION_SECRET)
+
+    models_service = ModelsService()
+    document_index_writer = DocumentIndexWriter()
+    langflow_ingest_token_service = LangflowIngestTokenService()
+    document_service = DocumentService(
+        session_manager=session_manager,
+        models_service=models_service,
+        docling_service=clients.docling_service,
+        document_index_writer=document_index_writer,
+    )
+    search_service = SearchService(session_manager, models_service)
+    register_search_service(search_service)
+
+    # Backend-side Docling polling coordinator. Constructed once as a
+    # singleton (it is stateless) and gated by ENABLE_BACKEND_DOCLING_POLLING
+    # so operators can roll back to the legacy single-call ingestion path
+    # without code changes. When disabled, downstream callers receive None
+    # and fall through to the legacy flow.
+    docling_polling_service = (
+        DoclingPollingService(clients.docling_service)
+        if ENABLE_BACKEND_DOCLING_POLLING and clients.docling_service is not None
+        else None
+    )
+
+    task_service = TaskService(
+        document_service,
+        models_service,
+        ingestion_timeout=INGESTION_TIMEOUT,
+        docling_service=clients.docling_service,
+        docling_polling_service=docling_polling_service,
+        session_manager=session_manager,
+    )
+    flows_service = FlowsService()
+    chat_service = ChatService(flows_service=flows_service)
+    knowledge_filter_service = KnowledgeFilterService(session_manager)
+    monitor_service = MonitorService(session_manager)
+    langflow_file_service = LangflowFileService(
+        flows_service=flows_service,
+        docling_service=clients.docling_service,
+        document_index_writer=document_index_writer,
+        ingest_token_service=langflow_ingest_token_service,
+    )
+    langflow_mcp_service = LangflowMCPService()
+
+    connector_service = ConnectorService(
+        patched_async_client=clients,
+        embed_model=get_embedding_model(),
+        index_name=get_index_name(),
+        task_service=task_service,
+        session_manager=session_manager,
+        models_service=models_service,
+        document_service=document_service,
+        docling_service=clients.docling_service,
+        flows_service=flows_service,
+        langflow_service=langflow_file_service,
+    )
+    group_acl_service = GroupACLService(connector_service)
+    dls_principal_service = DLSPrincipalService(connector_service)
+
+    auth_service = AuthService(
+        session_manager,
+        connector_service,
+        flows_service,
+        langflow_mcp_service=langflow_mcp_service,
+    )
+
+    # Load persisted connector connections at startup so webhooks and syncs
+    # can resolve existing subscriptions immediately after server boot.
+    # (See _should_load_persisted_connections for the no-auth/dev-bucket nuance.)
+    if _should_load_persisted_connections():
+        try:
+            await connector_service.initialize()
+            loaded_count = len(connector_service.connection_manager.connections)
+            logger.info(
+                "Loaded persisted connector connections on startup",
+                loaded_count=loaded_count,
+            )
+        except Exception as e:
+            logger.error("Failed to load persisted connections on startup", error=str(e))
+            await TelemetryClient.send_event(
+                Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED
+            )
+    else:
+        logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
+
+    await TelemetryClient.send_event(
+        Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS
+    )
+
+    api_key_service = APIKeyService(session_manager)
+
+    # ===== RBAC service =====
+    # We do NOT open the SQL engine here. `create_app()` runs inside an
+    # `asyncio.run(...)` whose loop is closed BEFORE uvicorn starts its
+    # own loop — any AsyncEngine bound to this loop would be dead by
+    # then. Instead, RBACService takes a *lazy* session-factory getter
+    # that resolves `db.engine.SessionLocal` at call time — that
+    # attribute is filled in by the lifespan startup event running on
+    # uvicorn's loop. Alembic upgrade is run synchronously from __main__
+    # before `asyncio.run(create_app())` so the schema is in place by
+    # the time the lifespan opens the engine.
+    from db import engine as _db_engine_mod
+    from services.rbac_service import RBACService
+    from services.workspace_config_service import WorkspaceConfigService
+
+    def _lazy_session_factory():
+        sl = _db_engine_mod.SessionLocal
+        if sl is None:
+            raise RuntimeError(
+                "DB engine not yet initialized. RBACService called before lifespan startup."
+            )
+        return sl()
+
+    rbac_service = RBACService(_lazy_session_factory)
+
+    # WorkspaceConfigService — DB-first reads of what config.yaml holds,
+    # with the legacy ConfigManager kept as the yaml fallback during
+    # Phase B (dual-write).
+    workspace_config_service = WorkspaceConfigService(
+        config_manager=config_manager,
+        session_factory=_lazy_session_factory,
+    )
+
+    # Plumb the session factory into the two chat-history services
+    # (session_ownership + conversation_persistence). They lazy-resolve
+    # `db.engine.SessionLocal` as a fallback, but setting it here makes
+    # the wiring explicit and avoids the import path on the hot loop.
+    from services.conversation_persistence_service import conversation_persistence
+    from services.session_ownership_service import session_ownership_service
+
+    session_ownership_service._session_factory = _lazy_session_factory
+    conversation_persistence._session_factory = _lazy_session_factory
+
+    return {
+        "document_service": document_service,
+        "search_service": search_service,
+        "task_service": task_service,
+        "chat_service": chat_service,
+        "flows_service": flows_service,
+        "langflow_file_service": langflow_file_service,
+        "document_index_writer": document_index_writer,
+        "langflow_ingest_token_service": langflow_ingest_token_service,
+        "auth_service": auth_service,
+        "connector_service": connector_service,
+        "group_acl_service": group_acl_service,
+        "dls_principal_service": dls_principal_service,
+        "knowledge_filter_service": knowledge_filter_service,
+        "models_service": models_service,
+        "monitor_service": monitor_service,
+        "session_manager": session_manager,
+        "api_key_service": api_key_service,
+        "langflow_mcp_service": langflow_mcp_service,
+        "docling_service": clients.docling_service,
+        "docling_polling_service": docling_polling_service,
+        "rbac_service": rbac_service,
+        "workspace_config_service": workspace_config_service,
+    }

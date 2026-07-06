@@ -51,6 +51,11 @@ stringData:
 
     # Langflow url
     LANGFLOW_URL={{ include "openrag.langflow.url" . | quote }}
+    OPENRAG_BACKEND_INTERNAL_URL={{ include "openrag.backend.url" . | quote }}
+    {{- if .Values.backend.ingestRouter.enabled }}
+    OPENRAG_BACKEND_ROUTER_ENABLE=true
+    OPENRAG_BACKEND_ROUTER_PORT={{ .Values.backend.ingestRouter.port }}
+    {{- end }}
 
     # Flow IDs
     {{- if .Values.langflow.flows.chatFlowId }}
@@ -81,6 +86,7 @@ stringData:
     LANGFLOW_OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
     LANGFLOW_OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
 
+
     # Google OAuth
     {{- if .Values.global.oauth.google.clientId }}
     GOOGLE_OAUTH_CLIENT_ID={{ .Values.global.oauth.google.clientId | quote }}
@@ -95,6 +101,20 @@ stringData:
     {{- end }}
     {{- if .Values.global.oauth.microsoft.clientSecret }}
     MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
+    {{- end }}
+
+    # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB)
+    {{- if .Values.global.azureBlob.connectionString }}
+    AZURE_STORAGE_CONNECTION_STRING={{ .Values.global.azureBlob.connectionString | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountName }}
+    AZURE_STORAGE_ACCOUNT_NAME={{ .Values.global.azureBlob.accountName | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountKey }}
+    AZURE_STORAGE_ACCOUNT_KEY={{ .Values.global.azureBlob.accountKey | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.endpoint }}
+    AZURE_STORAGE_ENDPOINT={{ .Values.global.azureBlob.endpoint | quote }}
     {{- end }}
 
     # Webhook (continuous ingest)
@@ -144,6 +164,11 @@ stringData:
     # Docling (optional override)
     {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
     DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
+    {{- end }}
+    {{- if hasKey .Values.global.docling "verifySsl" }}
+    DOCLING_SERVE_VERIFY_SSL={{ ternary "true" "false" .Values.global.docling.verifySsl | quote }}
+    {{- else }}
+    DOCLING_SERVE_VERIFY_SSL="true"
     {{- end }}
 
     # Langflow auth

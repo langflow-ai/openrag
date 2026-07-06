@@ -7,6 +7,7 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
   - persistentvolumeclaims
   - secrets
   - serviceaccounts
@@ -20,9 +21,50 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
   - apps
   resources:
   - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
   verbs:
   - create
   - delete
@@ -44,7 +86,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags
   verbs:
@@ -56,13 +98,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags/finalizers
   verbs:
   - update
 - apiGroups:
-  - openrag.io
+  - openr.ag
   resources:
   - openrags/status
   verbs:

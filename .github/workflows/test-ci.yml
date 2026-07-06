@@ -1,0 +1,458 @@
+name: CI Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      use_local_images:
+        description: 'Build images locally instead of pulling from DockerHub'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.13"
+  PLAYWRIGHT_BROWSERS_PATH: "ms-playwright"
+  PLAYWRIGHT_VERSION: "1.57.0"
+  OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  LANGFLOW_AUTO_LOGIN: "True"
+  LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+  LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+  LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+  LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+  NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
+  CI_IMAGE_TAG: ci-${{ github.sha }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+  WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+  WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+  OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+  GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
+  # Single-node test cluster never reaches the multi-node readiness counts
+  OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+      integration: ${{ steps.filter.outputs.integration }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            e2e:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+            integration:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
+  build-images:
+    needs: changes
+    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    steps:
+      - run: df -h
+
+      - name: Cleanup Docker cache
+        run: |
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+
+      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
+        run: |
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+      - run: df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify workspace
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+          ls -la
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Image Cache Keys
+        id: cache-keys
+        run: |
+          OPENSEARCH_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile patch-netty.sh securityconfig cloud_securityconfig opensearch-entrypoint-wrapper.sh)
+          BACKEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.backend src enhancements flows securityconfig cloud_securityconfig alembic.ini alembic openrag-documents scripts/backend-entrypoint.sh pyproject.toml uv.lock)
+          FRONTEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.frontend frontend)
+          LANGFLOW_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.langflow flows scripts/langflow-entrypoint.py)
+          
+          echo "opensearch=$OPENSEARCH_HASH" >> $GITHUB_OUTPUT
+          echo "backend=$BACKEND_HASH" >> $GITHUB_OUTPUT
+          echo "frontend=$FRONTEND_HASH" >> $GITHUB_OUTPUT
+          echo "langflow=$LANGFLOW_HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache OpenSearch Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/opensearch.tar
+          key: ${{ runner.os }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
+
+      - name: Cache Backend Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/backend.tar
+          key: ${{ runner.os }}-image-backend-${{ steps.cache-keys.outputs.backend }}
+
+      - name: Cache Frontend Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/frontend.tar
+          key: ${{ runner.os }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
+
+      - name: Cache Langflow Image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/image-cache/langflow.tar
+          key: ${{ runner.os }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
+
+      - name: Build OpenRAG images
+        run: |
+          USE_LOCAL="${{ inputs.use_local_images }}"
+          
+          mkdir -p /tmp/image-cache
+          
+          build_or_load_image() {
+            local name=$1
+            local dockerfile=$2
+            local tar_path="/tmp/image-cache/${name}.tar"
+            
+            if [ -f "$tar_path" ]; then
+              echo "Cache hit for ${name}. Loading image from ${tar_path}..."
+              docker load -i "$tar_path"
+              echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
+              docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
+            else
+              echo "Cache miss for ${name}. Building..."
+              if docker buildx build \
+                --load \
+                -t "langflowai/openrag-${name}:cached" \
+                -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
+                -f "$dockerfile" .; then
+                echo "Saving built image to ${tar_path}..."
+                docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
+              else
+                echo "Build failed for ${name}."
+                return 1
+              fi
+            fi
+          }
+
+          for i in 1 2 3; do
+            echo "Build attempt $i..."
+            if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
+              echo "Building PR images locally..."
+              
+              if build_or_load_image "opensearch" "Dockerfile" && \
+                 build_or_load_image "backend" "Dockerfile.backend" && \
+                 build_or_load_image "frontend" "Dockerfile.frontend" && \
+                 build_or_load_image "langflow" "Dockerfile.langflow"; then
+                break
+              fi
+            else
+              echo "Preparing DockerHub images..."
+              
+              if docker pull langflowai/openrag-backend:latest && \
+                 docker pull langflowai/openrag-frontend:latest && \
+                 docker pull langflowai/openrag-langflow:latest && \
+                 docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}" && \
+                 docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}" && \
+                 docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}" && \
+                 build_or_load_image "opensearch" "Dockerfile"; then
+                break
+              fi
+            fi
+            echo "Build attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Build failed after 3 attempts."
+              exit 1
+            fi
+          done
+
+      - name: Save OpenRAG images
+        run: OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-save-images
+
+      - name: Upload OpenRAG image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrag-ci-images-${{ github.sha }}
+          path: .ci-artifacts/openrag-ci-images.tar
+          retention-days: 1
+          compression-level: 0
+
+  test-suite:
+    needs: [changes, build-images]
+    if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, sdk-python, sdk-typescript]
+    name: tests (${{ matrix.suite }})
+    steps:
+      - run: df -h
+
+      - name: Cleanup Docker cache
+        run: |
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+
+      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
+        run: |
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+      - run: df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify workspace
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+          ls -la
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Node.js
+        if: matrix.suite == 'sdk-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Python version
+        run: uv python install 3.13
+
+      - name: Download OpenRAG image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openrag-ci-images-${{ github.sha }}
+          path: .ci-artifacts
+
+      - name: Load OpenRAG images
+        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+
+      - name: Run ${{ matrix.suite }} integration suite
+        env:
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: 9200
+          OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          LOG_LEVEL: DEBUG
+          # Force no-auth mode so tests bypass OAuth
+          GOOGLE_OAUTH_CLIENT_ID: ""
+          GOOGLE_OAUTH_CLIENT_SECRET: ""
+          # Disable startup ingest noise unless a test enables it
+          DISABLE_STARTUP_INGEST: "true"
+        run: |
+          chmod +x scripts/ci/run_integration_suite.sh
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
+          echo "Keys directory after tests:"
+          ls -la keys/ || echo "No keys directory"
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs-${{ matrix.suite }}
+          path: service-logs/
+          retention-days: 7
+
+  e2e-run:
+    needs: [changes, build-images]
+    if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    steps:
+      - name: Cleanup Docker cache
+        run: |
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+
+      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
+        run: |
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Python
+        run: uv python install 3.13
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: frontend
+        run: |
+          for i in 1 2 3; do
+            echo "Installing Playwright browsers (attempt $i)..."
+            if npx playwright install --with-deps chromium; then
+              break
+            fi
+            echo "Attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Failed to install Playwright browsers after 3 attempts."
+              exit 1
+            fi
+          done
+
+      - name: Download OpenRAG image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openrag-ci-images-${{ github.sha }}
+          path: .ci-artifacts
+
+      - name: Load OpenRAG images
+        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+
+      - name: Setup E2E infrastructure
+        run: |
+          chmod +x scripts/setup-e2e.sh
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        env:
+          CI: "true"
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: "9200"
+          OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          GOOGLE_OAUTH_CLIENT_ID: ""
+          GOOGLE_OAUTH_CLIENT_SECRET: ""
+        run: npx playwright test
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs
+          path: service-logs/
+          retention-days: 7
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          retention-days: 7
+
+      - name: Teardown infrastructure
+        if: always()
+        run: |
+          make docling-stop || true
+          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          make clean || true
+          docker system prune -f || true
+
+  tests:
+    needs: [changes, build-images, test-suite]
+    if: always()
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    steps:
+      - name: Check split integration result
+        run: |
+          if [ "${{ needs.changes.outputs.integration }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ needs.build-images.result }}" != "success" ]; then
+              echo "build-images failed"
+              exit 1
+            fi
+            if [ "${{ needs.test-suite.result }}" != "success" ]; then
+              echo "one or more integration suites failed"
+              exit 1
+            fi
+          fi
+          echo "all integration suites passed or skipped"
+
+  e2e:
+    needs: [changes, build-images, e2e-run]
+    if: always()
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    steps:
+      - name: Check E2E result
+        run: |
+          if [ "${{ needs.changes.outputs.e2e }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ needs.build-images.result }}" != "success" ]; then
+              echo "build-images failed"
+              exit 1
+            fi
+            if [ "${{ needs.e2e-run.result }}" != "success" ]; then
+              echo "E2E tests failed"
+              exit 1
+            fi
+          fi
+          echo "E2E tests passed or skipped"

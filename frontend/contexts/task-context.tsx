@@ -12,14 +12,34 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
+  TASKS_QUERY_KEY,
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
+import type { ListFilesResponse } from "@/app/api/queries/useListFiles";
+import TaskDialog from "@/components/task-dialog";
 import { useAuth } from "@/contexts/auth-context";
-import { hasFailedFileEntries, isTerminalFailedTask } from "@/lib/task-utils";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
+import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
+import {
+  getKnowledgeFileIdentity,
+  inferTaskFileConnectorType,
+} from "@/lib/knowledge-table-state";
+import {
+  didTaskReachCompleted,
+  didTaskReachTerminalState,
+  finalizeProcessingOverlaysForEnhancedTask,
+  findTaskFileOverlayIndex,
+  getEnhancedListDisappearedFilePaths,
+  getFailedFileCount,
+  getSuccessfulFileCount,
+  hasFailedFileEntries,
+  isTaskInProgressStatus,
+  isTerminalFailedTask,
+} from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
 export type { Task };
@@ -41,8 +61,13 @@ export interface TaskFile {
 interface TaskContextType {
   tasks: Task[];
   files: TaskFile[];
-  addTask: (taskId: string) => void;
+  addTask: (
+    taskId: string,
+    options?: { connectorType?: string; source?: string },
+  ) => void;
   addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
+  /** Mark knowledge-table overlays as processing when a retry starts. */
+  markTaskFilesProcessing: (taskId: string, sourceUrls: string[]) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   isPolling: boolean;
@@ -57,6 +82,10 @@ interface TaskContextType {
   setSelectedTaskId: (taskId: string | null) => void;
   selectedTaskTrigger: number;
   selectTask: (taskId: string | null) => void;
+  isTaskDialogOpen: boolean;
+  taskDialogTaskId: string | null;
+  openTaskDialog: (taskId: string) => void;
+  closeTaskDialog: () => void;
   // React Query states
   isLoading: boolean;
   error: Error | null;
@@ -70,7 +99,37 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskTrigger, setSelectedTaskTrigger] = useState(0);
+  const [taskDialogTaskId, setTaskDialogTaskId] = useState<string | null>(null);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
+  const taskConnectorTypesRef = useRef<Map<string, string>>(new Map());
+  const taskSourcesRef = useRef<Map<string, string>>(new Map());
+
+  const clearTaskMetadata = useCallback((taskId: string) => {
+    taskConnectorTypesRef.current.delete(taskId);
+    taskSourcesRef.current.delete(taskId);
+  }, []);
+
+  const clearTaskMetadataWithoutOverlays = useCallback(
+    (prevFiles: TaskFile[], nextFiles: TaskFile[]) => {
+      const nextTaskIds = new Set(nextFiles.map((file) => file.task_id));
+      for (const file of prevFiles) {
+        if (!nextTaskIds.has(file.task_id)) {
+          taskConnectorTypesRef.current.delete(file.task_id);
+          taskSourcesRef.current.delete(file.task_id);
+        }
+      }
+    },
+    [],
+  );
+  const openTaskDialog = useCallback((taskId: string) => {
+    setTaskDialogTaskId(taskId);
+    setIsTaskDialogOpen(true);
+  }, []);
+  const closeTaskDialog = useCallback(() => {
+    setIsTaskDialogOpen(false);
+    setTaskDialogTaskId(null);
+  }, []);
   const selectTask = useCallback((taskId: string | null) => {
     setSelectedTaskId(taskId);
     if (taskId) {
@@ -96,10 +155,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const cancelTaskMutation = useCancelTaskMutation({
     onSuccess: (_data, variables) => {
       // Immediately remove from React Query cache
-      queryClient.setQueryData(["tasks"], (oldTasks: Task[] | undefined) => {
-        if (!oldTasks) return [];
-        return oldTasks.filter((task) => task.task_id !== variables.taskId);
-      });
+      queryClient.setQueryData(
+        [...TASKS_QUERY_KEY],
+        (oldTasks: Task[] | undefined) => {
+          if (!oldTasks) return [];
+          return oldTasks.filter((task) => task.task_id !== variables.taskId);
+        },
+      );
+
+      clearTaskMetadata(variables.taskId);
 
       // Update file to display as cancelled
       setFiles((prevFiles) =>
@@ -122,25 +186,45 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Get settings to check if onboarding is active
-  const { data: settings } = useGetSettingsQuery();
-
-  // Helper function to check if onboarding is active
-  const isOnboardingActive = useCallback(() => {
-    const TOTAL_ONBOARDING_STEPS = 4;
-    // Onboarding is active if current_step < 4
-    return (
-      settings?.onboarding?.current_step !== undefined &&
-      settings.onboarding.current_step < TOTAL_ONBOARDING_STEPS
-    );
-  }, [settings?.onboarding?.current_step]);
+  const { isOnboardingActive } = useOnboardingState();
 
   const refetchSearch = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: ["search"],
       exact: false,
     });
+    queryClient.invalidateQueries({
+      queryKey: ["listFiles"],
+      exact: false,
+    });
   }, [queryClient]);
+
+  const markTaskFilesProcessing = useCallback(
+    (taskId: string, sourceUrls: string[]) => {
+      const paths = new Set(sourceUrls);
+      if (paths.size === 0) {
+        return;
+      }
+      const now = new Date().toISOString();
+      setFiles((prevFiles) => {
+        let changed = false;
+        const updated = prevFiles.map((file) => {
+          if (file.task_id !== taskId || !paths.has(file.source_url)) {
+            return file;
+          }
+          changed = true;
+          return {
+            ...file,
+            status: "processing" as const,
+            error: undefined,
+            updated_at: now,
+          };
+        });
+        return changed ? updated : prevFiles;
+      });
+    },
+    [],
+  );
 
   const addFiles = useCallback(
     (newFiles: Partial<TaskFile>[], taskId: string) => {
@@ -167,6 +251,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Handle task status changes and file updates
   useEffect(() => {
+    const currentTaskIds = new Set(tasks.map((task) => task.task_id));
+    for (const previousTask of previousTasksRef.current) {
+      if (!currentTaskIds.has(previousTask.task_id)) {
+        clearTaskMetadata(previousTask.task_id);
+      }
+    }
+
     if (tasks.length === 0) {
       // Store current tasks as previous for next comparison
       previousTasksRef.current = tasks;
@@ -179,11 +270,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         (prev) => prev.task_id === currentTask.task_id,
       );
 
-      // Check if task is in progress
-      const isTaskInProgress =
-        currentTask.status === "pending" ||
-        currentTask.status === "running" ||
-        currentTask.status === "processing";
+      const isTaskInProgress = isTaskInProgressStatus(currentTask.status);
 
       // On initial load, previousTasksRef is empty, so we need to process all in-progress tasks
       const isInitialLoad = previousTasksRef.current.length === 0;
@@ -250,22 +337,31 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               })();
 
               setFiles((prevFiles) => {
-                const existingFileIndex = prevFiles.findIndex(
-                  (f) => f.source_url === filePath,
+                const existingFileIndex = findTaskFileOverlayIndex(
+                  prevFiles,
+                  currentTask.task_id,
+                  filePath,
+                  fileName,
                 );
+                const existingFile =
+                  existingFileIndex >= 0
+                    ? prevFiles[existingFileIndex]
+                    : undefined;
 
-                // Detect connector type based on file path or other indicators
-                let connectorType = "local";
-                if (filePath.includes("/") && !filePath.startsWith("/")) {
-                  // Likely S3 key format (bucket/path/file.ext)
-                  connectorType = "s3";
-                }
+                const connectorType = inferTaskFileConnectorType(
+                  filePath,
+                  fileName,
+                  existingFile?.connector_type &&
+                    existingFile.connector_type !== "local"
+                    ? existingFile.connector_type
+                    : taskConnectorTypesRef.current.get(currentTask.task_id),
+                );
 
                 const fileEntry: TaskFile = {
                   filename: fileName,
-                  mimetype: "", // We don't have this info from the task
+                  mimetype: existingFile?.mimetype || "",
                   source_url: filePath,
-                  size: 0, // We don't have this info from the task
+                  size: existingFile?.size || 0,
                   connector_type: connectorType,
                   status: mappedStatus,
                   task_id: currentTask.task_id,
@@ -303,29 +399,29 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
-        if (isTaskInProgress && previousTask?.files) {
-          const currentFileKeys = new Set(Object.keys(currentTask.files ?? {}));
-          const disappearedFilePaths = Object.keys(previousTask.files).filter(
-            (fp) => !currentFileKeys.has(fp),
+        if (previousTask?.files) {
+          const disappearedFilePaths = getEnhancedListDisappearedFilePaths(
+            currentTask,
+            previousTask,
           );
+          const taskJustCompleted = didTaskReachCompleted(
+            previousTask,
+            currentTask,
+          );
+          const shouldFinalizeDisappeared =
+            disappearedFilePaths.length > 0 &&
+            (isTaskInProgress || taskJustCompleted);
+          const shouldFinalizeAllProcessing = taskJustCompleted;
 
-          if (disappearedFilePaths.length > 0) {
-            setFiles((prevFiles) => {
-              let changed = false;
-              const updated = prevFiles.map((f) => {
-                if (
-                  f.task_id === currentTask.task_id &&
-                  f.status === "processing" &&
-                  disappearedFilePaths.includes(f.source_url)
-                ) {
-                  changed = true;
-                  return { ...f, status: "active" as TaskFile["status"] };
-                }
-                return f;
-              });
-              return changed ? updated : prevFiles;
-            });
-            setTimeout(() => refetchSearch(), 500);
+          if (shouldFinalizeDisappeared || shouldFinalizeAllProcessing) {
+            setFiles((prevFiles) =>
+              finalizeProcessingOverlaysForEnhancedTask(
+                prevFiles,
+                currentTask,
+                shouldFinalizeAllProcessing ? undefined : disappearedFilePaths,
+              ),
+            );
+            refetchSearch();
           }
         }
         if (
@@ -334,9 +430,48 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           previousTask.status !== "completed" &&
           currentTask.status === "completed"
         ) {
-          // Task just completed - show success toast with file counts
-          const successfulFiles = currentTask.successful_files || 0;
-          const failedFiles = currentTask.failed_files || 0;
+          const successfulFiles = getSuccessfulFileCount(currentTask);
+          const failedFiles = getFailedFileCount(currentTask);
+          const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
+
+          const firstFile = currentTask.files
+            ? Object.values(currentTask.files)[0]
+            : undefined;
+          const embeddingModel = firstFile?.embedding_model;
+          const connectorType =
+            taskConnectorTypesRef.current.get(currentTask.task_id) || "local";
+          const source =
+            taskSourcesRef.current.get(currentTask.task_id) ||
+            (connectorType === "local" ? "file" : "connector");
+
+          if (isTotalFailure) {
+            trackProcessFailure({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+              embedding_model: embeddingModel,
+              connector_type: connectorType,
+              source,
+            });
+          } else {
+            trackProcessSuccess({
+              processType: "Ingestion",
+              process: "Document Upload",
+              category: "Knowledge",
+              task_id: currentTask.task_id,
+              total_files: currentTask.total_files,
+              successful_files: successfulFiles,
+              failed_files: failedFiles,
+              duration_seconds: currentTask.duration_seconds,
+              embedding_model: embeddingModel,
+              connector_type: connectorType,
+              source,
+            });
+          }
 
           let description = "";
           if (failedFiles > 0) {
@@ -350,47 +485,146 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               successfulFiles !== 1 ? "s" : ""
             } uploaded successfully`;
           }
-          if (!isOnboardingActive()) {
-            toast.success("Task completed", {
-              description,
-              action: {
-                label: "View",
-                onClick: () => {
-                  selectTask(currentTask.task_id);
-                  setIsMenuOpen(true);
-                  setIsRecentTasksExpanded(true);
-                },
+          if (!isOnboardingActive) {
+            const toastAction = {
+              label: "View",
+              onClick: () => {
+                selectTask(currentTask.task_id);
+                setIsMenuOpen(true);
+                setIsRecentTasksExpanded(true);
               },
-            });
+            };
+            if (isTotalFailure) {
+              toast.error("Task failed", {
+                description: `${failedFiles} file${
+                  failedFiles !== 1 ? "s" : ""
+                } failed`,
+                action: toastAction,
+              });
+            } else {
+              toast.success("Task completed", {
+                description,
+                action: toastAction,
+              });
+            }
           }
+        }
 
+        const taskJustReachedTerminal = didTaskReachTerminalState(
+          previousTask,
+          currentTask,
+        );
+
+        if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
-          setTimeout(() => {
-            // Remove overlay rows for this completed task so backend becomes
-            // source of truth. For partial-success completions, keep failed
-            // rows visible in the table.
-            setFiles((prevFiles) =>
-              prevFiles.filter(
-                (file) =>
-                  file.task_id !== currentTask.task_id ||
-                  (completedHasFailures && file.status === "failed"),
-              ),
-            );
-            refetchSearch();
-          }, 500);
-        } else if (
+          async function refetchKnowledgeAfterTaskCompletion() {
+            // Refetch before dropping overlays (wildcard uses listFiles, not only search).
+            try {
+              await Promise.all([
+                queryClient.refetchQueries({
+                  queryKey: ["search"],
+                  exact: false,
+                }),
+                queryClient.refetchQueries({
+                  queryKey: ["listFiles"],
+                  exact: false,
+                }),
+              ]);
+            } catch (e) {
+              console.error(
+                "Knowledge refetch after task completion failed",
+                e,
+              );
+            } finally {
+              const indexedIdentities = new Set<string>();
+              const indexedFilenames = new Set<string>();
+              for (const [
+                ,
+                data,
+              ] of queryClient.getQueriesData<ListFilesResponse>({
+                queryKey: ["listFiles"],
+              })) {
+                for (const indexed of data?.files ?? []) {
+                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
+                  if (indexed.filename?.trim()) {
+                    indexedFilenames.add(indexed.filename.trim());
+                  }
+                }
+              }
+              for (const [, data] of queryClient.getQueriesData<SearchResult>({
+                queryKey: ["search"],
+              })) {
+                for (const indexed of data?.files ?? []) {
+                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
+                  if (indexed.filename?.trim()) {
+                    indexedFilenames.add(indexed.filename.trim());
+                  }
+                }
+              }
+
+              clearTaskMetadata(currentTask.task_id);
+
+              setFiles((prevFiles) =>
+                prevFiles.filter((file) => {
+                  if (file.task_id !== currentTask.task_id) {
+                    return true;
+                  }
+                  if (file.status === "failed") {
+                    return completedHasFailures;
+                  }
+                  if (file.status === "processing") {
+                    return false;
+                  }
+                  if (file.status === "active") {
+                    const identity = getKnowledgeFileIdentity({
+                      filename: file.filename,
+                      source_url: file.source_url,
+                    });
+                    if (identity && indexedIdentities.has(identity)) {
+                      return false;
+                    }
+                    const sourceUrl = file.source_url?.trim();
+                    if (!sourceUrl || !identity) {
+                      const filename = file.filename?.trim();
+                      if (filename && indexedFilenames.has(filename)) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  }
+                  return false;
+                }),
+              );
+            }
+          }
+          void refetchKnowledgeAfterTaskCompletion();
+        } else if (taskJustReachedTerminal) {
+          clearTaskMetadata(currentTask.task_id);
+        }
+
+        if (
           shouldShowToast &&
           previousTask &&
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
-          if (!isOnboardingActive()) {
+          if (!isOnboardingActive) {
             selectTask(currentTask.task_id);
             setIsMenuOpen(true);
             setIsRecentTasksExpanded(true);
           }
           // Task just failed - show error toast
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            task_id: currentTask.task_id,
+            total_files: currentTask.total_files,
+            failed_files: currentTask.failed_files,
+            duration_seconds: currentTask.duration_seconds,
+            resultValue: currentTask.error,
+          });
           toast.error("Task failed", {
             description: `Task ${currentTask.task_id} failed: ${
               currentTask.error || "Unknown error"
@@ -416,10 +650,24 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
     // Store current tasks as previous for next comparison
     previousTasksRef.current = tasks;
-  }, [tasks, refetchSearch, isOnboardingActive]);
+  }, [
+    tasks,
+    refetchSearch,
+    isOnboardingActive,
+    clearTaskMetadata,
+    queryClient,
+  ]);
 
   const addTask = useCallback(
-    (_taskId: string) => {
+    (taskId: string, options?: { connectorType?: string; source?: string }) => {
+      const connectorType = options?.connectorType?.trim();
+      if (connectorType) {
+        taskConnectorTypesRef.current.set(taskId, connectorType);
+      }
+      const source = options?.source?.trim();
+      if (source) {
+        taskSourcesRef.current.set(taskId, source);
+      }
       // React Query will automatically handle polling when tasks are active
       // Just trigger a refetch to get the latest data
       setTimeout(() => {
@@ -430,13 +678,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refreshTasks = useCallback(async () => {
-    setFiles((prevFiles) =>
-      prevFiles.filter(
+    setFiles((prevFiles) => {
+      const nextFiles = prevFiles.filter(
         (file) => file.status !== "active" && file.status !== "failed",
-      ),
-    );
+      );
+      clearTaskMetadataWithoutOverlays(prevFiles, nextFiles);
+      return nextFiles;
+    });
     await refetchTasks();
-  }, [refetchTasks]);
+  }, [refetchTasks, clearTaskMetadataWithoutOverlays]);
 
   const cancelTask = useCallback(
     async (taskId: string) => {
@@ -473,6 +723,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     files,
     addTask,
     addFiles,
+    markTaskFilesProcessing,
     refreshTasks,
     cancelTask,
     isPolling,
@@ -487,11 +738,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setSelectedTaskId,
     selectedTaskTrigger,
     selectTask,
+    isTaskDialogOpen,
+    taskDialogTaskId,
+    openTaskDialog,
+    closeTaskDialog,
     isLoading,
     error,
   };
 
-  return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
+  return (
+    <TaskContext.Provider value={value}>
+      {children}
+      {taskDialogTaskId ? (
+        <TaskDialog
+          open={isTaskDialogOpen}
+          onOpenChange={(open) => {
+            setIsTaskDialogOpen(open);
+            if (!open) {
+              setTaskDialogTaskId(null);
+            }
+          }}
+          task_id={taskDialogTaskId}
+          onClose={closeTaskDialog}
+        />
+      ) : null}
+    </TaskContext.Provider>
+  );
 }
 
 export function useTask() {

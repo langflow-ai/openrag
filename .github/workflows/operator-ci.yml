@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'kubernetes/operator/**'
+      - 'kubernetes/helm/operator/**'
       - '.github/workflows/operator-ci.yml'
   push:
     branches:
       - main
     paths:
       - 'kubernetes/operator/**'
+      - 'kubernetes/helm/operator/**'
 
 jobs:
   ci:
@@ -54,11 +56,52 @@ jobs:
           ./bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
           git diff --exit-code api/
 
+      - name: Check generated typed client is up to date
+        run: |
+          # Ensure code-generator is available in module cache
+          go mod download k8s.io/code-generator
+          make generate-client
+          git diff --exit-code pkg/generated/
+        env:
+          # Suppress verbose output during CI
+          KUBE_VERBOSE: "0"
+
+      - name: go test
+        run: go test ./... -race -coverprofile=cover.out
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.4
           working-directory: kubernetes/operator
+
+  helm:
+    name: Helm lint and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Lint Helm chart
+        run: helm lint kubernetes/helm/operator
+
+      - name: Template Helm chart
+        run: |
+          helm template openrag-operator kubernetes/helm/operator \
+            --namespace openrag-control \
+            --debug
+
+      - name: Verify CRD symlink
+        run: |
+          if [ ! -L kubernetes/helm/operator/crds/openr.ag_openrags.yaml ]; then
+            echo "Error: CRD file is not a symlink"
+            exit 1
+          fi
+          echo "CRD symlink verified"
 
   docker:
     name: Docker build check
@@ -75,5 +118,8 @@ jobs:
           file: kubernetes/operator/Dockerfile
           platforms: linux/amd64
           push: false
+          build-args: |
+            TARGETOS=linux
+            TARGETARCH=amd64
           cache-from: type=gha,scope=operator-amd64
           cache-to: type=gha,mode=max,scope=operator-amd64

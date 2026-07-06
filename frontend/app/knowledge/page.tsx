@@ -10,15 +10,23 @@ import {
   type ValueGetterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
+import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
+import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
+import { trackButton } from "@/lib/analytics";
+import {
+  EMPTY_SEARCH_RESULT,
+  type File,
+  type SearchResult,
+  useGetSearchQuery,
+} from "../api/queries/useGetSearchQuery";
+import { useListFiles } from "../api/queries/useListFiles";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
@@ -33,6 +41,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { formatFileSize } from "@/lib/file-format";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -43,38 +53,72 @@ import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import AwsLogo from "../../components/icons/aws-logo";
-import GoogleDriveIcon from "../../components/icons/google-drive-logo";
-import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
-import IBMLogo from "../../components/icons/ibm-logo";
-import OneDriveIcon from "../../components/icons/one-drive-logo";
-import SharePointIcon from "../../components/icons/share-point-logo";
+import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
+import {
+  type SyncAllPreviewResponse,
+  useSyncAllConnectors,
+  useSyncAllConnectorsPreview,
+} from "../api/mutations/useSyncConnector";
+
+function sameFileSelection(a: File[], b: File[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const identities = new Set(b.map((row) => getKnowledgeFileIdentity(row)));
+  return a.every((row) => identities.has(getKnowledgeFileIdentity(row)));
+}
+
+/** Failed overlays can stay selected after they lose their checkbox (processing → failed). */
+function syncGridSelectionToDeletableRows(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): File[] {
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+    }
+  });
+  return api.getSelectedRows().filter(isDeletable);
+}
+
+/** Deselect non-deletable rows in the grid only; returns whether anything changed. */
+function pruneNonDeletableGridSelection(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): boolean {
+  let pruned = false;
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+      pruned = true;
+    }
+  });
+  return pruned;
+}
+
+/** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
+function listFilesFilterParam(values?: string[]): string | undefined {
+  const raw = values?.[0]?.trim();
+  if (!raw || raw === "*") {
+    return undefined;
+  }
+  return raw;
+}
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
+  if (connectorType) {
+    const Icon = getConnectorDescriptor(connectorType)?.Icon;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+  }
   switch (connectorType) {
-    case "google_drive":
-      return (
-        <GoogleDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
-    case "onedrive":
-      return <OneDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "sharepoint":
-      return (
-        <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
     case "openrag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "ibm_cos":
-      return <IBMCOSIcon className="h-4 w-4 flex-shrink-0" />;
-    case "aws_s3":
-      return <AwsLogo className="h-4 w-4 flex-shrink-0" />;
     default:
       return (
         <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -94,7 +138,8 @@ function SearchPage() {
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
-  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
+  const { parsedFilterData, queryOverride, selectedFilter } =
+    useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
@@ -103,7 +148,51 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
+    null,
+  );
+
+  const handleOpenSyncDialog = useCallback(async () => {
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
+    try {
+      const preview = await syncAllPreviewMutation.mutateAsync();
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  }, [syncAllPreviewMutation]);
+
+  const handleConfirmSync = useCallback(async () => {
+    try {
+      const result = await syncAllConnectorsMutation.mutateAsync();
+      if (result.status === "no_files") {
+        toast.info(
+          result.message ||
+            "No cloud files to sync. Add files from cloud connectors first.",
+        );
+      } else if (
+        result.synced_connectors &&
+        result.synced_connectors.length > 0
+      ) {
+        toast.success(
+          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+        );
+      } else if (result.errors && result.errors.length > 0) {
+        toast.error("Some connectors failed to sync");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync connectors",
+      );
+    }
+  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -142,19 +231,23 @@ function SearchPage() {
         ]),
       );
 
-      const mostRecent = [...candidates].sort((a, b) => {
-        const aMs =
-          taskTimestampMsById.get(a.task_id) ??
-          parseTimestampMs(a.updated_at) ??
-          parseTimestampMs(a.created_at) ??
-          0;
-        const bMs =
-          taskTimestampMsById.get(b.task_id) ??
-          parseTimestampMs(b.updated_at) ??
-          parseTimestampMs(b.created_at) ??
-          0;
-        return bMs - aMs;
-      })[0];
+      const mostRecent = candidates.reduce(
+        (best, cur) => {
+          const curMs =
+            taskTimestampMsById.get(cur.task_id) ??
+            parseTimestampMs(cur.updated_at) ??
+            parseTimestampMs(cur.created_at) ??
+            0;
+          if (!best) return cur;
+          const bestMs =
+            taskTimestampMsById.get(best.task_id) ??
+            parseTimestampMs(best.updated_at) ??
+            parseTimestampMs(best.created_at) ??
+            0;
+          return curMs > bestMs ? cur : best;
+        },
+        undefined as (typeof candidates)[0] | undefined,
+      );
 
       return mostRecent?.task_id || null;
     },
@@ -203,14 +296,53 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
+  // Use server-side file listing for default/wildcard view; search otherwise.
+  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
+  const effectiveSearchText =
+    queryOverride.trim() || parsedFilterData?.query?.trim() || "";
+  const isWildcardQuery =
+    effectiveSearchText === "" || effectiveSearchText === "*";
+
   const {
-    data: searchData = [],
+    data: listFilesData,
+    isLoading: isListFilesLoading,
+    error: listFilesError,
+    isError: isListFilesError,
+  } = useListFiles(
+    {
+      pageSize: 100,
+      search: isWildcardQuery ? undefined : queryOverride,
+      connectorType: listFilesFilterParam(
+        parsedFilterData?.filters?.connector_types,
+      ),
+      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
+      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+    },
+    {
+      refetchInterval: 5000,
+      enabled: isWildcardQuery,
+    },
+  );
+
+  const {
+    data: searchData = EMPTY_SEARCH_RESULT,
     isLoading: isSearchLoading,
-    error,
-    isError,
+    error: searchError,
+    isError: isSearchError,
   } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    refetchInterval: 5000,
+    enabled: !isWildcardQuery,
   });
+
+  const { files: searchFiles, warnings: searchWarnings } =
+    searchData as SearchResult;
+
+  // Merge data from whichever source is active
+  const effectiveData: File[] = isWildcardQuery
+    ? (listFilesData?.files ?? [])
+    : searchFiles;
+  const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+  const error = isWildcardQuery ? listFilesError : searchError;
+  const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -222,6 +354,21 @@ function SearchPage() {
   const getFileIdentity = useCallback((file?: File) => {
     return getKnowledgeFileIdentity(file);
   }, []);
+
+  const isDeletableKnowledgeRow = useCallback((file?: File) => {
+    return (file?.status || "active") === "active";
+  }, []);
+
+  const resolveDeleteFilename = useCallback(
+    (row: File) => {
+      const identity = getKnowledgeFileIdentity(row);
+      const indexed = effectiveData.find(
+        (file) => getKnowledgeFileIdentity(file) === identity,
+      );
+      return indexed?.filename ?? row.filename;
+    },
+    [effectiveData],
+  );
 
   const getOwnerLabel = useCallback((file?: File): string => {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
@@ -303,14 +450,52 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
+  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
-    searchData as File[],
+    effectiveData,
     taskFiles,
-    !!parsedFilterData,
+    Boolean(selectedFilter),
   );
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const gridReadyRef = useRef(false);
+
+  const handleGridReady = useCallback(() => {
+    gridReadyRef.current = true;
+  }, []);
+
+  const handleGridPreDestroyed = useCallback(() => {
+    gridReadyRef.current = false;
+  }, []);
+
+  const getGridApi = useCallback(() => {
+    if (!gridReadyRef.current) return null;
+    return gridRef.current?.api ?? null;
+  }, []);
+
+  // Re-run only when row identity/status changes, not on every list poll reference.
+  const gridRowsSelectionKey = useMemo(
+    () =>
+      gridRows
+        .map(
+          (row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`,
+        )
+        .join("\0"),
+    [gridRows],
+  );
+
+  useEffect(() => {
+    const api = getGridApi();
+    if (!api) {
+      return;
+    }
+    pruneNonDeletableGridSelection(api, isDeletableKnowledgeRow);
+    const nextSelected = api.getSelectedRows().filter(isDeletableKnowledgeRow);
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
+    );
+  }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   const columnDefs: ColDef<File>[] = [
     {
@@ -331,7 +516,7 @@ function SearchPage() {
         return sourceA < sourceB ? -1 : 1;
       },
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
-        (params?.data?.status || "active") === "active",
+        isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
       ...(isCloudBrand
         ? { flex: 2.2, minWidth: 260 }
@@ -398,7 +583,7 @@ function SearchPage() {
       comparator: (valueA?: number, valueB?: number) =>
         (valueA || 0) - (valueB || 0),
       valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+        params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     },
     {
@@ -580,60 +765,89 @@ function SearchPage() {
   };
 
   const onSelectionChanged = useCallback(() => {
-    if (gridRef.current) {
-      const selectedNodes = gridRef.current.api.getSelectedRows();
-      setSelectedRows(selectedNodes);
+    const api = getGridApi();
+    if (!api) {
+      return;
     }
-  }, []);
+    const nextSelected = syncGridSelectionToDeletableRows(
+      api,
+      isDeletableKnowledgeRow,
+    );
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
+    );
+  }, [isDeletableKnowledgeRow, getGridApi]);
 
   const handleBulkDelete = async () => {
-    if (selectedRows.length === 0) return;
+    const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
+    if (rowsToDelete.length === 0) return;
 
     try {
-      // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
+      const deleteResults = await Promise.allSettled(
+        rowsToDelete.map((row) =>
+          deleteDocumentMutation.mutateAsync({
+            filename: resolveDeleteFilename(row),
+          }),
+        ),
       );
 
-      const deleteResults = await Promise.all(deletePromises);
       await refreshTasks();
       await queryClient.invalidateQueries({ queryKey: ["search"] });
+      await queryClient.invalidateQueries({ queryKey: ["listFiles"] });
       await queryClient.refetchQueries({ queryKey: ["search"] });
+      await queryClient.refetchQueries({ queryKey: ["listFiles"] });
 
-      const totalDeletedChunks = deleteResults.reduce(
-        (sum, result) => sum + (result.deleted_chunks || 0),
-        0,
+      const deleted = deleteResults.filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<
+          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
+        > =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) > 0,
       );
-      const filesWithNoDeletion = deleteResults.filter(
-        (result) => (result.deleted_chunks || 0) === 0,
+      const noChunks = deleteResults.filter(
+        (result) =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) === 0,
+      );
+      const failed = deleteResults.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
       );
 
-      if (totalDeletedChunks > 0) {
+      if (deleted.length > 0) {
         toast.success(
-          `Successfully deleted ${selectedRows.length} document${
-            selectedRows.length > 1 ? "s" : ""
-          }`,
+          `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
         );
-      } else {
+      } else if (failed.length === 0) {
         toast.warning(
-          "No document chunks were deleted. Files may be owned by another context or already removed.",
+          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
         );
       }
 
-      if (filesWithNoDeletion.length > 0 && totalDeletedChunks > 0) {
+      if (noChunks.length > 0 && deleted.length > 0) {
         toast.warning(
-          `${filesWithNoDeletion.length} selected file${
-            filesWithNoDeletion.length > 1 ? "s were" : " was"
-          } not deleted (0 chunks matched).`,
+          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
+        );
+      }
+
+      if (failed.length > 0) {
+        toast.error(
+          `${failed.length} document${failed.length > 1 ? "s" : ""} could not be deleted`,
+          {
+            description:
+              failed[0].reason instanceof Error
+                ? failed[0].reason.message
+                : undefined,
+          },
         );
       }
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
 
       // Clear selection in the grid
-      if (gridRef.current) {
-        gridRef.current.api.deselectAll();
-      }
+      getGridApi()?.deselectAll();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -691,7 +905,7 @@ function SearchPage() {
                 onDelete={() => setShowBulkDeleteDialog(true)}
                 onCancel={() => {
                   setSelectedRows([]);
-                  gridRef.current?.api.deselectAll();
+                  getGridApi()?.deselectAll();
                 }}
               />
             </div>
@@ -705,36 +919,14 @@ function SearchPage() {
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
-              disabled={syncAllConnectorsMutation.isPending}
-              onClick={async () => {
-                try {
-                  toast.info("Syncing all cloud connectors...");
-                  const result = await syncAllConnectorsMutation.mutateAsync();
-                  if (result.status === "no_files") {
-                    toast.info(
-                      result.message ||
-                        "No cloud files to sync. Add files from cloud connectors first.",
-                    );
-                  } else if (
-                    result.synced_connectors &&
-                    result.synced_connectors.length > 0
-                  ) {
-                    toast.success(
-                      `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-                    );
-                  } else if (result.errors && result.errors.length > 0) {
-                    toast.error("Some connectors failed to sync");
-                  }
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to sync connectors",
-                  );
-                }
-              }}
+              disabled={
+                syncAllConnectorsMutation.isPending ||
+                syncAllPreviewMutation.isPending
+              }
+              onClick={handleOpenSyncDialog}
             >
-              {syncAllConnectorsMutation.isPending ? (
+              {syncAllConnectorsMutation.isPending ||
+              syncAllPreviewMutation.isPending ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Syncing...
@@ -752,6 +944,11 @@ function SearchPage() {
               className="rounded-lg flex-shrink-0"
               disabled={refreshOpenragDocsMutation.isPending}
               onClick={async () => {
+                trackButton({
+                  CTA: "Fetch Latest Docs",
+                  elementId: "fetch-latest-docs-button",
+                  namespace: "knowledge",
+                });
                 try {
                   toast.info("Refreshing OpenRAG docs...");
                   const result = await refreshOpenragDocsMutation.mutateAsync();
@@ -786,12 +983,49 @@ function SearchPage() {
             </div>
           </div>
         )}
+        {!isWildcardQuery && searchWarnings.length > 0 && (
+          <div className="mb-4 flex flex-col gap-2">
+            {searchWarnings.map((warning, idx) => {
+              const isEmbeddingWarning =
+                warning.code === "embedding_unavailable";
+              const semanticDown =
+                isEmbeddingWarning &&
+                warning.semantic_search_available === false;
+              const title = isEmbeddingWarning
+                ? semanticDown
+                  ? "Semantic search degraded — keyword results only"
+                  : "Semantic search partially degraded"
+                : warning.message || "Search warning";
+              const details =
+                warning.models && warning.models.length > 0
+                  ? ` Affected embedding model${warning.models.length > 1 ? "s" : ""}: ${warning.models.join(", ")}.`
+                  : "";
+              return (
+                <Banner
+                  key={`${warning.code}-${idx}`}
+                  inset
+                  className="bg-amber-500/10 text-amber-100 border border-amber-500/30"
+                >
+                  <BannerIcon icon={AlertTriangle} />
+                  <BannerTitle>
+                    <span className="font-medium">{title}.</span>
+                    <span className="ml-1 opacity-90">
+                      {isEmbeddingWarning
+                        ? `The provider for some indexed documents is no longer reachable, so results rely on keyword matching.${details} Re-configure the provider or re-ingest those documents with another embedding model to restore semantic search.`
+                        : warning.message}
+                    </span>
+                  </BannerTitle>
+                </Banner>
+              );
+            })}
+          </div>
+        )}
         {isCloudBrand ? (
           <AgGridReact
             className="w-full overflow-auto border"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={isLoading || deleteDocumentMutation.isPending}
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}
@@ -799,7 +1033,10 @@ function SearchPage() {
             getRowId={(params: GetRowIdParams<File>) =>
               getFileIdentity(params.data)
             }
+            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -822,7 +1059,7 @@ function SearchPage() {
             className="w-full overflow-auto"
             columnDefs={columnDefs as ColDef<File>[]}
             defaultColDef={defaultColDef}
-            loading={isSearchLoading || deleteDocumentMutation.isPending}
+            loading={isLoading || deleteDocumentMutation.isPending}
             ref={gridRef}
             theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
             rowData={gridRows}
@@ -832,7 +1069,10 @@ function SearchPage() {
             getRowId={(params: GetRowIdParams<File>) =>
               getFileIdentity(params.data)
             }
+            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -868,6 +1108,18 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
+
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncAllConnectorsMutation.isPending}
+        isSyncAll
+        orphansByType={syncPreview?.orphans_by_type}
+        orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        syncedCountByType={syncPreview?.synced_count_by_type}
+      />
     </>
   );
 }

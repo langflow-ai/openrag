@@ -1,3 +1,50 @@
+export type UploadContextResult =
+  | { type: "task"; taskId: string }
+  | { type: "direct"; filename: string; responseId: string };
+
+export async function uploadFileForContext(
+  file: File,
+  endpoint: string,
+  previousResponseId: string | null,
+): Promise<UploadContextResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("endpoint", endpoint);
+  if (previousResponseId) {
+    formData.append("previous_response_id", previousResponseId);
+  }
+
+  const response = await fetch("/api/upload_context", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to process document");
+  }
+
+  const result = await response.json();
+
+  if (response.status === 201) {
+    const taskId = result.task_id || result.id;
+    if (!taskId) {
+      throw new Error("No task ID received from server");
+    }
+    return { type: "task", taskId };
+  }
+
+  const filename: unknown = result.filename;
+  const responseId: unknown = result.response_id;
+  if (typeof filename !== "string" || !filename) {
+    throw new Error("Upload succeeded but server returned no filename");
+  }
+  if (typeof responseId !== "string" || !responseId) {
+    throw new Error("Upload succeeded but server returned no response_id");
+  }
+  return { type: "direct", filename, responseId };
+}
+
 export interface DuplicateCheckResponse {
   exists: boolean;
   [key: string]: unknown;
@@ -30,94 +77,6 @@ export async function duplicateCheck(
   }
 
   return response.json();
-}
-
-export async function uploadFileForContext(
-  file: File,
-): Promise<UploadFileResult> {
-  window.dispatchEvent(
-    new CustomEvent("fileUploadStart", {
-      detail: { filename: file.name },
-    }),
-  );
-
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const uploadResponse = await fetch("/api/upload_context", {
-      method: "POST",
-      body: formData,
-    });
-
-    let payload: unknown;
-    try {
-      payload = await uploadResponse.json();
-    } catch (_error) {
-      throw new Error("Upload failed: unable to parse server response");
-    }
-
-    const uploadJson =
-      typeof payload === "object" && payload !== null ? payload : {};
-
-    if (!uploadResponse.ok) {
-      const errorMessage =
-        (uploadJson as { error?: string }).error || "Upload failed";
-      throw new Error(errorMessage);
-    }
-
-    const fileId =
-      (uploadJson as { response_id?: string }).response_id || "uploaded";
-    const filePath =
-      (uploadJson as { filename?: string }).filename || file.name;
-    const pages = (uploadJson as { pages?: number }).pages;
-    const contentLength = (uploadJson as { content_length?: number })
-      .content_length;
-    const confirmation = (uploadJson as { confirmation?: string }).confirmation;
-
-    const result: UploadFileResult = {
-      fileId,
-      filePath,
-      run: null,
-      deletion: null,
-      unified: false,
-      raw: uploadJson,
-    };
-
-    window.dispatchEvent(
-      new CustomEvent("fileUploaded", {
-        detail: {
-          file,
-          result: {
-            file_id: fileId,
-            file_path: filePath,
-            filename: filePath,
-            pages: pages,
-            content_length: contentLength,
-            confirmation: confirmation,
-            response_id: fileId,
-            run: null,
-            deletion: null,
-            unified: false,
-          },
-        },
-      }),
-    );
-
-    return result;
-  } catch (error) {
-    window.dispatchEvent(
-      new CustomEvent("fileUploadError", {
-        detail: {
-          filename: file.name,
-          error: error instanceof Error ? error.message : "Upload failed",
-        },
-      }),
-    );
-    throw error;
-  } finally {
-    window.dispatchEvent(new CustomEvent("fileUploadComplete"));
-  }
 }
 
 export async function uploadFiles(
@@ -160,10 +119,16 @@ export async function uploadFiles(
   return { taskId, fileCount };
 }
 
+export interface UploadFileCallbacks {
+  onComplete?: () => void;
+  onError?: (filename: string, error: string) => void;
+}
+
 export async function uploadFile(
   file: File,
   replace = false,
   createFilter = false,
+  callbacks?: UploadFileCallbacks,
 ): Promise<UploadFileResult> {
   try {
     const formData = new FormData();
@@ -243,16 +208,20 @@ export async function uploadFile(
 
     return result;
   } catch (error) {
-    window.dispatchEvent(
-      new CustomEvent("fileUploadError", {
-        detail: {
-          filename: file.name,
-          error: error instanceof Error ? error.message : "Upload failed",
-        },
-      }),
-    );
+    try {
+      callbacks?.onError?.(
+        file.name,
+        error instanceof Error ? error.message : "Upload failed",
+      );
+    } catch (cbErr) {
+      console.warn("uploadFile: onError callback threw", cbErr);
+    }
     throw error;
   } finally {
-    window.dispatchEvent(new CustomEvent("fileUploadComplete"));
+    try {
+      callbacks?.onComplete?.();
+    } catch (cbErr) {
+      console.warn("uploadFile: onComplete callback threw", cbErr);
+    }
   }
 }

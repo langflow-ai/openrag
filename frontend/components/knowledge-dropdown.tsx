@@ -15,11 +15,6 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
-import AwsIcon from "@/components/icons/aws-logo";
-import GoogleDriveIcon from "@/components/icons/google-drive-logo";
-import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
-import OneDriveIcon from "@/components/icons/one-drive-logo";
-import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,9 +31,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
+import { usePermissions } from "@/hooks/use-permissions";
+import {
+  trackButton,
+  trackProcessFailure,
+  trackStartProcess,
+} from "@/lib/analytics";
+import {
+  getConnectorDescriptor,
+  getConnectorDescriptors,
+} from "@/lib/connectors/registry";
 import {
   duplicateCheck,
   uploadFiles,
@@ -117,7 +121,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { isIbmAuthMode } = useAuth();
+  const { can } = usePermissions();
+  const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
@@ -132,14 +137,18 @@ export function KnowledgeDropdown() {
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
-  const [ibmCosConfigured, setIbmCosConfigured] = useState(false);
-  const [s3Configured, setS3Configured] = useState(false);
+  const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
+    Record<string, boolean>
+  >({});
+  const [bucketConnectorAvailable, setBucketConnectorAvailable] = useState<
+    Record<string, boolean>
+  >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
     allFiles: File[];
     nonDuplicateFiles: File[];
-    duplicateCount: number;
+    duplicateNames: string[];
     unsupportedCount: number;
   } | null>(null);
   const isFolderOverwriteConfirmedRef = useRef(false);
@@ -164,11 +173,16 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     const checkAvailability = async () => {
       try {
+        const bucketDescriptors = getConnectorDescriptors().filter(
+          (d) => d.kind === "bucket",
+        );
+
         // Check upload batch size and bucket connector availability in parallel
-        const [uploadOptionsRes, ibmCosRes, s3Res] = await Promise.all([
+        const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
           fetch("/api/upload_options"),
-          fetch("/api/connectors/ibm_cos/defaults"),
-          fetch("/api/connectors/aws_s3/defaults"),
+          ...bucketDescriptors.map((d) =>
+            fetch(`/api/connectors/${d.connectorType}/defaults`),
+          ),
         ]);
 
         if (uploadOptionsRes.ok) {
@@ -181,28 +195,40 @@ export function KnowledgeDropdown() {
           }
         }
 
-        if (ibmCosRes.ok) {
-          const ibmCosData = await ibmCosRes.json();
-          setIbmCosConfigured(
-            Boolean(
-              ibmCosData.connection_id ||
-                ibmCosData.api_key_set ||
-                ibmCosData.hmac_access_key_set,
-            ),
-          );
-        }
-
-        if (s3Res.ok) {
-          const s3Data = await s3Res.json();
-          setS3Configured(
-            Boolean(s3Data.connection_id || s3Data.access_key_set),
-          );
-        }
+        const configured: Record<string, boolean> = {};
+        await Promise.all(
+          bucketResponses.map(async (res, i) => {
+            const descriptor = bucketDescriptors[i];
+            if (!res.ok) return;
+            const data = await res.json();
+            // Generic predicate: connection_id set OR any *_set boolean is true.
+            const anySetFlag = Object.entries(data).some(
+              ([k, v]) => k.endsWith("_set") && v === true,
+            );
+            configured[descriptor.connectorType] = Boolean(
+              data.connection_id || anySetFlag,
+            );
+          }),
+        );
+        setBucketConnectorConfigured(configured);
 
         // Check cloud connectors
         const connectorsRes = await fetch("/api/connectors");
         if (connectorsRes.ok) {
           const connectorsResult = await connectorsRes.json();
+
+          // Bucket connector availability mirrors the backend `is_available()`
+          // gate (IBM auth, or the dev flag for Azure Blob), so the dropdown
+          // surfaces a bucket entry whenever the connector is actually usable —
+          // not only in IBM auth mode.
+          const bucketAvailable: Record<string, boolean> = {};
+          for (const d of bucketDescriptors) {
+            bucketAvailable[d.connectorType] = Boolean(
+              connectorsResult.connectors?.[d.connectorType]?.available,
+            );
+          }
+          setBucketConnectorAvailable(bucketAvailable);
+
           const cloudConnectorTypes = [
             "google_drive",
             "onedrive",
@@ -326,11 +352,25 @@ export function KnowledgeDropdown() {
 
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "file",
+      total_files: 1,
+    });
 
     try {
       await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "file",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
       if (typeof window !== "undefined") {
@@ -352,6 +392,14 @@ export function KnowledgeDropdown() {
     filesToUpload: File[],
     replace: boolean,
   ) => {
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "folder",
+      total_files: filesToUpload.length,
+    });
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
@@ -364,8 +412,15 @@ export function KnowledgeDropdown() {
     for (const batch of batches) {
       try {
         const result = await uploadFiles(batch, replace);
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "folder" });
       } catch (error) {
+        trackProcessFailure({
+          processType: "Ingestion",
+          process: "Document Upload",
+          category: "Knowledge",
+          source: "folder",
+          resultValue: error instanceof Error ? error.message : "Unknown error",
+        });
         console.error("[Folder Upload] Batch upload failed:", error);
         toast.error("Batch upload failed", {
           description: error instanceof Error ? error.message : "Unknown error",
@@ -379,13 +434,13 @@ export function KnowledgeDropdown() {
   const handleOverwriteFile = async () => {
     if (pendingFolderUpload) {
       isFolderOverwriteConfirmedRef.current = true;
-      const { allFiles, duplicateCount, unsupportedCount } =
+      const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
       await uploadFolderBatches(allFiles, true);
       const unsupportedMessage =
         unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
       toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateCount} overwrite(s)${unsupportedMessage}`,
+        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
       );
       resetDuplicateDialogState();
       return;
@@ -393,12 +448,24 @@ export function KnowledgeDropdown() {
 
     if (pendingFile) {
       // Remove the old file from all search query caches before overwriting
-      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: []) => {
+      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: any) => {
         if (!oldData) return oldData;
-        // Filter out the file that's being overwritten
-        return oldData.filter(
-          (file: SearchFile) => file.filename !== pendingFile.name,
-        );
+        // Handle SearchResult structure { files: [], warnings: [] }
+        if (oldData.files && Array.isArray(oldData.files)) {
+          return {
+            ...oldData,
+            files: oldData.files.filter(
+              (file: SearchFile) => file.filename !== pendingFile.name,
+            ),
+          };
+        }
+        // Fallback for legacy array format
+        if (Array.isArray(oldData)) {
+          return oldData.filter(
+            (file: SearchFile) => file.filename !== pendingFile.name,
+          );
+        }
+        return oldData;
       });
 
       await uploadFile(pendingFile, true);
@@ -412,13 +479,13 @@ export function KnowledgeDropdown() {
       if (isFolderOverwriteConfirmedRef.current) {
         isFolderOverwriteConfirmedRef.current = false;
       } else {
-        const { nonDuplicateFiles, duplicateCount, unsupportedCount } =
+        const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
           await uploadFolderBatches(nonDuplicateFiles, false);
           const extraParts: string[] = [];
-          if (duplicateCount > 0) {
-            extraParts.push(`skipped ${duplicateCount} duplicate(s)`);
+          if (duplicateNames.length > 0) {
+            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
           }
           if (unsupportedCount > 0) {
             extraParts.push(`skipped ${unsupportedCount} unsupported`);
@@ -500,9 +567,10 @@ export function KnowledgeDropdown() {
       const nonDuplicateFiles = duplicateResults
         .filter((r) => !r.isDuplicate)
         .map((r) => r.file);
-      const duplicateCount = duplicateResults.filter(
-        (r) => r.isDuplicate,
-      ).length;
+      const duplicateNames = duplicateResults
+        .filter((r) => r.isDuplicate)
+        .map((r) => r.file.name);
+      const duplicateCount = duplicateNames.length;
 
       if (unsupportedCount > 0) {
         toast.error(
@@ -521,7 +589,7 @@ export function KnowledgeDropdown() {
         setPendingFolderUpload({
           allFiles: cleanFiles,
           nonDuplicateFiles,
-          duplicateCount,
+          duplicateNames,
           unsupportedCount,
         });
         setShowDuplicateDialog(true);
@@ -557,6 +625,12 @@ export function KnowledgeDropdown() {
 
     setFolderLoading(true);
     setShowFolderDialog(false);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "path",
+    });
 
     try {
       const response = await fetch("/api/upload_path", {
@@ -576,7 +650,7 @@ export function KnowledgeDropdown() {
           throw new Error("No task ID received from server");
         }
 
-        addTask(taskId);
+        addTask(taskId, { source: "path" });
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
@@ -593,44 +667,69 @@ export function KnowledgeDropdown() {
         }
       }
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "path",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       console.error("Folder upload error:", error);
     } finally {
       setFolderLoading(false);
     }
   };
 
-  // Icon mapping for cloud connectors
-  const connectorIconMap = {
-    google_drive: GoogleDriveIcon,
-    onedrive: OneDriveIcon,
-    sharepoint: SharePointIcon,
-  };
-
   const cloudConnectorItems = Object.entries(cloudConnectors)
     .filter(([type, info]) => {
       if (!info.available) return false;
-      if (isCloudBrand && (type === "google_drive" || type === "onedrive"))
-        return false;
+      if (isCloudBrand && type === "onedrive") return false;
       return true;
     })
-    .map(([type, info]) => ({
-      label: info.name,
-      icon: connectorIconMap[type as keyof typeof connectorIconMap] || PlugZap,
-      onClick: async () => {
-        if (info.connected && info.hasToken) {
-          setIsNavigatingToCloud(true);
-          try {
-            router.push(`/upload/${type}`);
-            // Keep loading state for a short time to show feedback
-            setTimeout(() => setIsNavigatingToCloud(false), 1000);
-          } catch {
-            setIsNavigatingToCloud(false);
+    .map(([type, info]) => {
+      const descriptor = getConnectorDescriptor(type);
+      return {
+        label: info.name,
+        icon: descriptor?.Icon ?? PlugZap,
+        onClick: async () => {
+          trackButton({
+            CTA: `Select Connector - ${info.name}`,
+            elementId: "cloud-connector-menu-item",
+            namespace: "knowledge",
+            payload: { connector_type: type },
+          });
+          if (info.connected && info.hasToken) {
+            setIsNavigatingToCloud(true);
+            try {
+              router.push(`/upload/${type}`);
+              setTimeout(() => setIsNavigatingToCloud(false), 1000);
+            } catch {
+              setIsNavigatingToCloud(false);
+            }
+          } else {
+            router.push("/settings");
           }
-        } else {
-          router.push("/settings");
-        }
-      },
-      disabled: !info.connected || !info.hasToken,
+        },
+        disabled: !info.connected || !info.hasToken,
+      };
+    });
+
+  // Gate each bucket connector on its backend availability (IBM auth, or the
+  // OPENRAG_DEV_AZURE_BLOB dev flag for Azure Blob) AND a saved connection,
+  // rather than the global IBM-auth flag — this keeps S3/IBM COS hidden outside
+  // IBM auth while letting Azure Blob appear in local dev once configured.
+  const bucketConnectorItems = getConnectorDescriptors()
+    .filter(
+      (d) =>
+        d.kind === "bucket" &&
+        d.menuItem &&
+        bucketConnectorAvailable[d.connectorType] &&
+        bucketConnectorConfigured[d.connectorType],
+    )
+    .map((d) => ({
+      label: d.menuItem!.label,
+      icon: d.Icon,
+      onClick: () => router.push(d.menuItem!.route),
     }));
 
   const menuItems = [
@@ -644,24 +743,7 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
-    ...(isIbmAuthMode && s3Configured
-      ? [
-          {
-            label: "Amazon S3",
-            icon: AwsIcon,
-            onClick: () => router.push("/upload/aws_s3"),
-          },
-        ]
-      : []),
-    ...(isIbmAuthMode && ibmCosConfigured
-      ? [
-          {
-            label: "IBM Cloud Object Storage",
-            icon: IBMCOSIcon,
-            onClick: () => router.push("/upload/ibm_cos"),
-          },
-        ]
-      : []),
+    ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
 
@@ -686,6 +768,11 @@ export function KnowledgeDropdown() {
         </Button>
       </div>
     );
+  }
+
+  if (!canUpload) {
+    // Viewer / restricted users see no entry point at all.
+    return null;
   }
 
   return (
@@ -782,8 +869,6 @@ export function KnowledgeDropdown() {
         type="file"
         // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
         webkitdirectory=""
-        // @ts-ignore
-        directory=""
         multiple
         onChange={handleFolderSelect}
         className="hidden"
@@ -837,7 +922,7 @@ export function KnowledgeDropdown() {
         onOverwrite={handleOverwriteFile}
         isLoading={fileUploading || folderLoading}
         duplicateLabel={duplicateFilename}
-        duplicateCount={pendingFolderUpload?.duplicateCount}
+        duplicateNames={pendingFolderUpload?.duplicateNames}
       />
     </>
   );

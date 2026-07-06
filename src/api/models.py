@@ -1,34 +1,33 @@
-from typing import Optional
-
 from fastapi import Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
+
 from config.settings import get_openrag_config
-from dependencies import get_models_service, get_current_user
+from dependencies import get_models_service, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class OpenAIBody(BaseModel):
-    api_key: Optional[str] = None
+    api_key: str | None = None
 
 
 class AnthropicBody(BaseModel):
-    api_key: Optional[str] = None
+    api_key: str | None = None
 
 
 class IBMBody(BaseModel):
-    api_key: Optional[str] = None
-    endpoint: Optional[str] = None
-    project_id: Optional[str] = None
+    api_key: str | None = None
+    endpoint: str | None = None
+    project_id: str | None = None
 
 
 async def get_openai_models(
-    body: Optional[OpenAIBody] = None,
+    body: OpenAIBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available OpenAI models"""
     try:
@@ -50,13 +49,13 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve OpenAI models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve OpenAI models"}, status_code=500)
 
 
 async def get_anthropic_models(
-    body: Optional[AnthropicBody] = None,
+    body: AnthropicBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Anthropic models"""
     try:
@@ -70,7 +69,9 @@ async def get_anthropic_models(
 
         if not api_key:
             return JSONResponse(
-                {"error": "Anthropic API key is required either in request body or in configuration"},
+                {
+                    "error": "Anthropic API key is required either in request body or in configuration"
+                },
                 status_code=400,
             )
 
@@ -78,13 +79,13 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve Anthropic models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve Anthropic models"}, status_code=500)
 
 
 async def get_ollama_models(
-    endpoint: Optional[str] = None,
+    endpoint: str | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Ollama models"""
     try:
@@ -105,13 +106,13 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve Ollama models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve Ollama models"}, status_code=500)
 
 
 async def get_ibm_models(
-    body: Optional[IBMBody] = None,
+    body: IBMBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available IBM Watson models"""
     try:
@@ -162,4 +163,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve IBM models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve IBM models"}, status_code=500)

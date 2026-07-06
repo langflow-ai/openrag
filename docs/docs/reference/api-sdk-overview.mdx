@@ -1,12 +1,18 @@
 ---
-title: OpenRAG SDKs
+title: OpenRAG SDK and MCP API references
 slug: /reference/api-sdk-overview
 ---
 
 Use the OpenRAG SDKs to interact with OpenRAG programmatically or integrate OpenRAG into an application:
 
-* [OpenRAG MCP Server](https://github.com/langflow-ai/openrag/tree/main/sdks/mcp)
-* [Python SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/python)
-* [TypeScript/JavaScript SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
+* [MCP API (streamable-HTTP endpoint)](https://github.com/langflow-ai/openrag/tree/main/sdks/mcp)
 
-For the core APIs, see [`main.py`](https://github.com/langflow-ai/openrag/blob/main/src/main.py)
+   Connect your MCP client directly to your running OpenRAG instance at `/mcp`.
+
+   The standalone `openrag-mcp` package is deprecated; use the built-in endpoint instead.
+
+* [Python SDK](https://github.com/langflow-ai/openrag/tree/main/sdks/python)
+
+* [TypeScript/JavaScript SDK](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
+
+* [Core OpenRAG APIs (`main.py`)](https://github.com/langflow-ai/openrag/blob/main/src/main.py)

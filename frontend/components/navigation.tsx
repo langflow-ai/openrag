@@ -23,9 +23,9 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { FILES_REGEX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { useLoadingStore } from "@/stores/loadingStore";
 import { DeleteSessionModal } from "./delete-session-modal";
 import { KnowledgeFilterList } from "./knowledge-filter-list";
 
@@ -89,15 +89,10 @@ export function Navigation({
     placeholderConversation,
     setPlaceholderConversation,
     conversationLoaded,
+    loading,
   } = useChat();
 
-  const { loading } = useLoadingStore();
-
-  useEffect(() => {
-    console.log("loading", loading);
-  }, [loading]);
-
-  const [previousConversationCount, setPreviousConversationCount] = useState(0);
+  const previousConversationCountRef = useRef(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
@@ -193,26 +188,35 @@ export function Navigation({
     }
   };
 
-  const routes = [
+  const { can, canAny } = usePermissions();
+  const allRoutes = [
     {
       label: "Chat",
       icon: MessageSquare,
       href: "/chat",
       active: pathname === "/" || pathname.startsWith("/chat"),
+      visible: can("chat:use"),
     },
     {
       label: "Knowledge",
       icon: Library,
       href: "/knowledge",
       active: pathname.startsWith("/knowledge"),
+      visible: canAny([
+        "knowledge:read:own",
+        "knowledge:read:all",
+        "knowledge:upload",
+      ]),
     },
     {
       label: "Settings",
       icon: Settings2,
       href: "/settings",
       active: pathname.startsWith("/settings"),
+      visible: true, // always — content inside is gated
     },
   ];
+  const routes = allRoutes.filter((r) => r.visible);
 
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
@@ -228,8 +232,7 @@ export function Navigation({
   useEffect(() => {
     if (!isConversationsLoading && !hasCompletedInitialLoad.current) {
       hasCompletedInitialLoad.current = true;
-      // Set initial count after first load completes
-      setPreviousConversationCount(conversations.length);
+      previousConversationCountRef.current = conversations.length;
     }
   }, [isConversationsLoading, conversations.length]);
 
@@ -241,37 +244,28 @@ export function Navigation({
       : Infinity;
     const MIN_TIME_AFTER_MOUNT = 2000; // 2 seconds - prevents selection right after onboarding
 
-    // Only select if:
-    // 1. We have a placeholder (new conversation was created)
-    // 2. Initial load has completed (prevents selection on browser refresh)
-    // 3. Count increased (new conversation appeared)
-    // 4. Not currently loading
-    // 5. Enough time has passed since mount (prevents selection after onboarding completes)
     if (
       placeholderConversation &&
       hasCompletedInitialLoad.current &&
-      currentCount > previousConversationCount &&
+      currentCount > previousConversationCountRef.current &&
       conversations.length > 0 &&
       !isConversationsLoading &&
       timeSinceMount >= MIN_TIME_AFTER_MOUNT
     ) {
       setPlaceholderConversation(null);
-      // Highlight the most recent conversation (first in sorted array) without loading its messages
       const newestConversation = conversations[0];
       if (newestConversation) {
         setCurrentConversationId(newestConversation.response_id);
       }
     }
 
-    // Update the previous count only after initial load
     if (hasCompletedInitialLoad.current) {
-      setPreviousConversationCount(currentCount);
+      previousConversationCountRef.current = currentCount;
     }
   }, [
     conversations.length,
     placeholderConversation,
     setPlaceholderConversation,
-    previousConversationCount,
     conversations,
     setCurrentConversationId,
     isConversationsLoading,
@@ -528,16 +522,8 @@ export function Navigation({
                                 <div
                                   className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
                                   title="More options"
-                                  role="button"
-                                  tabIndex={0}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }
                                   }}
                                 >
                                   <EllipsisVertical className="h-4 w-4" />

@@ -14,7 +14,7 @@ body {
 
   /* Checkbox styling */
   --ag-checkbox-background-color: hsl(var(--background));
-  --ag-checkbox-border-color: hsl(var(--border));
+  --ag-checkbox-border-color: hsl(var(--input));
   --ag-checkbox-checked-color: hsl(var(--primary));
   --ag-checkbox-unchecked-color: transparent;
 
@@ -30,7 +30,7 @@ body {
   }
 
   .ag-checkbox-input-wrapper {
-    border: 1px solid hsl(var(--border));
+    border: 1px solid hsl(var(--input));
     background-color: hsl(var(--background));
   }
 

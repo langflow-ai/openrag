@@ -102,6 +102,69 @@ def get_container_host() -> str | None:
     return None
 
 
+def _get_gateway_ip_from_route() -> str | None:
+    """Return the default gateway IP visible from the current network namespace.
+
+    Returns:
+        The gateway IP address if discovered, otherwise None.
+    """
+    import socket
+    import struct
+    try:
+        with Path("/proc/net/route").open() as route_table:
+            next(route_table)  # Skip header
+            for line in route_table:
+                fields = line.strip().split()
+                min_fields = 3  # interface, destination, gateway
+                if len(fields) >= min_fields and fields[1] == "00000000":
+                    gateway_hex = fields[2]
+                    gw_int = int(gateway_hex, 16)
+                    gateway_ip = socket.inet_ntoa(struct.pack("<L", gw_int))
+                    return gateway_ip
+    except (FileNotFoundError, PermissionError, IndexError, ValueError):
+        pass
+
+    return None
+
+
+def determine_docling_host() -> str:
+    """Determine the host address used for docling health checks and service access.
+
+    Works for containers, Docker Desktop hosts, and plain Linux hosts / CI runners.
+
+    Returns:
+        The hostname or IP address to use for docling-serve.
+    """
+    import socket
+    container_type = detect_container_environment()
+
+    # Container-specific env var (e.g. HOST_DOCKER_INTERNAL set explicitly)
+    if container_type:
+        container_host = get_container_host()
+        if container_host:
+            return container_host
+
+    # Try well-known hostnames (resolves on Docker Desktop even outside a
+    # container, and inside Docker/Podman containers with host networking)
+    for hostname in ["host.docker.internal", "host.containers.internal"]:
+        try:
+            socket.getaddrinfo(hostname, None)
+            return hostname
+        except socket.gaierror:
+            pass
+
+    # Container-only fallbacks: gateway IP or bridge IP
+    if container_type:
+        gateway_ip = _get_gateway_ip_from_route()
+        if gateway_ip:
+            return gateway_ip
+
+        fallback_ip = guess_host_ip_for_containers()
+        return fallback_ip
+
+    return "localhost"
+
+
 def is_localhost_url(url: str) -> bool:
     """Check if the URL contains a localhost pattern."""
     localhost_patterns = ["localhost", "127.0.0.1"]

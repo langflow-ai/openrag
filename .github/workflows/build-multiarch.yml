@@ -1,11 +1,6 @@
 name: Release + Docker Images (multi-arch)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'pyproject.toml'
   workflow_dispatch:
 
 jobs:

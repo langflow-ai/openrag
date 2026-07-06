@@ -190,55 +190,147 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       expect(filter).toBeNull();
     });
 
-    it("should use filterId in chat", async () => {
-      // Create a filter first
+    it("filterId in chat actually scopes retrieval to data_sources", async () => {
+      // Ingest two distinguishable docs.
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
+      const alphaName = `alpha_${Date.now()}.md`;
+      const betaName = `beta_${Date.now()}.md`;
+      const alphaPath = path.join(tmpDir, alphaName);
+      const betaPath = path.join(tmpDir, betaName);
+      fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants live here.\n");
+      fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers live here.\n");
+      await client.documents.ingest({ filePath: alphaPath });
+      await client.documents.ingest({ filePath: betaPath });
+
       const createResult = await client.knowledgeFilters.create({
-        name: "Chat Test Filter",
-        description: "Filter for testing chat with filterId",
+        name: `TS chat filter scope ${Date.now()}`,
+        description: "Filter scoped to alpha only",
         queryData: {
-          query: "test",
-          limit: 5,
+          query: "",
+          filters: {
+            data_sources: [alphaName],
+            document_types: ["*"],
+            owners: ["*"],
+            connector_types: ["*"],
+          },
+          limit: 10,
+          scoreThreshold: 0,
         },
       });
       expect(createResult.success).toBe(true);
       const filterId = createResult.id!;
 
       try {
-        // Use filter in chat
         const response = await client.chat.create({
-          message: "Hello with filter",
+          message: "What animals appear in these documents?",
           filterId,
         });
-
-        expect(response.response).toBeDefined();
+        expect(response.sources).toBeDefined();
+        const names = (response.sources ?? []).map((s) => s.filename);
+        // Beta must NOT leak through the filter.
+        expect(names).not.toContain(betaName);
       } finally {
-        // Cleanup
         await client.knowledgeFilters.delete(filterId);
+        await client.documents.delete(alphaName);
+        await client.documents.delete(betaName);
       }
-    });
+    }, 120_000);
 
-    it("should use filterId in search", async () => {
-      // Create a filter first
+    it("filterId in search actually scopes results to data_sources", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
+      const alphaName = `alpha_${Date.now()}.md`;
+      const betaName = `beta_${Date.now()}.md`;
+      const alphaPath = path.join(tmpDir, alphaName);
+      const betaPath = path.join(tmpDir, betaName);
+      fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants live here.\n");
+      fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers live here.\n");
+      await client.documents.ingest({ filePath: alphaPath });
+      await client.documents.ingest({ filePath: betaPath });
+
       const createResult = await client.knowledgeFilters.create({
-        name: "Search Test Filter",
-        description: "Filter for testing search with filterId",
+        name: `TS search filter scope ${Date.now()}`,
+        description: "Filter scoped to alpha only",
         queryData: {
-          query: "test",
-          limit: 5,
+          query: "",
+          filters: {
+            data_sources: [alphaName],
+            document_types: ["*"],
+            owners: ["*"],
+            connector_types: ["*"],
+          },
+          limit: 10,
+          scoreThreshold: 0,
         },
       });
       expect(createResult.success).toBe(true);
       const filterId = createResult.id!;
 
       try {
-        // Use filter in search
-        const results = await client.search.query("test query", { filterId });
-
-        expect(results.results).toBeDefined();
+        const results = await client.search.query("animals", { filterId });
+        for (const r of results.results) {
+          expect(r.filename).not.toBe(betaName);
+        }
       } finally {
-        // Cleanup
         await client.knowledgeFilters.delete(filterId);
+        await client.documents.delete(alphaName);
+        await client.documents.delete(betaName);
       }
+    }, 120_000);
+
+    it("documents.delete(filterId) only removes filenames in the filter", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-filter-"));
+      const alphaName = `alpha_${Date.now()}.md`;
+      const betaName = `beta_${Date.now()}.md`;
+      const alphaPath = path.join(tmpDir, alphaName);
+      const betaPath = path.join(tmpDir, betaName);
+      fs.writeFileSync(alphaPath, "# Alpha\n\nPurple elephants.\n");
+      fs.writeFileSync(betaPath, "# Beta\n\nYellow tigers.\n");
+      await client.documents.ingest({ filePath: alphaPath });
+      await client.documents.ingest({ filePath: betaPath });
+
+      const createResult = await client.knowledgeFilters.create({
+        name: `TS delete-by-filter ${Date.now()}`,
+        description: "Filter scoped to alpha only",
+        queryData: {
+          query: "",
+          filters: {
+            data_sources: [alphaName],
+            document_types: ["*"],
+            owners: ["*"],
+            connector_types: ["*"],
+          },
+          limit: 10,
+          scoreThreshold: 0,
+        },
+      });
+      expect(createResult.success).toBe(true);
+      const filterId = createResult.id!;
+
+      try {
+        const result = await client.documents.delete({ filterId });
+        expect(result.success).toBe(true);
+        expect(result.filenames).toContain(alphaName);
+        expect(result.filenames ?? []).not.toContain(betaName);
+
+        // Beta still searchable
+        const remaining = await client.search.query("tigers");
+        const remainingNames = remaining.results.map((r) => r.filename);
+        expect(remainingNames).toContain(betaName);
+      } finally {
+        await client.knowledgeFilters.delete(filterId);
+        await client.documents.delete(alphaName);
+        await client.documents.delete(betaName);
+      }
+    }, 120_000);
+
+    it("documents.delete rejects both filename and filterId together", async () => {
+      await expect(
+        client.documents.delete({ filename: "x.pdf", filterId: "y" })
+      ).rejects.toThrow();
+    });
+
+    it("documents.delete rejects when neither arg is set", async () => {
+      await expect(client.documents.delete({})).rejects.toThrow();
     });
   });
 
@@ -251,7 +343,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       // due to embedding model component errors in layer 0
       expect(result.status).toBeDefined();
       expect((result as any).successful_files).toBeGreaterThanOrEqual(0);
-    });
+    }, 120_000);
 
     it("should ingest a document without waiting", async () => {
       // wait=false returns immediately with task_id
@@ -271,11 +363,33 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     });
 
     it("should delete a document", async () => {
+      // Use a uniquely named file so this test doesn't inherit chunks left in
+      // the index by the two ingest tests above (which share testFilePath /
+      // "sdk_test_doc.md"). Otherwise a zero-successful-files re-ingest here can
+      // still find the earlier document, making delete succeed when the
+      // else-branch expects a no-op — i.e. ingest's reported successful_files
+      // would no longer reflect whether THIS document exists in the index.
+      const deleteDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-del-"));
+      const deleteFilePath = path.join(
+        deleteDir,
+        `sdk_delete_doc_${Date.now()}.md`
+      );
+      fs.writeFileSync(
+        deleteFilePath,
+        "# SDK Delete Test Document\n\n" +
+          "This document tests document deletion via the OpenRAG TypeScript SDK.\n" +
+          "It contains unique content about teal dolphins swimming.\n"
+      );
+
       // First ingest (wait for completion)
-      const ingestResult = await client.documents.ingest({ filePath: testFilePath });
+      const ingestResult = await client.documents.ingest({
+        filePath: deleteFilePath,
+      });
 
       // Then delete
-      const result = await client.documents.delete(path.basename(testFilePath));
+      const result = await client.documents.delete(
+        path.basename(deleteFilePath)
+      );
 
       // If ingestion produced indexed chunks, delete should succeed.
       // In unstable flow environments, ingestion can complete with zero successful files.

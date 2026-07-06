@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
 import { FileList } from "./file-list";
 import { IngestSettings } from "./ingest-settings";
 import { PickerHeader } from "./picker-header";
@@ -11,60 +13,64 @@ import {
   UnifiedCloudPickerProps,
 } from "./types";
 
+const EMPTY_FILES: CloudFile[] = [];
+
 export const UnifiedCloudPicker = ({
   provider,
   onFileSelected,
-  selectedFiles = [],
+  selectedFiles = EMPTY_FILES,
   isAuthenticated,
   isIngesting,
   accessToken,
   onPickerStateChange,
   clientId,
   baseUrl,
+  ingestSettings: ingestSettingsProp,
+  onIngestSettingsChange,
   onSettingsChange,
 }: UnifiedCloudPickerProps) => {
+  const { isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showIngestSettings =
+    apiSettings?.show_provider_ingest_settings ?? false;
+
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(false);
-  const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false);
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | undefined>(undefined);
 
-  // Settings state with defaults
-  const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    ocr: false,
-    pictureDescriptions: false,
-    embeddingModel: "text-embedding-3-small",
-  });
+  const isControlled =
+    ingestSettingsProp !== undefined && onIngestSettingsChange !== undefined;
 
-  // Handle settings changes and notify parent
-  const handleSettingsChange = (newSettings: IngestSettingsType) => {
-    setIngestSettings(newSettings);
+  const [localIngestSettings, setLocalIngestSettings] =
+    useState<IngestSettingsType>({
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      ocr: false,
+      pictureDescriptions: false,
+      embeddingModel: "text-embedding-3-small",
+    });
+
+  const ingestSettings = isControlled
+    ? ingestSettingsProp!
+    : localIngestSettings;
+
+  const handleIngestSettingsChange = (newSettings: IngestSettingsType) => {
+    if (isControlled) {
+      onIngestSettingsChange!(newSettings);
+    } else {
+      setLocalIngestSettings(newSettings);
+    }
     onSettingsChange?.(newSettings);
   };
 
   const effectiveBaseUrl = baseUrl || autoBaseUrl;
 
-  // Auto-detect base URL for OneDrive personal accounts
-  // For SharePoint, we require the baseUrl to be provided from the connector config
-  useEffect(() => {
-    if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
-      // Only auto-set for OneDrive, not SharePoint
-      const getBaseUrl = async () => {
-        setIsLoadingBaseUrl(true);
-        try {
-          setAutoBaseUrl("https://onedrive.live.com/picker");
-        } catch (error) {
-          console.error("Auto-detect baseUrl failed:", error);
-        } finally {
-          setIsLoadingBaseUrl(false);
-        }
-      };
-
-      getBaseUrl();
-    }
-  }, [accessToken, baseUrl, autoBaseUrl, provider]);
+  if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
+    setAutoBaseUrl("https://onedrive.live.com/picker");
+  }
 
   // Load picker API
   useEffect(() => {
@@ -98,28 +104,11 @@ export const UnifiedCloudPicker = ({
   ]);
 
   const handleAddFiles = () => {
-    // === DIAGNOSTIC LOGGING ===
-    console.log("=== UnifiedCloudPicker handleAddFiles ===");
-    console.log("Provider:", provider);
-    console.log("Client ID:", clientId);
-    console.log("Base URL (from prop):", baseUrl);
-    console.log("Auto Base URL:", autoBaseUrl);
-    console.log("Effective Base URL:", effectiveBaseUrl);
-    console.log("Is Picker Loaded:", isPickerLoaded);
-    console.log("Has Access Token:", !!accessToken);
-
     if (!isPickerLoaded || !accessToken) {
-      console.error(
-        "Cannot open picker: isPickerLoaded=",
-        isPickerLoaded,
-        "hasAccessToken=",
-        !!accessToken,
-      );
       return;
     }
 
     if ((provider === "onedrive" || provider === "sharepoint") && !clientId) {
-      console.error("Client ID required for OneDrive/SharePoint");
       return;
     }
 
@@ -159,14 +148,6 @@ export const UnifiedCloudPicker = ({
   const handleClearAll = () => {
     onFileSelected([]);
   };
-
-  if (isLoadingBaseUrl) {
-    return (
-      <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
-        Loading...
-      </div>
-    );
-  }
 
   if (
     (provider === "onedrive" || provider === "sharepoint") &&
@@ -212,12 +193,14 @@ export const UnifiedCloudPicker = ({
         shouldDisableActions={isIngesting}
       />
 
-      <IngestSettings
-        isOpen={isIngestSettingsOpen}
-        onOpenChange={setIsIngestSettingsOpen}
-        settings={ingestSettings}
-        onSettingsChange={handleSettingsChange}
-      />
+      {showIngestSettings && (
+        <IngestSettings
+          isOpen={isIngestSettingsOpen}
+          onOpenChange={setIsIngestSettingsOpen}
+          settings={ingestSettings}
+          onSettingsChange={handleIngestSettingsChange}
+        />
+      )}
     </div>
   );
 };

@@ -10,7 +10,10 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  type ProviderSettings,
+  useGetSettingsQuery,
+} from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
@@ -31,6 +34,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import {
+  trackButton,
+  trackProcessFailure,
+  trackProcessSuccess,
+} from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -80,46 +88,48 @@ const OnboardingCard = ({
   const { data: currentSettings } = useGetSettingsQuery();
 
   // Auto-select the first provider that has an API key set in env vars
-  useEffect(() => {
-    if (!currentSettings?.providers) return;
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
+  if (currentSettings?.providers !== prevProviders) {
+    setPrevProviders(currentSettings?.providers);
+    if (currentSettings?.providers) {
+      const fullOrder = isEmbedding
+        ? EMBEDDING_PROVIDER_ORDER
+        : LLM_PROVIDER_ORDER;
+      const providerOrder = isCloudBrand
+        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+        : fullOrder;
 
-    // Define provider order based on whether it's embedding or not
-    const fullOrder = isEmbedding
-      ? EMBEDDING_PROVIDER_ORDER
-      : LLM_PROVIDER_ORDER;
-    const providerOrder = isCloudBrand
-      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : fullOrder;
-
-    // Find the first provider with an API key
-    for (const provider of providerOrder) {
-      if (
-        provider === "anthropic" &&
-        currentSettings.providers.anthropic?.has_api_key
-      ) {
-        setModelProvider("anthropic");
-        return;
-      } else if (
-        provider === "openai" &&
-        currentSettings.providers.openai?.has_api_key
-      ) {
-        setModelProvider("openai");
-        return;
-      } else if (
-        provider === "watsonx" &&
-        currentSettings.providers.watsonx?.has_api_key
-      ) {
-        setModelProvider("watsonx");
-        return;
-      } else if (
-        provider === "ollama" &&
-        currentSettings.providers.ollama?.endpoint
-      ) {
-        setModelProvider("ollama");
-        return;
+      for (const provider of providerOrder) {
+        if (
+          provider === "anthropic" &&
+          currentSettings.providers.anthropic?.has_api_key
+        ) {
+          setModelProvider("anthropic");
+          break;
+        } else if (
+          provider === "openai" &&
+          currentSettings.providers.openai?.has_api_key
+        ) {
+          setModelProvider("openai");
+          break;
+        } else if (
+          provider === "watsonx" &&
+          currentSettings.providers.watsonx?.has_api_key
+        ) {
+          setModelProvider("watsonx");
+          break;
+        } else if (
+          provider === "ollama" &&
+          currentSettings.providers.ollama?.endpoint
+        ) {
+          setModelProvider("ollama");
+          break;
+        }
       }
     }
-  }, [currentSettings, isEmbedding, isCloudBrand]);
+  }
 
   const handleSetModelProvider = (provider: string) => {
     setIsLoadingModels(false);
@@ -186,6 +196,10 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
+  // Ref for the completion timeout so it persists across effect re-runs
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
     enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
@@ -232,15 +246,33 @@ const OnboardingCard = ({
       queryClient.setQueryData(["provider", "health"], healthData);
       setError(null);
       if (!isEmbedding) {
+        trackProcessSuccess({
+          processType: "Onboarding",
+          process: "LLM Setup",
+          resultValue: provider,
+          category: "Setup",
+        });
         setCurrentStep(totalSteps);
         setTimeout(() => {
           onComplete();
         }, 1000);
       } else {
+        trackProcessSuccess({
+          processType: "Onboarding",
+          process: "Embedding Setup",
+          resultValue: provider,
+          category: "Setup",
+        });
         setCurrentStep(0);
       }
     },
     onError: (error) => {
+      trackProcessFailure({
+        processType: "Onboarding",
+        process: isEmbedding ? "Embedding Setup" : "LLM Setup",
+        resultValue: error.message,
+        category: "Setup",
+      });
       setError(error.message);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -336,6 +368,18 @@ const OnboardingCard = ({
           : "Sample data ingestion failed. Please try again.";
 
       // Set error message and jump back one step (exactly like onboardingMutation.onError)
+      trackProcessFailure({
+        processType: "Onboarding",
+        process: "Sample Data Ingest",
+        resultValue: errorMessage,
+        category: "Setup",
+        task_id: taskWithFailure.task_id,
+        duration_seconds: taskWithFailure.duration_seconds,
+        total_files: taskWithFailure.total_files,
+        failed_files: taskWithFailure.failed_files,
+      });
+
+      clearTimeout(completeTimeoutRef.current);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -356,10 +400,22 @@ const OnboardingCard = ({
       !taskWithFailure &&
       currentStep === totalSteps - 1
     ) {
+      const completedTask = relevantTasks.find((t) => t.status === "completed");
+      trackProcessSuccess({
+        processType: "Onboarding",
+        process: "Sample Data Ingest",
+        category: "Setup",
+        task_id: completedTask?.task_id,
+        duration_seconds: completedTask?.duration_seconds,
+        total_files: completedTask?.total_files,
+        successful_files: completedTask?.successful_files,
+      });
+
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
-      // Wait a bit before completing
-      setTimeout(() => {
+      // Wait a bit before completing — stored in a ref so the timeout
+      // survives the re-render caused by setCurrentStep above.
+      completeTimeoutRef.current = setTimeout(() => {
         onComplete();
       }, 1000);
     }
@@ -382,9 +438,7 @@ const OnboardingCard = ({
 
     if (
       !currentProvider ||
-      (isEmbedding &&
-        !settings.embedding_model &&
-        !showProviderConfiguredMessage) ||
+      (isEmbedding && !settings.embedding_model) ||
       (!isEmbedding && !settings.llm_model)
     ) {
       toast.error("Please complete all required fields");
@@ -400,17 +454,7 @@ const OnboardingCard = ({
     // Set the provider field
     if (isEmbedding) {
       onboardingData.embedding_provider = currentProvider;
-      // If provider is already configured, use the existing embedding model from settings
-      // Otherwise, use the embedding model from the form
-      if (
-        showProviderConfiguredMessage &&
-        currentSettings?.knowledge?.embedding_model
-      ) {
-        onboardingData.embedding_model =
-          currentSettings.knowledge.embedding_model;
-      } else {
-        onboardingData.embedding_model = settings.embedding_model;
-      }
+      onboardingData.embedding_model = settings.embedding_model;
     } else {
       onboardingData.llm_provider = currentProvider;
       onboardingData.llm_model = settings.llm_model;
@@ -435,6 +479,18 @@ const OnboardingCard = ({
       onboardingData.ollama_endpoint = settings.ollama_endpoint;
     }
 
+    trackButton({
+      CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
+      elementId: "onboarding-complete-button",
+      namespace: "onboarding",
+      payload: isEmbedding
+        ? {
+            embedding_provider: currentProvider,
+            embedding_model: settings.embedding_model,
+          }
+        : { llm_provider: currentProvider, llm_model: settings.llm_model },
+    });
+
     // Record the start time when user clicks Complete
     setProcessingStartTime(Date.now());
     onboardingMutation.mutate(onboardingData);
@@ -442,8 +498,7 @@ const OnboardingCard = ({
   };
 
   const isComplete =
-    (isEmbedding &&
-      (!!settings.embedding_model || showProviderConfiguredMessage)) ||
+    (isEmbedding && !!settings.embedding_model) ||
     (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
 
   return (
@@ -466,7 +521,10 @@ const OnboardingCard = ({
                 >
                   <div className="pb-6 flex items-center gap-4">
                     <X className="w-4 h-4 text-destructive shrink-0" />
-                    <span className="text-mmd text-muted-foreground">
+                    <span
+                      data-testid="onboarding-error"
+                      className="text-mmd text-muted-foreground"
+                    >
                       {error}
                     </span>
                   </div>
@@ -694,8 +752,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : !!settings.llm_model &&
-                          !!settings.embedding_model &&
+                      : settings.llm_model &&
+                          settings.embedding_model &&
                           !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}

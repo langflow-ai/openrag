@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+import { trackLLMCall } from "@/lib/analytics";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import { uploadFileForContext } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
-import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
@@ -28,10 +30,10 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
+import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
-  const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     setEndpoint,
@@ -43,21 +45,19 @@ function ChatPage() {
     refreshConversations,
     refreshConversationsSilent,
     refreshTrigger,
+    refreshTriggerSilent,
     previousResponseIds,
     setPreviousResponseIds,
     placeholderConversation,
     conversationFilter,
     setConversationFilter,
+    loading,
+    setLoading,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "How can I assist?",
-      timestamp: new Date(),
-    },
+    INITIAL_ASSISTANT_MESSAGE,
   ]);
   const [input, setInput] = useState("");
-  const { loading, setLoading } = useLoadingStore();
   const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
@@ -81,7 +81,7 @@ function ChatPage() {
   // Check if chat history is loading
   const { isLoading: isConversationsLoading } = useGetConversationsQuery(
     endpoint,
-    refreshTrigger,
+    refreshTrigger + refreshTriggerSilent,
   );
 
   // Use conversation-specific filter instead of global filter
@@ -98,16 +98,25 @@ function ChatPage() {
     }
   }, [selectedFilter]);
 
+  // Get settings for model info used in analytics
+  const { data: settings } = useGetSettingsQuery();
+
   // Use the chat streaming hook
   const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
   const {
     streamingMessage,
     sendMessage: sendStreamingMessage,
     abortStream,
-    isLoading: isStreamLoading,
+    isLoading: isChatStreaming,
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
+      trackLLMCall({
+        mode: "chat",
+        model: settings?.agent?.llm_model,
+        inputTokens: message.usage?.input_tokens,
+        outputTokens: message.usage?.output_tokens,
+      });
       setMessages((prev) => [...prev, message]);
       setLoading(false);
       setWaitingTooLong(false);
@@ -155,10 +164,11 @@ function ChatPage() {
   });
 
   // Show warning if waiting too long (20 seconds)
+  const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isStreamLoading && !streamingMessage) {
+    if (isChatStreaming && !hasStreamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -169,7 +179,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isStreamLoading, streamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -179,109 +189,51 @@ function ChatPage() {
   };
 
   const handleFileUpload = async (file: File) => {
-    console.log("handleFileUpload called with file:", file.name);
-
     if (isUploading) return;
 
     setIsUploading(true);
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("endpoint", endpoint);
+      const result = await uploadFileForContext(
+        file,
+        endpoint,
+        previousResponseIds[endpoint],
+      );
 
-      // Add previous_response_id if we have one for this endpoint
-      const currentResponseId = previousResponseIds[endpoint];
-      if (currentResponseId) {
-        formData.append("previous_response_id", currentResponseId);
+      if (result.type === "task") {
+        addTask(result.taskId, { source: "file" });
+        return { type: "task-queued" as const };
       }
 
-      const response = await fetch("/api/upload_context", {
-        method: "POST",
-        body: formData,
-      });
+      // Direct response path
+      const uploadMessage: Message = {
+        role: "user",
+        content: `I'm uploading a document called "${result.filename}". Here is its content:`,
+        timestamp: new Date(),
+      };
+      const confirmationMessage: Message = {
+        role: "assistant",
+        content: `Confirmed`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
 
-      console.log("Upload response status:", response.status);
+      addConversationDoc(result.filename);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "Upload failed with status:",
-          response.status,
-          "Response:",
-          errorText,
-        );
-        throw new Error("Failed to process document");
-      }
-
-      const result = await response.json();
-      console.log("Upload result:", result);
-
-      if (!response.ok) {
-        // Set chat error flag if upload fails
-        setChatError(true);
-      }
-
-      if (response.status === 201) {
-        // New flow: Got task ID, start tracking with centralized system
-        const taskId = result.task_id || result.id;
-
-        if (!taskId) {
-          console.error("No task ID in 201 response:", result);
-          throw new Error("No task ID received from server");
-        }
-
-        // Add task to centralized tracking
-        addTask(taskId);
-
-        return null;
-      } else if (response.ok) {
-        // Original flow: Direct response
-
-        const uploadMessage: Message = {
-          role: "user",
-          content: `I'm uploading a document called "${result.filename}". Here is its content:`,
-          timestamp: new Date(),
-        };
-
-        const confirmationMessage: Message = {
-          role: "assistant",
-          content: `Confirmed`,
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
-
-        // Add file to conversation docs
-        if (result.filename) {
-          addConversationDoc(result.filename);
-        }
-
-        // Update the response ID for this endpoint
-        if (result.response_id) {
-          setPreviousResponseIds((prev) => ({
-            ...prev,
-            [endpoint]: result.response_id,
-          }));
-
-          // If this is a new conversation (no currentConversationId), set it now
-          if (!currentConversationId) {
-            setCurrentConversationId(result.response_id);
-            refreshConversations(true);
-          } else {
-            // For existing conversations, do a silent refresh to keep backend in sync
-            refreshConversationsSilent();
-          }
-
-          return result.response_id;
-        }
+      setPreviousResponseIds((prev) => ({
+        ...prev,
+        [endpoint]: result.responseId,
+      }));
+      if (!currentConversationId) {
+        setCurrentConversationId(result.responseId);
+        refreshConversations(true);
       } else {
-        throw new Error(`Upload failed: ${response.status}`);
+        refreshConversationsSilent();
       }
+      return result.responseId;
     } catch (error) {
       console.error("Upload failed:", error);
-      // Set chat error flag to trigger test_completion=true on health checks
       setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
@@ -317,13 +269,7 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       setInput("");
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
@@ -348,15 +294,21 @@ function ChatPage() {
     };
   }, [abortStream, setLoading]);
 
-  // Load conversation only when user explicitly selects a conversation
+  // Load conversation data from context
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     // Only load conversation data when:
     // 1. conversationData exists AND
-    // 2. It's different from the last loaded conversation AND
+    // 2. (It's a different conversation OR we're not streaming and data has changed) AND
     // 3. User is not in the middle of an interaction
+    const isNewConversation =
+      lastLoadedConversationRef.current !== conversationData?.response_id;
+    const hasMessageCountChanged =
+      conversationData?.messages?.length !== messages.length;
+
     if (
       conversationData?.messages &&
-      lastLoadedConversationRef.current !== conversationData.response_id &&
+      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -536,135 +488,41 @@ function ChatPage() {
       }));
 
       // Focus input when loading a conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     } else if (!conversationData) {
       // No conversation selected (new conversation)
       lastLoadedConversationRef.current = null;
     }
+
+    return () => clearTimeout(focusTimeoutId);
   }, [
     conversationData,
     isUserInteracting,
     isForkingInProgress,
     setPreviousResponseIds,
+    isChatStreaming,
+    messages.length,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
       console.log("Starting new conversation");
-      setMessages([
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     }
+    return () => clearTimeout(focusTimeoutId);
   }, [placeholderConversation, currentConversationId]);
 
-  // Listen for file upload events from navigation
-  useEffect(() => {
-    const handleFileUploadStart = (event: CustomEvent) => {
-      const { filename } = event.detail;
-      console.log("Chat page received file upload start event:", filename);
-
-      setLoading(true);
-      setIsUploading(true);
-      setUploadedFile(null); // Clear previous file
-    };
-
-    const handleFileUploaded = (event: CustomEvent) => {
-      const { result } = event.detail;
-      console.log("Chat page received file upload event:", result);
-
-      setUploadedFile(null); // Clear file after upload
-
-      // Update the response ID for this endpoint
-      if (result.response_id) {
-        setPreviousResponseIds((prev) => ({
-          ...prev,
-          [endpoint]: result.response_id,
-        }));
-      }
-    };
-
-    const handleFileUploadComplete = () => {
-      console.log("Chat page received file upload complete event");
-      setLoading(false);
-      setIsUploading(false);
-    };
-
-    const handleFileUploadError = (event: CustomEvent) => {
-      const { filename, error } = event.detail;
-      console.log(
-        "Chat page received file upload error event:",
-        filename,
-        error,
-      );
-
-      // Replace the last message with error message
-      const errorMessage: Message = {
-        role: "assistant",
-        content: `❌ Upload failed for **${filename}**: ${error}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
-      setUploadedFile(null); // Clear file on error
-    };
-
-    window.addEventListener(
-      "fileUploadStart",
-      handleFileUploadStart as EventListener,
-    );
-    window.addEventListener(
-      "fileUploaded",
-      handleFileUploaded as EventListener,
-    );
-    window.addEventListener(
-      "fileUploadComplete",
-      handleFileUploadComplete as EventListener,
-    );
-    window.addEventListener(
-      "fileUploadError",
-      handleFileUploadError as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener(
-        "fileUploadStart",
-        handleFileUploadStart as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploaded",
-        handleFileUploaded as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploadComplete",
-        handleFileUploadComplete as EventListener,
-      );
-      window.removeEventListener(
-        "fileUploadError",
-        handleFileUploadError as EventListener,
-      );
-    };
-  }, [endpoint, setPreviousResponseIds, setLoading]);
-
-  // Get settings to check onboarding completion
-  const { data: settings } = useGetSettingsQuery();
-
-  // Check if onboarding is complete (current_step >= 4 means complete)
-  const TOTAL_ONBOARDING_STEPS = 4;
-  const isOnboardingComplete =
-    settings?.onboarding?.current_step !== undefined &&
-    settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS;
+  const { isOnboardingComplete } = useOnboardingState();
 
   // Prepare filters for nudges (same as chat)
   const processedFiltersForNudges = parsedFilterData?.filters
@@ -886,17 +744,20 @@ function ChatPage() {
     // Check if there's an uploaded file and upload it first
     let uploadedResponseId: string | null = null;
     if (uploadedFile) {
-      // Upload the file first
-      const responseId = await handleFileUpload(uploadedFile);
-      // Clear the file after upload
+      const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
 
-      // If the upload resulted in a new conversation, store the response ID
-      if (responseId) {
-        uploadedResponseId = responseId;
+      if (uploadResult && typeof uploadResult === "object") {
+        // File is being processed asynchronously — don't send the message yet.
+        // The user can submit again once the task completes.
+        return;
+      }
+
+      if (uploadResult) {
+        uploadedResponseId = uploadResult;
         setPreviousResponseIds((prev) => ({
           ...prev,
-          [endpoint]: responseId,
+          [endpoint]: uploadResult,
         }));
       }
     }
@@ -1065,7 +926,7 @@ function ChatPage() {
                   ? (messages[index]?.content.match(FILES_REGEX)?.[0] ??
                       null) === null && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
@@ -1101,7 +962,7 @@ function ChatPage() {
                       (messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
                         null) === null) && (
                       <div
-                        key={`${
+                        key={`${currentConversationId ?? "new"}-${
                           message.role
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
@@ -1125,9 +986,11 @@ function ChatPage() {
                             isInitialGreeting={
                               index === 0 &&
                               messages.length === 1 &&
-                              message.content === "How can I assist?"
+                              message.content ===
+                                INITIAL_ASSISTANT_MESSAGE.content
                             }
                             usage={message.usage}
+                            timestamp={message.timestamp}
                           />
                         )}
                       </div>

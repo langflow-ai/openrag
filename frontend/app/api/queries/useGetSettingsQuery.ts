@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { FunctionCall } from "@/app/chat/_types/types";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -18,6 +19,7 @@ export interface KnowledgeSettings {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
 }
 
 export interface ProviderSettings {
@@ -47,6 +49,7 @@ export interface OnboardingState {
     role: string;
     content: string;
     timestamp: string;
+    functionCalls?: FunctionCall[] | null;
   } | null;
   selected_nudge?: string | null;
   card_steps?: Record<string, unknown> | null;
@@ -75,6 +78,19 @@ export interface Settings {
   };
   localhost_url?: string;
   ingest_via_chat?: boolean;
+  show_provider_ingest_settings?: boolean;
+  segment_write_key?: string;
+  environment?: string;
+  langflow_port?: string | number | null;
+}
+
+async function getSettings(): Promise<Settings> {
+  const response = await fetch("/api/settings");
+  if (response.ok) {
+    return await response.json();
+  } else {
+    throw new Error("Failed to fetch settings");
+  }
 }
 
 export const useGetSettingsQuery = (
@@ -82,17 +98,7 @@ export const useGetSettingsQuery = (
 ) => {
   const queryClient = useQueryClient();
 
-  async function getSettings(): Promise<Settings> {
-    const response = await fetch("/api/settings");
-    if (response.ok) {
-      // Merge with defaults to ensure all properties exist
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch settings");
-    }
-  }
-
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["settings"],
       queryFn: getSettings,
@@ -100,6 +106,4 @@ export const useGetSettingsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

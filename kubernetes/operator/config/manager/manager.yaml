@@ -18,6 +18,7 @@ spec:
         control-plane: controller-manager
     spec:
       serviceAccountName: controller-manager
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
       containers:
@@ -25,7 +26,7 @@ spec:
         image: controller:latest
         args:
         - --leader-elect
-        - --health-probe-bind-address=:8081
+        - --health-probe-bind-address=:8080
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -34,13 +35,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8081
+            port: 8080
           initialDelaySeconds: 15
           periodSeconds: 20
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8081
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:

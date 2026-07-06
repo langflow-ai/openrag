@@ -9,6 +9,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
+import { trackButton } from "@/lib/analytics";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -17,12 +18,14 @@ interface OnboardingUploadProps {
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
   const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const createFilterMutation = useCreateFilter();
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
@@ -42,8 +45,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const { refetch: refetchNudges } = useGetNudgesQuery(null);
 
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Monitor tasks and call onComplete when file processing is done
   useEffect(() => {
+    let cancelled = false;
     if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
@@ -61,6 +67,42 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       matchingTask.status === "pending" ||
       matchingTask.status === "running" ||
       matchingTask.status === "processing";
+
+    // Check if matching task failed or has error status
+    const failedTask =
+      matchingTask.status === "failed" || matchingTask.status === "error";
+
+    // Check if any file inside the task failed
+    const filesArray = matchingTask.files
+      ? (Object.values(matchingTask.files) as {
+          status: string;
+          error?: string;
+        }[])
+      : [];
+    const hasFailedFile = filesArray.some(
+      (file) => file.status === "failed" || file.status === "error",
+    );
+
+    if (failedTask || hasFailedFile) {
+      let errorMessage = "Document ingestion failed. Please try again.";
+      if (matchingTask.error) {
+        errorMessage = matchingTask.error;
+      } else {
+        const failedFile = filesArray.find(
+          (file) =>
+            (file.status === "failed" || file.status === "error") && file.error,
+        );
+        if (failedFile?.error) {
+          errorMessage = failedFile.error;
+        }
+      }
+
+      clearTimeout(completeTimeoutRef.current);
+      setError(errorMessage);
+      setCurrentStep(null);
+      setUploadedTaskId(null);
+      return;
+    }
 
     // If task is completed or has processed files, complete the onboarding step
     if (!isTaskActive || (matchingTask.processed_files ?? 0) > 0) {
@@ -120,25 +162,26 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           })
           .finally(() => {
             setIsCreatingFilter(false);
-            // Refetch nudges to get new ones
             refetchNudges();
 
-            // Wait a bit before completing (after filter is created)
-            setTimeout(() => {
-              onComplete();
-            }, 1000);
+            if (!cancelled && !completeTimeoutRef.current) {
+              completeTimeoutRef.current = setTimeout(() => {
+                onComplete();
+              }, 1000);
+            }
           });
-      } else {
-        // No filter to create, just complete
-        // Refetch nudges to get new ones
+      } else if (!isCreatingFilter && !completeTimeoutRef.current) {
         refetchNudges();
 
-        // Wait a bit before completing
-        setTimeout(() => {
+        completeTimeoutRef.current = setTimeout(() => {
           onComplete();
         }, 1000);
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     tasks,
     currentStep,
@@ -158,11 +201,17 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   };
 
   const handleUploadClick = () => {
+    trackButton({
+      CTA: "Add Data - Add a document",
+      elementId: "upload-button",
+      namespace: "onboarding",
+    });
     fileInputRef.current?.click();
   };
 
   const performUpload = async (file: File) => {
     setIsUploading(true);
+    setError(null);
     try {
       setCurrentStep(0);
       const result = await uploadFile(file, true, true); // Pass createFilter=true
@@ -187,6 +236,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       const errorMessage =
         error instanceof Error ? error.message : "Upload failed";
       console.error("Upload failed", errorMessage);
+      setError(errorMessage);
 
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
@@ -240,6 +290,25 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           exit={{ opacity: 0, y: -24 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}
         >
+          <AnimatePresence mode="wait">
+            {error && (
+              <motion.div
+                key="error"
+                initial={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+              >
+                <div className="pb-6 flex items-center gap-4">
+                  <X className="w-4 h-4 text-destructive shrink-0" />
+                  <span
+                    data-testid="onboarding-upload-error"
+                    className="text-mmd text-muted-foreground"
+                  >
+                    {error}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <Button
             size="sm"
             variant="outline"

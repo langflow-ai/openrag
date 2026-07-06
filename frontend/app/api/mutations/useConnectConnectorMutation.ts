@@ -2,7 +2,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { encodeBase64 } from "@/lib/utils";
-import type { Connector } from "../queries/useGetConnectorsQuery";
+import type {
+  Connector,
+  ConnectorsMutationContext,
+} from "../queries/useGetConnectorsQuery";
+import {
+  connectorsQueryFilter,
+  restoreConnectorQueries,
+  snapshotConnectorQueries,
+} from "../queries/useGetConnectorsQuery";
 
 interface ConnectResponse {
   connection_id: string;
@@ -11,6 +19,7 @@ interface ConnectResponse {
     client_id: string;
     scopes: string[];
     redirect_uri: string;
+    prompt?: string;
   };
 }
 
@@ -47,22 +56,12 @@ export const useConnectConnectorMutation = () => {
       }
       return response.json();
     },
-    onMutate: async ({ connector }) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["connectors"] });
-
-      // Snapshot the previous value
-      const previousConnectors = queryClient.getQueryData<Connector[]>([
-        "connectors",
-      ]);
-
-      return { previousConnectors };
+    onMutate: async (): Promise<ConnectorsMutationContext> => {
+      await queryClient.cancelQueries(connectorsQueryFilter);
+      return snapshotConnectorQueries(queryClient);
     },
-    onError: (err, { connector }, context) => {
-      // Roll back if mutation fails
-      if (context?.previousConnectors) {
-        queryClient.setQueryData(["connectors"], context.previousConnectors);
-      }
+    onError: (err, _vars, context) => {
+      restoreConnectorQueries(queryClient, context);
       toast.error(err.message);
     },
     onSuccess: (result, { connector }) => {
@@ -86,15 +85,20 @@ export const useConnectConnectorMutation = () => {
             result.oauth_config.redirect_uri,
           )}&` +
           `access_type=offline&` +
-          `prompt=select_account&` +
+          `prompt=${result.oauth_config.prompt ?? "consent"}&` +
           `state=${encodeURIComponent(state)}`;
 
         window.location.href = authUrl;
       } else {
-        // Direct-auth connector (e.g. IBM COS) — credentials already verified,
+        // Direct-auth connector (bucket-kind) — credentials already verified,
         // no OAuth redirect needed. Refresh connector status.
-        queryClient.invalidateQueries({ queryKey: ["connectors"] });
+        queryClient.invalidateQueries(connectorsQueryFilter);
         toast.success(`${connector.name} connected successfully`);
+      }
+    },
+    onSettled: (_result, error) => {
+      if (error) {
+        queryClient.invalidateQueries(connectorsQueryFilter);
       }
     },
   });

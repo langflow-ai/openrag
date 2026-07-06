@@ -1,8 +1,11 @@
 import asyncio
 import os
 import random
+from typing import Any
+
 import yaml
 from opensearchpy import AsyncOpenSearch
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +38,33 @@ class OpenSearchDiskSpaceError(Exception):
     """Raised when OpenSearch operations fail due to insufficient disk space."""
 
 
+# Error strings emitted by OpenSearch when the presented credential is rejected.
+# This is an AUTHENTICATION failure (bad/expired/over-ridden credential), not an
+# authorization one — callers must surface it as 401, never 403 "insufficient
+# permissions", so the real cause isn't masked.
+_AUTH_ERROR_INDICATORS = [
+    "authenticationexception",
+    "unauthorized",
+    "authentication failed",
+]
+
+AUTH_ERROR_MESSAGE = (
+    "Authentication failed: OpenSearch rejected the credential. Please sign in again."
+)
+
+
+def is_opensearch_auth_error(error: Exception | str) -> bool:
+    """Whether *error* is an OpenSearch authentication failure (401).
+
+    Accepts an exception or an already-stringified error message. Distinct from
+    authorization ("only the owner can …"): this means the credential OpenRAG
+    presented was not accepted at all. Callers should map it to HTTP 401
+    (re-authenticate), not 403.
+    """
+    error_str = str(error).lower()
+    return any(indicator in error_str for indicator in _AUTH_ERROR_INDICATORS)
+
+
 def is_disk_space_error(error: Exception) -> bool:
     """Check whether an exception is caused by OpenSearch disk space constraints.
 
@@ -51,9 +81,58 @@ def is_disk_space_error(error: Exception) -> bool:
     error_str = str(error).lower()
     return any(indicator in error_str for indicator in _DISK_SPACE_INDICATORS)
 
+
+def opensearch_error_reason(error: Exception) -> str | None:
+    """Return the most specific OpenSearch failure reason carried by an exception.
+
+    OpenSearch transport errors stringify to just ``TransportError(500, '')``; the
+    real cause (and, on mapping/parse failures, the offending field) lives in the
+    ``info`` body under ``error.root_cause[0].reason`` or ``error.reason``. Returns
+    ``None`` when the exception carries no such structured reason.
+    """
+    info = getattr(error, "info", None)
+    if not isinstance(info, dict):
+        return None
+    err = info.get("error")
+    if not isinstance(err, dict):
+        return None
+    root_cause = err.get("root_cause")
+    if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+        if root_cause[0].get("reason"):
+            return root_cause[0]["reason"]
+    return err.get("reason")
+
+
+def opensearch_error_fields(error: Exception) -> dict[str, Any]:
+    """Extract structured OpenSearch context from an exception for logging.
+
+    Surfaces ``opensearch_status``/``opensearch_error``/``opensearch_info`` (and
+    ``opensearch_root_cause`` when present) so every OpenSearch-touching call site
+    logs the same schema instead of an opaque ``str(e)``. Non-OpenSearch
+    exceptions yield an empty dict.
+    """
+    fields: dict[str, Any] = {}
+    status = getattr(error, "status_code", None)
+    if status is not None:
+        fields["opensearch_status"] = status
+    os_error = getattr(error, "error", None)
+    if os_error is not None:
+        fields["opensearch_error"] = os_error
+    info = getattr(error, "info", None)
+    if info is not None:
+        fields["opensearch_info"] = info
+        if isinstance(info, dict):
+            err = info.get("error")
+            if isinstance(err, dict):
+                root_cause = err.get("root_cause")
+                if isinstance(root_cause, list) and root_cause and isinstance(root_cause[0], dict):
+                    fields["opensearch_root_cause"] = root_cause[0]
+    return fields
+
+
 async def wait_for_opensearch(
     opensearch_client: AsyncOpenSearch,
-    max_retries: int = 15,
+    max_retries: int = 30,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
 ) -> None:
@@ -84,12 +163,60 @@ async def wait_for_opensearch(
                 health = await opensearch_client.cluster.health()
                 status = health.get("status")
                 if status in ["green", "yellow"]:
-                    logger.info(
-                        "Successfully verified that OpenSearch is ready.",
-                        attempt=display_attempt,
-                        status=status,
+                    from config.settings import (
+                        OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                        OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                        OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                        OPENSEARCH_NODE_COUNT_CHECK_ENABLED,
                     )
-                    return
+
+                    if OPENSEARCH_NODE_COUNT_CHECK_ENABLED:
+                        data_node_count = health.get("number_of_data_nodes", 0)
+                        # Reachable cluster-manager (master) nodes.
+                        cm_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/cluster_manager:true/process,transport"
+                        )
+                        cluster_manager_count = cm_info.get("_nodes", {}).get("successful", 0)
+                        # Reachable coordinating-only nodes.
+                        coord_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/coordinating_only:true/process,transport"
+                        )
+                        coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
+
+                        if (
+                            data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
+                            or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
+                            or coordinating_count < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
+                        ):
+                            logger.warning(
+                                "OpenSearch healthy but cluster has not reached expected node count.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                                expected_data_nodes=OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                                expected_cluster_managers=OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                                expected_coordinating=OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                            )
+                            # Fall through to the retry/backoff below until nodes join.
+                        else:
+                            logger.info(
+                                "Successfully verified that OpenSearch is ready.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                            )
+                            return
+                    else:
+                        logger.info(
+                            "Successfully verified that OpenSearch is ready.",
+                            attempt=display_attempt,
+                            status=status,
+                        )
+                        return
                 else:
                     logger.warning(
                         "OpenSearch is up but cluster health is red.",
@@ -109,7 +236,7 @@ async def wait_for_opensearch(
             )
 
         if attempt < max_retries - 1:
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             delay = random.uniform(delay / 2, delay)
 
             logger.debug(
@@ -127,36 +254,33 @@ async def wait_for_opensearch(
 
 async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> None:
     """Gracefully shutdown OpenSearch client connection.
-    
+
     This ensures that all pending operations are completed and connections
     are properly closed before the application exits.
-    
+
     Args:
         opensearch_client: The OpenSearch client to shutdown.
     """
     if opensearch_client is None:
         logger.debug("OpenSearch client is None, skipping graceful shutdown")
         return
-    
+
     try:
         logger.info("Initiating graceful OpenSearch shutdown...")
-        
+
         # Flush any pending operations by checking cluster health one last time
         try:
-            await asyncio.wait_for(
-                opensearch_client.cluster.health(),
-                timeout=10.0
-            )
+            await asyncio.wait_for(opensearch_client.cluster.health(), timeout=10.0)
             logger.debug("Final cluster health check completed")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Timeout during final cluster health check")
         except Exception as e:
             logger.debug("[OPENSEARCH] Final cluster health check skipped", reason=str(e))
-        
+
         # Close the client connection
         await opensearch_client.close()
         logger.info("OpenSearch client connection closed gracefully")
-        
+
     except Exception as e:
         logger.error("Error during graceful OpenSearch shutdown", error=str(e))
 
@@ -184,7 +308,11 @@ async def setup_opensearch_security(
 
     This should be called during initial setup after OpenSearch is ready.
     """
-    from config.settings import IBM_AUTH_ENABLED
+    from config.settings import IBM_AUTH_ENABLED, PLATFORM_AUTH_DEV_MODE
+
+    if IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE:
+        logger.info("Skipping OpenSearch security configuration in IBM dev mode.")
+        return
 
     logger.info("Initializing OpenSearch security configuration...", ibm_auth=IBM_AUTH_ENABLED)
 
@@ -210,13 +338,20 @@ async def setup_opensearch_security(
     try:
         # 1. & 2. Readiness checks
         logger.info("[OPENSEARCH] Performing readiness checks...")
-        
+
         try:
-            rolesmapping_response = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/rolesmapping")
-            logger.info("[OPENSEARCH] Current rolesmapping retrieved", count=len(rolesmapping_response) if isinstance(rolesmapping_response, dict) else "unknown")
+            rolesmapping_response = await opensearch_client.transport.perform_request(
+                "GET", "/_plugins/_security/api/rolesmapping"
+            )
+            logger.info(
+                "[OPENSEARCH] Current rolesmapping retrieved",
+                count=len(rolesmapping_response)
+                if isinstance(rolesmapping_response, dict)
+                else "unknown",
+            )
         except Exception as e:
             logger.warning("[OPENSEARCH] Failed to get current rolesmapping", error=str(e))
-        
+
         cluster_health = await opensearch_client.cluster.health()
         logger.info("[OPENSEARCH] Cluster health check passed", status=cluster_health.get("status"))
 
@@ -225,10 +360,13 @@ async def setup_opensearch_security(
             logger.error(f"[OPENSEARCH] Roles configuration file not found: {roles_file}")
             raise FileNotFoundError(f"Roles configuration file not found: {roles_file}")
 
-        with open(roles_file, "r") as f:
+        with open(roles_file) as f:
             roles_config = yaml.safe_load(f)
-        
-        logger.info("[OPENSEARCH] Loaded roles configuration", roles=list(roles_config.keys()) if roles_config else [])
+
+        logger.info(
+            "[OPENSEARCH] Loaded roles configuration",
+            roles=list(roles_config.keys()) if roles_config else [],
+        )
 
         # 3. Create openrag_user_role
         if "openrag_user_role" in roles_config:
@@ -236,15 +374,19 @@ async def setup_opensearch_security(
 
             logger.info(
                 "[OPENSEARCH] Creating 'openrag_user_role' role",
-                patterns=role_body['index_permissions'][0]['index_patterns'] if 'index_permissions' in role_body else 'default',
-                allowed_actions=role_body['index_permissions'][0].get('allowed_actions', []) if 'index_permissions' in role_body else []
+                patterns=role_body["index_permissions"][0]["index_patterns"]
+                if "index_permissions" in role_body
+                else "default",
+                allowed_actions=role_body["index_permissions"][0].get("allowed_actions", [])
+                if "index_permissions" in role_body
+                else [],
             )
-            
+
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
                 "/_plugins/_security/api/roles/openrag_user_role",
                 body=role_body,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             logger.info("[OPENSEARCH] Role creation response", response=resp)
         else:
@@ -255,10 +397,13 @@ async def setup_opensearch_security(
             logger.error(f"[OPENSEARCH] Roles mapping file not found: {roles_mapping_file}")
             raise FileNotFoundError(f"Roles mapping file not found: {roles_mapping_file}")
 
-        with open(roles_mapping_file, "r") as f:
+        with open(roles_mapping_file) as f:
             mapping_config = yaml.safe_load(f)
-        
-        logger.info("[OPENSEARCH] Loaded roles mapping configuration", mappings=list(mapping_config.keys()) if mapping_config else [])
+
+        logger.info(
+            "[OPENSEARCH] Loaded roles mapping configuration",
+            mappings=list(mapping_config.keys()) if mapping_config else [],
+        )
 
         # 4. Create openrag_user_role mapping
         if "openrag_user_role" in mapping_config:
@@ -266,13 +411,13 @@ async def setup_opensearch_security(
             logger.info(
                 "[OPENSEARCH] Creating 'openrag_user_role' mapping",
                 backend_roles=mapping_body.get("backend_roles", []),
-                users=mapping_body.get("users", [])
+                users=mapping_body.get("users", []),
             )
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
                 "/_plugins/_security/api/rolesmapping/openrag_user_role",
                 body=mapping_body,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             logger.info("[OPENSEARCH] Role mapping update response", response=resp)
 
@@ -316,9 +461,9 @@ async def setup_opensearch_security(
                     users=new_admin_users,
                 )
 
-            merged_users = list(set(
-                all_access_body.get("users", []) + existing_users + new_admin_users
-            ))
+            merged_users = list(
+                set(all_access_body.get("users", []) + existing_users + new_admin_users)
+            )
             all_access_body["users"] = merged_users
             logger.debug("[OPENSEARCH] Merged all_access users", users=merged_users)
 
@@ -357,16 +502,20 @@ async def setup_opensearch_security(
                 "PUT",
                 "/_plugins/_security/api/rolesmapping/all_access",
                 body=all_access_body,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             logger.info("[OPENSEARCH] All access mapping update response", response=resp)
 
         # 6. Final verification
         logger.info("[OPENSEARCH] Verifying security configuration...")
-        role_verify = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/roles/openrag_user_role")
+        role_verify = await opensearch_client.transport.perform_request(
+            "GET", "/_plugins/_security/api/roles/openrag_user_role"
+        )
         logger.info("[OPENSEARCH] Role verification", role=role_verify)
-        
-        mapping_verify = await opensearch_client.transport.perform_request("GET", "/_plugins/_security/api/rolesmapping/openrag_user_role")
+
+        mapping_verify = await opensearch_client.transport.perform_request(
+            "GET", "/_plugins/_security/api/rolesmapping/openrag_user_role"
+        )
         logger.info("[OPENSEARCH] Role mapping verification", mapping=mapping_verify)
 
         logger.info("Successfully completed OpenSearch security configuration.")
@@ -374,7 +523,9 @@ async def setup_opensearch_security(
     except Exception as e:
         # Check for authentication errors or if the security plugin is missing
         error_str = str(e).lower()
-        if any(code in error_str for code in ["401", "403", "404", "security_exception", "not_found"]):
+        if any(
+            code in error_str for code in ["401", "403", "404", "security_exception", "not_found"]
+        ):
             logger.warning(
                 "Skipping OpenSearch security configuration: "
                 "The cluster may not have the security plugin enabled or "

@@ -7,7 +7,7 @@ import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
 import { useGetSearchAggregations } from "@/app/api/queries/useGetSearchAggregations";
 import {
-  type File as SearchFile,
+  EMPTY_SEARCH_RESULT,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
 import {
@@ -30,6 +30,8 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { usePermissions } from "@/hooks/use-permissions";
+import { trackButton } from "@/lib/analytics";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
@@ -57,6 +59,16 @@ export const filterAccentClasses: Record<FilterColor, string> = {
   red: "bg-accent-red text-accent-red-foreground",
 };
 
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 export function KnowledgeFilterPanel() {
   const {
     queryOverride,
@@ -72,6 +84,9 @@ export function KnowledgeFilterPanel() {
   const deleteFilterMutation = useDeleteFilter();
   const updateFilterMutation = useUpdateFilter();
   const createFilterMutation = useCreateFilter();
+  const { can, canAny } = usePermissions();
+  const canCreate = can("kf:create");
+  const canEdit = canAny(["kf:edit:own", "kf:edit:any"]);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -159,9 +174,10 @@ export function KnowledgeFilterPanel() {
     gcTime: 5 * 60_000,
   });
 
-  const { data: allSearchData = [] } = useGetSearchQuery("*", null, {
+  const { data = EMPTY_SEARCH_RESULT } = useGetSearchQuery("*", null, {
     enabled: isPanelOpen,
   });
+  const allSearchData = data.files;
 
   useEffect(() => {
     if (!aggregations) return;
@@ -174,10 +190,7 @@ export function KnowledgeFilterPanel() {
     setAvailableFacets(facets);
   }, [aggregations]);
 
-  const tableRows = buildKnowledgeTableRows(
-    allSearchData as SearchFile[],
-    taskFiles,
-  );
+  const tableRows = buildKnowledgeTableRows(allSearchData, taskFiles);
   const sourceOptions = buildActiveSourceOptions(tableRows);
 
   // Don't render if panel is closed or we don't have any data
@@ -197,6 +210,12 @@ export function KnowledgeFilterPanel() {
       color,
       icon: iconKey,
     };
+
+    trackButton({
+      CTA: createMode ? "Create Filter" : "Update Filter",
+      elementId: createMode ? "create-filter-button" : "update-filter-button",
+      namespace: "knowledge",
+    });
 
     setIsSaving(true);
     try {
@@ -228,16 +247,6 @@ export function KnowledgeFilterPanel() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const handleFilterChange = (
     facetType: keyof typeof selectedFilters,
     newValues: string[],
@@ -250,6 +259,11 @@ export function KnowledgeFilterPanel() {
 
   const handleDeleteFilter = async () => {
     if (!selectedFilter) return;
+    trackButton({
+      CTA: "Delete Filter",
+      elementId: "delete-filter-button",
+      namespace: "knowledge",
+    });
     const result = await deleteFilterMutation.mutateAsync({
       id: selectedFilter.id,
     });
@@ -494,7 +508,7 @@ export function KnowledgeFilterPanel() {
               Cancel
             </Button>
           )}
-          {!createMode && (
+          {!createMode && canEdit && (
             <Button
               variant="destructive"
               size="sm"
@@ -507,7 +521,12 @@ export function KnowledgeFilterPanel() {
           )}
           <Button
             onClick={handleSaveConfiguration}
-            disabled={isSaving}
+            disabled={isSaving || (createMode ? !canCreate : !canEdit)}
+            title={
+              (createMode ? canCreate : canEdit)
+                ? undefined
+                : "You do not have permission to modify this filter"
+            }
             size="sm"
             className="relative z-10"
           >

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag"
-version = "0.3.2"
+version = "0.5.0"
 description = "OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,22 +21,27 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "agentd>=0.8.1",
+    "agentd>=0.8.7",
     "aiofiles>=24.1.0",
-    "aiohttp>=3.13.4",
-    "cryptography>=46.0.6",
+    "authlib>=1.7.2,<2.0.0",
+    "aiohttp>=3.14.1",
+    "authlib>=1.7.1",
+    "cryptography>=48.0.1",
     "google-api-python-client>=2.143.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
     "msal>=1.29.0",
     "httpx>=0.27.0",
+    "idna>=3.18",
     "opensearch-py[async]>=3.0.0",
-    "pyjwt>=2.12.0",
-    "python-multipart>=0.0.20",
+    "pyjwt>=2.13.0",
+    "python-multipart>=0.0.31",
     "fastapi>=0.115.0",
+    "starlette>=1.3.1",
     "uvicorn>=0.35.0",
     "boto3>=1.35.0",
     "ibm-cos-sdk>=2.13.0",
+    "azure-storage-blob>=12.20.0",
     "psutil>=7.0.0",
     "rich>=13.0.0",
     "textual>=0.45.0",
@@ -44,27 +49,121 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
-    "prometheus-fastapi-instrumentator>=7.1.0",
-    "litellm==1.83.3",
+    "prometheus-fastapi-instrumentator>=8.0.0",
+    "protobuf>=7.35.0",
+    "litellm==1.84.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
-    "prometheus-fastapi-instrumentator>=7.1.0",
     "fastmcp>=3.2.3",
-    "openai>=2.30.0",
+    "openai==2.24.0",
     "tenacity>=9.1.4",
     "pygments>=2.20.0",
     "pyasn1>=0.6.3",
+    "protobuf>=7.35.0,<8",
     "requests>=2.33.0",
+    "urllib3>=2.7.0",
+    "sqlmodel>=0.0.22",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.13.0",
+    "asyncpg>=0.30.0",
+    "cachetools>=5.5.0",
+    "idna>=3.15",
+    "urllib3>=2.7.0",
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.0.3", "pytest-asyncio>=0.21.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.15.12",
+    "mypy>=2.0.0",
+]
 
 [project.scripts]
 openrag = "tui.main:run_tui"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error::RuntimeWarning",
+]
+markers = [
+    "openrag_skip_app_onboard: selected tests manage their own infrastructure clients and do not need the session app onboarding fixture",
+]
 
 [tool.uv]
 package = true
 override-dependencies = ["python-dotenv>=1.1.0"]
 
+# Ruff and mypy run only against files changed in a PR (see
+# .github/workflows/lint-backend.yml). The configs below stay
+# intentionally minimal — broad enforcement is out of scope for the
+# refactor that introduced them.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["flows/components"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # line-length handled by formatter
+
+# FastAPI's idiomatic dependency-injection pattern uses `Depends(...)` and
+# our `require_permission(...)` as call expressions in default-argument
+# position. B008 flags these as bugs ("function call in argument default")
+# but for FastAPI they are by design — the framework introspects them at
+# request time. Whitelist the call sites instead of sprinkling noqa
+# comments across every handler.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+    "dependencies.require_permission",
+    "dependencies.require_all_permissions",
+    "dependencies.require_api_key_permission",
+]
+
+# `bootstrap` must be the first import in any module that uses it
+# (it loads .env and configures structlog before anything else can
+# read env vars or emit logs). Define it as its own isort section
+# placed above standard-library so the formatter never re-sorts it
+# below other imports.
+[tool.ruff.lint.isort]
+section-order = [
+    "future",
+    "bootstrap",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+bootstrap = ["bootstrap"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_unused_ignores = true
+exclude = ["flows/components"]
+
+# FastAPI handlers in these modules declare a Pydantic response model as
+# their return type but legitimately return `JSONResponse(...)` on error
+# paths. The runtime accepts both, but the annotation can't be widened to
+# `SomeResponse | JSONResponse` because FastAPI then tries to derive an
+# OpenAPI schema from the union and fails. Suppress only the resulting
+# return-value mismatches in these files.
+[[tool.mypy.overrides]]
+module = ["api.settings.endpoints", "api.v1.settings"]
+disable_error_code = ["return-value"]
 

@@ -82,6 +82,12 @@ stringData:
     {{- else }}
     WATSONX_PROJECT_ID="None"
     {{- end }}
+    {{- if .Values.llmProviders.watsonx.maxRetries }}
+    WATSONX_MAX_RETRIES={{ .Values.llmProviders.watsonx.maxRetries | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.watsonx.delayTime }}
+    WATSONX_DELAY_TIME={{ .Values.llmProviders.watsonx.delayTime | quote }}
+    {{- end }}
 
     # LLM / Embedding provider configuration
     {{- if .Values.appConfig.agent.llmProvider }}
@@ -100,6 +106,11 @@ stringData:
     # Docling service URL
     {{- if and .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port }}
     DOCLING_SERVE_URL={{ printf "%s://%s:%v" .Values.global.docling.scheme .Values.global.docling.host .Values.global.docling.port | quote }}
+    {{- end }}
+    {{- if hasKey .Values.global.docling "verifySsl" }}
+    DOCLING_SERVE_VERIFY_SSL={{ ternary "true" "false" .Values.global.docling.verifySsl | quote }}
+    {{- else }}
+    DOCLING_SERVE_VERIFY_SSL="true"
     {{- end }}
 
     # OpenSearch connection (for flows)
@@ -149,7 +160,13 @@ stringData:
     SOURCE_URL={{ .Values.langflow.flowDefaults.sourceUrl | quote }}
     ALLOWED_USERS={{ .Values.langflow.flowDefaults.allowedUsers | quote }}
     ALLOWED_GROUPS={{ .Values.langflow.flowDefaults.allowedGroups | quote }}
+    ALLOWED_PRINCIPALS={{ .Values.langflow.flowDefaults.allowedPrincipals | quote }}
+    OPENRAG_INGEST_URL={{ .Values.langflow.flowDefaults.openragIngestUrl | quote }}
+    OPENRAG_INGEST_TOKEN={{ .Values.langflow.flowDefaults.openragIngestToken | quote }}
+    OPENRAG_INGEST_RUN_ID={{ .Values.langflow.flowDefaults.openragIngestRunId | quote }}
+    OPENRAG_INGEST_BATCH_SIZE={{ .Values.langflow.flowDefaults.openragIngestBatchSize | quote }}
     OPENRAG-QUERY-FILTER={{ .Values.langflow.openragQueryFilter | quote }}
+    DOCLING_TASK_ID={{ .Values.langflow.flowDefaults.doclingTaskId | quote }}
     FILENAME={{ .Values.langflow.flowDefaults.filename | quote }}
     MIMETYPE={{ .Values.langflow.flowDefaults.mimetype | quote }}
     FILESIZE={{ .Values.langflow.flowDefaults.filesize | quote }}

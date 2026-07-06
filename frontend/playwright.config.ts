@@ -6,6 +6,7 @@ import path from "path";
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 
 const PORT = process.env.FRONTEND_PORT || 3000;
+const BACKEND_PORT = process.env.OPENRAG_BACKEND_PORT || 8000;
 
 export default defineConfig({
   testDir: "./tests",
@@ -35,7 +36,7 @@ export default defineConfig({
     {
       command: "make backend",
       cwd: path.resolve(__dirname, ".."),
-      url: "http://127.0.0.1:8000/health",
+      url: `http://127.0.0.1:${BACKEND_PORT}/health`,
       reuseExistingServer: true,
       stdout: "pipe",
       stderr: "pipe",
@@ -48,7 +49,7 @@ export default defineConfig({
       env: {
         PORT: String(PORT),
         VITE_PROXY_TARGET:
-          process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000",
+          process.env.VITE_PROXY_TARGET || `http://127.0.0.1:${BACKEND_PORT}`,
       },
     },
   ],

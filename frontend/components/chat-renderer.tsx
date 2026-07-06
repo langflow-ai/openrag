@@ -2,8 +2,9 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
@@ -11,6 +12,7 @@ import {
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
+import { OnboardingBlocked } from "@/app/onboarding/_components/onboarding-blocked";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
@@ -18,6 +20,8 @@ import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
+import { usePermissions } from "@/hooks/use-permissions";
+import { page } from "@/lib/analytics";
 import {
   ANIMATION_DURATION,
   HEADER_HEIGHT,
@@ -37,10 +41,12 @@ export function ChatRenderer({
   const router = useRouter();
   const queryClient = useQueryClient(); // Move hook to component level
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { can, isLoading: isPermLoading, rbacEnforced } = usePermissions();
   const isCloudBrand = useIsCloudBrand();
   const {
     endpoint,
     refreshTrigger,
+    refreshTriggerSilent,
     refreshConversations,
     startNewConversation,
     setConversationFilter,
@@ -48,30 +54,38 @@ export function ChatRenderer({
   } = useChat();
 
   // Initialize onboarding state from backend settings
-  const [currentStep, setCurrentStep] = useState<number>(() => {
-    return settings?.onboarding?.current_step ?? 0;
-  });
+  const [currentStep, setCurrentStep] = useState<number>(
+    settings?.onboarding?.current_step ?? 0,
+  );
+  const [showLayout, setShowLayout] = useState<boolean>(
+    (settings?.onboarding?.current_step ?? 0) >= TOTAL_ONBOARDING_STEPS,
+  );
 
-  const [showLayout, setShowLayout] = useState<boolean>(() => {
-    // Show layout only if onboarding is complete (current_step >= TOTAL_ONBOARDING_STEPS)
-    // This means onboarding will show even if edited=true, as long as it's not complete
-    const onboardingStep = settings?.onboarding?.current_step ?? 0;
-    return onboardingStep >= TOTAL_ONBOARDING_STEPS;
-  });
-
-  // Update currentStep and showLayout when settings change
-  useEffect(() => {
+  // Sync from settings without an extra render cycle
+  const [prevSettingsStep, setPrevSettingsStep] = useState(
+    settings?.onboarding?.current_step,
+  );
+  if (settings?.onboarding?.current_step !== prevSettingsStep) {
+    setPrevSettingsStep(settings?.onboarding?.current_step);
     if (settings?.onboarding?.current_step !== undefined) {
       setCurrentStep(settings.onboarding.current_step);
-      // Update showLayout based on whether onboarding is complete
       setShowLayout(settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS);
     }
-  }, [settings?.onboarding?.current_step]);
+  }
+
+  const onboardingPageTracked = useRef(false);
+  useEffect(() => {
+    if (!showLayout && !onboardingPageTracked.current) {
+      onboardingPageTracked.current = true;
+      page("OpenRAG - Onboarding Page Viewed");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const { data: conversations = [], isLoading: isConversationsLoading } =
-    useGetConversationsQuery(endpoint, refreshTrigger, {
+    useGetConversationsQuery(endpoint, refreshTrigger + refreshTriggerSilent, {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
     }) as { data: ChatConversation[]; isLoading: boolean };
 
@@ -233,8 +247,8 @@ export function ChatRenderer({
     setShowLayout(true);
   };
 
-  // List of paths with smaller max-width
-  const smallWidthPaths = ["/settings", "/upload"];
+  // List of paths with smaller max-width (SaaS settings use full width)
+  const smallWidthPaths = isCloudBrand ? ["/upload"] : ["/upload", "/settings"];
   const isSmallWidthPath = smallWidthPaths.some((path) =>
     pathname.startsWith(path),
   );
@@ -243,6 +257,22 @@ export function ChatRenderer({
   const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT / 2}px + 50vh)`;
   const translateY = showLayout ? "0px" : `-50vh`;
   const translateX = showLayout ? "0px" : `-50vw`;
+
+  // Onboarding is admin-only. When the workspace still needs onboarding
+  // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
+  // they get a "contact your administrator" screen instead. It renders inside
+  // the same card shell as the wizard (below), so it shares the wizard's
+  // container sizing and entrance animation. Wait for the permission set to
+  // resolve first so the wizard never flashes for them.
+  const needsOnboardingGate = !showLayout && rbacEnforced && !isNoAuthMode;
+  if (needsOnboardingGate && isPermLoading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  const isOnboardingBlocked = needsOnboardingGate && !can("config:write");
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
@@ -327,28 +357,33 @@ export function ChatRenderer({
                   {children}
                 </div>
               )}
-              {!showLayout && (
-                <OnboardingContent
-                  handleStepComplete={handleStepComplete}
-                  handleStepBack={handleStepBack}
-                  currentStep={currentStep}
-                />
-              )}
+              {!showLayout &&
+                (isOnboardingBlocked ? (
+                  <OnboardingBlocked />
+                ) : (
+                  <OnboardingContent
+                    handleStepComplete={handleStepComplete}
+                    handleStepBack={handleStepBack}
+                    currentStep={currentStep}
+                  />
+                ))}
             </motion.div>
           </div>
         </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
-          transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
-          className={cn("absolute bottom-6 left-0 right-0")}
-        >
-          <ProgressBar
-            currentStep={currentStep}
-            totalSteps={TOTAL_ONBOARDING_STEPS}
-            onSkip={handleSkipOnboarding}
-          />
-        </motion.div>
+        {!isOnboardingBlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
+            transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
+            className={cn("absolute bottom-6 left-0 right-0")}
+          >
+            <ProgressBar
+              currentStep={currentStep}
+              totalSteps={TOTAL_ONBOARDING_STEPS}
+              onSkip={handleSkipOnboarding}
+            />
+          </motion.div>
+        )}
       </main>
     </>
   );

@@ -17,18 +17,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { trackButton } from "@/lib/analytics";
+import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import {
   type ChunkResult,
+  EMPTY_SEARCH_RESULT,
   type File,
+  type SearchResult,
   useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
-
-const getFileTypeLabel = (mimetype: string) => {
-  if (mimetype === "application/pdf") return "PDF";
-  if (mimetype === "text/plain") return "Text";
-  if (mimetype === "application/msword") return "Word Document";
-  return "Unknown";
-};
 
 function ChunksPageContent() {
   const router = useRouter();
@@ -55,25 +52,28 @@ function ChunksPageContent() {
   // const [selectAll, setSelectAll] = useState(false);
 
   // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = [], isFetching } = useGetSearchQuery(
+  const { data = EMPTY_SEARCH_RESULT, isFetching } = useGetSearchQuery(
     queryOverride,
     parsedFilterData,
   );
+  const searchFiles = (data as SearchResult).files;
 
   const handleCopy = useCallback((text: string, index: number) => {
-    // Trim whitespace and remove new lines/tabs for cleaner copy
+    trackButton({
+      CTA: "Copy Chunk Text",
+      elementId: "copy-chunk-button",
+      namespace: "knowledge",
+    });
     navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
     setActiveCopiedChunkIndex(index);
     setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
   }, []);
 
-  const fileData = (data as File[]).find(
-    (file: File) => file.filename === filename,
-  );
+  const fileData = searchFiles.find((file: File) => file.filename === filename);
 
   // Extract chunks for the specific file
   useEffect(() => {
-    if (!filename || !(data as File[]).length) {
+    if (!filename || !searchFiles.length) {
       setChunks([]);
       return;
     }
@@ -81,7 +81,7 @@ function ChunksPageContent() {
     setChunks(
       fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
     );
-  }, [data, filename]);
+  }, [searchFiles, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
   // useEffect(() => {
@@ -298,9 +298,7 @@ function ChunksPageContent() {
                 <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
                   <dt className="text-sm/6 text-muted-foreground">Size</dt>
                   <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
-                    {fileData?.size
-                      ? `${Math.round(fileData.size / 1024)} KB`
-                      : "Unknown"}
+                    {fileData?.size ? formatFileSize(fileData.size) : "Unknown"}
                   </dd>
                 </div>
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">

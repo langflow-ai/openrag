@@ -23,7 +23,10 @@ export interface UnifiedCloudPickerProps {
   // OneDrive/SharePoint specific props
   clientId?: string;
   baseUrl?: string;
-  // Ingest settings
+  /** Controlled ingest state from the upload page (single source of truth). */
+  ingestSettings?: IngestSettings;
+  onIngestSettingsChange?: (settings: IngestSettings) => void;
+  /** @deprecated Prefer ingestSettings + onIngestSettingsChange from the page. */
   onSettingsChange?: (settings: IngestSettings) => void;
   isIngesting: boolean;
 }
@@ -110,6 +113,8 @@ export interface IngestSettings {
   ocr: boolean;
   pictureDescriptions: boolean;
   embeddingModel: string;
+  /** When true, index without an owner so all users in the instance can retrieve the document. COS only. */
+  shared?: boolean;
 }
 
 /** Inline error message if chunk settings are invalid; otherwise null. */

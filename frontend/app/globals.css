@@ -10,6 +10,7 @@
 
     /* Core Theme Colors */
     --background: 0 0% 100%;
+    --background-dark: 240 10% 4%;
     --foreground: 0 0% 0%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 0%;
@@ -31,6 +32,17 @@
     --placeholder-foreground: 240 5% 65%;
 
     /* App-level UI tokens (safe defaults, override per brand/theme) */
+    --canvas: 0 0% 100%;
+    --border-subtle-background-contextual: var(--border);
+    /* Task dialog layout (file row indent = px + checkbox + gaps + chevron) */
+    --task-dialog-width: 40rem;
+    --task-dialog-max-height: 60vh;
+    --task-dialog-file-type-width: 10rem;
+    --task-dialog-error-indent: 4.5rem;
+    --task-dialog-error-indent-cloud: 4.75rem;
+    --task-dialog-oss-bg: var(--background);
+    --task-dialog-oss-selected: var(--muted);
+    --z-task-dialog-menu: 100;
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));
@@ -63,6 +75,7 @@
     --badge-foreground: 0 0% 100%; /* #FFFFFF */
 
     --radius: 0.5rem;
+    --radius-mmd: 13px;
 
     --sidebar-background: 0 0% 98%;
 
@@ -88,10 +101,15 @@
     --failure-message: hsl(var(--foreground));
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: rgba(59, 130, 246, 0.18);
+    --function-call-header-hover: rgba(59, 130, 246, 0.24);
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   .dark {
     --background: 240 6% 10%;
+    --background-dark: 240 10% 4%;
     --foreground: 0 0% 100%;
     --card: 240 6% 10%;
     --card-foreground: 0 0% 100%;
@@ -113,6 +131,10 @@
     --placeholder-foreground: 240 4% 46%;
 
     /* App-level UI tokens (safe defaults, override per brand/theme) */
+    --canvas: 0 0% 3.9%; /* #0A0A0A */
+    --border-subtle-background-contextual: var(--border);
+    --task-dialog-oss-bg: 0 0% 9.02%; /* #171717 */
+    --task-dialog-oss-selected: 0 0% 13.73%; /* #232323 */
     --layered-select-bg: hsl(var(--muted) / 0.5);
     --chat-surface-gradient: rgba(69, 137, 255, 0.16);
     --chat-input-border: hsl(var(--input));
@@ -156,19 +178,24 @@
     --failure-message: #ffc9c9cc;
     --failure-scroll: #ff6464;
     --failure-muted: #a66262;
+
+    --function-call-header: hsla(219, 30%, 9%, 1);
+    --function-call-header-hover: hsla(219, 30%, 12%, 1);
+    --failure-component-cause: 0 0% 32%; /* #525252 */
   }
 
   /* IBM Light */
   [data-theme="ibm"] {
     --background: 0 0% 100%; /* same as OSS light #ffffff */
+    --background-dark: 0 0% 96%;
     --foreground: 0 0% 15%; /* IBM Gray 100 #262626 */
     --card: 0 0% 96%; /* IBM Gray 10 #f4f4f4 */
     --card-foreground: 0 0% 15%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 15%;
-    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary: 219 99% 53%; /* IBM Blue 60 #0f62fe */
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 100% 35%; /* IBM Blue 70 #0043ce */
+    --primary-hover: 219 100% 45%; /* #0050e6 */
     --secondary: 0 0% 97%;
     --secondary-foreground: 0 0% 15%;
     --secondary-hover: 0 0% 90%; /* IBM Gray 20 #e0e0e0 */
@@ -227,6 +254,7 @@
     --layered-select-bg: rgba(131, 131, 131, 0.24);
     --chat-input-border: #f4f4f4;
     --icon-disabled: #525252;
+    --border-subtle-background-contextual: 0 0% 82%;
     /* Contextual layer (~Gray 100); use hsl(var(--layer-contextual)) */
     /* Layer / contextual surfaces (IBM Gray 10 light, Gray 100 dark) */
     --layer-contextual: 0 0% 96%;
@@ -234,9 +262,20 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --border-border-interactive: #4589ff;
+    /* IBM dark grey action button (#393939 → #474747); not --badge (dark badge is #525252) */
+    --ibm-overwrite-button: 0 0% 22.4%; /* #393939 */
+    --ibm-overwrite-button-hover: 0 0% 28%; /* #474747 */
 
     --badge: 0 0% 22.4%; /* #393939 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
+
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-partial-bg: 26 90% 37%; /* #8a3800 */
+    --task-status-partial-fg: 46 100% 90%; /* #fff1c8 */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM: match OSS switch colors — black track when checked, white thumb always */
@@ -252,14 +291,15 @@
   /* IBM Dark */
   [data-theme="ibm"].dark {
     --background: 0 0% 8.6%; /* IBM Gray 100 #161616 */
+    --background-dark: 0 0% 8.6%;
     --foreground: 0 0% 97%; /* IBM Gray 10 #f4f4f4 */
     --card: 0 0% 15%; /* IBM Gray 90 #262626 */
     --card-foreground: 0 0% 97%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 97%;
-    --primary: 217 100% 45%; /* IBM Blue 60 #0f62fe */
+    --primary: 219 99% 53%; /* IBM Blue 60 #0f62fe */
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 100% 82%;
+    --primary-hover: 219 100% 45%; /* #0050e6 */
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 97%;
     --secondary-hover: 0 0% 18%; /* IBM Gray 80 #393939 */
@@ -319,14 +359,23 @@
     --icon-primary: 0 0% 96%; /* #f4f4f4*/
     --placeholder: 0 0% 44%; /* #6F6F6F */
 
+    --border-subtle-background-contextual: 0 0% 22.4%; /* #393939 */
     --layer-contextual: 0 0% 15%;
     --layer-contextual-foreground: 0 0% 96%;
     --text-text-01: 0 0% 96%;
     --link-primary: 217 100% 74%;
     --button-tertiary: 217 100% 74%;
+    --border-border-interactive: #4589ff;
 
     --badge: 0 0% 32%; /* #525252 */
     --badge-foreground: 0 0% 96%; /* #F4F4F4 */
+
+    --task-status-failed-bg: 357 73% 37%; /* #a2191f */
+    --task-status-failed-fg: 357 100% 93%; /* #ffd7d9 */
+    --task-status-partial-bg: 22 78% 32%; /* warm orange */
+    --task-status-partial-fg: 46 97% 65%; /* #f1c21b */
+    --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
+    --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
   /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
@@ -350,14 +399,30 @@
     letter-spacing: 0;
   }
 
-  [data-theme="ibm"] .ibm-body-compact {
+  /* IBM settings: line-variant tabs — transparent default, blue active/hover */
+  [data-theme="ibm"]
+    .ibm-settings-page
+    [data-slot="tabs-list"][data-variant="line"]
+    [data-slot="tabs-trigger"] {
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    border-bottom-color: transparent;
+    background: transparent;
     color: hsl(var(--text-text-01));
-    font-family: inherit;
-    font-size: 14px !important;
-    font-weight: 400 !important;
-    line-height: 18px !important;
-    font-style: normal;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 18px;
     letter-spacing: 0.16px;
+
+    &:hover {
+      border-bottom-color: var(--border-border-interactive);
+    }
+
+    &[data-state="active"] {
+      border-bottom-color: var(--border-border-interactive);
+      font-weight: 600 !important;
+    }
   }
 
   /* IBM Settings: inline links (Link/link-primary) */
@@ -447,6 +512,14 @@
 
   [data-theme="ibm"].dark .ibm-chat-bubble {
     background-color: #262626;
+  }
+
+  [data-theme="ibm"] .rounded-2xl {
+    border-radius: 0;
+  }
+
+  [data-theme="ibm"] .rounded-xl {
+    border-radius: 0;
   }
 
   /*
@@ -807,5 +880,16 @@
     100% {
       content: "...";
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

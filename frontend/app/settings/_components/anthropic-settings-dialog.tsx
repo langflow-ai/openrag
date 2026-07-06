@@ -92,7 +92,7 @@ const AnthropicSettingsDialog = ({
         action: {
           label: "Settings",
           onClick: () => {
-            router.push("/settings?focusLlmModel=true");
+            router.push("/settings/langflow?focusLlmModel=true");
           },
         },
       });
@@ -198,6 +198,7 @@ const AnthropicSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isAnthropicConfigured}
               canRemove={canRemoveAnthropic}
+              providerKey="anthropic"
               removeDisabledTooltip="Configure another model provider before removing Anthropic"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

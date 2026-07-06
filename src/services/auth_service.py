@@ -1,27 +1,28 @@
-import uuid
 import json
-import httpx
-
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
-import asyncio
 import os
-from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
+import uuid
+from datetime import datetime, timedelta
+
+import httpx
 from fastapi import HTTPException
 
-logger = logging.getLogger(__name__)
-from session_manager import SessionManager
+from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
+from connectors.registry import get_connector_class, get_connector_classes
 from services.langflow_mcp_service import LangflowMCPService
-from connectors.google_drive.oauth import GoogleDriveOAuth
-from connectors.onedrive.oauth import OneDriveOAuth
-from connectors.sharepoint.oauth import SharePointOAuth
-from connectors.google_drive import GoogleDriveConnector
-from connectors.onedrive import OneDriveConnector
-from connectors.sharepoint import SharePointConnector
+from session_manager import SessionManager
 
-# Connectors that authenticate directly (no OAuth redirect required)
-_DIRECT_AUTH_CONNECTORS = {"ibm_cos"}
+logger = logging.getLogger(__name__)
+
+
+def _direct_auth_connector_types() -> set:
+    """Bucket-kind connectors authenticate directly (no OAuth redirect)."""
+    return {cls.CONNECTOR_TYPE for cls in get_connector_classes() if cls.CONNECTOR_KIND == "bucket"}
+
+
+def _data_source_connector_types() -> set:
+    """All connector types that can be configured as data sources."""
+    return {cls.CONNECTOR_TYPE for cls in get_connector_classes()}
 
 
 class AuthService:
@@ -34,10 +35,9 @@ class AuthService:
     ):
         self.session_manager = session_manager
         self.connector_service = connector_service
-        self.used_auth_codes = set()  # Track used authorization codes
+        self.used_auth_codes: set[str] = set()  # Track used authorization codes
         self.flows_service = flows_service
         self.langflow_mcp_service = langflow_mcp_service
-        self._background_tasks = set()
 
     async def init_oauth(
         self,
@@ -71,12 +71,7 @@ class AuthService:
         # Validate connector_type based on purpose
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
-        elif purpose == "data_source" and connector_type not in [
-            "google_drive",
-            "onedrive",
-            "sharepoint",
-            "ibm_cos",
-        ]:
+        elif purpose == "data_source" and connector_type not in _data_source_connector_types():
             raise ValueError(f"Unsupported connector type: {connector_type}")
         elif purpose not in ["app_auth", "data_source"]:
             raise ValueError(f"Unsupported purpose: {purpose}")
@@ -88,6 +83,7 @@ class AuthService:
 
         # Create connection configuration - use data directory for persistence
         from config.paths import get_data_file
+
         token_file = get_data_file(f"{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json")
         effective_redirect_uri = OAUTH_BROKER_URL or redirect_uri
         config = {
@@ -99,49 +95,46 @@ class AuthService:
 
         # Only add webhook URL if WEBHOOK_BASE_URL is configured
         if WEBHOOK_BASE_URL:
-            config["webhook_url"] = (
-                f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
-            )
+            config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
 
         # Create connection in manager
-        connection_id = (
-            await self.connector_service.connection_manager.create_connection(
-                connector_type=connector_type,
-                name=connection_name,
-                config=config,
-                user_id=user_id,
-            )
+        connection_id = await self.connector_service.connection_manager.create_connection(
+            connector_type=connector_type,
+            name=connection_name,
+            config=config,
+            user_id=user_id,
         )
 
         # Direct-auth connectors (HMAC/API-key based, no OAuth redirect)
-        if connector_type in _DIRECT_AUTH_CONNECTORS:
+        if connector_type in _direct_auth_connector_types():
             return await self._init_direct_connection(connector_type, connection_id)
 
-        # Get OAuth configuration from connector and OAuth classes
-
-        # Map connector types to their connector and OAuth classes
-        connector_class_map = {
-            "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
-            "onedrive": (OneDriveConnector, OneDriveOAuth),
-            "sharepoint": (SharePointConnector, SharePointOAuth),
-        }
-
-        connector_class, oauth_class = connector_class_map.get(
-            connector_type, (None, None)
+        # Look up connector + OAuth class pair via the registry.
+        connector_class = get_connector_class(connector_type)
+        oauth_class = (
+            connector_class.get_oauth_class()
+            if connector_class and hasattr(connector_class, "get_oauth_class")
+            else None
         )
         if not connector_class or not oauth_class:
             raise ValueError(f"No classes found for connector type: {connector_type}")
 
+        # Cast to Any to satisfy mypy for class attribute access
+        from typing import Any
+
+        oauth_class_any: Any = oauth_class
+        connector_class_any: Any = connector_class
+
         # Get scopes from OAuth class
-        scopes = oauth_class.SCOPES
+        scopes = oauth_class_any.SCOPES
 
         # Get endpoints from OAuth class
-        auth_endpoint = oauth_class.AUTH_ENDPOINT
-        token_endpoint = oauth_class.TOKEN_ENDPOINT
+        auth_endpoint = oauth_class_any.AUTH_ENDPOINT
+        token_endpoint = oauth_class_any.TOKEN_ENDPOINT
 
         # src/services/auth_service.py
-        client_key = getattr(connector_class, "CLIENT_ID_ENV_VAR", None)
-        secret_key = getattr(connector_class, "CLIENT_SECRET_ENV_VAR", None)
+        client_key = getattr(connector_class_any, "CLIENT_ID_ENV_VAR", None)
+        secret_key = getattr(connector_class_any, "CLIENT_SECRET_ENV_VAR", None)
 
         def _assert_env_key(name, val):
             if not isinstance(val, str) or not val.strip():
@@ -162,6 +155,10 @@ class AuthService:
                 f"Set {client_key} and {secret_key} in the environment."
             )
 
+        # Per-connector OAuth prompt: Microsoft uses "select_account" so a one-time
+        # tenant admin consent is reused; Google uses "consent" for refresh tokens.
+        prompt = getattr(oauth_class_any, "AUTH_PROMPT", "consent")
+
         return {
             "connection_id": connection_id,
             "oauth_config": {
@@ -170,12 +167,11 @@ class AuthService:
                 "redirect_uri": effective_redirect_uri,
                 "authorization_endpoint": auth_endpoint,
                 "token_endpoint": token_endpoint,
+                "prompt": prompt,
             },
         }
 
-    async def _init_direct_connection(
-        self, connector_type: str, connection_id: str
-    ) -> dict:
+    async def _init_direct_connection(self, connector_type: str, connection_id: str) -> dict:
         """Authenticate a non-OAuth connector immediately using env var credentials.
 
         Creates the connection record (already done by the caller) and verifies
@@ -184,10 +180,8 @@ class AuthService:
         is needed.
         """
         try:
-            connection_config = (
-                await self.connector_service.connection_manager.get_connection(
-                    connection_id
-                )
+            connection_config = await self.connector_service.connection_manager.get_connection(
+                connection_id
             )
             if not connection_config:
                 raise ValueError("Connection not found")
@@ -198,25 +192,19 @@ class AuthService:
             authenticated = await connector.authenticate()
             if not authenticated:
                 # Remove the connection so the user can retry after fixing credentials
-                await self.connector_service.connection_manager.delete_connection(
-                    connection_id
-                )
+                await self.connector_service.connection_manager.delete_connection(connection_id)
                 raise ValueError(
                     f"Could not authenticate with {connector_type}. "
                     "Check that your credentials and endpoint are correct."
                 )
 
             # Cache the authenticated connector
-            self.connector_service.connection_manager.active_connectors[
-                connection_id
-            ] = connector
+            self.connector_service.connection_manager.active_connectors[connection_id] = connector
 
         except ValueError:
             raise
         except Exception as exc:
-            await self.connector_service.connection_manager.delete_connection(
-                connection_id
-            )
+            await self.connector_service.connection_manager.delete_connection(connection_id)
             raise ValueError(f"Failed to connect {connector_type}: {exc}") from exc
 
         return {
@@ -236,9 +224,7 @@ class AuthService:
         """Handle OAuth callback - exchange authorization code for tokens"""
         logger.info(f"OAuth callback state: {state}")
         if not all([connection_id, authorization_code]):
-            raise ValueError(
-                "Missing required parameters (connection_id, authorization_code)"
-            )
+            raise ValueError("Missing required parameters (connection_id, authorization_code)")
 
         # Check if authorization code has already been used
         if authorization_code in self.used_auth_codes:
@@ -249,10 +235,8 @@ class AuthService:
 
         try:
             # Get connection config
-            connection_config = (
-                await self.connector_service.connection_manager.get_connection(
-                    connection_id
-                )
+            connection_config = await self.connector_service.connection_manager.get_connection(
+                connection_id
             )
             if not connection_config:
                 raise ValueError("Connection not found")
@@ -269,21 +253,19 @@ class AuthService:
 
             # Get token endpoint from connector type
             connector_type = connection_config.connector_type
-            connector_class_map = {
-                "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
-                "onedrive": (OneDriveConnector, OneDriveOAuth),
-                "sharepoint": (SharePointConnector, SharePointOAuth),
-            }
-
-            connector_class, oauth_class = connector_class_map.get(
-                connector_type, (None, None)
+            connector_class = get_connector_class(connector_type)
+            oauth_class = (
+                connector_class.get_oauth_class()
+                if connector_class and hasattr(connector_class, "get_oauth_class")
+                else None
             )
             if not connector_class or not oauth_class:
-                raise ValueError(
-                    f"No classes found for connector type: {connector_type}"
-                )
+                raise ValueError(f"No classes found for connector type: {connector_type}")
 
-            token_url = oauth_class.TOKEN_ENDPOINT
+            from typing import Any
+
+            oauth_class_any: Any = oauth_class
+            token_url = oauth_class_any.TOKEN_ENDPOINT
 
             token_payload = {
                 "code": authorization_code,
@@ -311,9 +293,7 @@ class AuthService:
 
             # OAuth providers typically return scopes as a space-separated string
             scopes = (
-                granted_scopes.split(" ")
-                if isinstance(granted_scopes, str)
-                else granted_scopes
+                granted_scopes.split(" ") if isinstance(granted_scopes, str) else granted_scopes
             )
 
             token_file_data = {
@@ -324,9 +304,7 @@ class AuthService:
 
             # Add expiry if provided
             if token_data.get("expires_in"):
-                expiry = datetime.now() + timedelta(
-                    seconds=int(token_data["expires_in"])
-                )
+                expiry = datetime.utcnow() + timedelta(seconds=int(token_data["expires_in"]))
                 token_file_data["expiry"] = expiry.isoformat()
 
             # Save tokens to file
@@ -343,9 +321,7 @@ class AuthService:
                     connection_id, connection_config, token_data, request
                 )
             else:
-                return await self._handle_data_source_auth(
-                    connection_id, connection_config
-                )
+                return await self._handle_data_source_auth(connection_id, connection_config)
 
         except Exception as e:
             # Remove used code from set if we failed
@@ -376,52 +352,6 @@ class AuthService:
                 token_data["access_token"]
             )
 
-            # Best-effort: update Langflow MCP servers to include user's JWT and owner headers
-            try:
-                if (
-                    self.langflow_mcp_service
-                    and isinstance(jwt_token, str)
-                    and jwt_token.strip()
-                ):
-                    global_vars = {"JWT": jwt_token}
-                    global_vars["CONNECTOR_TYPE_URL"] = "url"
-                    if user_info:
-                        if user_info.get("id"):
-                            global_vars["OWNER"] = user_info.get("id")
-                        if user_info.get("name"):
-                            # OWNER_NAME may contain spaces, which can cause issues in headers.
-                            # Alternative: URL-encode the owner name to preserve spaces and special characters.
-                            owner_name = user_info.get("name")
-                            if owner_name:
-                                global_vars["OWNER_NAME"] = str(f'"{owner_name}"')
-                        if user_info.get("email"):
-                            global_vars["OWNER_EMAIL"] = user_info.get("email")
-
-                    # Add provider credentials to MCP servers using utility function
-                    from config.settings import get_openrag_config
-                    from utils.langflow_headers import build_mcp_global_vars_from_config
-
-                    config = get_openrag_config()
-                    provider_vars = await build_mcp_global_vars_from_config(
-                        config, flows_service=self.flows_service
-                    )
-
-                    # Merge provider credentials with user info
-                    global_vars.update(provider_vars)
-
-                    # Run in background to avoid delaying login flow
-                    task = asyncio.create_task(
-                        self.langflow_mcp_service.update_mcp_servers_with_global_vars(
-                            global_vars
-                        )
-                    )
-                    # Keep reference until done to avoid premature GC
-                    self._background_tasks.add(task)
-                    task.add_done_callback(self._background_tasks.discard)
-            except Exception:
-                # Do not block login on MCP update issues
-                pass
-
             response_data = {
                 "status": "authenticated",
                 "purpose": "app_auth",
@@ -441,9 +371,7 @@ class AuthService:
                         "purpose": "data_source",
                         "user_email": user_info.get("email"),
                         **(
-                            {
-                                "webhook_url": f"{WEBHOOK_BASE_URL}/connectors/google_drive/webhook"
-                            }
+                            {"webhook_url": f"{WEBHOOK_BASE_URL}/connectors/google_drive/webhook"}
                             if WEBHOOK_BASE_URL
                             else {}
                         ),
@@ -452,21 +380,15 @@ class AuthService:
                 response_data["google_drive_connection_id"] = connection_id
             else:
                 # Fallback: delete connection if we can't get user info
-                await self.connector_service.connection_manager.delete_connection(
-                    connection_id
-                )
+                await self.connector_service.connection_manager.delete_connection(connection_id)
 
             return response_data
         else:
             # Clean up connection if session creation failed
-            await self.connector_service.connection_manager.delete_connection(
-                connection_id
-            )
+            await self.connector_service.connection_manager.delete_connection(connection_id)
             raise Exception("Failed to create user session")
 
-    async def _handle_data_source_auth(
-        self, connection_id: str, connection_config
-    ) -> dict:
+    async def _handle_data_source_auth(self, connection_id: str, connection_config) -> dict:
         """Handle data source connection - keep the connection for syncing"""
         result = {
             "status": "authenticated",
@@ -485,10 +407,8 @@ class AuthService:
                 logger.info(
                     f"_handle_data_source_auth: Getting connector for connection_id: {connection_id}"
                 )
-                connector = (
-                    await self.connector_service.connection_manager.get_connector(
-                        connection_id
-                    )
+                connector = await self.connector_service.connection_manager.get_connector(
+                    connection_id
                 )
                 logger.info(
                     f"_handle_data_source_auth: Got connector: {connector is not None}, has _detect_base_url: {hasattr(connector, '_detect_base_url') if connector else False}"
@@ -509,47 +429,52 @@ class AuthService:
                         logger.info(
                             f"_handle_data_source_auth: Updated connector.base_url to: {connector.base_url}"
                         )
-                        await (
-                            self.connector_service.connection_manager.save_connections()
-                        )
+                        await self.connector_service.connection_manager.save_connections()
                         result["base_url"] = detected_url
                         logger.info(
                             f"_handle_data_source_auth: Auto-detected and saved base URL: {detected_url}"
                         )
                     else:
-                        logger.warning(
-                            "_handle_data_source_auth: _detect_base_url returned None"
-                        )
+                        logger.warning("_handle_data_source_auth: _detect_base_url returned None")
                 else:
                     logger.warning(
-                        f"_handle_data_source_auth: Connector not available or doesn't have _detect_base_url"
+                        "_handle_data_source_auth: Connector not available or doesn't have _detect_base_url"
                     )
 
                 # Clear the cached connector so next get_connector() creates a fresh instance
                 # with the updated config (including base_url)
-                if (
-                    connection_id
-                    in self.connector_service.connection_manager.active_connectors
-                ):
+                if connection_id in self.connector_service.connection_manager.active_connectors:
                     logger.info(
                         f"_handle_data_source_auth: Clearing cached connector for {connection_id}"
                     )
-                    del self.connector_service.connection_manager.active_connectors[
-                        connection_id
-                    ]
-            except Exception as e:
+                    del self.connector_service.connection_manager.active_connectors[connection_id]
+            except Exception:
                 logger.exception("[AUTH] Auto-detect base URL failed")
+
+        # Register the change-notification subscription now that the connection is
+        # authenticated. Data-source connections don't go through update_connection
+        # (which handles this for the app-auth flow), so without this no webhook
+        # subscription is ever created for them.
+        try:
+            connection_manager = self.connector_service.connection_manager
+            connector = await connection_manager.get_connector(connection_id)
+            if connector:
+                await connection_manager._setup_webhook_if_needed(
+                    connection_id, connection_config, connector
+                )
+        except Exception:
+            logger.exception("[AUTH] Webhook subscription setup failed")
 
         return result
 
-    async def get_user_info(self, request) -> Optional[dict]:
+    async def get_user_info(self, request) -> dict | None:
         """Get current user information from request"""
         from config.settings import IBM_AUTH_ENABLED
 
         # IBM auth mode: user is set by get_optional_user from IBM cookie
         if IBM_AUTH_ENABLED:
             user = getattr(request.state, "user", None)
-            if user and user.provider in ("ibm_ams", "ibm_ams_basic"):
+            if user and user.provider in ("ibm_ams", "ibm_ams_basic", "ibm_ams_env"):
                 return {
                     "authenticated": True,
                     "ibm_auth_mode": True,
@@ -559,9 +484,7 @@ class AuthService:
                         "name": user.name,
                         "picture": user.picture,
                         "provider": user.provider,
-                        "last_login": user.last_login.isoformat()
-                        if user.last_login
-                        else None,
+                        "last_login": user.last_login.isoformat() if user.last_login else None,
                     },
                 }
             return {"authenticated": False, "ibm_auth_mode": True, "user": None}
@@ -582,9 +505,7 @@ class AuthService:
                     "name": user.name,
                     "picture": user.picture,
                     "provider": user.provider,
-                    "last_login": user.last_login.isoformat()
-                    if user.last_login
-                    else None,
+                    "last_login": user.last_login.isoformat() if user.last_login else None,
                 },
             }
 

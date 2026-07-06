@@ -33,6 +33,9 @@ export interface ChunkResult {
   connector_type?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
+  parser?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
@@ -64,31 +67,54 @@ export interface File {
   allowed_groups?: string[];
 }
 
+// Non-fatal signal from the backend — e.g. an embedding provider was removed
+// so some models in the corpus can't be queried semantically. Results still
+// come back via keyword matching.
+export interface SearchWarning {
+  code: string;
+  models?: string[];
+  semantic_search_available?: boolean;
+  message?: string;
+}
+
+export interface SearchResult {
+  files: File[];
+  warnings: SearchWarning[];
+}
+
+const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
+export { EMPTY_SEARCH_RESULT };
+
+const getFileIdentity = (chunk: ChunkResult): string => {
+  const normalizedFilename = chunk.filename?.trim();
+  if (normalizedFilename) {
+    return normalizedFilename;
+  }
+
+  const normalizedSourceUrl = chunk.source_url?.trim();
+  if (normalizedSourceUrl) {
+    return normalizedSourceUrl;
+  }
+
+  return "Untitled source";
+};
+
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
-  const getFileIdentity = (chunk: ChunkResult): string => {
-    const normalizedFilename = chunk.filename?.trim();
-    if (normalizedFilename) {
-      return normalizedFilename;
-    }
-
-    const normalizedSourceUrl = chunk.source_url?.trim();
-    if (normalizedSourceUrl) {
-      return normalizedSourceUrl;
-    }
-
-    return "Untitled source";
-  };
 
   // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
   const normalizedQuery = effectiveQuery.trim();
 
-  async function getFiles(): Promise<File[]> {
+  async function getFiles(): Promise<SearchResult> {
     try {
       // For wildcard queries, use a high limit to get all files
       // Otherwise use the limit from queryData or default to 100
@@ -211,7 +237,11 @@ export const useGetSearchQuery = (
         allowed_groups: file.allowed_groups || [],
       }));
 
-      return files;
+      const warnings: SearchWarning[] = Array.isArray(data.warnings)
+        ? data.warnings
+        : [];
+
+      return { files, warnings };
     } catch (error) {
       console.error("Error getting files", error);
       // Re-throw the error so React Query can handle it and trigger onError callbacks
@@ -219,16 +249,15 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
+      staleTime: 0,
       queryFn: getFiles,
       retry: false, // Don't retry on errors - show them immediately
       ...options,
     },
     queryClient,
   );
-
-  return queryResult;
 };

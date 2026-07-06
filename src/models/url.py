@@ -1,10 +1,10 @@
-import asyncio
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from utils.logging_config import get_logger
+
 from .processors import TaskProcessor
-from .tasks import UploadTask, FileTask, TaskStatus
+from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class LangflowUrlProcessor(TaskProcessor):
         owner_email: str = None,
         connector_type: str = "openrag_docs",
         prevent_outside: bool = True,
-        tweaks: Optional[Dict[str, Any]] = None,
+        tweaks: dict[str, Any] | None = None,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -86,9 +86,7 @@ class LangflowUrlProcessor(TaskProcessor):
         )
         return int(response.get("count", 0))
 
-    async def process_item(
-        self, upload_task: UploadTask, item: str, file_task: FileTask
-    ) -> None:
+    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process one URL ingestion item through Langflow."""
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
@@ -96,11 +94,10 @@ class LangflowUrlProcessor(TaskProcessor):
         try:
             effective_jwt = self.jwt_token
             if self.session_manager and not effective_jwt:
-                self.session_manager.get_user_opensearch_client(
-                    self.owner_user_id, self.jwt_token
+                effective_jwt = self.session_manager.get_effective_jwt_token(
+                    self.owner_user_id,
+                    None,
                 )
-                if hasattr(self.session_manager, "_anonymous_jwt"):
-                    effective_jwt = self.session_manager._anonymous_jwt
 
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 self.owner_user_id, effective_jwt

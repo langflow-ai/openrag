@@ -1,0 +1,45 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+The OpenRAG Operator has been deployed to namespace: {{ .Release.Namespace }}
+
+To verify the installation:
+
+  kubectl get deployment -n {{ .Release.Namespace }} {{ include "openrag-operator.fullname" . }}
+  kubectl get pods -n {{ .Release.Namespace }} -l control-plane=controller-manager
+
+To check the operator logs:
+
+  kubectl logs -n {{ .Release.Namespace }} -l control-plane=controller-manager -f
+
+The operator will watch for OpenRAG custom resources. To create an OpenRAG instance:
+
+  kubectl apply -f - <<EOF
+  apiVersion: openr.ag/v1alpha1
+  kind: OpenRAG
+  metadata:
+    name: my-openrag
+    namespace: default
+  spec:
+    frontend:
+      image: langflowai/openrag-frontend:latest
+    backend:
+      image: langflowai/openrag-backend:latest
+      envSecret: my-backend-env
+      storage:
+        enabled: true
+        size: 10Gi
+    langflow:
+      image: langflowai/openrag-langflow:latest
+      envSecret: my-langflow-env
+      storage:
+        enabled: true
+        size: 10Gi
+    opensearch:
+      host: opensearch.default.svc.cluster.local
+      credentialsSecret: opensearch-credentials
+  EOF
+
+For more information, visit:
+  https://github.com/langflow-ai/openrag

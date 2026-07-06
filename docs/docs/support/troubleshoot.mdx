@@ -75,6 +75,26 @@ If the application onboarding process hangs for a long time or fails for an unsp
 * Make sure you have enough free space (more than 50 GB) available for the temporary storage required for document ingestion.
 * Clear your browser's cache.
 
+## OpenRAG reports Docling Serve errors but docling-serve is running
+
+Make sure your `docling-serve` version is compatible with your OpenRAG version.
+OpenRAG version 0.4.1 requires `docling-serve` version 1.5.0.
+
+If you started a `docling-serve` container before starting or installing OpenRAG, and the `docling-serve` version is incompatible with your OpenRAG version, you need to remove or restart the incompatible container.
+There are several ways to do this:
+
+* Remove the `docling-serve` container that is running the incompatible version, and then [reinstall OpenRAG](/reinstall) with `uv` or `uvx` to automatically start a compatible `docling-serve` container.
+
+* After starting OpenRAG, restart the `docling-serve` container with the required version:
+
+   ```bash
+   uvx --from 'docling-serve[ui]==1.5.0' \
+   --with onnxruntime --with easyocr --with 'docling[ocrmac,easyocr,rapidocr,vlm]' --with docling-core==2.48.1 \
+   docling-serve run --host 0.0.0.0 --port 5001 --workers 1
+   ```
+
+* Pin the `docling-serve` version in your `pyproject.toml` file, and then run `uv sync` to update your environment.
+
 ## Langflow connection issues
 
 Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.

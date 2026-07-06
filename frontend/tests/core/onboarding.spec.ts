@@ -28,9 +28,11 @@ test("can configure OpenAI provider", async ({ page }) => {
 
   await page.getByTestId("send-button").click();
 
-  await expect(page.getByText("Thinking")).toBeVisible();
-
-  await expect(page.getByText("OPENRAG-GENERIC-ASSET-001")).toBeVisible({
+  const verificationAnswer = page.getByText("OPENRAG-GENERIC-ASSET-001");
+  await expect(page.getByText("Thinking").or(verificationAnswer)).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(verificationAnswer).toBeVisible({
     timeout: 60000,
   });
 
