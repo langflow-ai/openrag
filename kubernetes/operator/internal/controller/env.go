@@ -151,6 +151,7 @@ func NewEnvVarManager() *EnvVarManager {
 			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB for local dev).
 			// Optional env defaults — credentials are normally entered per-connection
 			// in the UI. Override via the CR spec.env when env-based defaults are wanted.
+			"OPENRAG_AZURE_BLOB_ENABLED":      "true",
 			"AZURE_STORAGE_CONNECTION_STRING": "",
 			"AZURE_STORAGE_ACCOUNT_NAME":      "",
 			"AZURE_STORAGE_ACCOUNT_KEY":       "",
