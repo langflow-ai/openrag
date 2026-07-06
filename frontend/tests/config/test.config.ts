@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import * as path from "path";
 
 dotenv.config();
 /**
@@ -31,20 +32,20 @@ export const TEST_CONFIG = {
   // Test documents (using relative paths from project root)
   documents: {
     kubernetes: {
-      path: "test-data/kubernetes.pdf",
+      path: path.join(__dirname, "../test-data/kubernetes.pdf"),
       name: "kubernetes.pdf",
     },
     docling: {
-      path: "test-data/docling.pdf",
+      path: path.join(__dirname, "../test-data/docling.pdf"),
       name: "docling.pdf",
     },
     versioning: {
-      path: "test-data/08_Versioning.pdf",
+      path: path.join(__dirname, "../test-data/08_Versioning.pdf"),
       name: "08_Versioning.pdf",
     },
     // Folder containing all sample files for format testing
     allSampleFiles: {
-      path: "test-data/all_sample_files",
+      path: path.join(__dirname, "../test-data/all_sample_files"),
       name: "all_sample_files",
     },
   },
