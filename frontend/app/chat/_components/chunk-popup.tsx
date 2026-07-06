@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ToolCallResult } from "@/app/chat/_types/types";
 import { PopoverContent } from "@/components/ui/popover";
@@ -107,10 +107,6 @@ export function ChunkPopup({
   const { data: settings } = useGetSettingsQuery();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    closeButtonRef.current?.focus();
-  }, []);
-
   const hasUrl = !!item.source_url;
   const parser = formatParser(item, filename);
   const scoreLabel = formatScore(item, score);
@@ -129,6 +125,10 @@ export function ChunkPopup({
       align="center"
       sideOffset={10}
       collisionPadding={12}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        closeButtonRef.current?.focus();
+      }}
       className="z-50 bg-background-dark border border-border rounded-xl shadow-2xl flex w-[min(calc(100vw-24px),32rem)] flex-col max-h-[min(72vh,34rem)] overflow-hidden text-foreground backdrop-blur-xl p-0"
     >
       {/* Header */}
