@@ -305,7 +305,8 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    name: e2e (shard ${{ matrix.shard }}/${{ env.TOTAL_SHARDS }})
+        total_shards: [4]
+    name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
       - name: Cleanup Docker cache
         run: |
@@ -370,7 +371,7 @@ jobs:
           chmod +x scripts/setup-e2e.sh
           OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
 
-      - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ env.TOTAL_SHARDS }})
+      - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         working-directory: frontend
         env:
           CI: "true"
@@ -380,7 +381,7 @@ jobs:
           OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
-        run: npx playwright test --shard=${{ matrix.shard }}/${{ env.TOTAL_SHARDS }}
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
 
       - name: Collect service logs on failure
         if: failure()
