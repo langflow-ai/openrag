@@ -130,6 +130,8 @@ class AzureAIFoundryProviderConfig(BaseModel):
     has_api_key: bool
     endpoint: str | None
     configured: bool
+    llm_deployment_name: str | None = None
+    embedding_deployment_name: str | None = None
 
 
 class ProvidersConfig(BaseModel):

@@ -72,13 +72,9 @@ const AzureAIFoundrySettingsDialog = ({
       endpoint: settings.providers?.azure_ai_foundry?.endpoint ?? "",
       apiKey: "",
       llmDeploymentName:
-        settings.agent?.llm_provider === "azure_ai_foundry"
-          ? (settings.agent?.llm_model ?? "")
-          : "",
+        settings.providers?.azure_ai_foundry?.llm_deployment_name ?? "",
       embeddingDeploymentName:
-        settings.knowledge?.embedding_provider === "azure_ai_foundry"
-          ? (settings.knowledge?.embedding_model ?? "")
-          : "",
+        settings.providers?.azure_ai_foundry?.embedding_deployment_name ?? "",
     },
   });
 

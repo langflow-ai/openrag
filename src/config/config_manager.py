@@ -127,6 +127,8 @@ class AzureAIFoundryConfig:
     api_key: str = ""
     endpoint: str = ""  # e.g. https://<resource>.services.ai.azure.com/models
     configured: bool = False
+    llm_deployment_name: str = ""
+    embedding_deployment_name: str = ""
 
 
 @dataclass

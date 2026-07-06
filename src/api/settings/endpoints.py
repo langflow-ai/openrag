@@ -220,6 +220,8 @@ async def get_settings(
                     has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
                     endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
                     configured=openrag_config.providers.azure_ai_foundry.configured,
+                    llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name or None,
+                    embedding_deployment_name=openrag_config.providers.azure_ai_foundry.embedding_deployment_name or None,
                 ),
             )
             if show_providers
@@ -411,6 +413,10 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_LLM_MODEL
             )
             logger.info(f"LLM model changed from {old_model} to {body.llm_model}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
+            if effective_llm_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
 
         if body.llm_provider is not None:
             old_provider = current_config.agent.llm_provider
@@ -447,6 +453,10 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_EMBED_MODEL
             )
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_embedding_provider = body.embedding_provider or current_config.knowledge.embedding_provider
+            if effective_embedding_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.embedding_deployment_name = new_embedding_model
 
         if body.embedding_provider is not None:
             old_provider = current_config.knowledge.embedding_provider
@@ -786,6 +796,8 @@ async def update_settings(
             current_config.providers.azure_ai_foundry.api_key = ""
             current_config.providers.azure_ai_foundry.endpoint = ""
             current_config.providers.azure_ai_foundry.configured = False
+            current_config.providers.azure_ai_foundry.llm_deployment_name = ""
+            current_config.providers.azure_ai_foundry.embedding_deployment_name = ""
             if current_config.agent.llm_provider == "azure_ai_foundry":
                 fb = _first_configured_llm_provider(current_config, "azure_ai_foundry")
                 current_config.agent.llm_provider = fb

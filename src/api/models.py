@@ -339,20 +339,21 @@ async def get_azure_ai_foundry_models(
             logger.warning(f"Azure AI Foundry GET /models failed: {e}")
             pass  # Fall through to config-based fallback below
 
-        # If the dynamic list came back empty, fall back to deployment names in config
-        # only when those config entries actually belong to azure_ai_foundry.
+        # If the dynamic list came back empty, fall back to stored deployment names.
+        # These are persisted in the provider config independently of the active
+        # llm_provider/embedding_provider so they survive provider switches.
         if not language_models and not embedding_models:
             if deployment_name:
                 entry = {"value": deployment_name, "label": deployment_name}
                 language_models.append(entry)
                 embedding_models.append(entry)
             else:
-                llm_model = config.agent.llm_model
-                embed_model = config.knowledge.embedding_model
-                if config.agent.llm_provider == "azure_ai_foundry" and llm_model:
-                    language_models.append({"value": llm_model, "label": llm_model})
-                if config.knowledge.embedding_provider == "azure_ai_foundry" and embed_model:
-                    embedding_models.append({"value": embed_model, "label": embed_model})
+                stored_llm = config.providers.azure_ai_foundry.llm_deployment_name
+                stored_embed = config.providers.azure_ai_foundry.embedding_deployment_name
+                if stored_llm:
+                    language_models.append({"value": stored_llm, "label": stored_llm})
+                if stored_embed:
+                    embedding_models.append({"value": stored_embed, "label": stored_embed})
 
         return JSONResponse(
             {"language_models": language_models, "embedding_models": embedding_models}

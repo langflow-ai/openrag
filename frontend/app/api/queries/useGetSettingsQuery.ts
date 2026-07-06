@@ -44,6 +44,8 @@ export interface ProviderSettings {
     has_api_key?: boolean;
     endpoint?: string;
     configured?: boolean;
+    llm_deployment_name?: string;
+    embedding_deployment_name?: string;
   };
 }
 
