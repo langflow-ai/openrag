@@ -127,7 +127,9 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
-          shared: showSharedToggle ? (ingestSettings.shared ?? false) : undefined,
+          shared: showSharedToggle
+            ? (ingestSettings.shared ?? false)
+            : undefined,
         },
       },
       {

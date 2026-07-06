@@ -210,7 +210,9 @@ export const IngestSettings = ({
                   id="chunk-size"
                   label="Chunk size"
                   value={currentSettings.chunkSize}
-                  onChange={(value) => handleSettingsChange({ chunkSize: value })}
+                  onChange={(value) =>
+                    handleSettingsChange({ chunkSize: value })
+                  }
                   unit="characters"
                 />
               </div>
