@@ -245,9 +245,9 @@ async def get_settings(
             langflow_port=str(LANGFLOW_PORT),
         )
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve settings: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Failed to retrieve settings")
+        return JSONResponse({"error": "Failed to retrieve settings"}, status_code=500)
 
 
 async def update_settings(
@@ -785,12 +785,12 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
-    except Exception as e:
-        logger.error("Failed to update settings", error=str(e))
+    except Exception:
+        logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
-        return JSONResponse({"error": f"Failed to update settings: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to update settings"}, status_code=500)
 
 
 async def onboarding(
@@ -1126,13 +1126,10 @@ async def onboarding(
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize OpenSearch index after onboarding",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to initialize OpenSearch index after onboarding")
                 return JSONResponse(
-                    {"error": str(e)},
+                    {"error": "Failed to initialize OpenSearch index after onboarding"},
                     status_code=500,
                 )
 
@@ -1528,9 +1525,9 @@ async def rollback_onboarding(
             deleted_conversations=deleted_conversations_count,
         )
 
-    except Exception as e:
-        logger.error("Failed to rollback onboarding configuration", error=str(e))
-        return JSONResponse({"error": f"Failed to rollback onboarding: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Failed to rollback onboarding configuration")
+        return JSONResponse({"error": "Failed to rollback onboarding"}, status_code=500)
 
 
 async def update_docling_preset(
