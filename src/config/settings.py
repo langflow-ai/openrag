@@ -506,6 +506,14 @@ OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
 ).lower() in ("true", "1", "yes")
 
+# Show the "Make documents available to all users" (shared) toggle for COS bucket
+# ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
+# hide the general per-upload ingest tuning knobs (e.g. SaaS) still get just this
+# toggle. On by default; set to "false" to hide it.
+OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
+    "OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", "true"
+).lower() in ("true", "1", "yes")
+
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
 
