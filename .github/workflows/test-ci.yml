@@ -426,7 +426,7 @@ jobs:
           docker system prune -f || true
 
   e2e-merge-reports:
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
     needs: [changes, e2e-run]
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
