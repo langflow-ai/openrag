@@ -37,9 +37,14 @@ def _read_flag(env: dict[str, str]) -> str:
     return result.stdout.splitlines()[-1].strip()
 
 
-def test_defaults_false_when_unset():
+def test_defaults_true_when_unset():
     env = {"PYTHONPATH": str(SRC)}
     env.pop("OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", None)
+    assert _read_flag(env) == "True"
+
+
+def test_false_when_disabled():
+    env = {"OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE": "false", "PYTHONPATH": str(SRC)}
     assert _read_flag(env) == "False"
 
 
