@@ -28,6 +28,9 @@ class AzureAIFoundryBody(BaseModel):
     api_key: str | None = None
     endpoint: str | None = None
     deployment_name: str | None = None
+    llm_deployment_name: str | None = None
+    embedding_deployment_name: str | None = None
+    test_completion: bool = False
 
 
 async def get_openai_models(
@@ -182,13 +185,26 @@ async def get_azure_ai_foundry_models(
     For MVP, Azure AI Foundry deployment names are user-managed (no catalog API).
     This endpoint validates credentials with a lightweight call and returns the
     provided deployment_name as the available model entry.
+
+    When test_completion=True, runs real inference calls against the deployment
+    names to verify end-to-end connectivity (consumes credits).
     """
+    import httpx
+
+    from api.provider_validation import (
+        _test_azure_ai_foundry_completion,
+        _test_azure_ai_foundry_embedding,
+    )
+
     try:
         config = get_openrag_config()
 
         api_key = (body.api_key if body else None) or config.providers.azure_ai_foundry.api_key
         endpoint = (body.endpoint if body else None) or config.providers.azure_ai_foundry.endpoint
         deployment_name = body.deployment_name if body else None
+        llm_deployment_name = (body.llm_deployment_name if body else None) or deployment_name
+        embedding_deployment_name = body.embedding_deployment_name if body else None
+        test_completion = body.test_completion if body else False
 
         if not api_key:
             return JSONResponse(
@@ -205,9 +221,52 @@ async def get_azure_ai_foundry_models(
                 status_code=400,
             )
 
-        # Validate credentials with a lightweight HEAD/GET to the models endpoint
-        import httpx
+        # Full inference test path — validates deployment names with real calls
+        if test_completion:
+            if not llm_deployment_name and not embedding_deployment_name:
+                return JSONResponse(
+                    {"error": "At least one deployment name is required to test the connection."},
+                    status_code=400,
+                )
 
+            language_models = []
+            embedding_models = []
+            errors = []
+
+            if llm_deployment_name:
+                try:
+                    await _test_azure_ai_foundry_completion(api_key, llm_deployment_name, endpoint)
+                    language_models.append(
+                        {"value": llm_deployment_name, "label": llm_deployment_name}
+                    )
+                    logger.info(f"Azure AI Foundry LLM test passed for '{llm_deployment_name}'")
+                except Exception as e:
+                    errors.append(f"LLM deployment '{llm_deployment_name}': {str(e)}")
+
+            if embedding_deployment_name:
+                try:
+                    await _test_azure_ai_foundry_embedding(
+                        api_key, embedding_deployment_name, endpoint
+                    )
+                    embedding_models.append(
+                        {"value": embedding_deployment_name, "label": embedding_deployment_name}
+                    )
+                    logger.info(
+                        f"Azure AI Foundry embedding test passed for '{embedding_deployment_name}'"
+                    )
+                except Exception as e:
+                    errors.append(
+                        f"Embedding deployment '{embedding_deployment_name}': {str(e)}"
+                    )
+
+            if errors:
+                return JSONResponse({"error": "; ".join(errors)}, status_code=400)
+
+            return JSONResponse(
+                {"language_models": language_models, "embedding_models": embedding_models}
+            )
+
+        # Lightweight credential check — validates endpoint + API key without consuming credits
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(

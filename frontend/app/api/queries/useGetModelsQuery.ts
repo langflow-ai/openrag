@@ -37,6 +37,9 @@ export interface IBMModelsParams {
 export interface AzureAIFoundryModelsParams {
   endpoint?: string;
   apiKey?: string;
+  llmDeploymentName?: string;
+  embeddingDeploymentName?: string;
+  testCompletion?: boolean;
 }
 
 export const useGetOpenAIModelsQuery = (
@@ -210,26 +213,33 @@ export const useGetAzureAIFoundryModelsQuery = (
 
   async function getAzureAIFoundryModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/azure-ai-foundry", window.location.origin);
-    const body: { endpoint?: string; api_key?: string } = {};
-    if (params?.endpoint) {
-      body.endpoint = params.endpoint;
-    }
-    if (params?.apiKey) {
-      body.api_key = params.apiKey;
-    }
+    const body: {
+      endpoint?: string;
+      api_key?: string;
+      llm_deployment_name?: string;
+      embedding_deployment_name?: string;
+      test_completion?: boolean;
+    } = {};
+    if (params?.endpoint) body.endpoint = params.endpoint;
+    if (params?.apiKey) body.api_key = params.apiKey;
+    if (params?.llmDeploymentName)
+      body.llm_deployment_name = params.llmDeploymentName;
+    if (params?.embeddingDeploymentName)
+      body.embedding_deployment_name = params.embeddingDeploymentName;
+    if (params?.testCompletion) body.test_completion = params.testCompletion;
 
     const response = await fetch(url.toString(), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (response.ok) {
       return await response.json();
-    } else {
-      throw new Error("Failed to validate Azure AI Foundry credentials");
     }
+    const data = await response.json().catch(() => null);
+    throw new Error(
+      data?.error ?? "Failed to validate Azure AI Foundry credentials",
+    );
   }
 
   return useQuery(

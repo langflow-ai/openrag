@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ import { useGetAzureAIFoundryModelsQuery } from "@/app/api/queries/useGetModelsQ
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +41,11 @@ const AzureAIFoundrySettingsDialog = ({
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testConnectionResult, setTestConnectionResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
@@ -76,7 +83,10 @@ const AzureAIFoundrySettingsDialog = ({
   });
 
   useEffect(() => {
-    if (open) methods.reset();
+    if (open) {
+      methods.reset();
+      setTestConnectionResult(null);
+    }
   }, [open]);
 
   const { handleSubmit, watch } = methods;
@@ -85,10 +95,50 @@ const AzureAIFoundrySettingsDialog = ({
   const llmDeploymentName = watch("llmDeploymentName");
   const embeddingDeploymentName = watch("embeddingDeploymentName");
 
+  // Clear test result whenever any form value changes
+  useEffect(() => {
+    setTestConnectionResult(null);
+  }, [endpoint, apiKey, llmDeploymentName, embeddingDeploymentName]);
+
   const { refetch: validateCredentials } = useGetAzureAIFoundryModelsQuery(
     { endpoint, apiKey },
     { enabled: false },
   );
+
+  const { refetch: runConnectionTest } = useGetAzureAIFoundryModelsQuery(
+    {
+      endpoint,
+      apiKey,
+      llmDeploymentName: llmDeploymentName || undefined,
+      embeddingDeploymentName: embeddingDeploymentName || undefined,
+      testCompletion: true,
+    },
+    { enabled: false },
+  );
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setTestConnectionResult(null);
+    const result = await runConnectionTest();
+    setIsTestingConnection(false);
+    if (result.isError) {
+      setTestConnectionResult({
+        success: false,
+        message: result.error?.message ?? "Connection test failed",
+      });
+    } else {
+      const tested = [
+        llmDeploymentName && "LLM",
+        embeddingDeploymentName && "embedding",
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      setTestConnectionResult({
+        success: true,
+        message: `Connection verified — ${tested} deployment${tested.includes("and") ? "s" : ""} responded successfully.`,
+      });
+    }
+  };
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -192,6 +242,44 @@ const AzureAIFoundrySettingsDialog = ({
               modelsError={validationError}
               isLoadingModels={isValidating}
             />
+
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={
+                  isTestingConnection ||
+                  (!llmDeploymentName && !embeddingDeploymentName)
+                }
+              >
+                {isTestingConnection ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  "Test connection"
+                )}
+              </Button>
+              {testConnectionResult && (
+                <span
+                  className={`flex items-center gap-1.5 text-sm ${
+                    testConnectionResult.success
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-destructive"
+                  }`}
+                >
+                  {testConnectionResult.success ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <XCircle className="h-4 w-4 shrink-0" />
+                  )}
+                  {testConnectionResult.message}
+                </span>
+              )}
+            </div>
 
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
