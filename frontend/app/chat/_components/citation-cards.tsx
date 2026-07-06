@@ -3,6 +3,7 @@
 import { ExternalLink, FileText } from "lucide-react";
 import type { CitedSource } from "@/components/markdown-citations";
 import { deriveDisplayFilename } from "@/components/markdown-citations";
+import { PopoverAnchor } from "@/components/ui/popover";
 
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -36,6 +37,12 @@ export function CitationCards({
       data-testid="citation-cards"
     >
       {citedSources.map(({ item, index }) => {
+        const key =
+          item.chunk_id ||
+          item.id ||
+          item.data?.file_path ||
+          item.filename ||
+          index;
         const filename = deriveDisplayFilename(
           item.data?.file_path,
           item.filename,
@@ -95,13 +102,7 @@ export function CitationCards({
         if (!interactive) {
           return (
             <div
-              key={
-                item.chunk_id ||
-                item.id ||
-                item.data?.file_path ||
-                item.filename ||
-                index
-              }
+              key={key}
               ref={(element) => onCardRef?.(index, element)}
               className={className}
             >
@@ -114,16 +115,10 @@ export function CitationCards({
           onCardClick?.(index, event.currentTarget);
         };
 
-        return (
+        const card = (
           <button
             type="button"
-            key={
-              item.chunk_id ||
-              item.id ||
-              item.data?.file_path ||
-              item.filename ||
-              index
-            }
+            key={key}
             ref={(element) => onCardRef?.(index, element)}
             onClick={handleClick}
             className={className}
@@ -135,6 +130,14 @@ export function CitationCards({
           >
             {contents}
           </button>
+        );
+
+        return isActive ? (
+          <PopoverAnchor asChild key={key}>
+            {card}
+          </PopoverAnchor>
+        ) : (
+          card
         );
       })}
     </div>
