@@ -72,7 +72,8 @@ async for event in await client.chat.create(message="Explain RAG", stream=True):
         print(event.delta, end="", flush=True)
     elif event.type == "sources":
         for source in event.sources:
-            print(f"\nSource: {source.filename}")
+            page_info = f" (page {source.page})" if source.page else ""
+            print(f"\nSource: {source.filename}{page_info}")
     elif event.type == "done":
         chat_id = event.chat_id
 ```

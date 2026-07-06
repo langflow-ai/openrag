@@ -74,6 +74,8 @@ class TaskProcessor:
         file_hash: str,
         opensearch_client,
         on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
+        *,
+        wait_for_visibility: bool = False,
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -86,6 +88,13 @@ class TaskProcessor:
           * ``"assume_exists"`` (post-ingestion verification callers): an
             infrastructure error must not fail a file that Langflow already
             reported as ingested.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
@@ -101,7 +110,15 @@ class TaskProcessor:
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
-                return bool(hits)
+                if hits:
+                    return True
+                # No hits. For post-ingest verification, the document may not be
+                # visible yet within the near-real-time refresh window — retry.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return False
             except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
@@ -139,10 +156,19 @@ class TaskProcessor:
         self,
         filename: str,
         opensearch_client,
+        *,
+        wait_for_visibility: bool = False,
     ) -> bool:
         """
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
@@ -173,6 +199,14 @@ class TaskProcessor:
                     # Successfully checked this alias with no hits; don't
                     # re-query it on future retries.
                     pending_candidates.pop(i)
+                    continue
+                # All aliases checked with no hits. For post-ingest verification,
+                # the document may not be visible yet within the near-real-time
+                # refresh window — re-check every alias after a short delay.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    pending_candidates = list(candidate_filenames)
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
                     continue
                 return False
 
@@ -1057,10 +1091,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
                     # landed in OpenSearch before declaring success.
+                    # wait_for_visibility polls on an empty result to ride out
+                    # OpenSearch's ~1s near-real-time window (the user-scoped
+                    # client cannot force an indices:admin/refresh — it 403s).
                     if not await self.check_document_exists(
                         document.id,
                         _verification_client(opensearch_client),
                         on_error="assume_exists",
+                        wait_for_visibility=True,
                     ):
                         result = {
                             "status": "error",
@@ -1367,13 +1405,22 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
             )
 
-            # Langflow returns "success" even when no text was extracted.
-            # Verify the document actually landed in OpenSearch.
-            file_hash = hash_id(item)
-            if not await self.check_document_exists(
-                file_hash,
+            # Langflow returns "success" even when no text was extracted
+            # (e.g. image files without OCR). Verify the document actually
+            # landed in OpenSearch before declaring success. We key off the
+            # filename — the identifier this path already uses for dedup and
+            # delete (see check_filename_exists / delete_document_by_filename
+            # above) — because Langflow assigns its own document_id here, so
+            # hash_id(item) is not stored as document_id.
+            #
+            # wait_for_visibility polls on an empty result so the just-written
+            # chunks become visible within OpenSearch's near-real-time refresh
+            # window. We cannot force a refresh here: the user-scoped client
+            # lacks the indices:admin/refresh privilege (it 403s).
+            if not await self.check_filename_exists(
+                original_filename,
                 _verification_client(opensearch_client),
-                on_error="assume_exists",
+                wait_for_visibility=True,
             ):
                 file_task.status = TaskStatus.FAILED
                 file_task.error = "No text content could be extracted from document"
