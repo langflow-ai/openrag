@@ -5,12 +5,27 @@ export interface CitedSource {
   index: number;
 }
 
-const addLookupKey = (
+const addPrimaryLookupKey = (
   sourceLookup: Map<string, ToolCallResult>,
   key: string | undefined,
   source: ToolCallResult,
 ) => {
   if (key) sourceLookup.set(key, source);
+};
+
+const addFallbackLookupKey = (
+  sourceLookup: Map<string, ToolCallResult | null>,
+  key: string | undefined,
+  source: ToolCallResult,
+) => {
+  if (!key) return;
+
+  if (sourceLookup.has(key)) {
+    sourceLookup.set(key, null);
+    return;
+  }
+
+  sourceLookup.set(key, source);
 };
 
 /**
@@ -27,16 +42,25 @@ export const deriveDisplayFilename = (
 };
 
 const buildSourceLookup = (sources: ToolCallResult[]) => {
-  const sourceLookup = new Map<string, ToolCallResult>();
+  const primaryLookup = new Map<string, ToolCallResult>();
+  const fallbackLookup = new Map<string, ToolCallResult | null>();
 
   for (const source of sources) {
-    addLookupKey(sourceLookup, source.chunk_id, source);
-    addLookupKey(sourceLookup, source.id, source);
-    addLookupKey(sourceLookup, source.data?.file_path, source);
-    addLookupKey(sourceLookup, source.filename, source);
+    addPrimaryLookupKey(primaryLookup, source.chunk_id, source);
+    addPrimaryLookupKey(primaryLookup, source.id, source);
+    addFallbackLookupKey(fallbackLookup, source.data?.file_path, source);
+    addFallbackLookupKey(fallbackLookup, source.filename, source);
   }
 
-  return sourceLookup;
+  return {
+    get(id: string): ToolCallResult | undefined {
+      const primarySource = primaryLookup.get(id);
+      if (primarySource) return primarySource;
+
+      const fallbackSource = fallbackLookup.get(id);
+      return fallbackSource ?? undefined;
+    },
+  };
 };
 
 export const preprocessCitations = (

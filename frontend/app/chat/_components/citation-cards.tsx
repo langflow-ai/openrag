@@ -17,7 +17,8 @@ interface CitationCardsProps {
   citedSources: CitedSource[];
   activeCardIndex?: number | null;
   onCardClick?: (index: number, anchorElement: HTMLElement) => void;
-  onCardRef?: (index: number, element: HTMLButtonElement | null) => void;
+  onCardRef?: (index: number, element: HTMLElement | null) => void;
+  interactive?: boolean;
 }
 
 export function CitationCards({
@@ -25,6 +26,7 @@ export function CitationCards({
   activeCardIndex,
   onCardClick,
   onCardRef,
+  interactive = true,
 }: CitationCardsProps) {
   if (!citedSources || citedSources.length === 0) return null;
 
@@ -43,36 +45,21 @@ export function CitationCards({
 
         const page = item.page ?? item.data?.page;
 
-        const hasUrl = !!item.source_url;
+        const hasUrl = interactive && !!item.source_url;
         const isActive = index === activeCardIndex;
 
-        const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-          onCardClick?.(index, event.currentTarget);
-        };
+        const className = `group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm text-left ${
+          interactive ? "cursor-pointer" : "cursor-default"
+        } ${
+          isActive
+            ? "bg-muted border-foreground/50"
+            : interactive
+              ? "bg-muted/50 hover:bg-muted border-muted hover:border-foreground/50"
+              : "bg-muted/50 border-muted"
+        }`;
 
-        return (
-          <button
-            type="button"
-            key={
-              item.chunk_id ||
-              item.id ||
-              item.data?.file_path ||
-              item.filename ||
-              index
-            }
-            ref={(element) => onCardRef?.(index, element)}
-            onClick={handleClick}
-            className={`group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm cursor-pointer text-left ${
-              isActive
-                ? "bg-muted border-foreground/50"
-                : "bg-muted/50 hover:bg-muted border-muted hover:border-foreground/50"
-            }`}
-            title={
-              hasUrl
-                ? `View source chunk details (has link: ${item.source_url})`
-                : "View source chunk details"
-            }
-          >
+        const contents = (
+          <>
             {/* Index Badge */}
             <div className="flex items-center justify-center shrink-0 text-mmd text-accent-purple-foreground mr-2.5">
               {index}
@@ -105,6 +92,51 @@ export function CitationCards({
             {hasUrl && (
               <ExternalLink className="w-2.5 h-2.5 text-accent-purple-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 shrink-0" />
             )}
+          </>
+        );
+
+        if (!interactive) {
+          return (
+            <div
+              key={
+                item.chunk_id ||
+                item.id ||
+                item.data?.file_path ||
+                item.filename ||
+                index
+              }
+              ref={(element) => onCardRef?.(index, element)}
+              className={className}
+            >
+              {contents}
+            </div>
+          );
+        }
+
+        const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+          onCardClick?.(index, event.currentTarget);
+        };
+
+        return (
+          <button
+            type="button"
+            key={
+              item.chunk_id ||
+              item.id ||
+              item.data?.file_path ||
+              item.filename ||
+              index
+            }
+            ref={(element) => onCardRef?.(index, element)}
+            onClick={handleClick}
+            className={className}
+            title={
+              hasUrl
+                ? `View source chunk details (has link: ${item.source_url})`
+                : "View source chunk details"
+            }
+          >
+            {contents}
           </button>
         );
       })}

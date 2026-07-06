@@ -66,6 +66,8 @@ interface AssistantMessageProps {
   usage?: TokenUsageType;
   timestamp?: Date;
   showFeedback?: boolean;
+  interactiveCitations?: boolean;
+  showFunctionCalls?: boolean;
 }
 
 export function AssistantMessage({
@@ -85,11 +87,13 @@ export function AssistantMessage({
   usage,
   timestamp,
   showFeedback = true,
+  interactiveCitations = true,
+  showFunctionCalls = true,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const [chunkAnchorElement, setChunkAnchorElement] =
     useState<HTMLElement | null>(null);
-  const citationCardRefs = useRef<Map<number, HTMLButtonElement> | null>(null);
+  const citationCardRefs = useRef<Map<number, HTMLElement> | null>(null);
   if (citationCardRefs.current === null) {
     citationCardRefs.current = new Map();
   }
@@ -109,10 +113,7 @@ export function AssistantMessage({
     );
   };
 
-  const setCitationCardRef = (
-    index: number,
-    element: HTMLButtonElement | null,
-  ) => {
+  const setCitationCardRef = (index: number, element: HTMLElement | null) => {
     if (element) {
       citationCardRefs.current?.set(index, element);
     } else {
@@ -225,13 +226,15 @@ export function AssistantMessage({
           ) : undefined
         }
       >
-        <FunctionCallsContainer
-          functionCalls={functionCalls}
-          messageIndex={messageIndex}
-          expandedFunctionCalls={expandedFunctionCalls}
-          onToggle={onToggle}
-          isStreaming={isStreaming}
-        />
+        {showFunctionCalls && (
+          <FunctionCallsContainer
+            functionCalls={functionCalls}
+            messageIndex={messageIndex}
+            expandedFunctionCalls={expandedFunctionCalls}
+            onToggle={onToggle}
+            isStreaming={isStreaming}
+          />
+        )}
         <div className="relative">
           {/* Slide animation for initial greeting */}
           <motion.div
@@ -260,7 +263,9 @@ export function AssistantMessage({
                 isCompleted ? "text-placeholder-foreground" : "text-foreground",
               )}
               chatMessage={displayMessageText}
-              onCitationClick={openChunkPopoverFromText}
+              onCitationClick={
+                interactiveCitations ? openChunkPopoverFromText : undefined
+              }
             />
 
             {/* Citation Cards */}
@@ -268,8 +273,13 @@ export function AssistantMessage({
               <CitationCards
                 citedSources={citedSources}
                 activeCardIndex={activeChunkIndex}
-                onCardClick={openChunkPopover}
-                onCardRef={setCitationCardRef}
+                onCardClick={
+                  interactiveCitations ? openChunkPopover : undefined
+                }
+                onCardRef={
+                  interactiveCitations ? setCitationCardRef : undefined
+                }
+                interactive={interactiveCitations}
               />
             )}
 
@@ -290,7 +300,7 @@ export function AssistantMessage({
       </Message>
 
       {/* Chunk Details Popup Modal */}
-      {activeCitedSource && (
+      {interactiveCitations && activeCitedSource && (
         <ChunkPopup
           isOpen={activeChunkIndex !== null}
           onClose={closeChunkPopover}

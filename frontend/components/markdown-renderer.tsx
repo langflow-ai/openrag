@@ -123,11 +123,18 @@ export const MarkdownRenderer = ({
             const href = props.href || "";
             if (href.startsWith("#citation-")) {
               const index = parseInt(href.replace("#citation-", ""), 10);
+              if (!onCitationClick) {
+                return (
+                  <span className="inline-flex items-center justify-center px-0.5 text-mmd text-accent-purple-foreground select-none align-baseline">
+                    {props.children}
+                  </span>
+                );
+              }
               return (
                 <button
                   type="button"
                   onClick={(event) =>
-                    onCitationClick?.(index, event.currentTarget)
+                    onCitationClick(index, event.currentTarget)
                   }
                   className="inline-flex items-center justify-center px-0.5 text-mmd text-accent-purple-foreground transition-all cursor-pointer select-none align-baseline"
                 >
