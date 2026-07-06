@@ -475,7 +475,7 @@ function SearchPage() {
   }, []);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
-  const gridRowsSelectionKey = useMemo(
+  const _gridRowsSelectionKey = useMemo(
     () =>
       gridRows
         .map(
@@ -495,7 +495,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-  }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
+  }, [isDeletableKnowledgeRow, getGridApi]);
 
   const columnDefs: ColDef<File>[] = [
     {

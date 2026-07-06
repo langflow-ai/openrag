@@ -207,7 +207,6 @@ class OneDriveHandler {
         accessToken: this.accessToken,
       },
       success: (response: any) => {
-        console.log("OneDrive picker success callback:", response);
         if (!response || !response.value) {
           console.warn("OneDrive picker returned no value");
           this.onPickerStateChange?.(false);
@@ -231,11 +230,6 @@ class OneDriveHandler {
                   });
                   if (res.ok) {
                     const meta = await res.json();
-                    console.log(
-                      "OneDrive enriched metadata:",
-                      meta.name,
-                      meta.file?.mimeType,
-                    );
 
                     let mimeType = meta.file?.mimeType;
                     if (!mimeType && meta.name) {
@@ -309,7 +303,6 @@ class OneDriveHandler {
         });
       },
       cancel: () => {
-        console.log("Picker cancelled");
         this.onPickerStateChange?.(false);
       },
       error: (error: any) => {
@@ -331,17 +324,6 @@ export const createProviderHandler = (
   clientId?: string,
   baseUrl?: string,
 ) => {
-  // === DIAGNOSTIC LOGGING ===
-  console.log("=== Creating Provider Handler ===");
-  console.log("Provider:", provider);
-  console.log("Client ID:", clientId);
-  console.log("Base URL:", baseUrl);
-  console.log(
-    "Access Token (first 20 chars):",
-    accessToken?.substring(0, 20) + "...",
-  );
-  console.log("Access Token length:", accessToken?.length);
-
   switch (provider) {
     case "google_drive":
       return new GoogleDriveHandler(accessToken, onPickerStateChange);
@@ -354,7 +336,6 @@ export const createProviderHandler = (
       if (!baseUrl) {
         throw new Error("Base URL required for SharePoint v8 picker");
       }
-      console.log("Creating SharePointV8Handler with baseUrl:", baseUrl);
       return new SharePointV8Handler(
         baseUrl,
         accessToken,

@@ -54,12 +54,14 @@ export const TEST_CONFIG = {
     "txt",
     "md",
     "html",
-    "htm",
     "adoc",
     "asciidoc",
     "asc",
     "pdf",
     "docx",
+    "csv",
+    "pptx",
+    "htm",
   ],
 
   // Chunk settings for performance tests
@@ -88,7 +90,6 @@ export const TEST_CONFIG = {
         "What are the two AI models released with Docling, explain their specific purposes, the datasets they were trained on, and their performance characteristics?",
     },
     fallback: {
-      docker: "What is summarized docker documents?",
       unrelated:
         "What is Myasthenia Gravis explain from document from knowledge section?",
     },

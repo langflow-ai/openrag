@@ -80,7 +80,7 @@ export function ChatRenderer({
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showLayout]);
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -169,6 +169,7 @@ export function ChatRenderer({
       setConversationFilter,
       settings?.onboarding?.user_doc_filter_id,
       settings?.onboarding?.openrag_docs_filter_id,
+      settings,
     ],
   );
 

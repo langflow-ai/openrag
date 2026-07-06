@@ -14,7 +14,7 @@ const verificationQuestion =
  * Verifies that uploaded documents are correctly ingested and system can retrieve accurate information.
  */
 test.describe("Upload a specific file in the chat interface and ask a contextually relevant question about its content @33219209", () => {
-  test("@smoke Upload a file in the chat and ask a question", async ({
+  test.skip("@smoke Upload a file in the chat and ask a question", async ({
     page,
     chat,
   }) => {

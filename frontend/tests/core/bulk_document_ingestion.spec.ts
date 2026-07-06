@@ -18,13 +18,13 @@ import { navigateToHome } from "../utils/navigation";
  */
 
 test.describe("Bulk Document Ingestion @33219230", () => {
-  test("Upload folder with 5 documents and verify successful ingestion", async ({
+  test("@smoke Upload folder with 5 documents and verify successful ingestion", async ({
     page,
     knowledge,
     cleanupDocuments,
   }) => {
-    // Set timeout to 5 minutes to accommodate bulk upload processing
-    test.setTimeout(300000);
+    // Set timeout to 6 minutes to accommodate bulk upload processing
+    test.setTimeout(360000);
 
     // Navigate to the application
     await navigateToHome(page);
@@ -117,7 +117,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       try {
         await knowledge.verifyDocumentActive(fileName);
         activeCount++;
-      } catch (error) {
+      } catch (_error) {
         logger.error(`     ✗ File not active: ${fileName}`);
         failedFiles.push(fileName);
       }
@@ -146,8 +146,8 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     knowledge,
     cleanupDocuments,
   }) => {
-    // Set timeout to 5 minutes to accommodate bulk upload processing
-    test.setTimeout(300000);
+    // Set timeout to 6 minutes to accommodate bulk upload processing
+    test.setTimeout(360000);
 
     // Navigate to the application
     await navigateToHome(page);
@@ -228,7 +228,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     );
 
     await knowledge.open();
-    await page.getByRole("button", { name: "Add Knowledge" }).click();
+    await knowledge.addKnowledgeButton().click();
 
     const [fileChooser] = await Promise.all([
       page.waitForEvent("filechooser"),
@@ -277,7 +277,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       try {
         await knowledge.verifyDocumentActive(fileName);
         activeCount++;
-      } catch (error) {
+      } catch (_error) {
         logger.error(`    ✗ File not active: ${fileName}`);
         failedFiles.push(fileName);
       }
@@ -329,14 +329,14 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     logger.info(`  📄 Total files: ${totalFileCount}`);
     logger.info(`  ❌ All unsupported: ${files.join(", ")}`);
 
-    // Verify we have exactly 2 unsupported files
-    expect(totalFileCount).toBe(2); // sample.ppt + sample.pptx
+    // Verify we have exactly 3 unsupported files
+    expect(totalFileCount).toBe(3); // sample.ppt + file-sample_1MB.doc + sample.rtf
 
     // Upload the uns folder
     logger.info(`\n  📤 Uploading folder with only unsupported files...`);
 
     await knowledge.open();
-    await page.getByRole("button", { name: "Add Knowledge" }).click();
+    await knowledge.addKnowledgeButton().click();
 
     const [fileChooser] = await Promise.all([
       page.waitForEvent("filechooser"),

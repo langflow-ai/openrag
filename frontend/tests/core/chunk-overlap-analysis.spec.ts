@@ -45,6 +45,7 @@ test.describe("Chunk Overlap Impact Analysis @33219205 , @34581144 , @34581148",
       test.setTimeout(300000); // 5 minutes timeout
 
       // Configure chunk settings (fixed size, variable overlap)
+      await settings.clickTab("Langflow");
       await settings.updateChunkSettings(
         TEST_CONFIG.chunkSettings.defaultSize,
         scenario.overlap.toString(),
@@ -134,6 +135,7 @@ test.describe("Chunk Overlap Edge Case - Very Low Overlap with CSV Data", () => 
 
     // Test with both overlap values
     for (const overlap of ["1", "50"]) {
+      await settings.clickTab("Langflow");
       await settings.updateChunkSettings(
         TEST_CONFIG.chunkSettings.defaultSize,
         overlap,

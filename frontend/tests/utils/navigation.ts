@@ -3,16 +3,6 @@ import logger from "./logger";
 import { completeOnboarding } from "./onboarding";
 
 /**
- * Login page locators - optimized for the actual login form structure
- */
-const LOGIN_LOCATORS = {
-  usernameField: (page: Page) => page.locator("#username"),
-  passwordField: (page: Page) => page.locator("#password"),
-  submitButton: (page: Page) =>
-    page.getByRole("button", { name: /continue|log in|login|sign in/i }),
-};
-
-/**
  * Get the base URL from environment or config
  */
 export function getBaseUrl(): string {
@@ -29,51 +19,6 @@ function buildUrl(path: string): string {
 }
 
 /**
- * Get login credentials from environment
- */
-function getLoginCredentials(): { email: string; password: string } {
-  const email = process.env.TEST_USER_EMAIL;
-  const password = process.env.TEST_USER_PASSWORD;
-
-  if (!email || !password) {
-    throw new Error(
-      "TEST_USER_EMAIL and TEST_USER_PASSWORD environment variables must be set",
-    );
-  }
-  return {
-    email,
-    password,
-  };
-}
-
-/**
- * Handle login if login page is detected
- */
-async function handleLogin(page: Page): Promise<void> {
-  try {
-    // Check if login page is present (with short timeout)
-    const submitButton = LOGIN_LOCATORS.submitButton(page);
-    await submitButton.waitFor({ state: "visible", timeout: 3000 });
-    logger.info("Login page detected - attempting login...");
-    const credentials = getLoginCredentials();
-    // Fill in username field
-    const usernameField = LOGIN_LOCATORS.usernameField(page);
-    await usernameField.fill(credentials.email);
-    // Fill in password field
-    const passwordField = LOGIN_LOCATORS.passwordField(page);
-    await passwordField.fill(credentials.password);
-    // Click submit button
-    await submitButton.click();
-    // Wait for navigation after login
-    await page.waitForLoadState("networkidle");
-    logger.info("Login successful");
-  } catch (error) {
-    // Login page not detected or already logged in
-    logger.info("No login page detected - proceeding...");
-  }
-}
-
-/**
  * Core navigation handler with login support
  */
 export async function navigateToApp(
@@ -82,7 +27,6 @@ export async function navigateToApp(
 ): Promise<void> {
   const fullUrl = buildUrl(path);
   await page.goto(fullUrl);
-  await handleLogin(page);
   await completeOnboarding(page);
   // After onboarding, the app redirects to /chat, redirect to another path if needed
   if (!page.url().includes(path)) {
@@ -117,9 +61,17 @@ export async function navigateToKnowledge(page: Page): Promise<void> {
  */
 export async function navigateToSettings(page: Page): Promise<void> {
   await navigateToApp(page, "/settings");
-  await expect(page.getByText("Model Providers")).toBeVisible({
-    timeout: 60000,
-  });
+  // Check for either Model Providers text or Settings heading with ibm-section-title class
+  const modelProvidersVisible = page.getByText("Model Providers").first();
+  const settingsHeadingVisible = page.locator(
+    'h2.ibm-section-title:has-text("Settings")',
+  );
+
+  // Wait for at least one of them to be visible
+  await Promise.race([
+    expect(modelProvidersVisible).toBeVisible({ timeout: 60000 }),
+    expect(settingsHeadingVisible).toBeVisible({ timeout: 60000 }),
+  ]);
 }
 
 /**

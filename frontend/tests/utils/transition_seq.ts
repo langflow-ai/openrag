@@ -20,7 +20,7 @@ export async function runTransitionSequence(
     try {
       await settings.selectModel(section, to);
       logger.info(`✅ Success: ${from} → ${to}`);
-    } catch (err) {
+    } catch (_err) {
       logger.error(`❌ Failed: ${from} → ${to}`);
       failures.push(`${from} → ${to}`);
     }

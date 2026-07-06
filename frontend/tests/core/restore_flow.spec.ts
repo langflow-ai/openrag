@@ -3,6 +3,13 @@ import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
 
 test.describe("Restore Flow", () => {
+  // Skip test for SaaS environments (only run on OSS/localhost)
+  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
+  const isSaaS = !baseUrl.includes("localhost");
+  test.skip(
+    isSaaS,
+    "Picture description feature is disabled for SaaS environments",
+  );
   test("should restore default settings after making changes @33219238", async ({
     page,
     settings,
@@ -20,6 +27,7 @@ test.describe("Restore Flow", () => {
     // Navigate to the application
     await navigateToHome(page);
     await settings.open();
+    await settings.clickTab("Langflow");
 
     // Get references to settings elements
     const pictureDescToggle = page.getByRole("switch", {
@@ -159,6 +167,7 @@ test.describe("Restore Flow", () => {
     // Navigate to the application
     await navigateToHome(page);
     await settings.open();
+    await settings.clickTab("Langflow");
 
     // Get references to settings elements
     const pictureDescToggle = page.getByRole("switch", {

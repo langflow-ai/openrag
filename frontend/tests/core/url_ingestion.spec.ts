@@ -23,7 +23,7 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
   try {
     await knowledge.deleteDocument(docName);
     logger.info(`  ✓ Test document cleaned up`);
-  } catch (error) {
+  } catch (_error) {
     logger.info(`  ℹ️  No existing test document to clean up`);
   }
 
@@ -32,6 +32,7 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
 
   // Step 2: Set models for OpenAI
   logger.info(`  ⚙️  Setting models for OpenAI...`);
+  await settings.clickTab("Langflow");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
@@ -83,6 +84,7 @@ test("URL connector ingestion - Invalid URL handling @34581217", async ({
   logger.info(`\n🧪 Testing Invalid URL Ingestion`);
 
   // Set models
+  await settings.clickTab("Langflow");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
 
@@ -101,8 +103,10 @@ test("URL connector ingestion - Invalid URL handling @34581217", async ({
   // Check for failure indication
   expect(fullResponse).toMatch(/failed|error/i);
 
-  // Check for specific error message about no documents loaded
-  expect(fullResponse).toMatch(/no documents were (successfully )?loaded/i);
+  // Check for specific error message indicating ingestion failure (LLM wording varies)
+  expect(fullResponse).toMatch(
+    /no documents were (successfully )?loaded|ingestion failed|dns resolution failed|failed to (load|fetch|ingest)|error.*ingestion|ingestion.*error/i,
+  );
 
   // Check for helpful next steps or guidance (flexible patterns)
   const hasGuidance =
@@ -127,6 +131,7 @@ test("URL connector ingestion - Authentication-blocked URL handling @34581218", 
   logger.info(`\n🧪 Testing Authentication-Blocked URL Ingestion`);
 
   // Set models
+  await settings.clickTab("Langflow");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
 
@@ -181,6 +186,7 @@ test("URL ingestion persists after conversation deletion @34581222", async ({
 
   // Step 2: Set models for OpenAI
   logger.info(`  ⚙️  Setting models for OpenAI...`);
+  await settings.clickTab("Langflow");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);

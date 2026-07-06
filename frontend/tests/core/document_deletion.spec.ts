@@ -23,8 +23,7 @@ test("Document deletion verification @33219237", async ({
 
   // Cleanup and setup
   await knowledge.deleteDocument(testDocumentName);
-  await cleanupDocuments([testDocumentName]);
-
+  //await cleanupDocuments([testDocumentName]);
   // Ingest document
   await knowledge.ingestFile(testDocumentPath);
   await knowledge.verifyDocumentActive(testDocumentName);
@@ -39,12 +38,7 @@ test("Document deletion verification @33219237", async ({
   expect(deleteSuccess).toBe(true);
 
   // Verify document removed
-  try {
-    await knowledge.verifyDocumentActive(testDocumentName);
-    throw new Error("Document should not exist after deletion");
-  } catch (error) {
-    // Expected: document not found
-  }
+  await knowledge.verifyDocumentDeleted(testDocumentName);
 
   // Test after document deletion
   await chat.openNewChat();

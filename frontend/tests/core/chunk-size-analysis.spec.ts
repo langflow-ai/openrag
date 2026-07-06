@@ -3,10 +3,7 @@ import path from "path";
 import { TEST_CONFIG } from "../config/test.config";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
-import { navigateToApp } from "../utils/navigation";
-
-// Configure test to start at default route
-test.use({ route: "/chat" });
+import { navigateToApp, navigateToSettings } from "../utils/navigation";
 
 interface ChunkSizeMetrics {
   chunkSize: number;
@@ -46,6 +43,7 @@ test.describe("Chunk Size Impact Analysis @33219206 , @34581149 , @3481151", () 
       test.setTimeout(300000); // 5 minutes timeout
 
       // Configure chunk settings
+      await settings.clickTab("Langflow");
       await settings.updateChunkSettings(
         scenario.size.toString(),
         TEST_CONFIG.chunkSettings.defaultOverlap,
@@ -107,7 +105,13 @@ test.describe("Large Chunk Size - Wrong Section Retrieval Test", () => {
   const expectedCustomerId = "CP85232";
   const expectedValue = "44795";
 
+  test.beforeEach(async ({ page }) => {
+    // Navigate to app (handles login and onboarding)
+    await navigateToApp(page);
+  });
+
   test.beforeAll(async () => {
+    // Verify test document exists (no page fixture needed)
     if (!fs.existsSync(testDocument)) {
       throw new Error(`Test document not found at: ${testDocument}`);
     }
@@ -121,6 +125,7 @@ test.describe("Large Chunk Size - Wrong Section Retrieval Test", () => {
   }) => {
     test.setTimeout(300000);
 
+    await settings.clickTab("Langflow");
     await settings.updateChunkSettings(
       "1000",
       TEST_CONFIG.chunkSettings.defaultOverlap,

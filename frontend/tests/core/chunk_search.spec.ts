@@ -39,12 +39,13 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
   try {
     await knowledge.deleteDocument(TEST_DOCUMENT);
     logger.info(`  ✓ Test document cleaned up`);
-  } catch (error) {
+  } catch (_error) {
     logger.info(`  ℹ️  No existing test document to clean up`);
   }
 
   // Step 2: Set embedding model for OpenAI
   logger.info(`  ⚙️  Setting embedding model for OpenAI...`);
+  await settings.clickTab("Langflow");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
 

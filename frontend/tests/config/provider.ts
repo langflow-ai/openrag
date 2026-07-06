@@ -18,7 +18,7 @@ export interface ProviderConfig {
 export const OPENAI_CONFIG: ProviderConfig = {
   provider: "OpenAI",
   language: "gpt-5-mini",
-  embedding: "text-embedding-3-large",
+  embedding: "text-embedding-ada-002",
   testCase: {
     url: "https://react.dev/reference/react/hooks",
     docName: "Built-in React Hooks – React",

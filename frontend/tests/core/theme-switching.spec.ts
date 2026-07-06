@@ -6,14 +6,7 @@ test.describe("Theme Switching Functionality", () => {
     // Page is already navigated to /chat by the fixture
     await navigateToChat(page);
     // Skip the onboarding tour if it appears
-    const skipButton = page.getByRole("button", { name: /skip overview/i });
-    try {
-      await skipButton.waitFor({ timeout: 3000 });
-      await skipButton.click();
-      await page.waitForTimeout(500);
-    } catch (error) {
-      // No onboarding tour, continue
-    }
+    await chat.skipOnboardingTour();
 
     // Test Light Mode
     await chat.switchTheme("light");

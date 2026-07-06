@@ -10,7 +10,7 @@ export interface InputProps
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
-    const [hasValue, setHasValue] = React.useState(
+    const [_hasValue, setHasValue] = React.useState(
       Boolean(props.value || props.defaultValue),
     );
     const [showPassword, setShowPassword] = React.useState(false);

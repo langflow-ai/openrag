@@ -9,7 +9,7 @@ test("@smoke Knowledge filter functionality @33219234", async ({
   chat,
   cleanupDocuments,
 }) => {
-  test.setTimeout(240000); // 4 minutes for this comprehensive test
+  test.setTimeout(360000); // 6 minutes — Jenkins is slower; local took ~8 min total for all 3
 
   const testDocumentPath = path.join(
     __dirname,
@@ -21,10 +21,9 @@ test("@smoke Knowledge filter functionality @33219234", async ({
 
   await navigateToHome(page);
 
-  // Cleanup and setup
-  await knowledge.deleteDocument(testDocumentName);
+  // Cleanup and setup (skipFetch=true: no need for fresh grid data when deleting pre-test leftovers)
+  await knowledge.deleteDocument(testDocumentName, true);
   await knowledge.deleteKnowledgeFilter(filterName);
-  await cleanupDocuments([testDocumentName]);
 
   // Ingest document and create filter
   await knowledge.ingestFile(testDocumentPath);
@@ -82,7 +81,7 @@ test("Knowledge filter deletion verification", async ({
   chat,
   cleanupDocuments,
 }) => {
-  test.setTimeout(180000); // 3 minutes
+  test.setTimeout(300000); // 5 minutes — Jenkins is slower than local
 
   const testDocumentPath = path.join(
     __dirname,
@@ -93,10 +92,9 @@ test("Knowledge filter deletion verification", async ({
 
   await navigateToHome(page);
 
-  // Cleanup and setup
-  await knowledge.deleteDocument(testDocumentName);
+  // Cleanup and setup (skipFetch=true: avoid slow re-ingestion wait during pre-test cleanup)
+  await knowledge.deleteDocument(testDocumentName, true);
   await knowledge.deleteKnowledgeFilter(filterName);
-  await cleanupDocuments([testDocumentName]);
 
   // Ingest document and create filter
   await knowledge.ingestFile(testDocumentPath);
@@ -128,7 +126,7 @@ test("Knowledge filter scope restriction - Negative test", async ({
   chat,
   cleanupDocuments,
 }) => {
-  test.setTimeout(240000);
+  test.setTimeout(300000);
 
   const projectDocPath = path.join(
     __dirname,
@@ -146,11 +144,10 @@ test("Knowledge filter scope restriction - Negative test", async ({
   await navigateToHome(page);
   logger.info(`\n🧪 Testing Knowledge Filter Scope Restriction`);
 
-  // Cleanup
-  await knowledge.deleteDocument(projectDocName);
-  await knowledge.deleteDocument(leavePolicyName);
+  // Cleanup (skipFetch=true: no need for fresh grid data when deleting pre-test leftovers)
+  await knowledge.deleteDocument(projectDocName, true);
+  await knowledge.deleteDocument(leavePolicyName, true);
   await knowledge.deleteKnowledgeFilter(filterName);
-  await cleanupDocuments([projectDocName, leavePolicyName]);
 
   // Ingest both documents
   logger.info(`  📄 Ingesting documents...`);

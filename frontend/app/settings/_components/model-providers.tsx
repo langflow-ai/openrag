@@ -45,7 +45,7 @@ export const ModelProviders = () => {
     if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
       setDialogOpen(searchParam as ModelProvider);
     }
-  }, [searchParams]);
+  }, [searchParams, allProviderKeys.includes]);
 
   // Function to close dialog and remove search param
   const handleCloseDialog = () => {

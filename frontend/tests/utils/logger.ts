@@ -1,7 +1,7 @@
 import path from "path";
 import winston from "winston";
 
-const logDir = "../logs";
+const logDir = "logs";
 
 // Define log format
 const logFormat = winston.format.combine(

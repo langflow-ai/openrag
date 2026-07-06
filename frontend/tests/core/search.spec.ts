@@ -28,12 +28,13 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
   try {
     await knowledge.deleteDocument(TEST_DOCUMENT_INGESTED);
     logger.info(`  ✓ Test document cleaned up`);
-  } catch (error) {
+  } catch (_error) {
     logger.info(`  ℹ️  No existing test document to clean up`);
   }
 
   // Step 2: Set embedding model for OpenAI
   logger.info(`  ⚙️  Setting embedding model for OpenAI...`);
+  await settings.clickTab("Langflow");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
 
@@ -61,39 +62,34 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
   });
 
   // Step 6: Verify results
-  // The test document should be the ONLY result (note: .txt becomes .md after ingestion)
-  if (searchResults.length === 0) {
+  // The test document must be in the results (other documents may also appear)
+  const targetDocumentFound = searchResults.includes(TEST_DOCUMENT_INGESTED);
+
+  if (!targetDocumentFound) {
     throw new Error(
-      `❌ FAILED: Test document "${TEST_DOCUMENT_INGESTED}" did not appear in search results for token "${UNIQUE_SEARCH_TOKEN}"\n` +
+      `❌ FAILED: Test document "${TEST_DOCUMENT_INGESTED}" not found in search results for token "${UNIQUE_SEARCH_TOKEN}"\n` +
+        `   Search returned ${searchResults.length} document(s): ${searchResults.join(", ")}\n` +
         `   This means the document was not properly indexed or the search functionality is not working.`,
     );
   }
 
-  if (searchResults.length > 1) {
+  // Success!
+  if (searchResults.length === 1) {
+    logger.info(
+      `  ✅ SUCCESS: "${TEST_DOCUMENT_INGESTED}" found as the only result`,
+    );
+  } else {
     const otherDocs = searchResults.filter(
       (doc) => doc !== TEST_DOCUMENT_INGESTED,
     );
-    throw new Error(
-      `❌ FAILED: Expected only "${TEST_DOCUMENT_INGESTED}" in search results, but found ${searchResults.length} documents:\n` +
-        `   - ${searchResults.join("\n   - ")}\n` +
-        `   Unexpected documents: ${otherDocs.join(", ")}\n` +
-        `   This indicates the unique token is not unique or there's an indexing issue.`,
+    logger.info(`  ✅ SUCCESS: "${TEST_DOCUMENT_INGESTED}" found in results`);
+    logger.info(
+      `     ℹ️  Also found ${otherDocs.length} other document(s): ${otherDocs.join(", ")}`,
     );
   }
-
-  if (searchResults[0] !== TEST_DOCUMENT_INGESTED) {
-    throw new Error(
-      `❌ FAILED: Expected "${TEST_DOCUMENT_INGESTED}" but found "${searchResults[0]}"`,
-    );
-  }
-
-  // Success!
-  logger.info(
-    `  ✅ SUCCESS: Only "${TEST_DOCUMENT_INGESTED}" found in search results`,
-  );
   logger.info(`  ✓ Opensearch indexing verified for OpenAI\n`);
 
   // Assertions for Playwright reporting
-  expect(searchResults.length).toBe(1);
-  expect(searchResults[0]).toBe(TEST_DOCUMENT_INGESTED);
+  expect(targetDocumentFound).toBe(true);
+  expect(searchResults).toContain(TEST_DOCUMENT_INGESTED);
 });

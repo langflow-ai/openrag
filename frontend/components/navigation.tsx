@@ -294,7 +294,15 @@ export function Navigation({
         handleNewConversation();
       }
     }
-  }, [isOnChatPage, conversations, conversationLoaded]);
+  }, [
+    isOnChatPage,
+    conversations,
+    placeholderConversation,
+    handleNewConversation,
+    isConversationsLoading,
+    loadConversation,
+    currentConversationId,
+  ]);
 
   const newConversationFiles = conversationData?.messages
     .filter(

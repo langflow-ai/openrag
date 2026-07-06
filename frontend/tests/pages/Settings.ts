@@ -2,112 +2,204 @@ import { expect, Page } from "@playwright/test";
 import config from "../config/test.config";
 import logger from "../utils/logger";
 
-export class Settings {
-  constructor(private page: Page) {}
+export type SettingsTab =
+  | "Connectors"
+  | "Providers"
+  | "Langflow"
+  | "Connectors Permission";
 
-  //Getters for elements
-  private configureButton(providerName: string) {
+export class Settings {
+  // Locators - defined at class level for better maintainability
+  private readonly settingsLink = () =>
+    this.page.getByRole("link", { name: "Settings" });
+  private readonly saveIngestSettingsButton = () =>
+    this.page.getByRole("button", { name: /save ingest settings/i });
+  private readonly settingsUpdatedToast = () =>
+    this.page.getByText(/settings updated successfully/i).first();
+  private readonly pictureDescriptionsToggle = () =>
+    this.page.getByRole("switch", { name: /picture descriptions/i });
+  private readonly tableStructureToggle = () =>
+    this.page.getByRole("switch", { name: /table structure/i });
+  private readonly ocrToggle = () =>
+    this.page.getByRole("switch", { name: /^ocr$/i });
+  private readonly chunkSizeInput = () => this.page.getByLabel(/chunk size/i);
+  private readonly chunkOverlapInput = () =>
+    this.page.getByLabel(/chunk overlap/i);
+  private readonly watsonxProjectIDInput = () =>
+    this.page.locator("#project-id");
+  private readonly apiKeyInput = () => this.page.locator("#api-key");
+  private readonly watsonxEndPointCombobox = () =>
+    this.page.getByRole("combobox");
+  private readonly saveModelProviderButton = () =>
+    this.page.getByRole("button", { name: "Save" });
+  private readonly removeModelProviderButton = () =>
+    this.page.getByRole("button", { name: "Remove" });
+  private readonly removeAnywayButton = () =>
+    this.page.getByRole("button", { name: "Remove Anyway" });
+  private readonly watsonxConnectionErrorMessage = () =>
+    this.page.getByText("Connection failed. Check your configuration.");
+
+  /**
+   * Get locator for configure button by provider name
+   * @param providerName - Name of the model provider
+   * @returns Locator for the configure button
+   */
+  private getConfigureButton(providerName: string) {
     return this.page
       .locator("div.rounded-xl, div.border-border.group")
       .filter({ hasText: providerName })
       .getByRole("button", { name: "Configure" });
   }
 
-  private setupHeading(providerName: string) {
+  /**
+   * Get locator for setup heading by provider name
+   * @param providerName - Name of the model provider
+   * @returns Locator for the setup heading
+   */
+  private getSetupHeading(providerName: string) {
     return this.page.getByRole("heading", { name: providerName });
   }
 
-  private get watsonxProjectID() {
-    return this.page.locator("#project-id");
+  /**
+   * Get locator for watsonx option by value
+   * Uses data-testid for precise, strict-mode-safe matching
+   * @param value - The option value (URL string)
+   * @returns Locator for the option
+   */
+  private getWatsonxOption(value: string) {
+    return this.page.getByTestId(`model-option-${value}`);
   }
 
-  private get apiKey() {
-    return this.page.locator("#api-key");
-  }
-
-  private get watsonxEndPoint() {
-    return this.page.getByRole("combobox");
-  }
-
-  private watsonxOption(value: string) {
-    return this.page.locator('[role="option"]', { hasText: value });
-  }
-
-  private get saveModelProvider() {
-    return this.page.getByRole("button", { name: "Save" });
-  }
-
+  /**
+   * Get locator for toast message by text
+   * @param message - The toast message text
+   * @returns Locator for the toast
+   */
   private getToastByText(message: string) {
     return this.page
       .locator("[data-sonner-toast]")
       .locator("[data-title]", { hasText: message });
   }
 
-  private editSetupButton(providerName: string) {
+  /**
+   * Get locator for edit setup button by provider name
+   * @param providerName - Name of the model provider
+   * @returns Locator for the edit setup button
+   */
+  private getEditSetupButton(providerName: string) {
     return this.page
       .locator("div.rounded-xl, div.border-border.group")
       .filter({ hasText: providerName })
       .getByRole("button", { name: "Edit Setup" });
   }
-  private get removeModelProvider() {
-    return this.page.getByRole("button", { name: "Remove" });
-  }
 
-  private get removeConfigButton() {
+  /**
+   * Get locator for remove config button
+   * @returns Locator for the remove button in confirmation dialog
+   */
+  private getRemoveConfigButton() {
     return this.page
       .locator("div", { hasText: "Remove configuration?" })
       .getByRole("button", { name: "Remove" });
   }
 
-  private get watsonxConnectionError() {
-    return this.page.getByText("Connection failed. Check your configuration.");
+  /**
+   * Get locator for model dropdown by section name
+   * @param section - The section name (e.g., "Chat Model", "Embedding Model")
+   * @returns Locator for the dropdown
+   */
+  private getModelDropdown(section: string) {
+    return this.page
+      .getByText(new RegExp(section, "i"))
+      .locator("..")
+      .getByRole("combobox");
+  }
+
+  /**
+   * Get locator for focused search model input
+   * @returns Locator for the search input
+   */
+  private getSearchModelInput() {
+    let search = this.page.locator(
+      'input[placeholder="Search model..."]:focus',
+    );
+    return search;
+  }
+
+  /**
+   * Get locator for search model input (fallback)
+   * @returns Locator for the search input
+   */
+  private getSearchModelInputFallback() {
+    return this.page.locator('input[placeholder="Search model..."]').first();
+  }
+
+  /**
+   * Get locator for model option by name
+   * @param model - The model name
+   * @returns Locator for the option
+   */
+  private getModelOption(model: string) {
+    return this.page.getByRole("option", {
+      name: new RegExp(`^${model}$`),
+    });
+  }
+
+  /**
+   * Get locator for a settings tab by name
+   * @param tabName - The tab name to locate
+   * @returns Locator for the tab button
+   */
+  private getSettingsTab(tabName: SettingsTab) {
+    return this.page.getByRole("tab", { name: tabName });
+  }
+
+  constructor(private page: Page) {}
+
+  /**
+   * Click a Settings page tab
+   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Connectors Permission'
+   */
+  async clickTab(tabName: SettingsTab) {
+    logger.info(`Clicking Settings tab: ${tabName}`);
+    await this.open();
+    const tab = this.getSettingsTab(tabName);
+    await expect(tab).toBeVisible({ timeout: 10000 });
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true", {
+      timeout: 10000,
+    });
+    logger.info(`Settings tab "${tabName}" is now active`);
   }
 
   async open() {
-    // Check if already on settings page and content is visible
+    // If already on the settings page, nothing to do
     if (this.page.url().includes("/settings")) {
-      const modelProviders = this.page.getByText("Model Providers");
-      const isVisible = await modelProviders.isVisible().catch(() => false);
-      if (isVisible) {
-        return; // Already on settings and content is loaded
-      }
+      return;
     }
-
     // Navigate to settings
-    const settingsLink = this.page.getByRole("link", { name: "Settings" });
-    await settingsLink.click();
-
-    // Wait for settings page to load
-    await expect(this.page.getByText("Model Providers")).toBeVisible({
-      timeout: 15000,
-    });
+    const settingsLnk = this.settingsLink();
+    await settingsLnk.click();
+    // Wait for the settings tabs to appear (visible on all settings tabs)
+    await expect(
+      this.page.getByRole("tab", { name: "Connectors", exact: true }),
+    ).toBeVisible({ timeout: 15000 });
   }
 
   async saveIngestSettings() {
-    const saveButton = this.page.getByRole("button", {
-      name: /save ingest settings/i,
-    });
-
+    const saveButton = this.saveIngestSettingsButton();
     await expect(saveButton).toBeVisible();
+    await expect(saveButton).toBeEnabled({ timeout: 10000 });
     await saveButton.click();
-
-    await expect(
-      this.page.getByText(/settings updated successfully/i).first(),
-    ).toBeVisible({ timeout: 120000 });
+    await expect(this.settingsUpdatedToast()).toBeVisible({ timeout: 120000 });
   }
 
   async setPictureDescriptions(enabled: boolean) {
     await this.open();
-
-    const toggle = this.page.getByRole("switch", {
-      name: /picture descriptions/i,
-    });
-
+    const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
-
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
-
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -116,16 +208,10 @@ export class Settings {
 
   async setTableStructure(enabled: boolean) {
     await this.open();
-
-    const toggle = this.page.getByRole("switch", {
-      name: /table structure/i,
-    });
-
+    const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
-
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
-
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -134,16 +220,10 @@ export class Settings {
 
   async setOCR(enabled: boolean) {
     await this.open();
-
-    const toggle = this.page.getByRole("switch", {
-      name: /^ocr$/i,
-    });
-
+    const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
-
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
-
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -152,53 +232,29 @@ export class Settings {
 
   async selectModel(section: string, model: string) {
     await this.open();
-
-    const dropdown = this.page
-      .getByText(new RegExp(section, "i"))
-      .locator("..")
-      .getByRole("combobox");
-
+    const dropdown = this.getModelDropdown(section);
     await dropdown.scrollIntoViewIfNeeded();
-
     const currentText = (await dropdown.textContent())?.toLowerCase() || "";
     if (currentText.includes(model.toLowerCase())) return;
-
     await dropdown.click();
-
-    let search = this.page.locator(
-      'input[placeholder="Search model..."]:focus',
-    );
-
+    let search = this.getSearchModelInput();
     if ((await search.count()) === 0) {
       // fallback safety
-      search = this.page
-        .locator('input[placeholder="Search model..."]')
-        .first();
+      search = this.getSearchModelInputFallback();
     }
-
     await expect(search).toBeVisible({ timeout: 5000 });
-
     await search.fill(model);
-
-    const option = this.page.getByRole("option", {
-      name: new RegExp(`^${model}$`),
-    });
-
+    const option = this.getModelOption(model);
     await expect(option).toBeVisible({ timeout: 10000 });
-
-    //  stabilize before click
     await option.waitFor({ state: "visible" });
-
     await option.click({ timeout: 5000 });
-
-    // immediately wait for dropdown to disappear (key!)
     await option.waitFor({ state: "detached" }).catch(() => {});
-
-    //  wait for UI update (prevents retry issues)
-    await this.page
-      .getByText(/settings updated successfully/i)
-      .first()
+    await this.settingsUpdatedToast()
       .waitFor({ timeout: 20000 })
+      .catch(() => {});
+    // Wait for the app to settle after model change (especially embedding model triggers re-indexing)
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 30000 })
       .catch(() => {});
   }
 
@@ -211,16 +267,40 @@ export class Settings {
     await this.open();
 
     // Find and update chunk size input
-    const chunkSizeInput = this.page.getByLabel(/chunk size/i);
-    await chunkSizeInput.scrollIntoViewIfNeeded();
-    await chunkSizeInput.clear();
-    await chunkSizeInput.fill(chunkSize);
+    const chunkSizeInp = this.chunkSizeInput();
+    await chunkSizeInp.scrollIntoViewIfNeeded();
+
+    // Get current value to check if change is needed
+    const currentChunkSize = await chunkSizeInp.inputValue();
+    const currentChunkOverlap = await this.chunkOverlapInput().inputValue();
+
+    // If values are already set, skip the update
+    if (
+      currentChunkSize === chunkSize &&
+      currentChunkOverlap === chunkOverlap
+    ) {
+      logger.info(
+        `Chunk settings already set to size=${chunkSize}, overlap=${chunkOverlap}. Skipping update.`,
+      );
+      return;
+    }
+
+    // Update chunk size
+    await chunkSizeInp.click();
+    await chunkSizeInp.clear();
+    await chunkSizeInp.pressSequentially(chunkSize, { delay: 50 });
+    await chunkSizeInp.blur();
 
     // Find and update chunk overlap input
-    const chunkOverlapInput = this.page.getByLabel(/chunk overlap/i);
-    await chunkOverlapInput.scrollIntoViewIfNeeded();
-    await chunkOverlapInput.clear();
-    await chunkOverlapInput.fill(chunkOverlap);
+    const chunkOverlapInp = this.chunkOverlapInput();
+    await chunkOverlapInp.scrollIntoViewIfNeeded();
+    await chunkOverlapInp.click();
+    await chunkOverlapInp.clear();
+    await chunkOverlapInp.pressSequentially(chunkOverlap, { delay: 50 });
+    await chunkOverlapInp.blur();
+
+    // Wait a moment for the form to detect changes
+    await this.page.waitForTimeout(1000);
 
     // Save settings
     await this.saveIngestSettings();
@@ -231,32 +311,37 @@ export class Settings {
    */
   async configureWatsonxai() {
     logger.info("Configuring watsonx.ai settings");
-    const configureBtn = this.configureButton("IBM watsonx.ai");
-    const editBtn = this.editSetupButton("IBM watsonx.ai");
-    //If Configure button is visible -> do setup
+    const configureBtn = this.getConfigureButton("IBM watsonx.ai");
+    const editBtn = this.getEditSetupButton("IBM watsonx.ai");
+    // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
-      await expect(this.setupHeading("IBM watsonx.ai")).toBeVisible();
+      await expect(this.getSetupHeading("IBM watsonx.ai")).toBeVisible();
       const { url, projectId, apiKey } = config.watsonx;
-      await this.watsonxEndPoint.click();
-      const option = this.watsonxOption(url);
+      await this.watsonxEndPointCombobox().click();
+      // Wait for the dropdown to open by polling until any option appears
+      await this.page.waitForSelector('[role="option"]', {
+        state: "visible",
+        timeout: 15000,
+      });
+      const option = this.getWatsonxOption(url);
       await expect(option).toBeVisible({ timeout: 10000 });
       await option.click();
-      await this.watsonxProjectID.fill(projectId);
-      await this.apiKey.fill(apiKey);
-      await this.saveModelProvider.click();
+      await this.watsonxProjectIDInput().fill(projectId);
+      await this.apiKeyInput().fill(apiKey);
+      await this.saveModelProviderButton().click();
       logger.info("Watsonx.ai configuration completed");
       await expect(
         this.getToastByText("IBM watsonx.ai successfully configured"),
-      ).toBeVisible({ timeout: 20000 });
+      ).toBeVisible();
       await expect(editBtn).toBeEnabled();
     }
-    //Else if already configured -> skip setup
+    // Else if already configured -> skip setup
     else if (await editBtn.isVisible()) {
       logger.info("Watsonx.ai already configured. Skipping setup.");
       await expect(editBtn).toBeEnabled();
     }
-    //Neither found
+    // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
     }
@@ -266,23 +351,24 @@ export class Settings {
    * Remove model provider configuration
    */
   async removeModelProviderSetup(modelProvider: string) {
-    const editButton = this.editSetupButton(modelProvider);
-    const configureButton = this.configureButton(modelProvider);
-    //If already configured (Edit Setup visible)
+    const editButton = this.getEditSetupButton(modelProvider);
+    const configureButton = this.getConfigureButton(modelProvider);
+    // If already configured (Edit Setup visible)
     if (await editButton.isVisible()) {
       logger.info(`${modelProvider} is configured. Removing setup...`);
       await editButton.click();
-      await this.removeModelProvider.click();
-      await this.removeConfigButton.click();
+      await this.removeModelProviderButton().click();
+      await this.getRemoveConfigButton().click();
+      await this.clickRemoveAnywayIfDisplayed();
       await expect(
         this.getToastByText(`${modelProvider} configuration removed`),
       ).toBeVisible();
     }
-    //If not configured
+    // If not configured
     else if (await configureButton.isVisible()) {
       logger.info(`${modelProvider} is not configured. Skipping removal.`);
     }
-    //Unexpected state
+    // Unexpected state
     else {
       throw new Error(
         `No Configure/Edit Setup button found for ${modelProvider}`,
@@ -291,31 +377,51 @@ export class Settings {
   }
 
   /**
+   * Click the 'Remove Anyway' button if it is displayed.
+   * This button appears when removing a provider that has embedded documents,
+   * as a secondary confirmation to proceed with removal.
+   */
+  async clickRemoveAnywayIfDisplayed() {
+    const btn = this.removeAnywayButton();
+    const isVisible = await btn
+      .waitFor({ state: "visible", timeout: 3000 })
+      .then(() => true)
+      .catch(() => false);
+    if (isVisible) {
+      logger.info("Remove Anyway button is displayed. Clicking it.");
+      await btn.click();
+    } else {
+      logger.info("Remove Anyway button is not displayed. Skipping.");
+    }
+  }
+
+  /**
    * Configure Openai model provider
    */
   async configureOpenAPI() {
     logger.info("Configuring Openai settings");
-    const configureBtn = this.configureButton("OpenAI");
-    const editBtn = this.editSetupButton("OpenAI");
-    //If Configure button is visible -> do setup
+    const configureBtn = this.getConfigureButton("OpenAI");
+    const editBtn = this.getEditSetupButton("OpenAI");
+
+    // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
-      await expect(this.setupHeading("OpenAI")).toBeVisible();
+      await expect(this.getSetupHeading("OpenAI")).toBeVisible();
       const apiKey = config.openaiApiKey;
-      await this.apiKey.fill(apiKey);
-      await this.saveModelProvider.click();
+      await this.apiKeyInput().fill(apiKey);
+      await this.saveModelProviderButton().click();
       logger.info("OpenAI configuration completed");
       await expect(
         this.getToastByText("OpenAI successfully configured"),
       ).toBeVisible();
       await expect(editBtn).toBeEnabled();
     }
-    //Else if already configured -> skip setup
+    // Else if already configured -> skip setup
     else if (await editBtn.isVisible()) {
       logger.info("OpenAI already configured. Skipping setup.");
       await expect(editBtn).toBeEnabled();
     }
-    //Neither found
+    // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
     }
@@ -330,23 +436,27 @@ export class Settings {
     apiKey: string,
   ) {
     logger.info("Configuring watsonx.ai settings with invalid credentials");
-    const configureBtn = this.configureButton("IBM watsonx.ai");
-    const editBtn = this.editSetupButton("IBM watsonx.ai");
-    //If Configure button is visible -> do setup
+    const configureBtn = this.getConfigureButton("IBM watsonx.ai");
+    // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
-      await expect(this.setupHeading("IBM watsonx.ai")).toBeVisible();
-      await this.watsonxEndPoint.click();
-      const option = this.watsonxOption(url);
+      await expect(this.getSetupHeading("IBM watsonx.ai")).toBeVisible();
+      await this.watsonxEndPointCombobox().click();
+      // Wait for the dropdown to open by polling until any option appears
+      await this.page.waitForSelector('[role="option"]', {
+        state: "visible",
+        timeout: 15000,
+      });
+      const option = this.getWatsonxOption(url);
       await expect(option).toBeVisible({ timeout: 10000 });
       await option.click();
-      await this.watsonxProjectID.fill(projectId);
-      await this.apiKey.fill(apiKey);
-      await this.saveModelProvider.click();
+      await this.watsonxProjectIDInput().fill(projectId);
+      await this.apiKeyInput().fill(apiKey);
+      await this.saveModelProviderButton().click();
       logger.info(
         "Verify that watsonx.ai configuration failed due to invalid credentials",
       );
-      await expect(this.watsonxConnectionError).toBeVisible();
+      await expect(this.watsonxConnectionErrorMessage()).toBeVisible();
     }
   }
 }

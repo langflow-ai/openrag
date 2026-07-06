@@ -112,11 +112,6 @@ export function useChatStreaming({
         requestBody.filter_id = filter_id;
       }
 
-      console.log("[useChatStreaming] Sending request:", {
-        filter_id,
-        requestBody,
-      });
-
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {

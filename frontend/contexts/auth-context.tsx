@@ -87,13 +87,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // If we can't reach the backend, keep loading
       if (!response.ok && (response.status === 0 || response.status >= 500)) {
-        console.log("Backend not ready, retrying in 2 seconds...");
         setTimeout(checkAuth, 2000);
         return;
       }
 
       const data = await response.json();
-      console.log("[checkAuth] /api/auth/me response:", data);
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
 
@@ -102,12 +100,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsIbmAuthMode(true);
         setIsNoAuthMode(false);
         setUser(data.authenticated && data.user ? data.user : null);
-        console.log(
-          "[checkAuth] IBM auth mode — authenticated:",
-          data.authenticated,
-          "user:",
-          data.user,
-        );
       } else if (data.no_auth_mode) {
         setIsNoAuthMode(true);
         setIsIbmAuthMode(false);
@@ -123,11 +115,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       setIsLoading(false);
-      console.log("[checkAuth] done — isLoading: false");
     } catch (error) {
       console.error("Auth check failed:", error);
-      // Network error - backend not ready, keep loading and retry
-      console.log("Backend not ready, retrying in 2 seconds...");
       setTimeout(checkAuth, 2000);
     }
   }, []);
@@ -135,20 +124,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = () => {
     // Don't allow login in no-auth mode or IBM auth mode
     if (isNoAuthMode) {
-      console.log("Login attempted in no-auth mode - ignored");
       return;
     }
     if (isIbmAuthMode) {
-      console.log(
-        "Login attempted in IBM auth mode - ignored (auth managed by IBM Watsonx Data)",
-      );
       return;
     }
 
     // Use the correct auth callback URL, not connectors callback
     const redirectUri = `${window.location.origin}/auth/callback`;
-
-    console.log("Starting login with redirect URI:", redirectUri);
 
     fetch("/api/auth/init", {
       method: "POST",
@@ -164,8 +147,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })
       .then((response) => response.json())
       .then((result) => {
-        console.log("Auth init response:", result);
-
         if (result.oauth_config) {
           // Store that this is for app authentication
           localStorage.setItem("auth_purpose", "app_auth");
@@ -173,23 +154,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           localStorage.setItem("connecting_connector_type", "app_auth");
           localStorage.setItem("auth_redirect_to", window.location.pathname);
 
-          console.log("Stored localStorage items:", {
-            auth_purpose: localStorage.getItem("auth_purpose"),
-            connecting_connector_id: localStorage.getItem(
-              "connecting_connector_id",
-            ),
-            connecting_connector_type: localStorage.getItem(
-              "connecting_connector_type",
-            ),
-          });
-
           const state = isIbmAuthMode
             ? encodeBase64(
                 `id=${result.connection_id}&return=${window.location.origin}/auth/callback`,
               )
             : result.connection_id;
-
-          console.log("OAuth state (encoded):", state);
 
           const authUrl =
             `${result.oauth_config.authorization_endpoint}?` +
@@ -200,8 +169,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
             `access_type=offline&` +
             `prompt=${result.oauth_config.prompt ?? "consent"}&` +
             `state=${encodeURIComponent(state)}`;
-
-          console.log("Redirecting to OAuth URL:", authUrl);
           window.location.href = authUrl;
         } else {
           console.error("No oauth_config in response:", result);
@@ -213,23 +180,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const loginWithIbm = async (username: string, password: string) => {
-    console.log("[loginWithIbm] posting to /api/auth/ibm/login");
     const response = await fetch("/api/auth/ibm/login", {
       method: "POST",
       headers: {
         Authorization: "Basic " + btoa(username + ":" + password),
       },
     });
-    console.log(
-      "[loginWithIbm] response status:",
-      response.status,
-      "ok:",
-      response.ok,
-    );
-    console.log(
-      "[loginWithIbm] response cookies after login:",
-      document.cookie,
-    );
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.detail || "Login failed");

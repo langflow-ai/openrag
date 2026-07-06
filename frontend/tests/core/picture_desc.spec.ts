@@ -3,12 +3,22 @@ import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
 
+//This feature is disabled for SaaS
+
 test("Picture Description Configuration @33219221", async ({
   page,
   settings,
   knowledge,
   cleanupDocuments,
 }) => {
+  // Skip test for SaaS environments (only run on OSS/localhost)
+  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
+  const isSaaS = !baseUrl.includes("localhost");
+  test.skip(
+    isSaaS,
+    "Picture description feature is disabled for SaaS environments",
+  );
+
   test.setTimeout(180000);
 
   const testDocuments = ["cat1.pdf", "cat2.pdf"];
@@ -18,6 +28,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Set OpenAI models before starting
   logger.info("\n⚙️  Configuring OpenAI models...");
+  await settings.clickTab("Langflow");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model: ${OPENAI_CONFIG.language}`);
@@ -39,6 +50,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Enable picture descriptions
   logger.info("\n📸 Enabling picture descriptions...");
+  await settings.clickTab("Langflow");
   await settings.setPictureDescriptions(true);
 
   // Ingest first PDF with picture descriptions enabled
@@ -60,6 +72,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Disable picture descriptions
   logger.info("\n📸 Disabling picture descriptions...");
+  await settings.clickTab("Langflow");
   await settings.setPictureDescriptions(false);
 
   // Ingest second PDF with picture descriptions disabled
