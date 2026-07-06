@@ -363,11 +363,33 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     });
 
     it("should delete a document", async () => {
+      // Use a uniquely named file so this test doesn't inherit chunks left in
+      // the index by the two ingest tests above (which share testFilePath /
+      // "sdk_test_doc.md"). Otherwise a zero-successful-files re-ingest here can
+      // still find the earlier document, making delete succeed when the
+      // else-branch expects a no-op — i.e. ingest's reported successful_files
+      // would no longer reflect whether THIS document exists in the index.
+      const deleteDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-del-"));
+      const deleteFilePath = path.join(
+        deleteDir,
+        `sdk_delete_doc_${Date.now()}.md`
+      );
+      fs.writeFileSync(
+        deleteFilePath,
+        "# SDK Delete Test Document\n\n" +
+          "This document tests document deletion via the OpenRAG TypeScript SDK.\n" +
+          "It contains unique content about teal dolphins swimming.\n"
+      );
+
       // First ingest (wait for completion)
-      const ingestResult = await client.documents.ingest({ filePath: testFilePath });
+      const ingestResult = await client.documents.ingest({
+        filePath: deleteFilePath,
+      });
 
       // Then delete
-      const result = await client.documents.delete(path.basename(testFilePath));
+      const result = await client.documents.delete(
+        path.basename(deleteFilePath)
+      );
 
       // If ingestion produced indexed chunks, delete should succeed.
       // In unstable flow environments, ingestion can complete with zero successful files.

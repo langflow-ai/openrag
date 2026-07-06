@@ -96,10 +96,13 @@ dump_logs() {
            -e "s/${pw}/**REDACTED**/g"
   }
 
-  "$container_runtime" logs --tail 10000 langflow 2>&1 | redact > service-logs/langflow.log || echo "${red}Could not get Langflow logs${nc}"
-  "$container_runtime" logs --tail 10000 openrag-backend 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
-  "$container_runtime" logs --tail 10000 openrag-frontend 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
-  "$container_runtime" logs --tail 10000 os 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-langflow" 2>&1 | redact > service-logs/langflow.log || echo "${red}Could not get Langflow logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-frontend" 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-opensearch" 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
+  if [[ -f ~/.openrag/tui/docling-serve.log ]]; then
+    redact < ~/.openrag/tui/docling-serve.log > service-logs/docling.log || echo "${red}Could not get Docling logs${nc}"
+  fi
 }
 
 generate_report() {
