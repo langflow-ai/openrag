@@ -4,6 +4,7 @@ import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  useGetAzureAIFoundryModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -82,6 +83,15 @@ export function IngestSettingsSection() {
           !!settings?.providers?.watsonx?.project_id,
       },
     );
+  const { data: azureModels, isLoading: azureLoading } =
+    useGetAzureAIFoundryModelsQuery(
+      { endpoint: settings?.providers?.azure_ai_foundry?.endpoint, apiKey: "" },
+      {
+        enabled:
+          settings?.providers?.azure_ai_foundry?.configured === true &&
+          !!settings?.providers?.azure_ai_foundry?.endpoint,
+      },
+    );
 
   const groupedEmbeddingModels = useMemo(
     () =>
@@ -107,6 +117,13 @@ export function IngestSettingsSection() {
           models: watsonxModels?.embedding_models || [],
           configured: settings.providers?.watsonx?.configured === true,
         },
+        {
+          group: "Azure AI Foundry",
+          provider: "azure_ai_foundry",
+          icon: getModelLogo("", "azure_ai_foundry"),
+          models: azureModels?.embedding_models || [],
+          configured: settings.providers?.azure_ai_foundry?.configured === true,
+        },
       ]
         .filter((p) => p.configured)
         .map((p) => ({
@@ -118,14 +135,16 @@ export function IngestSettingsSection() {
       openaiModels?.embedding_models,
       ollamaModels?.embedding_models,
       watsonxModels?.embedding_models,
+      azureModels?.embedding_models,
       settings.providers?.openai?.configured,
       settings.providers?.ollama?.configured,
       settings.providers?.watsonx?.configured,
+      settings.providers?.azure_ai_foundry?.configured,
     ],
   );
 
   const isLoadingAnyEmbeddingModels =
-    openaiLoading || ollamaLoading || watsonxLoading;
+    openaiLoading || ollamaLoading || watsonxLoading || azureLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {

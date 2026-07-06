@@ -14,7 +14,9 @@ from services.docling_service import DoclingConfig
 
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: str | None = Field(
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+    )
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
@@ -23,7 +25,9 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
+    embedding_provider: str | None = Field(
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+    )
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
@@ -31,10 +35,13 @@ class SettingsUpdateBody(BaseModel):
     watsonx_endpoint: str | None = Field(None, min_length=1)
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
+    azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
+    azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
     remove_ollama_config: bool | None = None
     remove_openai_config: bool | None = None
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
+    remove_azure_ai_foundry_config: bool | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
@@ -42,9 +49,13 @@ class SettingsUpdateBody(BaseModel):
 
 
 class OnboardingBody(BaseModel):
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: str | None = Field(
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+    )
     llm_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
+    embedding_provider: str | None = Field(
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+    )
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
@@ -52,6 +63,8 @@ class OnboardingBody(BaseModel):
     watsonx_endpoint: str | None = Field(None, min_length=1)
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
+    azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
+    azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
 
 
 class AssistantMessage(BaseModel):
@@ -113,11 +126,18 @@ class OllamaProviderConfig(BaseModel):
     configured: bool
 
 
+class AzureAIFoundryProviderConfig(BaseModel):
+    has_api_key: bool
+    endpoint: str | None
+    configured: bool
+
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
+    azure_ai_foundry: AzureAIFoundryProviderConfig
 
 
 class KnowledgeConfig(BaseModel):

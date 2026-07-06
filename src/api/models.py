@@ -24,6 +24,12 @@ class IBMBody(BaseModel):
     project_id: str | None = None
 
 
+class AzureAIFoundryBody(BaseModel):
+    api_key: str | None = None
+    endpoint: str | None = None
+    deployment_name: str | None = None
+
+
 async def get_openai_models(
     body: OpenAIBody | None = None,
     models_service=Depends(get_models_service),
@@ -164,3 +170,136 @@ async def get_ibm_models(
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
         return JSONResponse({"error": "Failed to retrieve IBM models"}, status_code=500)
+
+
+async def get_azure_ai_foundry_models(
+    body: AzureAIFoundryBody | None = None,
+    models_service=Depends(get_models_service),
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Get available Azure AI Foundry models.
+
+    For MVP, Azure AI Foundry deployment names are user-managed (no catalog API).
+    This endpoint validates credentials with a lightweight call and returns the
+    provided deployment_name as the available model entry.
+    """
+    try:
+        config = get_openrag_config()
+
+        api_key = (body.api_key if body else None) or config.providers.azure_ai_foundry.api_key
+        endpoint = (body.endpoint if body else None) or config.providers.azure_ai_foundry.endpoint
+        deployment_name = body.deployment_name if body else None
+
+        if not api_key:
+            return JSONResponse(
+                {
+                    "error": "Azure AI Foundry API key is required either in request body or in configuration"
+                },
+                status_code=400,
+            )
+        if not endpoint:
+            return JSONResponse(
+                {
+                    "error": "Azure AI Foundry endpoint is required either in request body or in configuration"
+                },
+                status_code=400,
+            )
+
+        # Validate credentials with a lightweight HEAD/GET to the models endpoint
+        import httpx
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    endpoint.rstrip("/"),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=10.0,
+                )
+                # 200 or 404 (no models listed yet) both indicate valid credentials
+                if response.status_code == 401:
+                    return JSONResponse(
+                        {"error": "Invalid API key. Verify the key in Azure AI Foundry portal."},
+                        status_code=400,
+                    )
+                if response.status_code == 403:
+                    return JSONResponse(
+                        {
+                            "error": "Access denied. Verify the API key has the required permissions."
+                        },
+                        status_code=400,
+                    )
+        except httpx.TimeoutException:
+            return JSONResponse(
+                {"error": "Azure AI Foundry endpoint did not respond. Check the endpoint URL."},
+                status_code=400,
+            )
+        except Exception as e:
+            return JSONResponse(
+                {"error": f"Could not connect to Azure AI Foundry endpoint: {str(e)}"},
+                status_code=400,
+            )
+
+        # Try to fetch the deployed model list from the resource endpoint.
+        # Azure AI Foundry resource-level endpoints return an OpenAI-compatible
+        # GET /models response: {"data": [{"id": "<deployment>", ...}, ...]}
+        language_models = []
+        embedding_models = []
+
+        try:
+            async with httpx.AsyncClient() as client:
+                list_response = await client.get(
+                    endpoint.rstrip("/"),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=10.0,
+                )
+                logger.info(f"Azure AI Foundry GET /models status: {list_response.status_code}")
+                logger.debug(f"Azure AI Foundry GET /models body: {list_response.text[:500]}")
+                if list_response.status_code == 200:
+                    data = list_response.json()
+                    entries = data.get("data", [])
+                    for entry in entries:
+                        model_id = entry.get("id", "")
+                        if not model_id:
+                            continue
+                        item = {"value": model_id, "label": model_id}
+                        # Heuristic: names containing "embed" go to embedding; rest to language.
+                        if "embed" in model_id.lower():
+                            embedding_models.append(item)
+                        else:
+                            language_models.append(item)
+                    logger.info(
+                        f"Azure AI Foundry models parsed: {len(language_models)} LLM, {len(embedding_models)} embedding"
+                    )
+        except Exception as e:
+            logger.warning(f"Azure AI Foundry GET /models failed: {e}")
+            pass  # Fall through to config-based fallback below
+
+        # If the dynamic list came back empty, fall back to deployment names in config
+        # only when those config entries actually belong to azure_ai_foundry.
+        if not language_models and not embedding_models:
+            if deployment_name:
+                entry = {"value": deployment_name, "label": deployment_name}
+                language_models.append(entry)
+                embedding_models.append(entry)
+            else:
+                llm_model = config.agent.llm_model
+                embed_model = config.knowledge.embedding_model
+                if config.agent.llm_provider == "azure_ai_foundry" and llm_model:
+                    language_models.append({"value": llm_model, "label": llm_model})
+                if config.knowledge.embedding_provider == "azure_ai_foundry" and embed_model:
+                    embedding_models.append({"value": embed_model, "label": embed_model})
+
+        return JSONResponse(
+            {"language_models": language_models, "embedding_models": embedding_models}
+        )
+    except Exception as e:
+        logger.error(f"Failed to get Azure AI Foundry models: {str(e)}")
+        return JSONResponse(
+            {"error": "Failed to retrieve Azure AI Foundry models"}, status_code=500
+        )

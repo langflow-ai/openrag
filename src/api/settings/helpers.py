@@ -20,15 +20,15 @@ logger = get_logger(__name__)
 
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in ["openai", "anthropic", "watsonx", "ollama", "azure_ai_foundry"]:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
-    for p in ["openai", "watsonx", "ollama"]:
+    """Return the first configured embedding provider that isn't `excluding`, or "" if none."""
+    for p in ["openai", "watsonx", "ollama", "azure_ai_foundry"]:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return ""
