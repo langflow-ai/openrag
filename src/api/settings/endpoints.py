@@ -602,13 +602,13 @@ async def update_settings(
             provider_updated = True
 
         if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
-            working_config.providers.anthropic.api_key = body.anthropic_api_key
+            working_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
             working_config.providers.anthropic.configured = True
             config_updated = True
             provider_updated = True
 
         if body.watsonx_api_key is not None and body.watsonx_api_key.strip():
-            working_config.providers.watsonx.api_key = body.watsonx_api_key
+            working_config.providers.watsonx.api_key = body.watsonx_api_key.strip()
             working_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
