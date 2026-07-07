@@ -297,8 +297,15 @@ export function IngestSettingsSection() {
     });
     fetch("/api/reset-flow/ingest", { method: "POST" })
       .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        return res;
+      })
+      .then(async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          await res.json();
+        }
+        return;
       })
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);

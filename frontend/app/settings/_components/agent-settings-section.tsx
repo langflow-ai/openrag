@@ -239,10 +239,18 @@ export function AgentSettingsSection() {
       elementId: "restore-agent-flow-button",
       namespace: "settings",
     });
+    
     fetch("/api/reset-flow/retrieval", { method: "POST" })
       .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        return res;
+      })
+      .then(async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          await res.json();
+        }
+        return;
       })
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
