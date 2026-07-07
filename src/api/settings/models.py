@@ -7,7 +7,7 @@ they did before. See `src/api/settings/__init__.py` for re-exports.
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from services.docling_service import DoclingConfig
 
@@ -54,10 +54,43 @@ class OnboardingBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
 
 
+class CitationDisplayData(BaseModel):
+    file_path: str | None = None
+    page: int | str | None = None
+    score: float | str | None = None
+
+
+class CitationDisplayResult(BaseModel):
+    data: CitationDisplayData | None = None
+    chunk_id: str | None = None
+    id: str | None = None
+    filename: str | None = None
+    page: int | str | None = None
+    score: float | str | None = None
+
+
+class CitationDisplayResultGroup(BaseModel):
+    results: list[CitationDisplayResult]
+
+
+class OnboardingFunctionCall(BaseModel):
+    name: str
+    status: str
+    result: list[CitationDisplayResultGroup | CitationDisplayResult] | None = None
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def ignore_non_list_result(cls, value: Any) -> Any:
+        if value is None or isinstance(value, list):
+            return value
+        return None
+
+
 class AssistantMessage(BaseModel):
     role: str
     content: str
     timestamp: str
+    functionCalls: list[OnboardingFunctionCall] | None = None
 
 
 class OnboardingStateBody(BaseModel):

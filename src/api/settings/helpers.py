@@ -18,9 +18,20 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Provider names in priority order. LLM supports anthropic; embeddings do not.
+_LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+
+def _configured_provider_names(config, provider_names) -> list:
+    """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
+    providers = config.providers
+    return [name for name in provider_names if getattr(providers, name).configured]
+
+
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in _LLM_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
@@ -28,7 +39,7 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
     """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
-    for p in ["openai", "watsonx", "ollama"]:
+    for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return ""

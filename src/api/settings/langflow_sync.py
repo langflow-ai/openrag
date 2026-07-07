@@ -12,7 +12,12 @@ Lifted verbatim from the original `src/api/settings.py` (lines 46,
 
 import asyncio
 
-from api.settings.helpers import _get_flows_service
+from api.settings.helpers import (
+    _EMBEDDING_PROVIDER_NAMES,
+    _LLM_PROVIDER_NAMES,
+    _configured_provider_names,
+    _get_flows_service,
+)
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from utils.logging_config import get_logger
@@ -191,14 +196,25 @@ async def _update_langflow_model_values(
             )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
+            # 1. Update ALL configured LLM providers.
+            # Regression fix (#1587): the no-argument fallback used by
+            # reapply_all_settings previously only reapplied embedding providers,
+            # leaving LLM model values unset whenever flows were reset.
+            llm_providers = _configured_provider_names(config, _LLM_PROVIDER_NAMES)
+
+            current_llm_provider = config.agent.llm_provider.lower()
+            for provider in llm_providers:
+                # Use configured model for current provider, or None (first available) for others
+                provider_llm_model = (
+                    config.agent.llm_model if provider == current_llm_provider else None
+                )
+                await flows_service.change_langflow_model_value(
+                    provider, llm_model=provider_llm_model, force_llm_update=True
+                )
+                logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
+
             # 2. Update ALL configured embedding providers
-            embedding_providers = []
-            if config.providers.openai.configured:
-                embedding_providers.append("openai")
-            if config.providers.watsonx.configured:
-                embedding_providers.append("watsonx")
-            if config.providers.ollama.configured:
-                embedding_providers.append("ollama")
+            embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
 
             current_embedding_provider = config.knowledge.embedding_provider.lower()
             for provider in embedding_providers:
@@ -222,8 +238,7 @@ async def _update_langflow_model_values(
 async def _update_langflow_system_prompt(config, flows_service):
     """Update system prompt in chat flow"""
     try:
-        llm_provider = config.agent.llm_provider.lower()
-        await flows_service.update_chat_flow_system_prompt(config.agent.system_prompt, llm_provider)
+        await flows_service.update_chat_flow_system_prompt(config.agent.system_prompt)
         logger.info("Successfully updated chat flow system prompt")
     except Exception as e:
         logger.error(f"Failed to update chat flow system prompt: {str(e)}")

@@ -27,6 +27,9 @@ from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
 
+DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
+TEXT_PARSER_LABEL = "Text Parser"
+
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
@@ -437,6 +440,7 @@ class TaskProcessor:
                 file_hash=file_hash,
             )
             slim_doc = process_text_file(file_path)
+            slim_doc["parser"] = TEXT_PARSER_LABEL
         else:
             full_doc = await self.docling_service.convert_file(
                 file_path,
@@ -446,6 +450,7 @@ class TaskProcessor:
                 picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
+            slim_doc["parser"] = DOCLING_PARSER_LABEL
 
         # Override filename with original_filename if provided
         if original_filename:
@@ -588,13 +593,28 @@ class TaskProcessor:
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
         )
+        parser_name = slim_doc.get("parser")
+        if not parser_name:
+            if file_ext in (".txt", ".md"):
+                parser_name = TEXT_PARSER_LABEL
+            else:
+                parser_name = DOCLING_PARSER_LABEL
+
+        chunk_metadata = {"parser": parser_name}
+        if chunk_size is not None:
+            chunk_metadata["chunk_size"] = chunk_size
+        if chunk_overlap is not None:
+            chunk_metadata["chunk_overlap"] = chunk_overlap
+        if connector_file_id:
+            chunk_metadata["connector_file_id"] = connector_file_id
+
         index_chunks = [
             DocumentIndexChunk(
                 chunk_id=f"{file_hash}_{i}",
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
-                metadata={"connector_file_id": connector_file_id} if connector_file_id else {},
+                metadata=chunk_metadata,
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
@@ -740,6 +760,10 @@ class DocumentFileProcessor(TaskProcessor):
                             standard_kwargs[param] = int(raw)
                         except (TypeError, ValueError):
                             pass
+
+            config = get_openrag_config()
+            standard_kwargs["ocr"] = config.knowledge.ocr
+            standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
             # Use consolidated standard processing
             result = await self.process_document_standard(
@@ -1062,6 +1086,15 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
+                    config = get_openrag_config()
+                    effective_ingest_settings = (
+                        dict(self.ingest_settings) if self.ingest_settings else {}
+                    )
+                    effective_ingest_settings["ocr"] = config.knowledge.ocr
+                    effective_ingest_settings["pictureDescriptions"] = (
+                        config.knowledge.picture_descriptions
+                    )
+
                     effective_owner, effective_owner_name, effective_owner_email = (
                         resolve_shared_owner_fields(
                             self.user_id, self.owner_name, self.owner_email, self.shared
@@ -1071,7 +1104,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_tuple=file_tuple,
                         session_id=None,
                         tweaks=tweaks,
-                        settings=self.ingest_settings,
+                        settings=effective_ingest_settings,
                         jwt_token=self.jwt_token,
                         owner=effective_owner,
                         owner_name=effective_owner_name,
@@ -1136,10 +1169,9 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
-                        if "ocr" in s:
-                            standard_kwargs["ocr"] = bool(s["ocr"])
-                        if "pictureDescriptions" in s:
-                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
+                    config = get_openrag_config()
+                    standard_kwargs["ocr"] = config.knowledge.ocr
+                    standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
@@ -1387,6 +1419,13 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
+            # Build settings with fresh OCR/pictureDescriptions from live
+            # config so retries pick up configuration changes.
+            config = get_openrag_config()
+            effective_settings = dict(self.settings) if self.settings else {}
+            effective_settings["ocr"] = config.knowledge.ocr
+            effective_settings["pictureDescriptions"] = config.knowledge.picture_descriptions
+
             # Process file using langflow service. Passing the polling
             # service triggers the two-phase model: backend polls Docling,
             # then invokes Langflow only after SUCCESS. file_task is passed
@@ -1395,7 +1434,7 @@ class LangflowFileProcessor(TaskProcessor):
                 file_tuple=file_tuple,
                 session_id=self.session_id,
                 tweaks=final_tweaks,
-                settings=self.settings,
+                settings=effective_settings,
                 jwt_token=effective_jwt,
                 owner=self.owner_user_id,
                 owner_name=self.owner_name,

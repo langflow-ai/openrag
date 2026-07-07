@@ -39,6 +39,9 @@ class DocumentIndexContext:
     ingest_run_id: str | None = None
     is_sample_data: bool = False
     index_name: str | None = None
+    parser: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
 
 
 @dataclass
@@ -217,6 +220,21 @@ class DocumentIndexWriter:
             "indexed_time": indexed_time,
             "metadata": metadata.get("metadata", {}),
         }
+
+        parser = context.parser or metadata.get("parser")
+        if parser:
+            doc["parser"] = parser
+
+        for field_name in ("chunk_size", "chunk_overlap"):
+            context_value = getattr(context, field_name)
+            value = context_value if context_value is not None else metadata.get(field_name)
+            if value is None:
+                continue
+            try:
+                doc[field_name] = int(value)
+            except (TypeError, ValueError):
+                # Skip assignment if coercion fails to avoid type conflicts
+                pass
 
         if context.owner is not None:
             doc["owner"] = context.owner
