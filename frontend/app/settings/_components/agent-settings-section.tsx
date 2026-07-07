@@ -239,7 +239,7 @@ export function AgentSettingsSection() {
       elementId: "restore-agent-flow-button",
       namespace: "settings",
     });
-    
+
     fetch("/api/reset-flow/retrieval", { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
