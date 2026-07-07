@@ -319,7 +319,9 @@ export function IngestSettingsSection() {
       })
       .catch((err) => {
         console.error("Error restoring ingest flow:", err);
-        toast.error(err.message || "Failed to restore default ingest flow settings");
+        toast.error(
+          err.message || "Failed to restore default ingest flow settings",
+        );
         closeDialog();
       })
       .finally(() => setIsRestoringFlow(false));

@@ -258,7 +258,9 @@ export function AgentSettingsSection() {
       })
       .catch((err) => {
         console.error("Error restoring retrieval flow:", err);
-        toast.error(err.message || "Failed to restore default agent flow settings");
+        toast.error(
+          err.message || "Failed to restore default agent flow settings",
+        );
         closeDialog();
       })
       .finally(() => setIsRestoringFlow(false));
