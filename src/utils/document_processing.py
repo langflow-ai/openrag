@@ -110,7 +110,6 @@ def extract_relevant(doc_dict: dict) -> dict:
         if page_no is None:
             page_no = 1
 
-
         # group cells by their row index
         rows = defaultdict(list)
         table_data = table.get("data")

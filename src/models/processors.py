@@ -268,7 +268,6 @@ class TaskProcessor:
         if chunk_overlap is None:
             chunk_overlap = config.knowledge.chunk_overlap
 
-
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
