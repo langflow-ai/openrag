@@ -19,6 +19,7 @@ import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { trackButton } from "@/lib/analytics";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { formatFileSize } from "@/lib/file-format";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -229,19 +231,23 @@ function SearchPage() {
         ]),
       );
 
-      const mostRecent = [...candidates].sort((a, b) => {
-        const aMs =
-          taskTimestampMsById.get(a.task_id) ??
-          parseTimestampMs(a.updated_at) ??
-          parseTimestampMs(a.created_at) ??
-          0;
-        const bMs =
-          taskTimestampMsById.get(b.task_id) ??
-          parseTimestampMs(b.updated_at) ??
-          parseTimestampMs(b.created_at) ??
-          0;
-        return bMs - aMs;
-      })[0];
+      const mostRecent = candidates.reduce(
+        (best, cur) => {
+          const curMs =
+            taskTimestampMsById.get(cur.task_id) ??
+            parseTimestampMs(cur.updated_at) ??
+            parseTimestampMs(cur.created_at) ??
+            0;
+          if (!best) return cur;
+          const bestMs =
+            taskTimestampMsById.get(best.task_id) ??
+            parseTimestampMs(best.updated_at) ??
+            parseTimestampMs(best.created_at) ??
+            0;
+          return curMs > bestMs ? cur : best;
+        },
+        undefined as (typeof candidates)[0] | undefined,
+      );
 
       return mostRecent?.task_id || null;
     },
@@ -577,7 +583,7 @@ function SearchPage() {
       comparator: (valueA?: number, valueB?: number) =>
         (valueA || 0) - (valueB || 0),
       valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+        params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     },
     {
@@ -938,6 +944,11 @@ function SearchPage() {
               className="rounded-lg flex-shrink-0"
               disabled={refreshOpenragDocsMutation.isPending}
               onClick={async () => {
+                trackButton({
+                  CTA: "Fetch Latest Docs",
+                  elementId: "fetch-latest-docs-button",
+                  namespace: "knowledge",
+                });
                 try {
                   toast.info("Refreshing OpenRAG docs...");
                   const result = await refreshOpenragDocsMutation.mutateAsync();

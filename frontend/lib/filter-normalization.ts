@@ -19,7 +19,7 @@ function normalizeFilterDimension(values?: string[]): string[] {
   return values;
 }
 
-export function normalizeSelectedFilters(
+function normalizeSelectedFilters(
   filters?: FilterInput,
 ): NormalizedSelectedFilters {
   return {

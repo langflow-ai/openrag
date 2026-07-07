@@ -1,11 +1,5 @@
 import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
-import {
-  type ChangeEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
 import {
@@ -30,6 +24,11 @@ export const KnowledgeSearchBar = () => {
   } = useKnowledgeFilter();
 
   const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
+  const [prevQueryOverride, setPrevQueryOverride] = useState(queryOverride);
+  if (queryOverride !== prevQueryOverride) {
+    setPrevQueryOverride(queryOverride);
+    setSearchQueryInput(queryOverride);
+  }
 
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
@@ -43,10 +42,6 @@ export const KnowledgeSearchBar = () => {
     setSearchQueryInput("");
     setQueryOverride("");
   }, [setQueryOverride]);
-
-  useEffect(() => {
-    setSearchQueryInput(queryOverride);
-  }, [queryOverride]);
 
   const syncAllConnectorsMutation = useSyncAllConnectors();
   const syncAllPreviewMutation = useSyncAllConnectorsPreview();

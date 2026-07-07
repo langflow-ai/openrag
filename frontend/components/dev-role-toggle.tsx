@@ -20,10 +20,9 @@ function parseApiError(
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     const msg = detail
-      .map((d) =>
-        typeof d === "object" && d && "msg" in d ? String(d.msg) : "",
+      .flatMap((d) =>
+        typeof d === "object" && d && "msg" in d ? [String(d.msg)] : [],
       )
-      .filter(Boolean)
       .join("; ");
     if (msg) return msg;
   }

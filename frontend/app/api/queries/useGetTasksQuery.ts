@@ -82,21 +82,21 @@ export interface TasksResponse {
 
 export const TASKS_QUERY_KEY = ["tasks", "enhanced"] as const;
 
+async function getTasks(): Promise<Task[]> {
+  const response = await fetch("/api/tasks/enhanced");
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch tasks");
+  }
+
+  const data: TasksResponse = await response.json();
+  return data.tasks || [];
+}
+
 export const useGetTasksQuery = (
   options?: Omit<UseQueryOptions<Task[]>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-
-  async function getTasks(): Promise<Task[]> {
-    const response = await fetch("/api/tasks/enhanced");
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch tasks");
-    }
-
-    const data: TasksResponse = await response.json();
-    return data.tasks || [];
-  }
 
   return useQuery(
     {

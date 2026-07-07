@@ -80,6 +80,8 @@ const syncConnector = async ({
     /** When true (OSS only), ingest in preview mode so the layout/visual
      * parser preview is cached per file. */
     preview?: boolean;
+    /** When true (COS only), index without an owner so all users in the instance can retrieve the document. */
+    shared?: boolean;
   };
 }): Promise<SyncResponse> => {
   const response = await fetch(`/api/connectors/${connectorType}/sync`, {
@@ -157,8 +159,24 @@ const syncAllConnectorsPreview = async (): Promise<SyncAllPreviewResponse> => {
   return response.json();
 };
 
-export const useSyncConnectorPreview = () =>
-  useMutation({ mutationFn: syncConnectorPreview });
+export const useSyncConnectorPreview = () => {
+  const queryClient = useQueryClient();
 
-export const useSyncAllConnectorsPreview = () =>
-  useMutation({ mutationFn: syncAllConnectorsPreview });
+  return useMutation({
+    mutationFn: syncConnectorPreview,
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
+    },
+  });
+};
+
+export const useSyncAllConnectorsPreview = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: syncAllConnectorsPreview,
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
+    },
+  });
+};

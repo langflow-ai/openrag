@@ -108,11 +108,13 @@ def extract_relevant(doc_dict: dict) -> dict:
 
         # group cells by their row index
         rows = defaultdict(list)
-        for cell in table.get("data").get("table_cells", []):
-            r = cell.get("start_row_offset_idx")
-            c = cell.get("start_col_offset_idx")
-            text = cell.get("text", "").strip()
-            rows[r].append((c, text))
+        table_data = table.get("data")
+        if table_data:
+            for cell in table_data.get("table_cells", []):
+                r = cell.get("start_row_offset_idx")
+                c = cell.get("start_col_offset_idx")
+                text = cell.get("text", "").strip()
+                rows[r].append((c, text))
 
         # build a tab‑separated line for each row, in order
         flat_rows = []
@@ -174,3 +176,45 @@ def resplit_chunks_character_windows(
                 break
             start += stride
     return out
+
+
+def split_chunks_by_max_tokens(
+    chunks: list[dict], max_tokens: int, model: str | None = None
+) -> list[dict]:
+    """Split any chunks whose token count exceeds max_tokens.
+
+    Ensures that when chunk texts are sent to the embedding model, they don't get
+    further split by token limits in the batching helper, allowing the final
+    embeddings and chunks to align 1-to-1.
+    """
+    import tiktoken
+
+    from config.settings import get_embedding_model
+
+    model = model or get_embedding_model()
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    new_chunks = []
+    for chunk in chunks:
+        text = chunk.get("text", "")
+        if not text:
+            new_chunks.append(chunk)
+            continue
+
+        tokens = encoding.encode(text)
+        if len(tokens) <= max_tokens:
+            new_chunks.append(chunk)
+            continue
+
+        # Split tokens into segments of at most max_tokens size
+        for i in range(0, len(tokens), max_tokens):
+            chunk_tokens = tokens[i : i + max_tokens]
+            chunk_text = encoding.decode(chunk_tokens)
+            new_chunk = dict(chunk)
+            new_chunk["text"] = chunk_text
+            new_chunks.append(new_chunk)
+
+    return new_chunks

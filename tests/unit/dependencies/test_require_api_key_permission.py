@@ -15,6 +15,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -26,6 +27,7 @@ if str(SRC) not in sys.path:
 import db.models  # noqa: E402,F401
 from api.v1.documents import delete_document_endpoint  # noqa: E402
 from api.v1.knowledge_filters import search_endpoint as kf_search_endpoint  # noqa: E402
+from db.models import Permission, Role, RolePermission  # noqa: E402
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
@@ -33,11 +35,16 @@ from dependencies import (  # noqa: E402
     get_knowledge_filter_service,
     get_rbac_service,
     get_session_manager,
+    require_api_key_any_permission,
     require_api_key_permission,
 )
 from services.rbac_service import RBACService  # noqa: E402
 from services.user_service import ensure_user_row  # noqa: E402
 from session_manager import User  # noqa: E402
+
+require_api_key_delete_permission = require_api_key_any_permission(
+    ("knowledge:delete:anonymous", "users:delete")
+)
 
 
 @pytest_asyncio.fixture
@@ -78,6 +85,40 @@ async def app(monkeypatch):
         personas["norole"] = User(
             user_id=norole_row.id, email="norole@x", name="norole", provider="ibm_ams"
         )
+
+        delete_any_row = await ensure_user_row(
+            s,
+            User(
+                user_id="delete-any-sub",
+                email="delete-any@x",
+                name="delete-any",
+                provider="ibm_ams",
+            ),
+        )
+        await role_repo.revoke_role(delete_any_row.id, user_role.id)
+        delete_any_role = Role(
+            id="role-api-delete-any-only",
+            name="api-delete-any-only",
+            description="Legacy unrestricted delete permission only",
+        )
+        s.add(delete_any_role)
+        await s.flush()
+        delete_any_permission = (
+            await s.execute(select(Permission).where(Permission.name == "knowledge:delete:any"))
+        ).scalar_one()
+        s.add(
+            RolePermission(
+                role_id=delete_any_role.id,
+                permission_id=delete_any_permission.id,
+            )
+        )
+        await role_repo.assign_role(delete_any_row.id, delete_any_role.id)
+        personas["delete_any"] = User(
+            user_id=delete_any_row.id,
+            email="delete-any@x",
+            name="delete-any",
+            provider="ibm_ams",
+        )
         await s.commit()
 
     rbac = RBACService(SessionLocal)
@@ -104,6 +145,10 @@ async def app(monkeypatch):
     async def _probe_kf_read(user=Depends(require_api_key_permission("kf:read"))):
         return {"user_id": user.user_id}
 
+    @fastapi_app.get("/probe/delete-document")
+    async def _probe_delete_document(user=Depends(require_api_key_delete_permission)):
+        return {"user_id": user.user_id}
+
     # A real gated /v1 handler. The gate runs as a dependency *before* the
     # handler body, so a denied request never reaches the delete core (no
     # service overrides needed for the 403 path).
@@ -127,6 +172,15 @@ async def test_kill_switch_off_bypasses(app, monkeypatch):
     async with _client(fastapi_app) as c:
         # 'user' lacks users:delete, but the kill switch lets it through
         r = await c.get("/probe/users-delete", headers={"X-Test-Persona": "user"})
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_kill_switch_off_bypasses_api_key_any_permission(app, monkeypatch):
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    fastapi_app, _ = app
+    async with _client(fastapi_app) as c:
+        r = await c.get("/probe/delete-document", headers={"X-Test-Persona": "user"})
     assert r.status_code == 200
 
 
@@ -188,9 +242,7 @@ async def test_real_v1_kf_search_gated_on_kf_read(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_real_v1_delete_blocks_viewer(app, monkeypatch):
-    """End-to-end wiring: DELETE /v1/documents is gated on knowledge:delete:own.
-    A viewer lacks it, so the real handler returns 403 from the gate before the
-    body runs."""
+    """The v1 delete endpoint accepts own or anonymous scope and rejects a viewer."""
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
@@ -201,4 +253,25 @@ async def test_real_v1_delete_blocks_viewer(app, monkeypatch):
             headers={"X-Test-Persona": "viewer"},
         )
     assert r.status_code == 403
-    assert r.json()["detail"]["required"] == "knowledge:delete:own"
+    assert r.json()["detail"]["required"] == [
+        "knowledge:delete:own",
+        "knowledge:delete:anonymous",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_real_v1_delete_blocks_delete_any_only_role(app, monkeypatch):
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    fastapi_app, _ = app
+    async with _client(fastapi_app) as c:
+        r = await c.request(
+            "DELETE",
+            "/v1/documents",
+            json={"filename": "x.txt"},
+            headers={"X-Test-Persona": "delete_any"},
+        )
+    assert r.status_code == 403
+    assert r.json()["detail"]["required"] == [
+        "knowledge:delete:own",
+        "knowledge:delete:anonymous",
+    ]

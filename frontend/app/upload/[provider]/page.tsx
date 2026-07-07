@@ -24,6 +24,12 @@ import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 
+interface ConnectorDuplicateCheckResponse {
+  duplicate_names?: string[];
+  duplicate_count?: number;
+  non_duplicate_files?: CloudFile[];
+}
+
 // CloudFile interface is now imported from the unified cloud picker
 
 export default function UploadProviderPage() {
@@ -73,6 +79,7 @@ export default function UploadProviderPage() {
     allFiles: CloudFile[];
     nonDuplicateFiles: CloudFile[];
     duplicateNames: string[];
+    duplicateCount: number;
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -203,24 +210,27 @@ export default function UploadProviderPage() {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData = await checkResponse.json();
+      const checkData =
+        (await checkResponse.json()) as ConnectorDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
-      const totalFiles = checkData.total_files || 0;
+      const duplicateCount =
+        typeof checkData.duplicate_count === "number"
+          ? checkData.duplicate_count
+          : duplicateNames.length;
 
-      if (duplicateNames.length === 0) {
+      if (duplicateCount === 0) {
         submitSync(connector, selectedFiles, false);
         return;
       }
 
-      // If all files are duplicates, we set nonDuplicateFiles to empty so it toasts "Nothing was synced" on skip
-      const isAllDuplicate = duplicateNames.length === totalFiles;
-      const nonDuplicateFiles = isAllDuplicate ? [] : selectedFiles;
+      const nonDuplicateFiles = checkData.non_duplicate_files || [];
 
       setPendingSync({
         connector,
         allFiles: selectedFiles,
         nonDuplicateFiles,
         duplicateNames,
+        duplicateCount,
       });
       setDuplicateDialogOpen(true);
     } catch (err) {
@@ -248,12 +258,12 @@ export default function UploadProviderPage() {
         // "skip duplicates" branch.
         isOverwriteConfirmedRef.current = false;
       } else {
-        const { connector, nonDuplicateFiles, duplicateNames } = pendingSync;
+        const { connector, nonDuplicateFiles, duplicateCount } = pendingSync;
         if (nonDuplicateFiles.length > 0) {
           submitSync(connector, nonDuplicateFiles, false);
         } else {
           toast.info(
-            `All ${duplicateNames.length} selected file(s) already exist. Nothing was synced.`,
+            `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
           );
         }
       }
@@ -462,6 +472,7 @@ export default function UploadProviderPage() {
         onOverwrite={handleOverwriteDuplicates}
         isLoading={isIngesting}
         duplicateNames={pendingSync?.duplicateNames}
+        duplicateCount={pendingSync?.duplicateCount}
       />
 
       <IngestPreviewDialog

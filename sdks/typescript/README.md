@@ -76,7 +76,8 @@ for await (const event of await client.chat.create({
     process.stdout.write(event.delta);
   } else if (event.type === "sources") {
     for (const source of event.sources) {
-      console.log(`\nSource: ${source.filename}`);
+      const pageInfo = source.page ? ` (page ${source.page})` : "";
+      console.log(`\nSource: ${source.filename}${pageInfo}`);
     }
   } else if (event.type === "done") {
     chatId = event.chatId;

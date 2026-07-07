@@ -39,6 +39,9 @@ class DocumentIndexContext:
     ingest_run_id: str | None = None
     is_sample_data: bool = False
     index_name: str | None = None
+    parser: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
 
 
 @dataclass
@@ -208,7 +211,6 @@ class DocumentIndexWriter:
             else metadata.get("file_size"),
             "connector_type": context.connector_type or metadata.get("connector_type") or "local",
             "source_url": context.source_url or metadata.get("source_url") or "",
-            "owner": context.owner,
             "allowed_users": list(context.allowed_users),
             "allowed_groups": list(context.allowed_groups),
             "allowed_principals": unique_acl_principals(context.allowed_principals),
@@ -219,6 +221,23 @@ class DocumentIndexWriter:
             "metadata": metadata.get("metadata", {}),
         }
 
+        parser = context.parser or metadata.get("parser")
+        if parser:
+            doc["parser"] = parser
+
+        for field_name in ("chunk_size", "chunk_overlap"):
+            context_value = getattr(context, field_name)
+            value = context_value if context_value is not None else metadata.get(field_name)
+            if value is None:
+                continue
+            try:
+                doc[field_name] = int(value)
+            except (TypeError, ValueError):
+                # Skip assignment if coercion fails to avoid type conflicts
+                pass
+
+        if context.owner is not None:
+            doc["owner"] = context.owner
         if context.owner_name is not None:
             doc["owner_name"] = context.owner_name
         if context.owner_email is not None:

@@ -107,14 +107,14 @@ export function buildRowStatusLabel(failedStep: TaskPipelineStepId): string {
   return `${PIPELINE_STEP_LABELS[failedStep]} issue`;
 }
 
-export function buildFailureSummary(failedStep: TaskPipelineStepId): string {
+function buildFailureSummary(failedStep: TaskPipelineStepId): string {
   if (failedStep === "cancelled") {
     return "Cancelled";
   }
   return `Failed at ${PIPELINE_STEP_LABELS[failedStep].toLowerCase()}`;
 }
 
-export function buildPipelineStepsFromFailurePhase(
+function buildPipelineStepsFromFailurePhase(
   failurePhase: TaskPipelineStepId,
 ): IngestionPipelineStep[] {
   if (

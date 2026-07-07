@@ -33,8 +33,8 @@ OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 
 # Optional: Langflow-specific OpenSearch endpoint
-LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST", OPENSEARCH_HOST)
-LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT", OPENSEARCH_PORT)
+LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
+LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
@@ -42,7 +42,7 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 # Gate the OpenSearch node-count readiness check ("OS node_count" flag).
 # Enabled by default; set to false on small/single-node clusters.
 OPENSEARCH_NODE_COUNT_CHECK_ENABLED = os.getenv(
-    "OPENSEARCH_NODE_COUNT_CHECK", "true"
+    "OPENSEARCH_NODE_COUNT_CHECK_ENABLED", "true"
 ).strip().lower() in ("true", "1", "yes")
 
 # Expected cluster size, used only when the node-count check is enabled.
@@ -75,7 +75,8 @@ def get_opensearch_password() -> str | None:
 
 
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
-LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
+LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
+LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
@@ -85,9 +86,10 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
-    "http://openrag-backend:8000",
+    f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
 
 # --- Backend ingestion-callback proxy router ------------------------------
@@ -244,6 +246,30 @@ def is_dev_role_toggle_enabled() -> bool:
 def is_dev_connector_policy_enabled() -> bool:
     """Local OSS dev: enforce workspace connector policy (pair with IBM theme dev UI)."""
     raw = os.getenv("OPENRAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_azure_blob_enabled() -> bool:
+    """Local dev: enable Azure Blob connector without IBM_AUTH_ENABLED.
+
+    Allows testing the Azure Blob connector (e.g. against Azurite) in a local
+    environment where IBM auth is not configured. Never enable in production.
+    Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_azure_blob_enabled() -> bool:
+    """Feature kill switch for the Azure Blob connector (default: enabled).
+
+    Independent of ``IBM_AUTH_ENABLED``. Set ``OPENRAG_AZURE_BLOB_ENABLED=false``
+    to force-hide the connector in the UI even when IBM auth is on. When true
+    (the default), availability still requires the Enterprise/SaaS gate
+    (``IBM_AUTH_ENABLED``) or the ``OPENRAG_DEV_AZURE_BLOB`` dev bypass -- this
+    flag is subtractive (AND-ed with that gate), not an override.
+    """
+    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -1241,6 +1267,17 @@ class AppClients:
             # Merge headers properly - passed headers take precedence over defaults
             default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
             headers = {**default_headers, **passed_headers}
+
+            # HTTP headers must be ASCII; non-ASCII free-text globals (e.g. a
+            # filename or owner name like こんにちは.pdf / José) would otherwise
+            # raise UnicodeEncodeError in httpx. Percent-encode such values so
+            # the request can be sent. ASCII values pass through unchanged.
+            from utils.langflow_headers import ascii_safe_header_value
+
+            headers = {
+                k: ascii_safe_header_value(v) if isinstance(v, str) else v
+                for k, v in headers.items()
+            }
 
             # Remove Content-Type if explicitly set to None (for file uploads)
             if headers.get("Content-Type") is None:
