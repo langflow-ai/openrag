@@ -9,7 +9,14 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   type Task,
   type TaskFileEntry,
@@ -712,10 +719,11 @@ export function IngestPreviewPanel({
     filePath,
   );
   const [highlightItems, setHighlightItems] = useState<string | undefined>();
-
-  useEffect(() => {
+  const [prevTaskId, setPrevTaskId] = useState(activeTaskId);
+  if (activeTaskId !== prevTaskId) {
+    setPrevTaskId(activeTaskId);
     setHighlightItems(undefined);
-  }, [taskId]);
+  }
 
   // The layout cache is ephemeral (~30 min TTL). If Docling already finished
   // (phase past docling) but no document comes back, the live preview expired.
@@ -983,9 +991,10 @@ function carouselFilesFromTasks(
     return [];
   }
   const idSet = new Set(taskIds);
+  const tasksById = new Map(tasks.map((task) => [task.task_id, task]));
   const files: CarouselFile[] = [];
   for (const id of taskIds) {
-    const task = tasks.find((t) => t.task_id === id);
+    const task = tasksById.get(id);
     if (!task?.files || !idSet.has(task.task_id)) {
       continue;
     }
@@ -1020,6 +1029,7 @@ function PreviewFileSelector({
   onSelect: (index: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const listboxId = useId();
   const active = files[activeIndex];
 
   return (
@@ -1031,6 +1041,7 @@ function PreviewFileSelector({
           size="sm"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
           className="min-w-0 flex-1 justify-between gap-2"
           data-testid="ingest-preview-file-selector"
         >
@@ -1046,7 +1057,7 @@ function PreviewFileSelector({
       >
         <Command>
           <CommandInput placeholder="Search files…" />
-          <CommandList>
+          <CommandList id={listboxId}>
             <CommandEmpty>No files found.</CommandEmpty>
             <CommandGroup>
               {files.map((file, index) => {

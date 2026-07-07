@@ -510,33 +510,42 @@ export function KnowledgeDropdown() {
       `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
     );
 
-    const collectedTaskIds: string[] = [];
-    for (const batch of batches) {
-      try {
-        const result = await uploadFiles(batch, replace, ingestPreviewEnabled);
-        if (ingestPreviewEnabled) {
-          collectedTaskIds.push(result.taskId);
-          setPreviewTaskIds([...collectedTaskIds]);
-          // Surface the new batch task in the carousel without waiting for the
-          // whole folder to finish uploading.
-          refetchTasks();
-        } else {
-          addTask(result.taskId, { source: "folder" });
+    const taskIdsByBatch: (string | undefined)[] = [];
+    await Promise.all(
+      batches.map(async (batch, batchIndex) => {
+        try {
+          const result = await uploadFiles(
+            batch,
+            replace,
+            ingestPreviewEnabled,
+          );
+          if (ingestPreviewEnabled) {
+            taskIdsByBatch[batchIndex] = result.taskId;
+            setPreviewTaskIds(
+              taskIdsByBatch.filter((id): id is string => id !== undefined),
+            );
+            // Surface each batch task in the carousel as it finishes.
+            refetchTasks();
+          } else {
+            addTask(result.taskId, { source: "folder" });
+          }
+        } catch (error) {
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            source: "folder",
+            resultValue:
+              error instanceof Error ? error.message : "Unknown error",
+          });
+          console.error("[Folder Upload] Batch upload failed:", error);
+          toast.error("Batch upload failed", {
+            description:
+              error instanceof Error ? error.message : "Unknown error",
+          });
         }
-      } catch (error) {
-        trackProcessFailure({
-          processType: "Ingestion",
-          process: "Document Upload",
-          category: "Knowledge",
-          source: "folder",
-          resultValue: error instanceof Error ? error.message : "Unknown error",
-        });
-        console.error("[Folder Upload] Batch upload failed:", error);
-        toast.error("Batch upload failed", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
+      }),
+    );
 
     refetchTasks();
   };
@@ -980,8 +989,6 @@ export function KnowledgeDropdown() {
         type="file"
         // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
         webkitdirectory=""
-        // @ts-ignore
-        directory=""
         multiple
         onChange={handleFolderSelect}
         className="hidden"
