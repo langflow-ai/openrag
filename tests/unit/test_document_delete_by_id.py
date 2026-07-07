@@ -95,6 +95,136 @@ async def test_delete_documents_by_filename_denies_visible_non_owner(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_delete_documents_by_filename_deletes_ownerless_with_anonymous_permission(
+    monkeypatch,
+):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        visible_hits=[{"_id": "shared-chunk", "_source": {}}],
+    )
+    backend_opensearch_client = FakeOpenSearchClient(
+        owned_hits=[
+            {"_id": "shared-chunk-1", "_source": {}},
+            {"_id": "shared-chunk-2", "_source": {}},
+        ]
+    )
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="shared.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+        can_delete_own=False,
+        can_delete_anonymous=True,
+    )
+
+    assert status_code == 200
+    assert payload["success"] is True
+    assert payload["deleted_chunks"] == 2
+    assert opensearch_client.search_calls == []
+    assert backend_opensearch_client.search_calls[0]["body"]["query"] == {
+        "bool": {
+            "filter": [
+                {"term": {"filename": "shared.pdf"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ]
+        }
+    }
+    assert backend_opensearch_client.delete_calls == [
+        {"index": "documents", "id": "shared-chunk-1", "refresh": True},
+        {"index": "documents", "id": "shared-chunk-2", "refresh": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_combines_owned_and_anonymous_scopes(monkeypatch):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient()
+    backend_opensearch_client = FakeOpenSearchClient(
+        owned_hits=[
+            {"_id": "owned-chunk", "_source": {"owner": "user-1"}},
+            {"_id": "anonymous-chunk", "_source": {}},
+        ]
+    )
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="shared.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+        can_delete_own=True,
+        can_delete_anonymous=True,
+    )
+
+    assert status_code == 200
+    assert payload["deleted_chunks"] == 2
+    assert backend_opensearch_client.search_calls[0]["body"]["query"] == {
+        "bool": {
+            "filter": [
+                {"term": {"filename": "shared.pdf"}},
+                {
+                    "bool": {
+                        "should": [
+                            {"term": {"owner": "user-1"}},
+                            {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
+                },
+            ]
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_denies_ownerless_without_anonymous_permission(
+    monkeypatch,
+):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[],
+        visible_hits=[{"_id": "shared-chunk", "_source": {}}],
+    )
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="shared.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+        can_delete_own=True,
+        can_delete_anonymous=False,
+    )
+
+    assert status_code == 403
+    assert payload["success"] is False
+    assert payload["deleted_chunks"] == 0
+    assert "only the document owner" in payload["error"]
+    assert opensearch_client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_denies_when_no_delete_scope(monkeypatch):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient()
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="shared.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+        can_delete_own=False,
+        can_delete_anonymous=False,
+    )
+
+    assert status_code == 403
+    assert payload["success"] is False
+    assert "insufficient permissions" in payload["error"]
+    assert opensearch_client.search_calls == []
+
+
+@pytest.mark.asyncio
 async def test_delete_documents_by_filename_returns_404_when_missing(monkeypatch):
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     opensearch_client = FakeOpenSearchClient(owned_hits=[], visible_hits=[])

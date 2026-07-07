@@ -109,10 +109,20 @@ async def app(monkeypatch):
 
     # Mount a minimal endpoint behind a real require_permission gate so the
     # kill switch can be exercised without depending on any specific router.
-    from dependencies import require_permission
+    from dependencies import require_any_permission, require_permission
+
+    require_anonymous_delete_permission = require_any_permission(
+        ("knowledge:delete:anonymous", "users:delete")
+    )
 
     @fastapi_app.get("/admin/users")
     async def _gated(_=Depends(require_permission("users:list"))):
+        return []
+
+    @fastapi_app.delete("/anonymous-documents")
+    async def _any_gated(
+        _=Depends(require_anonymous_delete_permission),
+    ):
         return []
 
     yield fastapi_app, SessionLocal, rbac, personas
@@ -136,6 +146,20 @@ async def test_kill_switch_bypasses_require_permission(app, monkeypatch):
         # Kill switch off (default): passes
         monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
         r = await c.get("/admin/users", headers={"X-Test-Persona": "user"})
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_kill_switch_bypasses_require_any_permission(app, monkeypatch):
+    fastapi_app, _, _, _ = app
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+        r = await c.delete("/anonymous-documents", headers={"X-Test-Persona": "user"})
+        assert r.status_code == 403
+
+        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+        r = await c.delete("/anonymous-documents", headers={"X-Test-Persona": "user"})
         assert r.status_code == 200
 
 

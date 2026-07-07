@@ -14,7 +14,10 @@ interface RequiredSegmentStaticProperties {
   environment: string;
   productCode: string;
   productCodeType: string;
+  productPlanName: string;
   productTitle: string;
+  category: string;
+  accountPlan: string;
 }
 
 // These properties are required by IBM Segment event schema for all events or they will be blocked
@@ -25,7 +28,10 @@ export const getRequiredStaticProperties =
     environment: _environment,
     productCode: "WW1544",
     productCodeType: "WWPC",
-    productTitle: "OpenRAG",
+    productPlanName: "enterprise-mcsp",
+    productTitle: "IBM watsonx.data as a Service",
+    accountPlan: "PAYG",
+    category: "OpenRAG wxd",
   });
 
 export const page = (
@@ -39,10 +45,7 @@ export const page = (
   });
 };
 
-export const track = (
-  eventName: string,
-  properties: Record<string, unknown> = {},
-) => {
+const track = (eventName: string, properties: Record<string, unknown> = {}) => {
   if (!analytics) return;
   try {
     analytics.track(eventName, {
@@ -70,6 +73,16 @@ export const trackButton = <T = Record<string, unknown>>({
 }: T & ButtonEventParams): void =>
   track("Button Clicked", { action, ...rest } as Record<string, unknown>);
 
+interface StartProcessParams {
+  processType: string;
+  process?: string;
+  category?: string;
+}
+
+export const trackStartProcess = <T = Record<string, unknown>>(
+  props: T & StartProcessParams,
+): void => track("Started Process", props as Record<string, unknown>);
+
 interface EndProcessParams {
   processType: string;
   process?: string;
@@ -78,7 +91,7 @@ interface EndProcessParams {
   category?: string;
 }
 
-export const trackEndProcess = <T = Record<string, unknown>>(
+const trackEndProcess = <T = Record<string, unknown>>(
   props: T & EndProcessParams,
 ): void => track("Ended Process", props as Record<string, unknown>);
 

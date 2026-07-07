@@ -6,9 +6,10 @@ export async function fetchFromBackend(
 ): Promise<Response> {
   const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
   const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
+  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
   const baseUrl = backendSSL
-    ? `https://${backendHost}:8000`
-    : `http://${backendHost}:8000`;
+    ? `https://${backendHost}:${backendPort}`
+    : `http://${backendHost}:${backendPort}`;
 
   const cookieStore = await cookies();
   const incoming = await headers();

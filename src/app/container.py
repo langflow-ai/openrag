@@ -12,6 +12,7 @@ from config.settings import (
     config_manager,
     get_embedding_model,
     get_index_name,
+    is_dev_azure_blob_enabled,
     is_no_auth_mode,
 )
 from connectors.service import ConnectorService
@@ -38,6 +39,19 @@ from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+def _should_load_persisted_connections() -> bool:
+    """Whether to load persisted connector connections at startup.
+
+    Normally skipped in no-auth mode because OAuth connectors are unusable
+    there — but dev bucket connectors (e.g. Azure Blob via
+    OPENRAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
+    connections. Without loading them, a saved connection silently disappears
+    on restart (the in-memory dict empties), leaving the UI stuck on "Connect".
+    OR in those dev flags so their connections survive a restart.
+    """
+    return not is_no_auth_mode() or is_dev_azure_blob_enabled()
 
 
 async def initialize_services():
@@ -131,9 +145,9 @@ async def initialize_services():
     )
 
     # Load persisted connector connections at startup so webhooks and syncs
-    # can resolve existing subscriptions immediately after server boot
-    # Skip in no-auth mode since connectors require OAuth
-    if not is_no_auth_mode():
+    # can resolve existing subscriptions immediately after server boot.
+    # (See _should_load_persisted_connections for the no-auth/dev-bucket nuance.)
+    if _should_load_persisted_connections():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)

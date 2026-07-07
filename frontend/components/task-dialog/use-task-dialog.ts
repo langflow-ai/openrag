@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   type RetryTaskResponse,
@@ -110,11 +110,13 @@ export function useTaskDialog(open: boolean, taskId: string) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
   const [nameSort, setNameSort] = useState<TaskFileNameSort>("asc");
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (!open) {
       setSelectedPaths(new Set());
     }
-  }, [open]);
+  }
 
   const fileEntries = useMemo(
     () => (task ? getTaskFileEntries(task) : []),
@@ -140,16 +142,13 @@ export function useTaskDialog(open: boolean, taskId: string) {
     return countTaskFileEntriesByCategory(scopedEntries);
   }, [task, fileEntries, search, activeFileType]);
 
-  useEffect(() => {
-    if (
-      !categoryCounts ||
-      statusCategory === ALL_TASK_STATUS_CATEGORIES ||
-      (categoryCounts[statusCategory as TaskFileStatusCategory] ?? 0) > 0
-    ) {
-      return;
-    }
+  if (
+    categoryCounts &&
+    statusCategory !== ALL_TASK_STATUS_CATEGORIES &&
+    (categoryCounts[statusCategory as TaskFileStatusCategory] ?? 0) === 0
+  ) {
     setStatusCategory(ALL_TASK_STATUS_CATEGORIES);
-  }, [categoryCounts, statusCategory]);
+  }
 
   const filteredEntries = useMemo(
     () =>

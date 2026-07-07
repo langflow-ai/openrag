@@ -147,6 +147,34 @@ def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
     assert "sharepoint" in governable
     assert "aws_s3" not in governable
     assert "ibm_cos" not in governable
+    assert "azure_blob" not in governable
+
+
+def test_governable_connector_types_includes_buckets_with_ibm_auth(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
+
+    governable = governable_connector_types()
+
+    # With IBM auth on, bucket connectors (incl. Azure Blob) are governable.
+    assert "azure_blob" in governable
+    assert "aws_s3" in governable
+    assert "ibm_cos" in governable
+
+
+def test_governable_connector_types_excludes_azure_blob_when_kill_switch_off(monkeypatch):
+    # Kill switch off must hide azure_blob from the admin permission tab even
+    # when IBM auth is on (matches AzureBlobConnector.is_available()).
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
+    monkeypatch.setenv("OPENRAG_AZURE_BLOB_ENABLED", "false")
+
+    governable = governable_connector_types()
+
+    assert "azure_blob" not in governable
+    # Other bucket connectors are unaffected by the Azure-specific kill switch.
+    assert "aws_s3" in governable
+    assert "ibm_cos" in governable
 
 
 @pytest.mark.asyncio

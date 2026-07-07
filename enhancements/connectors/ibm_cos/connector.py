@@ -247,11 +247,11 @@ class IBMCOSConnector(BaseConnector):
                             return {"files": files, "next_page_token": None}
                 else:
                     # client API: list_objects_v2 with manual pagination
-                    kwargs: dict[str, Any] = {"Bucket": bucket_name}
+                    list_kwargs: dict[str, Any] = {"Bucket": bucket_name}
                     if self.prefix:
-                        kwargs["Prefix"] = self.prefix
+                        list_kwargs["Prefix"] = self.prefix
                     while True:
-                        resp = handle.list_objects_v2(**kwargs)
+                        resp = handle.list_objects_v2(**list_kwargs)
                         for obj in resp.get("Contents", []):
                             key = obj["Key"]
                             if key.endswith("/"):
@@ -271,7 +271,7 @@ class IBMCOSConnector(BaseConnector):
                             if max_files and len(files) >= max_files:
                                 return {"files": files, "next_page_token": None}
                         if resp.get("IsTruncated"):
-                            kwargs["ContinuationToken"] = resp["NextContinuationToken"]
+                            list_kwargs["ContinuationToken"] = resp["NextContinuationToken"]
                         else:
                             break
 

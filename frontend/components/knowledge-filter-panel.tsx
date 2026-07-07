@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { trackButton } from "@/lib/analytics";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
@@ -56,6 +57,16 @@ export const filterAccentClasses: Record<FilterColor, string> = {
   emerald: "bg-accent-emerald text-accent-emerald-foreground",
   amber: "bg-accent-amber text-accent-amber-foreground",
   red: "bg-accent-red text-accent-red-foreground",
+};
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 export function KnowledgeFilterPanel() {
@@ -200,6 +211,12 @@ export function KnowledgeFilterPanel() {
       icon: iconKey,
     };
 
+    trackButton({
+      CTA: createMode ? "Create Filter" : "Update Filter",
+      elementId: createMode ? "create-filter-button" : "update-filter-button",
+      namespace: "knowledge",
+    });
+
     setIsSaving(true);
     try {
       if (createMode) {
@@ -230,16 +247,6 @@ export function KnowledgeFilterPanel() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const handleFilterChange = (
     facetType: keyof typeof selectedFilters,
     newValues: string[],
@@ -252,6 +259,11 @@ export function KnowledgeFilterPanel() {
 
   const handleDeleteFilter = async () => {
     if (!selectedFilter) return;
+    trackButton({
+      CTA: "Delete Filter",
+      elementId: "delete-filter-button",
+      namespace: "knowledge",
+    });
     const result = await deleteFilterMutation.mutateAsync({
       id: selectedFilter.id,
     });

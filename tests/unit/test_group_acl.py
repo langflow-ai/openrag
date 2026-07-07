@@ -510,8 +510,8 @@ def test_dls_principal_service_uses_basic_admin_client_in_ibm(monkeypatch):
 
     clients = Clients()
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
-    monkeypatch.setattr("config.settings.OPENSEARCH_USERNAME", "admin-user")
-    monkeypatch.setattr("config.settings.OPENSEARCH_PASSWORD", "admin-pass")
+    monkeypatch.setenv("OPENSEARCH_USERNAME", "admin-user")
+    monkeypatch.setenv("OPENSEARCH_PASSWORD", "admin-pass")
     monkeypatch.setattr("config.settings.clients", clients)
 
     service = DLSPrincipalService(connector_service=None)

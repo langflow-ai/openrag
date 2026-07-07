@@ -18,6 +18,7 @@ interface OnboardingUploadProps {
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
@@ -44,8 +45,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const { refetch: refetchNudges } = useGetNudgesQuery(null);
 
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Monitor tasks and call onComplete when file processing is done
   useEffect(() => {
+    let cancelled = false;
     if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
@@ -93,6 +97,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         }
       }
 
+      clearTimeout(completeTimeoutRef.current);
       setError(errorMessage);
       setCurrentStep(null);
       setUploadedTaskId(null);
@@ -157,25 +162,26 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           })
           .finally(() => {
             setIsCreatingFilter(false);
-            // Refetch nudges to get new ones
             refetchNudges();
 
-            // Wait a bit before completing (after filter is created)
-            setTimeout(() => {
-              onComplete();
-            }, 1000);
+            if (!cancelled && !completeTimeoutRef.current) {
+              completeTimeoutRef.current = setTimeout(() => {
+                onComplete();
+              }, 1000);
+            }
           });
-      } else {
-        // No filter to create, just complete
-        // Refetch nudges to get new ones
+      } else if (!isCreatingFilter && !completeTimeoutRef.current) {
         refetchNudges();
 
-        // Wait a bit before completing
-        setTimeout(() => {
+        completeTimeoutRef.current = setTimeout(() => {
           onComplete();
         }, 1000);
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     tasks,
     currentStep,

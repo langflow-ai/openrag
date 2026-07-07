@@ -16,6 +16,8 @@ from api.provider_validation import validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
+    _default_embedding_model,
+    _default_llm_model,
     _embedding_conflict_response,
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
@@ -59,10 +61,12 @@ from config.settings import (
     INGEST_SAMPLE_DATA,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
+    LANGFLOW_PORT,
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
+    OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
@@ -235,13 +239,15 @@ async def get_settings(
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
+            show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
+            langflow_port=str(LANGFLOW_PORT),
         )
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve settings: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Failed to retrieve settings")
+        return JSONResponse({"error": "Failed to retrieve settings"}, status_code=500)
 
 
 async def update_settings(
@@ -632,15 +638,13 @@ async def update_settings(
             current_config.providers.ollama.endpoint = ""
             current_config.providers.ollama.configured = False
             if current_config.agent.llm_provider == "ollama":
-                current_config.agent.llm_provider = _first_configured_llm_provider(
-                    current_config, "ollama"
-                )
-                current_config.agent.llm_model = ""
+                fb = _first_configured_llm_provider(current_config, "ollama")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "ollama":
-                current_config.knowledge.embedding_provider = _first_configured_embedding_provider(
-                    current_config, "ollama"
-                )
-                current_config.knowledge.embedding_model = ""
+                fb = _first_configured_embedding_provider(current_config, "ollama")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -668,11 +672,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(current_config, "openai")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "openai":
                 fb = _first_configured_embedding_provider(current_config, "openai")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -694,7 +698,7 @@ async def update_settings(
             if current_config.agent.llm_provider == "anthropic":
                 fb = _first_configured_llm_provider(current_config, "anthropic")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             # Anthropic is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
@@ -725,11 +729,11 @@ async def update_settings(
             if current_config.agent.llm_provider == "watsonx":
                 fb = _first_configured_llm_provider(current_config, "watsonx")
                 current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = ""
+                current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(current_config, "watsonx")
                 current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = ""
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -781,12 +785,12 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
-    except Exception as e:
-        logger.error("Failed to update settings", error=str(e))
+    except Exception:
+        logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
-        return JSONResponse({"error": f"Failed to update settings: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to update settings"}, status_code=500)
 
 
 async def onboarding(
@@ -1122,13 +1126,10 @@ async def onboarding(
                 logger.info("Initializing OpenSearch index after onboarding configuration")
                 await init_index(opensearch_client, admin_username=admin_username)
                 logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize OpenSearch index after onboarding",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to initialize OpenSearch index after onboarding")
                 return JSONResponse(
-                    {"error": str(e)},
+                    {"error": "Failed to initialize OpenSearch index after onboarding"},
                     status_code=500,
                 )
 
@@ -1524,9 +1525,9 @@ async def rollback_onboarding(
             deleted_conversations=deleted_conversations_count,
         )
 
-    except Exception as e:
-        logger.error("Failed to rollback onboarding configuration", error=str(e))
-        return JSONResponse({"error": f"Failed to rollback onboarding: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Failed to rollback onboarding configuration")
+        return JSONResponse({"error": "Failed to rollback onboarding"}, status_code=500)
 
 
 async def update_docling_preset(
@@ -1597,12 +1598,12 @@ async def update_docling_preset(
             settings=settings_toggles,
             preset_config=preset_config,
         )
-
+    except HTTPException:
+        # Preserve intended HTTP status codes (e.g. 400 for an invalid preset)
+        raise
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update docling settings: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail="Failed to update docling settings") from e
 
 
 async def refresh_openrag_docs(

@@ -55,7 +55,17 @@ global:
     accessKeyId: ""
     secretAccessKey: ""
     region: ""
-      
+  # Azure Blob Storage connector (Enterprise/SaaS; gated by backend.auth.ibmCloud.enabled
+  # like the other bucket connectors). Optional env defaults — credentials are
+  # normally entered per-connection in the UI. Provide EITHER a connection string
+  # OR account name + key (+ optional custom blob endpoint).
+  azureBlob:
+    enabled: true                       # OPENRAG_AZURE_BLOB_ENABLED
+    connectionString: ""                # AZURE_STORAGE_CONNECTION_STRING
+    accountName: ""                     # AZURE_STORAGE_ACCOUNT_NAME
+    accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
+    endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
+
 # ============================================================================
 # Langflow Configuration
 # ============================================================================
@@ -172,7 +182,7 @@ langflow:
         value: "langflow-db"
     sqlite:
       enabled: false
-      
+
   # Langfuse Tracking
   langfuse:
     secretKey: ""
@@ -420,7 +430,7 @@ dashboards:
 
   image:
     repository: opensearchproject/opensearch-dashboards
-    tag: "3.0.0"
+    tag: "3.6.0"
 
   replicaCount: 1
 
