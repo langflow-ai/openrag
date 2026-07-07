@@ -7,7 +7,7 @@ they did before. See `src/api/settings/__init__.py` for re-exports.
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from services.docling_service import DoclingConfig
 
@@ -23,14 +23,13 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
-    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx)$")
+    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
     vlm_model: str | None = Field(None, min_length=1)
     vlm_prompt: str | None = None
     vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")
     vlm_max_tokens: int | None = Field(None, gt=0)
     vlm_concurrency: int | None = Field(None, gt=0)
     vlm_timeout: int | None = Field(None, gt=0)
-    vlm_openai_url: str | None = Field(None, min_length=1)
     vlm_watsonx_api_version: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
@@ -64,10 +63,43 @@ class OnboardingBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
 
 
+class CitationDisplayData(BaseModel):
+    file_path: str | None = None
+    page: int | str | None = None
+    score: float | str | None = None
+
+
+class CitationDisplayResult(BaseModel):
+    data: CitationDisplayData | None = None
+    chunk_id: str | None = None
+    id: str | None = None
+    filename: str | None = None
+    page: int | str | None = None
+    score: float | str | None = None
+
+
+class CitationDisplayResultGroup(BaseModel):
+    results: list[CitationDisplayResult]
+
+
+class OnboardingFunctionCall(BaseModel):
+    name: str
+    status: str
+    result: list[CitationDisplayResultGroup | CitationDisplayResult] | None = None
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def ignore_non_list_result(cls, value: Any) -> Any:
+        if value is None or isinstance(value, list):
+            return value
+        return None
+
+
 class AssistantMessage(BaseModel):
     role: str
     content: str
     timestamp: str
+    functionCalls: list[OnboardingFunctionCall] | None = None
 
 
 class OnboardingStateBody(BaseModel):
@@ -148,7 +180,6 @@ class KnowledgeConfig(BaseModel):
     vlm_max_tokens: int | None = None
     vlm_concurrency: int | None = None
     vlm_timeout: int | None = None
-    vlm_openai_url: str | None = None
     vlm_watsonx_api_version: str | None = None
 
 
@@ -182,6 +213,7 @@ class SettingsResponse(BaseModel):
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
     show_provider_ingest_settings: bool = False
+    local_vlm_models: list[str] = Field(default_factory=list)
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None

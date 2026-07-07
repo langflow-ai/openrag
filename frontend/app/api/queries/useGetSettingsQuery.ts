@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { FunctionCall } from "@/app/chat/_types/types";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -27,7 +28,6 @@ export interface KnowledgeSettings {
   vlm_max_tokens?: number;
   vlm_concurrency?: number;
   vlm_timeout?: number;
-  vlm_openai_url?: string;
   vlm_watsonx_api_version?: string;
 }
 
@@ -50,6 +50,9 @@ export interface ProviderSettings {
     endpoint?: string;
     configured?: boolean;
   };
+  local?: {
+    configured?: boolean;
+  };
 }
 
 export interface OnboardingState {
@@ -58,6 +61,7 @@ export interface OnboardingState {
     role: string;
     content: string;
     timestamp: string;
+    functionCalls?: FunctionCall[] | null;
   } | null;
   selected_nudge?: string | null;
   card_steps?: Record<string, unknown> | null;
@@ -87,6 +91,7 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  local_vlm_models?: string[];
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

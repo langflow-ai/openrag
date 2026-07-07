@@ -15,6 +15,7 @@ const CodeComponent = dynamic(() => import("./code-component"), {
 type MarkdownRendererProps = {
   chatMessage: string;
   className?: string;
+  onCitationClick?: (index: number, anchorElement: HTMLElement) => void;
 };
 
 const preprocessChatMessage = (text: string): string => {
@@ -31,14 +32,14 @@ const preprocessChatMessage = (text: string): string => {
   return processed;
 };
 
-export const isMarkdownTable = (text: string): boolean => {
+const isMarkdownTable = (text: string): boolean => {
   if (!text?.trim()) return false;
 
   // Single regex to detect markdown table with header separator
   return /\|.*\|.*\n\s*\|[\s\-:]+\|/m.test(text);
 };
 
-export const cleanupTableEmptyCells = (text: string): string => {
+const cleanupTableEmptyCells = (text: string): string => {
   return text
     .split("\n")
     .filter((line) => {
@@ -56,9 +57,11 @@ export const cleanupTableEmptyCells = (text: string): string => {
     })
     .join("\n");
 };
+
 export const MarkdownRenderer = ({
   chatMessage,
   className,
+  onCitationClick,
 }: MarkdownRendererProps) => {
   // Process the chat message to handle <think> tags and clean up tables
   const processedChatMessage = preprocessChatMessage(chatMessage);
@@ -117,6 +120,28 @@ export const MarkdownRenderer = ({
             );
           },
           a({ node, ...props }) {
+            const href = props.href || "";
+            if (href.startsWith("#citation-")) {
+              const index = parseInt(href.replace("#citation-", ""), 10);
+              if (!onCitationClick) {
+                return (
+                  <span className="inline-flex items-center justify-center px-0.5 text-mmd text-accent-purple-foreground select-none align-baseline">
+                    {props.children}
+                  </span>
+                );
+              }
+              return (
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    onCitationClick(index, event.currentTarget)
+                  }
+                  className="inline-flex items-center justify-center px-0.5 text-mmd text-accent-purple-foreground transition-all cursor-pointer select-none align-baseline"
+                >
+                  {props.children}
+                </button>
+              );
+            }
             return (
               <a {...props} target="_blank" rel="noopener noreferrer">
                 {props.children}
