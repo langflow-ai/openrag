@@ -19,7 +19,6 @@ import { useIBMCOSDefaultsQuery } from "@/app/api/queries/useIBMCOSDefaultsQuery
 import { useS3BucketStatusQuery } from "@/app/api/queries/useS3BucketStatusQuery";
 import { useS3DefaultsQuery } from "@/app/api/queries/useS3DefaultsQuery";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
-import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
@@ -75,8 +74,9 @@ function BucketView({
     new Set(),
   );
   const hasAppliedInitial = useRef(false);
-  const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Ingest settings are not user-configurable for bucket connectors; the
+  // session defaults (workspace embedding model, chunking, etc.) are used.
+  const [ingestSettings] = useSessionIngestSettings();
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
@@ -276,13 +276,6 @@ function BucketView({
             })}
           </div>
         )}
-
-        <IngestSettings
-          isOpen={isSettingsOpen}
-          onOpenChange={setIsSettingsOpen}
-          settings={ingestSettings}
-          onSettingsChange={setIngestSettings}
-        />
       </div>
 
       <div className="max-w-3xl mx-auto mt-6 sticky bottom-0 left-0 right-0 pb-6 bg-background pt-4">
