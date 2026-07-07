@@ -91,7 +91,9 @@ def extract_relevant(doc_dict: dict) -> dict:
     page_texts = defaultdict(list)
     for txt in doc_dict.get("texts", []):
         prov = txt.get("prov", [])
-        page_no = prov[0].get("page_no") if prov else None
+        page_no = None
+        if prov and isinstance(prov[0], dict):
+            page_no = prov[0].get("page_no")
         if page_no is None:
             page_no = 1
         page_texts[page_no].append(txt.get("text", "").strip())
@@ -102,7 +104,9 @@ def extract_relevant(doc_dict: dict) -> dict:
     # 2) process tables
     for t_idx, table in enumerate(doc_dict.get("tables", [])):
         prov = table.get("prov", [])
-        page_no = prov[0].get("page_no") if prov else None
+        page_no = None
+        if prov and isinstance(prov[0], dict):
+            page_no = prov[0].get("page_no")
         if page_no is None:
             page_no = 1
 
