@@ -50,6 +50,9 @@ export interface ProviderSettings {
     endpoint?: string;
     configured?: boolean;
   };
+  local?: {
+    configured?: boolean;
+  };
 }
 
 export interface OnboardingState {
