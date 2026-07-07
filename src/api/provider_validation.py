@@ -866,8 +866,9 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
         raise Exception("A deployment name is required to test Azure AI Foundry completion.")
 
     try:
-        completions_url = f"{endpoint.rstrip('/')}/{llm_model}/chat/completions"
+        completions_url = f"{endpoint.rstrip('/')}/chat/completions"
         payload = {
+            "model": llm_model,
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 10,
         }
@@ -915,8 +916,8 @@ async def _test_azure_ai_foundry_embedding(
         raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
 
     try:
-        embeddings_url = f"{endpoint.rstrip('/')}/{embedding_model}/embeddings"
-        payload = {"input": ["test"]}
+        embeddings_url = f"{endpoint.rstrip('/')}/embeddings"
+        payload = {"model": embedding_model, "input": ["test"]}
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 embeddings_url,
