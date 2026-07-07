@@ -72,7 +72,10 @@ class AuthService:
         # not persist a connection on success.
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
-        elif purpose in ("data_source", "test") and connector_type not in _data_source_connector_types():
+        elif (
+            purpose in ("data_source", "test")
+            and connector_type not in _data_source_connector_types()
+        ):
             raise ValueError(f"Unsupported connector type: {connector_type}")
         elif purpose not in ["app_auth", "data_source", "test"]:
             raise ValueError(f"Unsupported purpose: {purpose}")
