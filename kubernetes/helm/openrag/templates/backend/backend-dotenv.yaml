@@ -104,6 +104,7 @@ stringData:
     {{- end }}
 
     # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB)
+    OPENRAG_AZURE_BLOB_ENABLED={{ .Values.global.azureBlob.enabled }}
     {{- if .Values.global.azureBlob.connectionString }}
     AZURE_STORAGE_CONNECTION_STRING={{ .Values.global.azureBlob.connectionString | quote }}
     {{- end }}
@@ -211,7 +212,7 @@ stringData:
     {{- if .Values.backend.encryption.key }}
     OPENRAG_ENCRYPTION_KEY={{ .Values.backend.encryption.key  | quote }}
     {{- end }}
-    
+
     # Langflow auth (OpenRag uses this to determine how to authenticate with Langflow)
     LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
 
