@@ -23,7 +23,7 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
-    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local)$")
+    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
     vlm_model: str | None = Field(None, min_length=1)
     vlm_prompt: str | None = None
     vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")

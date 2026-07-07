@@ -669,6 +669,22 @@ async def update_settings(
             elif effective_vlm_provider == "local":
                 # Local provider does not require any credentials
                 pass
+            elif effective_vlm_provider == "ollama":
+                vlm_provider_config = current_config.providers.ollama
+                vlm_provider_missing = (
+                    not getattr(vlm_provider_config, "endpoint", "")
+                    or not vlm_provider_config.configured
+                )
+                if vlm_provider_missing:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                "Cannot enable Docling VLM: provider 'ollama' "
+                                "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
             effective_vlm_model = body.vlm_model or current_config.knowledge.vlm_model
             if not effective_vlm_model.strip():
                 return JSONResponse(

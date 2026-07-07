@@ -163,7 +163,7 @@ class KnowledgeConfig:
     disable_ingest_with_langflow: bool = False
     # Docling VLM pipeline. Credentials come from ProvidersConfig — never stored here.
     vlm_enabled: bool = False
-    vlm_provider: str = "openai"  # "openai" | "watsonx"
+    vlm_provider: str = "openai"  # "openai" | "watsonx" | "anthropic" | "local" | "ollama"
     vlm_model: str = ""  # e.g. "gpt-4o" or a watsonx model_id
     vlm_prompt: str = (
         "Extract ALL the text from the page, ensuring no words are omitted, "

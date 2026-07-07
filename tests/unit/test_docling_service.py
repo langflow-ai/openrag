@@ -299,6 +299,24 @@ async def test_build_vlm_options_watsonx_unconfigured(docling_service):
 
 
 @pytest.mark.asyncio
+async def test_build_vlm_options_ollama(docling_service):
+    """Ollama VLM options carry the provider endpoint and chat-completions params."""
+    mock_config = _vlm_mock_config("ollama")
+    mock_config.providers.ollama.endpoint = "http://localhost:11434"
+    mock_config.providers.ollama.configured = True
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    assert options["do_picture_description"] is True
+    assert options["to_formats"] == "json"
+    api = options["picture_description_api"]
+    assert api["url"] == "http://localhost:11434/v1/chat/completions"
+    assert api["headers"] == {}
+    assert api["params"] == {"model": "meta-llama/llama-vision", "max_completion_tokens": 5000}
+    assert api["prompt"] == "Extract all text."
+
+
+@pytest.mark.asyncio
 async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_httpx_client):
     """VLM upload sends custom picture description parameters."""
     import json as json_lib

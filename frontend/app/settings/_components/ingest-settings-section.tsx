@@ -440,9 +440,11 @@ export function IngestSettingsSection() {
         ? settings.providers.watsonx?.configured === true
         : vlmProvider === "anthropic"
           ? settings.providers.anthropic?.configured === true
-          : vlmProvider === "local"
-            ? true
-            : settings.providers.openai?.configured === true;
+          : vlmProvider === "ollama"
+            ? settings.providers.ollama?.configured === true
+            : vlmProvider === "local"
+              ? true
+              : settings.providers.openai?.configured === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
   const providerLabel =
@@ -450,7 +452,9 @@ export function IngestSettingsSection() {
       ? "IBM watsonx.ai"
       : vlmProvider === "anthropic"
         ? "Anthropic"
-        : "OpenAI";
+        : vlmProvider === "ollama"
+          ? "Ollama"
+          : "OpenAI";
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
@@ -876,7 +880,7 @@ export function IngestSettingsSection() {
                           noOptionsPlaceholder={
                             isLoadingAnyVlmModels
                               ? "Loading models..."
-                              : "No models detected. Configure OpenAI, Anthropic, or IBM watsonx.ai first."
+                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
                           onValueChange={handleVlmModelChange}
