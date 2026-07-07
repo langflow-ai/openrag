@@ -380,6 +380,8 @@ export function IngestSettingsSection() {
       setVlmWatsonxApiVersion(settings.knowledge.vlm_watsonx_api_version);
   }, [settings.knowledge?.vlm_watsonx_api_version]);
 
+  const [vlmAccordionValue, setVlmAccordionValue] = useState<string>("");
+
   const [autoSelectedVlm, setAutoSelectedVlm] = useState<boolean>(false);
   useEffect(() => {
     if (settings.knowledge?.vlm_model) {
@@ -857,6 +859,8 @@ export function IngestSettingsSection() {
                 type="single"
                 collapsible
                 disabled={!pictureDescriptions}
+                value={pictureDescriptions ? vlmAccordionValue : ""}
+                onValueChange={setVlmAccordionValue}
               >
                 <AccordionItem value="vlm-settings" className="border-none">
                   <AccordionTrigger
