@@ -856,8 +856,7 @@ export function IngestPreviewPanel({
             className="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground"
             data-testid="ingest-preview-failed"
           >
-            <X className="h-8 w-8 text-destructive opacity-80" />
-            <p className="text-sm font-medium text-destructive">
+            <p className="text-md font-medium text-destructive">
               Parsing failed
             </p>
             <p className="text-xxs">{failureMessage}</p>
@@ -1119,7 +1118,7 @@ interface IngestPreviewCarouselProps {
  * visible it falls back to the locally selected files so the user sees their
  * originals immediately.
  */
-export function IngestPreviewCarousel({
+export function IngestReviewCarousel({
   taskIds,
   previewFiles,
   onViewError,
@@ -1208,7 +1207,7 @@ export function IngestPreviewCarousel({
   );
 }
 
-interface IngestPreviewDialogProps {
+interface IngestReviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Single task id (single/multi file upload). */
@@ -1220,7 +1219,7 @@ interface IngestPreviewDialogProps {
   previewFiles?: File[];
 }
 
-export function IngestPreviewDialog({
+export function IngestReviewDialog({
   open,
   onOpenChange,
   taskId,
@@ -1228,7 +1227,7 @@ export function IngestPreviewDialog({
   filename,
   previewFile,
   previewFiles,
-}: IngestPreviewDialogProps) {
+}: IngestReviewDialogProps) {
   const { openTaskDialog } = useTask();
   const files = previewFiles ?? (previewFile ? [previewFile] : []);
   const ids = taskIds ?? (taskId ? [taskId] : []);
@@ -1249,14 +1248,14 @@ export function IngestPreviewDialog({
         data-testid="ingest-preview-dialog"
       >
         <DialogHeader>
-          <DialogTitle>Live ingest preview</DialogTitle>
+          <DialogTitle>Ingesting review</DialogTitle>
           <DialogDescription>
             {filename
               ? `How "${filename}" is parsed and indexed.`
               : "Live parse layout and search index progress."}
           </DialogDescription>
         </DialogHeader>
-        <IngestPreviewCarousel
+        <IngestReviewCarousel
           taskIds={ids}
           previewFiles={files}
           onViewError={handleViewError}

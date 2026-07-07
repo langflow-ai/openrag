@@ -9,7 +9,7 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
-import { IngestPreviewDialog } from "@/components/ingest-preview";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
@@ -359,7 +359,7 @@ export function SharedBucketView({
         />
       )}
 
-      <IngestPreviewDialog
+      <IngestReviewDialog
         open={ingestPreviewEnabled && previewOpen}
         onOpenChange={(open) => {
           setPreviewOpen(open);

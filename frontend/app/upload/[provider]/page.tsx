@@ -10,7 +10,7 @@ import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorToke
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
-import { IngestPreviewDialog } from "@/components/ingest-preview";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -475,7 +475,7 @@ export default function UploadProviderPage() {
         duplicateCount={pendingSync?.duplicateCount}
       />
 
-      <IngestPreviewDialog
+      <IngestReviewDialog
         open={ingestPreviewEnabled && previewOpen}
         onOpenChange={(open) => {
           setPreviewOpen(open);

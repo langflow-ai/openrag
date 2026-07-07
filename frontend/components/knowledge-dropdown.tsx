@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
-import { IngestPreviewDialog } from "@/components/ingest-preview";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -506,10 +506,6 @@ export function KnowledgeDropdown() {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
     }
 
-    console.log(
-      `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
-    );
-
     const taskIdsByBatch: (string | undefined)[] = [];
     await Promise.all(
       batches.map(async (batch, batchIndex) => {
@@ -701,9 +697,6 @@ export function KnowledgeDropdown() {
       }
 
       if (duplicateCount > 0) {
-        console.log(
-          `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
-        );
         resetDuplicateDialogState();
         setPendingFolderUpload({
           allFiles: cleanFiles,
@@ -1035,7 +1028,7 @@ export function KnowledgeDropdown() {
         </DialogContent>
       </Dialog>
 
-      <IngestPreviewDialog
+      <IngestReviewDialog
         open={ingestPreviewEnabled && showPreviewDialog}
         onOpenChange={(open) => {
           setShowPreviewDialog(open);
