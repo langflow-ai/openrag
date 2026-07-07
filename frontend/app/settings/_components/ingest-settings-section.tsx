@@ -296,17 +296,16 @@ export function IngestSettingsSection() {
       namespace: "settings",
     });
     fetch("/api/reset-flow/ingest", { method: "POST" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        return res;
-      })
-      .then(async (res) => {
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          await res.json();
-        }
-        return;
-      })
+      .then((res) =>
+        res.text().then((text) => {
+          const body = text ? JSON.parse(text) : {};
+          if (!res.ok) {
+            throw new Error(
+              body.error ?? `HTTP ${res.status}: ${res.statusText}`,
+            );
+          }
+        }),
+      )
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
@@ -320,7 +319,7 @@ export function IngestSettingsSection() {
       })
       .catch((err) => {
         console.error("Error restoring ingest flow:", err);
-        toast.error("Failed to restore default ingest flow settings");
+        toast.error(err.message || "Failed to restore default ingest flow settings");
         closeDialog();
       })
       .finally(() => setIsRestoringFlow(false));
