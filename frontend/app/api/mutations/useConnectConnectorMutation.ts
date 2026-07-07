@@ -31,9 +31,13 @@ export const useConnectConnectorMutation = () => {
     mutationFn: async ({
       connector,
       redirectUri,
+      purpose = "data_source",
     }: {
       connector: Connector;
       redirectUri: string;
+      /** "test" runs a Test Connection check (see Connector Settings) and does
+       * not persist a data-source connection on success. */
+      purpose?: "data_source" | "test";
     }): Promise<ConnectResponse> => {
       const response = await fetch("/api/auth/init", {
         method: "POST",
@@ -42,7 +46,7 @@ export const useConnectConnectorMutation = () => {
         },
         body: JSON.stringify({
           connector_type: connector.type,
-          purpose: "data_source",
+          purpose,
           name: `${connector.name} Connection`,
           redirect_uri: redirectUri,
         }),
@@ -64,11 +68,19 @@ export const useConnectConnectorMutation = () => {
       restoreConnectorQueries(queryClient, context);
       toast.error(err.message);
     },
-    onSuccess: (result, { connector }) => {
+    onSuccess: (result, { connector, purpose = "data_source" }) => {
       if (result.oauth_config) {
         localStorage.setItem("connecting_connector_id", result.connection_id);
         localStorage.setItem("connecting_connector_type", connector.type);
-        localStorage.setItem("auth_purpose", "data_source");
+        localStorage.setItem("auth_purpose", purpose);
+        if (purpose === "test") {
+          localStorage.setItem(
+            "test_connection_return_tab",
+            "connector-access",
+          );
+        } else {
+          localStorage.removeItem("test_connection_return_tab");
+        }
 
         const state = isIbmAuthMode
           ? encodeBase64(

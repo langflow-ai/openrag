@@ -166,6 +166,23 @@ function AuthCallbackContent() {
                 if (!cancelled) router.push(redirectTo);
               }, 2000);
             }
+          } else if (result.purpose === "test" || detectedPurpose === "test") {
+            // Test Connection — token exchange succeeded, credentials work. No
+            // connection was persisted (see _handle_test_auth); send the admin
+            // back to Connector Settings with a success indicator to toast.
+            localStorage.removeItem("connecting_connector_id");
+            localStorage.removeItem("connecting_connector_type");
+            localStorage.removeItem("auth_purpose");
+            localStorage.removeItem("test_connection_return_tab");
+
+            if (!cancelled) {
+              redirectTimeoutId = setTimeout(() => {
+                if (!cancelled)
+                  router.push(
+                    `/settings/connector-access?oauth_test=success&credential=${encodeURIComponent(storedConnectorType || "")}`,
+                  );
+              }, 1000);
+            }
           } else {
             // Connector authentication - redirect to connectors page
 
@@ -194,6 +211,7 @@ function AuthCallbackContent() {
         localStorage.removeItem("connecting_connector_type");
         localStorage.removeItem("auth_purpose");
         localStorage.removeItem("auth_redirect_to");
+        localStorage.removeItem("test_connection_return_tab");
       }
     };
 
@@ -206,16 +224,29 @@ function AuthCallbackContent() {
 
   // Dynamic UI content based on purpose
   const isAppAuth = purpose === "app_auth";
+  const isTest = purpose === "test";
 
   const getTitle = () => {
     if (status === "processing") {
-      return isAppAuth ? "Signing you in..." : "Connecting...";
+      return isAppAuth
+        ? "Signing you in..."
+        : isTest
+          ? "Testing connection..."
+          : "Connecting...";
     }
     if (status === "success") {
-      return isAppAuth ? "Welcome to OpenRAG!" : "Connection Successful!";
+      return isAppAuth
+        ? "Welcome to OpenRAG!"
+        : isTest
+          ? "Test Successful!"
+          : "Connection Successful!";
     }
     if (status === "error") {
-      return isAppAuth ? "Sign In Failed" : "Connection Failed";
+      return isAppAuth
+        ? "Sign In Failed"
+        : isTest
+          ? "Test Failed"
+          : "Connection Failed";
     }
   };
 
@@ -268,7 +299,15 @@ function AuthCallbackContent() {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
               <Button
-                onClick={() => router.push(isAppAuth ? "/login" : "/settings")}
+                onClick={() =>
+                  router.push(
+                    isAppAuth
+                      ? "/login"
+                      : isTest
+                        ? "/settings/connector-access"
+                        : "/settings",
+                  )
+                }
                 variant="outline"
                 className="w-full"
               >

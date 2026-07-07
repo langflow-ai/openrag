@@ -866,6 +866,66 @@ async def update_connector_user_access(
     return JSONResponse({"connectors": connectors})
 
 
+class UpdateConnectorOAuthConfigBody(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
+async def get_connector_oauth_config(
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Per OAuth-kind connector: whether a workspace credential override is set,
+    plus env-var fallback visibility. Never returns the decrypted secret."""
+    from services.connector_oauth_config_service import get_oauth_config_status
+
+    status = await get_oauth_config_status(session)
+    return JSONResponse({"credentials": status})
+
+
+async def update_connector_oauth_config(
+    credential_key: str,
+    body: UpdateConnectorOAuthConfigBody,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Save (partial update) a workspace OAuth client id/secret override."""
+    from services.connector_oauth_config_service import get_oauth_config_status, set_oauth_config
+
+    try:
+        await set_oauth_config(
+            session,
+            credential_key,
+            body.client_id,
+            body.client_secret,
+            user.db_user_id or user.user_id,
+        )
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config update", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
+async def delete_connector_oauth_config(
+    credential_key: str,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Clear a workspace OAuth client id/secret override, reverting to the env var."""
+    from services.connector_oauth_config_service import clear_oauth_config, get_oauth_config_status
+
+    try:
+        await clear_oauth_config(session, credential_key, user.db_user_id or user.user_id)
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config clear", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
 async def connector_sync(
     connector_type: str,
     body: ConnectorSyncBody,
