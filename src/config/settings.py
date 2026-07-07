@@ -260,6 +260,19 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_azure_blob_enabled() -> bool:
+    """Feature kill switch for the Azure Blob connector (default: enabled).
+
+    Independent of ``IBM_AUTH_ENABLED``. Set ``OPENRAG_AZURE_BLOB_ENABLED=false``
+    to force-hide the connector in the UI even when IBM auth is on. When true
+    (the default), availability still requires the Enterprise/SaaS gate
+    (``IBM_AUTH_ENABLED``) or the ``OPENRAG_DEV_AZURE_BLOB`` dev bypass -- this
+    flag is subtractive (AND-ed with that gate), not an override.
+    """
+    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas
