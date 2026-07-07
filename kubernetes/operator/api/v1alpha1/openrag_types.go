@@ -115,6 +115,15 @@ type ComponentSpec struct {
 	// +kubebuilder:default=true
 	CreateService *bool `json:"createService,omitempty"`
 
+	// AutomountServiceAccountToken controls whether the ServiceAccount token is
+	// automatically mounted into this component's pod. When unset, the operator
+	// applies a per-component default: true only for the backend pod (which talks
+	// to the Kubernetes API) and false for every other pod (frontend, Langflow,
+	// docling-serve, docling-worker, valkey), none of which need the token.
+	// Set explicitly to override the default.
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+
 	// PodSecurityContext holds pod-level security attributes.
 	// +optional
 	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`

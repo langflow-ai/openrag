@@ -737,13 +737,14 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: getServiceAccountName(o, "fe"),
-					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					NodeSelector:       spec.NodeSelector,
-					Tolerations:        spec.Tolerations,
-					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
-					InitContainers:     spec.InitContainers,
+					ServiceAccountName:           getServiceAccountName(o, "fe"),
+					AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, false),
+					ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+					NodeSelector:                 spec.NodeSelector,
+					Tolerations:                  spec.Tolerations,
+					Affinity:                     spec.Affinity,
+					SecurityContext:              spec.PodSecurityContext,
+					InitContainers:               spec.InitContainers,
 					Containers: append([]corev1.Container{
 						{
 							Name:            "frontend",
@@ -829,14 +830,15 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: getServiceAccountName(o, "be"),
-					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					NodeSelector:       spec.NodeSelector,
-					Tolerations:        spec.Tolerations,
-					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
-					InitContainers:     spec.InitContainers,
-					Volumes:            volumes,
+					ServiceAccountName:           getServiceAccountName(o, "be"),
+					AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, true),
+					ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+					NodeSelector:                 spec.NodeSelector,
+					Tolerations:                  spec.Tolerations,
+					Affinity:                     spec.Affinity,
+					SecurityContext:              spec.PodSecurityContext,
+					InitContainers:               spec.InitContainers,
+					Volumes:                      volumes,
 					Containers: append([]corev1.Container{
 						{
 							Name:            "backend",
@@ -953,14 +955,15 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: getServiceAccountName(o, "lf"),
-					ImagePullSecrets:   mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					NodeSelector:       spec.NodeSelector,
-					Tolerations:        spec.Tolerations,
-					Affinity:           spec.Affinity,
-					SecurityContext:    spec.PodSecurityContext,
-					InitContainers:     append(initContainers, spec.InitContainers...),
-					Volumes:            volumes,
+					ServiceAccountName:           getServiceAccountName(o, "lf"),
+					AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, false),
+					ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+					NodeSelector:                 spec.NodeSelector,
+					Tolerations:                  spec.Tolerations,
+					Affinity:                     spec.Affinity,
+					SecurityContext:              spec.PodSecurityContext,
+					InitContainers:               append(initContainers, spec.InitContainers...),
+					Volumes:                      volumes,
 					Containers: append([]corev1.Container{
 						{
 							Name:            "langflow",
@@ -1389,15 +1392,16 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 				Annotations: podAnnotations,
 			},
 			Spec: corev1.PodSpec{
-				ServiceAccountName:        getServiceAccountName(o, "ds"),
-				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-				SecurityContext:           spec.PodSecurityContext,
-				NodeSelector:              spec.NodeSelector,
-				Tolerations:               spec.Tolerations,
-				Affinity:                  spec.Affinity,
-				InitContainers:            spec.InitContainers,
-				TopologySpreadConstraints: spec.TopologySpreadConstraints,
-				Volumes:                   volumes,
+				ServiceAccountName:           getServiceAccountName(o, "ds"),
+				AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, false),
+				ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:              spec.PodSecurityContext,
+				NodeSelector:                 spec.NodeSelector,
+				Tolerations:                  spec.Tolerations,
+				Affinity:                     spec.Affinity,
+				InitContainers:               spec.InitContainers,
+				TopologySpreadConstraints:    spec.TopologySpreadConstraints,
+				Volumes:                      volumes,
 				Containers: append([]corev1.Container{
 					{
 						Name:            "docling-serve",
@@ -1565,15 +1569,16 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 				Annotations: podAnnotations,
 			},
 			Spec: corev1.PodSpec{
-				ServiceAccountName:        getServiceAccountName(o, "dw"),
-				ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-				SecurityContext:           spec.PodSecurityContext,
-				NodeSelector:              spec.NodeSelector,
-				Tolerations:               spec.Tolerations,
-				Affinity:                  spec.Affinity,
-				InitContainers:            spec.InitContainers,
-				TopologySpreadConstraints: spec.TopologySpreadConstraints,
-				Volumes:                   volumes,
+				ServiceAccountName:           getServiceAccountName(o, "dw"),
+				AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, false),
+				ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+				SecurityContext:              spec.PodSecurityContext,
+				NodeSelector:                 spec.NodeSelector,
+				Tolerations:                  spec.Tolerations,
+				Affinity:                     spec.Affinity,
+				InitContainers:               spec.InitContainers,
+				TopologySpreadConstraints:    spec.TopologySpreadConstraints,
+				Volumes:                      volumes,
 				Containers: append([]corev1.Container{
 					{
 						Name:            "docling-worker",
@@ -1865,15 +1870,16 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName:        getServiceAccountName(o, "valkey"),
-					ImagePullSecrets:          mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
-					NodeSelector:              spec.NodeSelector,
-					Tolerations:               spec.Tolerations,
-					Affinity:                  spec.Affinity,
-					SecurityContext:           spec.PodSecurityContext,
-					InitContainers:            spec.InitContainers,
-					TopologySpreadConstraints: spec.TopologySpreadConstraints,
-					Volumes:                   volumes,
+					ServiceAccountName:           getServiceAccountName(o, "valkey"),
+					AutomountServiceAccountToken: automountTokenOrDefault(spec.AutomountServiceAccountToken, false),
+					ImagePullSecrets:             mergeImagePullSecrets(o.Spec.ImagePullSecrets, spec.ImagePullSecrets),
+					NodeSelector:                 spec.NodeSelector,
+					Tolerations:                  spec.Tolerations,
+					Affinity:                     spec.Affinity,
+					SecurityContext:              spec.PodSecurityContext,
+					InitContainers:               spec.InitContainers,
+					TopologySpreadConstraints:    spec.TopologySpreadConstraints,
+					Volumes:                      volumes,
 					Containers: append([]corev1.Container{
 						{
 							Name:            "valkey",
@@ -2669,6 +2675,15 @@ func replicasOrDefault(r *int32) int32 {
 		return *r
 	}
 	return 1
+}
+
+// automountTokenOrDefault resolves the pod's AutomountServiceAccountToken:
+// the user-provided value takes precedence, otherwise the per-component default is used.
+func automountTokenOrDefault(v *bool, def bool) *bool {
+	if v != nil {
+		return v
+	}
+	return &def
 }
 
 func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {

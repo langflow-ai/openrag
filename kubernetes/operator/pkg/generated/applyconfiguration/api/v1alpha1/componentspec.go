@@ -25,37 +25,38 @@ import (
 // ComponentSpecApplyConfiguration represents a declarative configuration of the ComponentSpec type for use
 // with apply.
 type ComponentSpecApplyConfiguration struct {
-	Image                     *string                       `json:"image,omitempty"`
-	ImagePullPolicy           *v1.PullPolicy                `json:"imagePullPolicy,omitempty"`
-	ImagePullSecrets          []v1.LocalObjectReference     `json:"imagePullSecrets,omitempty"`
-	Replicas                  *int32                        `json:"replicas,omitempty"`
-	Resources                 *v1.ResourceRequirements      `json:"resources,omitempty"`
-	Env                       []v1.EnvVar                   `json:"env,omitempty"`
-	NodeSelector              map[string]string             `json:"nodeSelector,omitempty"`
-	Tolerations               []v1.Toleration               `json:"tolerations,omitempty"`
-	Affinity                  *v1.Affinity                  `json:"affinity,omitempty"`
-	Labels                    map[string]string             `json:"labels,omitempty"`
-	Annotations               map[string]string             `json:"annotations,omitempty"`
-	PodLabels                 map[string]string             `json:"podLabels,omitempty"`
-	PodAnnotations            map[string]string             `json:"podAnnotations,omitempty"`
-	ServiceAccountName        *string                       `json:"serviceAccountName,omitempty"`
-	CreateServiceAccount      *bool                         `json:"createServiceAccount,omitempty"`
-	ServiceName               *string                       `json:"serviceName,omitempty"`
-	CreateService             *bool                         `json:"createService,omitempty"`
-	PodSecurityContext        *v1.PodSecurityContext        `json:"podSecurityContext,omitempty"`
-	SecurityContext           *v1.SecurityContext           `json:"securityContext,omitempty"`
-	TopologySpreadConstraints []v1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
-	ServiceType               *v1.ServiceType               `json:"serviceType,omitempty"`
-	ServiceAnnotations        map[string]string             `json:"serviceAnnotations,omitempty"`
-	ServiceLabels             map[string]string             `json:"serviceLabels,omitempty"`
-	ServiceAccountLabels      map[string]string             `json:"serviceAccountLabels,omitempty"`
-	ServiceAccountAnnotations map[string]string             `json:"serviceAccountAnnotations,omitempty"`
-	SecretLabels              map[string]string             `json:"secretLabels,omitempty"`
-	SecretAnnotations         map[string]string             `json:"secretAnnotations,omitempty"`
-	Command                   []string                      `json:"command,omitempty"`
-	Args                      []string                      `json:"args,omitempty"`
-	InitContainers            []v1.Container                `json:"initContainers,omitempty"`
-	Sidecars                  []v1.Container                `json:"sidecars,omitempty"`
+	Image                        *string                       `json:"image,omitempty"`
+	ImagePullPolicy              *v1.PullPolicy                `json:"imagePullPolicy,omitempty"`
+	ImagePullSecrets             []v1.LocalObjectReference     `json:"imagePullSecrets,omitempty"`
+	Replicas                     *int32                        `json:"replicas,omitempty"`
+	Resources                    *v1.ResourceRequirements      `json:"resources,omitempty"`
+	Env                          []v1.EnvVar                   `json:"env,omitempty"`
+	NodeSelector                 map[string]string             `json:"nodeSelector,omitempty"`
+	Tolerations                  []v1.Toleration               `json:"tolerations,omitempty"`
+	Affinity                     *v1.Affinity                  `json:"affinity,omitempty"`
+	Labels                       map[string]string             `json:"labels,omitempty"`
+	Annotations                  map[string]string             `json:"annotations,omitempty"`
+	PodLabels                    map[string]string             `json:"podLabels,omitempty"`
+	PodAnnotations               map[string]string             `json:"podAnnotations,omitempty"`
+	ServiceAccountName           *string                       `json:"serviceAccountName,omitempty"`
+	CreateServiceAccount         *bool                         `json:"createServiceAccount,omitempty"`
+	ServiceName                  *string                       `json:"serviceName,omitempty"`
+	CreateService                *bool                         `json:"createService,omitempty"`
+	AutomountServiceAccountToken *bool                         `json:"automountServiceAccountToken,omitempty"`
+	PodSecurityContext           *v1.PodSecurityContext        `json:"podSecurityContext,omitempty"`
+	SecurityContext              *v1.SecurityContext           `json:"securityContext,omitempty"`
+	TopologySpreadConstraints    []v1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	ServiceType                  *v1.ServiceType               `json:"serviceType,omitempty"`
+	ServiceAnnotations           map[string]string             `json:"serviceAnnotations,omitempty"`
+	ServiceLabels                map[string]string             `json:"serviceLabels,omitempty"`
+	ServiceAccountLabels         map[string]string             `json:"serviceAccountLabels,omitempty"`
+	ServiceAccountAnnotations    map[string]string             `json:"serviceAccountAnnotations,omitempty"`
+	SecretLabels                 map[string]string             `json:"secretLabels,omitempty"`
+	SecretAnnotations            map[string]string             `json:"secretAnnotations,omitempty"`
+	Command                      []string                      `json:"command,omitempty"`
+	Args                         []string                      `json:"args,omitempty"`
+	InitContainers               []v1.Container                `json:"initContainers,omitempty"`
+	Sidecars                     []v1.Container                `json:"sidecars,omitempty"`
 }
 
 // ComponentSpecApplyConfiguration constructs a declarative configuration of the ComponentSpec type for use with
@@ -233,6 +234,14 @@ func (b *ComponentSpecApplyConfiguration) WithServiceName(value string) *Compone
 // If called multiple times, the CreateService field is set to the value of the last call.
 func (b *ComponentSpecApplyConfiguration) WithCreateService(value bool) *ComponentSpecApplyConfiguration {
 	b.CreateService = &value
+	return b
+}
+
+// WithAutomountServiceAccountToken sets the AutomountServiceAccountToken field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AutomountServiceAccountToken field is set to the value of the last call.
+func (b *ComponentSpecApplyConfiguration) WithAutomountServiceAccountToken(value bool) *ComponentSpecApplyConfiguration {
+	b.AutomountServiceAccountToken = &value
 	return b
 }
 

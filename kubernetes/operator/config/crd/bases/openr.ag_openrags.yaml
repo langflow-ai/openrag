@@ -993,6 +993,15 @@ spec:
                     items:
                       type: string
                     type: array
+                  automountServiceAccountToken:
+                    description: |-
+                      AutomountServiceAccountToken controls whether the ServiceAccount token is
+                      automatically mounted into this component's pod. When unset, the operator
+                      applies a per-component default: true only for the backend pod (which talks
+                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                      docling-serve, docling-worker, valkey), none of which need the token.
+                      Set explicitly to override the default.
+                    type: boolean
                   command:
                     description: Command overrides the container's entrypoint.
                     items:
@@ -6033,6 +6042,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      automountServiceAccountToken:
+                        description: |-
+                          AutomountServiceAccountToken controls whether the ServiceAccount token is
+                          automatically mounted into this component's pod. When unset, the operator
+                          applies a per-component default: true only for the backend pod (which talks
+                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                          docling-serve, docling-worker, valkey), none of which need the token.
+                          Set explicitly to override the default.
+                        type: boolean
                       command:
                         description: Command overrides the container's entrypoint.
                         items:
@@ -11646,6 +11664,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      automountServiceAccountToken:
+                        description: |-
+                          AutomountServiceAccountToken controls whether the ServiceAccount token is
+                          automatically mounted into this component's pod. When unset, the operator
+                          applies a per-component default: true only for the backend pod (which talks
+                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                          docling-serve, docling-worker, valkey), none of which need the token.
+                          Set explicitly to override the default.
+                        type: boolean
                       command:
                         description: Command overrides the container's entrypoint.
                         items:
@@ -16569,6 +16596,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      automountServiceAccountToken:
+                        description: |-
+                          AutomountServiceAccountToken controls whether the ServiceAccount token is
+                          automatically mounted into this component's pod. When unset, the operator
+                          applies a per-component default: true only for the backend pod (which talks
+                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                          docling-serve, docling-worker, valkey), none of which need the token.
+                          Set explicitly to override the default.
+                        type: boolean
                       command:
                         description: Command overrides the container's entrypoint.
                         items:
@@ -22217,6 +22253,15 @@ spec:
                     items:
                       type: string
                     type: array
+                  automountServiceAccountToken:
+                    description: |-
+                      AutomountServiceAccountToken controls whether the ServiceAccount token is
+                      automatically mounted into this component's pod. When unset, the operator
+                      applies a per-component default: true only for the backend pod (which talks
+                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                      docling-serve, docling-worker, valkey), none of which need the token.
+                      Set explicitly to override the default.
+                    type: boolean
                   command:
                     description: Command overrides the container's entrypoint.
                     items:
@@ -27063,6 +27108,15 @@ spec:
                     items:
                       type: string
                     type: array
+                  automountServiceAccountToken:
+                    description: |-
+                      AutomountServiceAccountToken controls whether the ServiceAccount token is
+                      automatically mounted into this component's pod. When unset, the operator
+                      applies a per-component default: true only for the backend pod (which talks
+                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
+                      docling-serve, docling-worker, valkey), none of which need the token.
+                      Set explicitly to override the default.
+                    type: boolean
                   command:
                     description: Command overrides the container's entrypoint.
                     items:

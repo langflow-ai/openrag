@@ -1656,6 +1656,86 @@ func TestPodBuilders_AppendInitContainersAndSidecars(t *testing.T) {
 	}
 }
 
+func TestPodBuilders_AutomountServiceAccountTokenDefaults(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	doclingCR := func() *openragv1alpha1.OpenRAG {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-serve:latest"}},
+			Worker:  &openragv1alpha1.DoclingWorkerSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-worker:latest"}},
+			Valkey:  &openragv1alpha1.ValkeySpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "valkey:latest"}},
+		}
+		return cr
+	}
+	baseCR := func() *openragv1alpha1.OpenRAG { return minimalCR("x", "ns") }
+
+	// Only the backend pod talks to the Kubernetes API, so it defaults to mounting
+	// the SA token; every other pod defaults to not mounting it.
+	cases := []struct {
+		name        string
+		wantDefault bool
+		newCR       func() *openragv1alpha1.OpenRAG
+		set         func(cr *openragv1alpha1.OpenRAG, v *bool)
+		build       func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec
+	}{
+		{"frontend", false, baseCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) { cr.Spec.Frontend.AutomountServiceAccountToken = v },
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.frontendDeployment(cr, "ns").Spec.Template.Spec
+			}},
+		{"backend", true, baseCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) { cr.Spec.Backend.AutomountServiceAccountToken = v },
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.backendDeployment(cr, "ns", "hash").Spec.Template.Spec
+			}},
+		{"langflow", false, baseCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) { cr.Spec.Langflow.AutomountServiceAccountToken = v },
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
+			}},
+		{"docling-serve", false, doclingCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) {
+				cr.Spec.DoclingComponents.Serve.AutomountServiceAccountToken = v
+			},
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.doclingServeDeployment(cr, "ns").Spec.Template.Spec
+			}},
+		{"docling-worker", false, doclingCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) {
+				cr.Spec.DoclingComponents.Worker.AutomountServiceAccountToken = v
+			},
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.doclingWorkerDeployment(cr, "ns").Spec.Template.Spec
+			}},
+		{"valkey", false, doclingCR,
+			func(cr *openragv1alpha1.OpenRAG, v *bool) {
+				cr.Spec.DoclingComponents.Valkey.AutomountServiceAccountToken = v
+			},
+			func(cr *openragv1alpha1.OpenRAG) corev1.PodSpec {
+				return r.valkeyStatefulSet(cr, "ns").Spec.Template.Spec
+			}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name+"/default", func(t *testing.T) {
+			ps := tc.build(tc.newCR())
+			require.NotNil(t, ps.AutomountServiceAccountToken, "%s should set an explicit automount default", tc.name)
+			assert.Equal(t, tc.wantDefault, *ps.AutomountServiceAccountToken, "%s default mismatch", tc.name)
+		})
+		t.Run(tc.name+"/override", func(t *testing.T) {
+			override := !tc.wantDefault
+			cr := tc.newCR()
+			tc.set(cr, &override)
+			ps := tc.build(cr)
+			require.NotNil(t, ps.AutomountServiceAccountToken, "%s override should be honored", tc.name)
+			assert.Equal(t, override, *ps.AutomountServiceAccountToken, "%s override mismatch", tc.name)
+		})
+	}
+}
+
 // guards the one build with a pre-existing operator-manager init container: downloader must run first
 func TestLangflow_UserInitContainerAppendedAfterFlowsDownloader(t *testing.T) {
 	s := newScheme(t)

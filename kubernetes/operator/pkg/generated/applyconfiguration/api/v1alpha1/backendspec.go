@@ -212,6 +212,14 @@ func (b *BackendSpecApplyConfiguration) WithCreateService(value bool) *BackendSp
 	return b
 }
 
+// WithAutomountServiceAccountToken sets the AutomountServiceAccountToken field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AutomountServiceAccountToken field is set to the value of the last call.
+func (b *BackendSpecApplyConfiguration) WithAutomountServiceAccountToken(value bool) *BackendSpecApplyConfiguration {
+	b.ComponentSpecApplyConfiguration.AutomountServiceAccountToken = &value
+	return b
+}
+
 // WithPodSecurityContext sets the PodSecurityContext field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PodSecurityContext field is set to the value of the last call.
