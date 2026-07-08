@@ -43,24 +43,10 @@ test.describe("Diverse Format Ingestion. @33219208 , @34581152 , @34581153 , @34
       }
     }
 
-    // Step 2: After all uploads complete, fetch latest docs once and verify each file's status
-    // This prevents refresh from hiding failed documents and avoids multiple fetchLatestDocs calls
-    await knowledge.open();
-    // await knowledge.fetchLatestDocs();
-
+    // Step 2: After all uploads complete, verify each file's status becomes Active
     for (const uploadedFileName of uploadedFiles) {
       try {
-        // Find the document row and verify status without calling fetchLatestDocs again
-        const row = await knowledge.findRowAcrossPages(uploadedFileName);
-        const status = row.locator('[col-id="status"]');
-        // Scroll to make status column visible
-        await page
-          .locator(".ag-body-horizontal-scroll-viewport")
-          .evaluate((el) => {
-            el.scrollLeft = el.scrollWidth;
-          });
-        // Wait for Active status with generous timeout
-        await expect(status).toContainText("Active", { timeout: 120000 });
+        await knowledge.verifyDocumentActive(uploadedFileName);
       } catch (error) {
         throw new Error(`Failed to verify ${uploadedFileName}: ${error}`);
       }

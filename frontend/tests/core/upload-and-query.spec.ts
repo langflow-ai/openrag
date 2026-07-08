@@ -26,14 +26,8 @@ test.describe("Document Upload and Query @33219204 , @34548303 , @34548305 , @34
 
     expect(fileName).toBe(TEST_CONFIG.documents.kubernetes.name);
 
-    // Verify document is active - using manual verification to avoid fetchLatestDocs() issues
-    await knowledge.open();
-    const row = await knowledge.findRowAcrossPages(fileName);
-    const status = row.locator('[col-id="status"]');
-    await page.locator(".ag-body-horizontal-scroll-viewport").evaluate((el) => {
-      el.scrollLeft = el.scrollWidth;
-    });
-    await expect(status).toContainText("Active", { timeout: 120000 });
+    // Verify document is active
+    await knowledge.verifyDocumentActive(fileName);
 
     // Wait additional time to ensure document is fully indexed and searchable
     logger.info("Document is Active, waiting for indexing to complete...");

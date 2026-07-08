@@ -21,7 +21,6 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     knowledge,
     chat,
   }) => {
-    //test.skip(true, 'Skipping due to bug https://github.com/langflow-ai/openrag/issues/1335');
     await navigateToSettings(page);
     await settings.clickTab("Providers");
     await settings.configureWatsonxai();

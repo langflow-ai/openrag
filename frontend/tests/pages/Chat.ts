@@ -379,14 +379,17 @@ export class Chat {
    */
   private async isSaaSUI(): Promise<boolean> {
     // Check for SaaS profile button with aria-haspopup="menu"
-    const profileButton = this.page
-      .locator('button[aria-haspopup="menu"]')
+    const switchThemeButton = this.page
+      .locator("button")
+      .filter({
+        has: this.page.locator("svg.lucide-sun, svg.lucide-moon"),
+      })
       .first();
     try {
-      await profileButton.waitFor({ state: "visible", timeout: 2000 });
-      return true;
-    } catch {
+      await switchThemeButton.waitFor({ state: "visible", timeout: 2000 });
       return false;
+    } catch {
+      return true;
     }
   }
 
