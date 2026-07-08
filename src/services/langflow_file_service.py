@@ -18,6 +18,7 @@ from config.settings import (
     get_ingest_callback_url,
 )
 from services.document_index_writer import DocumentIndexContext
+from utils.document_processing import EMBEDDED_IMAGES_OCR_DISABLED_WARNING, has_embedded_images
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
 
@@ -999,6 +1000,8 @@ class LangflowFileService:
                     "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                 },
             )
+        else:
+            poll_result = None
 
         # ── Phase 2: trigger Langflow ingestion ─────────────────────────
         final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(tweaks, settings)
@@ -1056,9 +1059,16 @@ class LangflowFileService:
             # fields coherent. Idempotent for the polling path.
             file_task.docling_status = DoclingPhaseStatus.SUCCESS
 
-        return {
+        result = {
             "status": "success",
             "docling_task_id": task_id,
             "ingestion": ingest_result,
             "message": f"File '{filename}' processed via Docling and ingested successfully",
         }
+        if (
+            ocr_override is False
+            and poll_result is not None
+            and has_embedded_images(poll_result.document_json_content)
+        ):
+            result["warning"] = EMBEDDED_IMAGES_OCR_DISABLED_WARNING
+        return result

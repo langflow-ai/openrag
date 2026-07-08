@@ -71,6 +71,8 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
         b"PDFDATA",
         user_id="owner-123",
         auth_header="Bearer jwt-token",
+        ocr=None,
+        picture_descriptions=None,
     )
 
     # Langflow was invoked exactly once, with the docling_task_id forwarded.
@@ -86,6 +88,36 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
     # Result envelope.
     assert result["status"] == "success"
     assert result["docling_task_id"] == "task-abc-123"
+
+
+@pytest.mark.asyncio
+async def test_two_phase_success_warns_when_ocr_disabled_and_docling_found_images(
+    langflow_service, mock_polling_service, file_tuple, file_task
+):
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.SUCCESS,
+        elapsed_seconds=2.5,
+        document_json_content={
+            "origin": {
+                "binary_hash": "doc-hash",
+                "filename": "test.pdf",
+                "mimetype": "application/pdf",
+            },
+            "texts": [{"text": "Selectable text", "prov": [{"page_no": 1}]}],
+            "tables": [],
+            "pictures": [{"self_ref": "#/pictures/0", "prov": [{"page_no": 1}]}],
+        },
+    )
+
+    result = await langflow_service.upload_and_ingest_file(
+        file_tuple=file_tuple,
+        settings={"ocr": False},
+        docling_polling_service=mock_polling_service,
+        file_task=file_task,
+    )
+
+    assert result["status"] == "success"
+    assert "Embedded images were skipped" in result["warning"]
 
 
 @pytest.mark.asyncio

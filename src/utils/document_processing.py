@@ -1,9 +1,47 @@
 import os
 from collections import defaultdict
+from typing import Any
 
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+EMBEDDED_IMAGES_OCR_DISABLED_WARNING = (
+    "OCR is disabled. Embedded images were skipped, so text inside images was not extracted."
+)
+
+_IMAGE_COLLECTION_KEYS = ("pictures", "figures", "images")
+_IMAGE_REF_MARKERS = ("#/pictures/", "#/figures/", "#/images/")
+_IMAGE_LABELS = {"picture", "figure", "image"}
+
+
+def has_embedded_images(doc_dict: dict[str, Any] | None) -> bool:
+    """Return True when a Docling JSON export contains embedded image artifacts."""
+    if not isinstance(doc_dict, dict):
+        return False
+
+    for key in _IMAGE_COLLECTION_KEYS:
+        value = doc_dict.get(key)
+        if isinstance(value, list) and len(value) > 0:
+            return True
+        if isinstance(value, dict) and len(value) > 0:
+            return True
+
+    return _references_image_collection(doc_dict.get("body"))
+
+
+def _references_image_collection(value: Any) -> bool:
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(marker in lowered for marker in _IMAGE_REF_MARKERS)
+    if isinstance(value, list):
+        return any(_references_image_collection(item) for item in value)
+    if isinstance(value, dict):
+        label = str(value.get("label") or value.get("type") or "").lower()
+        if label in _IMAGE_LABELS:
+            return True
+        return any(_references_image_collection(item) for item in value.values())
+    return False
 
 
 def process_text_file(file_path: str) -> dict:
@@ -136,6 +174,7 @@ def extract_relevant(doc_dict: dict) -> dict:
         "filename": origin.get("filename"),
         "mimetype": origin.get("mimetype"),
         "chunks": chunks,
+        "has_embedded_images": has_embedded_images(doc_dict),
     }
 
 

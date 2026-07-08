@@ -10,6 +10,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from services.docling_service import (
     DoclingServeError,
@@ -36,6 +37,7 @@ class DoclingPollResult:
     detail: str | None = None
     last_snapshot: DoclingStatusSnapshot | None = None
     elapsed_seconds: float = 0.0
+    document_json_content: dict[str, Any] | None = None
 
 
 class DoclingPollingService:
@@ -93,6 +95,7 @@ class DoclingPollingService:
 
             if snapshot.state == DoclingTaskState.SUCCESS:
                 result_fetch_errors = 0
+                document_json_content: dict[str, Any] | None = None
                 while True:
                     now = time.monotonic()
                     elapsed = now - start
@@ -116,7 +119,7 @@ class DoclingPollingService:
                             elapsed_seconds=elapsed,
                         )
                     try:
-                        await self.docling_service.fetch_task_result(
+                        document_json_content = await self.docling_service.fetch_task_result(
                             task_id, user_id=user_id, auth_header=auth_header
                         )
                         break
@@ -170,6 +173,7 @@ class DoclingPollingService:
                     outcome=PollOutcome.SUCCESS,
                     last_snapshot=snapshot,
                     elapsed_seconds=elapsed,
+                    document_json_content=document_json_content,
                 )
 
             if snapshot.state == DoclingTaskState.FAILED:
