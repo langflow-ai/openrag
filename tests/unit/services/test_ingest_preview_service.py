@@ -1,6 +1,6 @@
 """Tests for preview-mode index proof helpers."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
