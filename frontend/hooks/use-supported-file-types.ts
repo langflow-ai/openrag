@@ -17,6 +17,10 @@ export function useSupportedFileTypes() {
     () => getSupportedExtensions(ocrEnabled),
     [ocrEnabled],
   );
+  const supportedExtensionSet = useMemo(
+    () => new Set(supportedExtensions),
+    [supportedExtensions],
+  );
 
-  return { supportedFileTypes, supportedExtensions };
+  return { supportedFileTypes, supportedExtensions, supportedExtensionSet };
 }

@@ -91,7 +91,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { supportedExtensions } = useSupportedFileTypes();
+  const { supportedExtensions, supportedExtensionSet } =
+    useSupportedFileTypes();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -494,7 +495,7 @@ export function KnowledgeDropdown() {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
-        return supportedExtensions.includes(ext);
+        return supportedExtensionSet.has(ext);
       });
       const unsupportedCount = fileList.length - filteredFiles.length;
 
