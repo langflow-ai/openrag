@@ -266,6 +266,17 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_ibm_cos_enabled() -> bool:
+    """Local dev: enable the IBM COS connector without IBM_AUTH_ENABLED.
+
+    Allows testing the IBM COS connector (e.g. against MinIO in HMAC mode) in a
+    local environment where IBM auth is not configured. Never enable in
+    production. Requires ``OPENRAG_DEV_IBM_COS=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_IBM_COS", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_azure_blob_enabled() -> bool:
     """Feature kill switch for the Azure Blob connector (default: enabled).
 

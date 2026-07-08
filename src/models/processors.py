@@ -21,7 +21,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_filename_search_body
+from utils.opensearch_queries import build_filename_search_body, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -836,6 +836,58 @@ class ConnectorFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.shared = shared
 
+    async def _reconcile_shared_owner(self, filename: str) -> None:
+        """Update owner fields on already-indexed chunks for `filename` to match
+        the connector's current `shared` setting.
+
+        Called on the duplicate/unchanged skip paths below, where a file's
+        content and name haven't changed since a prior sync but the connector's
+        "Make documents available to all users" setting may have been toggled
+        since then. Without this, those chunks would keep whatever owner they
+        got on their original ingest forever, since a byte-identical re-sync
+        never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
+        this user or already ownerless (matching the same boundary
+        delete_document_by_filename uses), so it can't touch another user's
+        private document that happens to share this filename.
+        """
+        write_client = clients.opensearch
+        if write_client is None:
+            return
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            self.user_id, self.owner_name, self.owner_email, self.shared
+        )
+        for candidate in get_filename_aliases(filename):
+            try:
+                await write_client.update_by_query(
+                    index=get_index_name(),
+                    body={
+                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "script": {
+                            "source": """
+                                if (params.shared) {
+                                    ctx._source.remove('owner');
+                                } else {
+                                    ctx._source.owner = params.owner;
+                                }
+                                ctx._source.owner_name = params.owner_name;
+                                ctx._source.owner_email = params.owner_email;
+                            """,
+                            "params": {
+                                "shared": self.shared,
+                                "owner": owner,
+                                "owner_name": owner_name,
+                                "owner_email": owner_email,
+                            },
+                        },
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to reconcile owner fields for skipped duplicate",
+                    filename=candidate,
+                    error=str(e),
+                )
+
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
         file_task.status = TaskStatus.RUNNING
@@ -984,6 +1036,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
             if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
+                    await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
                     file_task.result = {
@@ -1014,6 +1067,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
+                    await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
