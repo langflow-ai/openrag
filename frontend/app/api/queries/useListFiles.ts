@@ -10,9 +10,10 @@ export interface ListFilesParams {
   pageSize?: number;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
-  connectorType?: string;
-  mimetype?: string;
-  owner?: string;
+  connectorType?: string[];
+  mimetype?: string[];
+  owner?: string[];
+  dataSources?: string[];
   search?: string;
 }
 
@@ -36,13 +37,23 @@ export const useListFiles = (
     if (params.pageSize) searchParams.set("page_size", String(params.pageSize));
     if (params.sortBy) searchParams.set("sort_by", params.sortBy);
     if (params.sortOrder) searchParams.set("sort_order", params.sortOrder);
-    if (params.connectorType)
-      searchParams.set("connector_type", params.connectorType);
-    if (params.mimetype) searchParams.set("mimetype", params.mimetype);
-    if (params.owner) searchParams.set("owner", params.owner);
+    for (const value of params.connectorType ?? []) {
+      searchParams.append("connector_type", value);
+    }
+    for (const value of params.mimetype ?? []) {
+      searchParams.append("mimetype", value);
+    }
+    for (const value of params.owner ?? []) {
+      searchParams.append("owner", value);
+    }
+    for (const value of params.dataSources ?? []) {
+      searchParams.append("data_source", value);
+    }
     if (params.search) searchParams.set("search", params.search);
 
     const url = `/api/files?${searchParams.toString()}`;
+    // biome-ignore lint/suspicious/noConsole: temporary diagnostics for knowledge filter debugging
+    console.debug("[useListFiles] request", url);
     const response = await fetch(url);
 
     if (!response.ok) {

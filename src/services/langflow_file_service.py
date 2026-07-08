@@ -602,6 +602,12 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
+        # The flow ships with max_depth=1 baked into the URL component; the
+        # requested crawl depth must be tweaked in or it is silently ignored.
+        url_component_tweaks = tweaks.setdefault("URLComponent-lnA0q", {})
+        url_component_tweaks.setdefault("max_depth", crawl_depth)
+        url_component_tweaks.setdefault("prevent_outside", prevent_outside)
+
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
 

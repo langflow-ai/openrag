@@ -12,7 +12,7 @@ export interface NormalizedSelectedFilters {
   connector_types: string[];
 }
 
-function normalizeFilterDimension(values?: string[]): string[] {
+export function normalizeFilterDimension(values?: string[]): string[] {
   if (!values || values.includes("*")) {
     return [];
   }

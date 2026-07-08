@@ -310,6 +310,13 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+        logger.info(
+            "Search filters applied",
+            is_wildcard=is_wildcard_match_all,
+            filters=filters,
+            filter_clauses=filter_clauses,
+        )
+
         # Build query body
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope

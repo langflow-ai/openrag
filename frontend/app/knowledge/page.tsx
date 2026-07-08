@@ -43,6 +43,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { formatFileSize } from "@/lib/file-format";
+import { normalizeFilterDimension } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -99,12 +100,9 @@ function pruneNonDeletableGridSelection(
 }
 
 /** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
-function listFilesFilterParam(values?: string[]): string | undefined {
-  const raw = values?.[0]?.trim();
-  if (!raw || raw === "*") {
-    return undefined;
-  }
-  return raw;
+function listFilesFilterParam(values?: string[]): string[] | undefined {
+  const normalized = normalizeFilterDimension(values);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 // Function to get the appropriate icon for a connector type
@@ -317,6 +315,9 @@ function SearchPage() {
       ),
       mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
       owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+      dataSources: listFilesFilterParam(
+        parsedFilterData?.filters?.data_sources,
+      ),
     },
     {
       refetchInterval: 5000,

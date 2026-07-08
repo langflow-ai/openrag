@@ -27,9 +27,10 @@ class FileService:
         page_size: int = 25,
         sort_by: str = "filename",
         sort_order: str = "asc",
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | str | None = None,
+        mimetype: list[str] | str | None = None,
+        owner: list[str] | str | None = None,
+        data_source: list[str] | str | None = None,
         search: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -40,7 +41,10 @@ class FileService:
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
+        query = self._build_filter_query(
+            user_id, connector_type, mimetype, owner, data_source, search
+        )
+        logger.info("File list filter query", query=query)
         agg_body = self._build_file_aggregation(query)
 
         try:
@@ -60,6 +64,11 @@ class FileService:
 
         files = self._parse_aggregation_buckets(result)
         files = self._sort_files(files, sort_by, sort_order)
+        logger.info(
+            "File list result",
+            total_files=len(files),
+            filenames=[f["filename"] for f in files[:20]],
+        )
 
         total = len(files)
         start = (page - 1) * page_size
@@ -80,9 +89,9 @@ class FileService:
         query: str = "",
         page: int = 1,
         page_size: int = 25,
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | str | None = None,
+        mimetype: list[str] | str | None = None,
+        owner: list[str] | str | None = None,
     ) -> dict[str, Any]:
         """
         Search files by name with fuzzy/prefix matching.
@@ -103,12 +112,22 @@ class FileService:
             search=query,
         )
 
+    @staticmethod
+    def _terms_clause(field: str, values: list[str] | str) -> dict[str, Any]:
+        """Build a term/terms filter accepting a single value or a list."""
+        if isinstance(values, str):
+            return {"term": {field: values}}
+        if len(values) == 1:
+            return {"term": {field: values[0]}}
+        return {"terms": {field: values}}
+
     def _build_filter_query(
         self,
         user_id: str,
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | str | None = None,
+        mimetype: list[str] | str | None = None,
+        owner: list[str] | str | None = None,
+        data_source: list[str] | str | None = None,
         search: str | None = None,
     ) -> dict[str, Any]:
         """Build the bool query with optional filters + filename search."""
@@ -116,11 +135,14 @@ class FileService:
         filter_clauses = []
 
         if connector_type:
-            filter_clauses.append({"term": {"connector_type": connector_type}})
+            filter_clauses.append(self._terms_clause("connector_type", connector_type))
         if mimetype:
-            filter_clauses.append({"term": {"mimetype": mimetype}})
+            filter_clauses.append(self._terms_clause("mimetype", mimetype))
         if owner:
-            filter_clauses.append({"term": {"owner": owner}})
+            filter_clauses.append(self._terms_clause("owner", owner))
+        if data_source:
+            # Search filters map "data_sources" to the filename field; mirror that here.
+            filter_clauses.append(self._terms_clause("filename", data_source))
 
         if search:
             # Combine wildcard (partial), prefix, and fuzzy for flexible matching

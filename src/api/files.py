@@ -26,14 +26,29 @@ async def list_files(
     page_size: int = Query(25, ge=1, le=100, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
     sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
+    connector_type: list[str] | None = Query(
+        None, description="Filter by connector type (repeatable)"
+    ),
+    mimetype: list[str] | None = Query(None, description="Filter by MIME type (repeatable)"),
+    owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
+    data_source: list[str] | None = Query(
+        None, description="Filter by source filename (repeatable)"
+    ),
     search: str | None = Query(None, description="Search filename"),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
     """List ingested files with pagination, filtering, and sorting."""
+    logger.info(
+        "Listing files",
+        connector_type=connector_type,
+        mimetype=mimetype,
+        owner=owner,
+        data_source=data_source,
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
     try:
         result = await file_service.list_files(
             user_id=user.user_id,
@@ -45,6 +60,7 @@ async def list_files(
             connector_type=connector_type,
             mimetype=mimetype,
             owner=owner,
+            data_source=data_source,
             search=search,
         )
         return JSONResponse(result)
@@ -64,9 +80,11 @@ async def search_files(
     q: str = Query(..., min_length=1, description="Search query"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(25, ge=1, le=100, description="Items per page"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
+    connector_type: list[str] | None = Query(
+        None, description="Filter by connector type (repeatable)"
+    ),
+    mimetype: list[str] | None = Query(None, description="Filter by MIME type (repeatable)"),
+    owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
