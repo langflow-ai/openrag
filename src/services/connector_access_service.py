@@ -23,11 +23,16 @@ def is_bucket_connector_type(connector_type: str) -> bool:
 
 def governable_connector_types() -> tuple[str, ...]:
     """Types shown in admin Connectors Permission — independent of the live connectors list."""
-    from config.settings import IBM_AUTH_ENABLED, is_cloud_context
+    from config.settings import IBM_AUTH_ENABLED, is_azure_blob_enabled, is_cloud_context
 
+    types = CONNECTOR_TYPES
+    # Honor the Azure Blob kill switch so a force-hidden connector doesn't linger
+    # as a governable row here (mirrors AzureBlobConnector.is_available()).
+    if not is_azure_blob_enabled():
+        types = tuple(t for t in types if t != "azure_blob")
     if is_cloud_context() and not IBM_AUTH_ENABLED:
-        return tuple(t for t in CONNECTOR_TYPES if t not in _BUCKET_CONNECTOR_TYPES)
-    return CONNECTOR_TYPES
+        types = tuple(t for t in types if t not in _BUCKET_CONNECTOR_TYPES)
+    return types
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:

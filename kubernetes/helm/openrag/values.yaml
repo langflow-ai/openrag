@@ -60,12 +60,12 @@ global:
   # normally entered per-connection in the UI. Provide EITHER a connection string
   # OR account name + key (+ optional custom blob endpoint).
   azureBlob:
-    enabled: false
+    enabled: true                       # OPENRAG_AZURE_BLOB_ENABLED
     connectionString: ""                # AZURE_STORAGE_CONNECTION_STRING
     accountName: ""                     # AZURE_STORAGE_ACCOUNT_NAME
     accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
     endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
-      
+
 # ============================================================================
 # Langflow Configuration
 # ============================================================================
@@ -182,7 +182,7 @@ langflow:
         value: "langflow-db"
     sqlite:
       enabled: false
-      
+
   # Langfuse Tracking
   langfuse:
     secretKey: ""

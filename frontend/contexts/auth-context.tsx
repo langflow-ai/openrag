@@ -208,9 +208,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const refreshAuth = async () => {
+  const refreshAuth = useCallback(async () => {
     await checkAuth();
-  };
+  }, [checkAuth]);
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
