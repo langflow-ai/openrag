@@ -43,9 +43,7 @@ async def test_bucket_filter_sync_forwards_shared_to_new_and_changed_batches():
 
     connector_service = MagicMock()
     connection = _make_connection()
-    connector_service.connection_manager.list_connections = AsyncMock(
-        return_value=[connection]
-    )
+    connector_service.connection_manager.list_connections = AsyncMock(return_value=[connection])
     connector = _make_connector()
     connector_service.get_connector = AsyncMock(return_value=connector)
     connector_service.sync_specific_files = AsyncMock(side_effect=["task-new", "task-changed"])
