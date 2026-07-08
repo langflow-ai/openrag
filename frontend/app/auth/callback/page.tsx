@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Loader2, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import AnimatedProcessingIcon from "@/components/icons/animated-processing-icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,8 +28,7 @@ function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { refreshAuth, isIbmAuthMode } = useAuth();
-  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
-
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [purpose] = useState(() => {
     const authPurpose = localStorage.getItem("auth_purpose");
     const storedConnectorType = localStorage.getItem(
@@ -131,10 +130,16 @@ function AuthCallbackContent() {
               "/chat";
 
             cleanupOAuthStorage();
-            setRedirectTarget(redirectTo);
+            redirectTimeoutRef.current = setTimeout(
+              () => router.push(redirectTo),
+              2000,
+            );
           } else {
             cleanupOAuthStorage();
-            setRedirectTarget("/settings?oauth_success=true");
+            redirectTimeoutRef.current = setTimeout(
+              () => router.push("/settings?oauth_success=true"),
+              2000,
+            );
           }
         },
         onError: () => {
@@ -142,6 +147,8 @@ function AuthCallbackContent() {
         },
       },
     );
+
+    return () => clearTimeout(redirectTimeoutRef.current);
   }, [
     code,
     state,
@@ -152,6 +159,7 @@ function AuthCallbackContent() {
     exchangeCode,
     refreshAuth,
     purpose,
+    router,
   ]);
 
   const status: "processing" | "success" | "error" =
@@ -166,15 +174,6 @@ function AuthCallbackContent() {
     (callbackMutation.error instanceof Error
       ? callbackMutation.error.message
       : null);
-
-  useEffect(() => {
-    if (status === "success" && redirectTarget) {
-      const timeoutId = setTimeout(() => {
-        router.push(redirectTarget);
-      }, 2000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [status, redirectTarget, router]);
 
   const isAppAuth = purpose === "app_auth";
 
