@@ -15,7 +15,7 @@ from services.docling_service import DoclingConfig
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
     llm_provider: str | None = Field(
-        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry|azure_openai)$"
     )
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
@@ -26,7 +26,7 @@ class SettingsUpdateBody(BaseModel):
     disable_ingest_with_langflow: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(
-        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry|azure_openai)$"
     )
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
@@ -37,11 +37,15 @@ class SettingsUpdateBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
     azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
     azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
+    azure_openai_api_key: str | None = Field(None, min_length=1)
+    azure_openai_endpoint: str | None = Field(None, min_length=1)
+    azure_openai_api_version: str | None = Field(None, min_length=1)
     remove_ollama_config: bool | None = None
     remove_openai_config: bool | None = None
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
     remove_azure_ai_foundry_config: bool | None = None
+    remove_azure_openai_config: bool | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
@@ -50,11 +54,11 @@ class SettingsUpdateBody(BaseModel):
 
 class OnboardingBody(BaseModel):
     llm_provider: str | None = Field(
-        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry)$"
+        None, pattern="^(openai|anthropic|watsonx|ollama|azure_ai_foundry|azure_openai)$"
     )
     llm_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(
-        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
+        None, pattern="^(openai|watsonx|ollama|azure_ai_foundry|azure_openai)$"
     )
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
@@ -65,6 +69,9 @@ class OnboardingBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
     azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
     azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
+    azure_openai_api_key: str | None = Field(None, min_length=1)
+    azure_openai_endpoint: str | None = Field(None, min_length=1)
+    azure_openai_api_version: str | None = Field(None, min_length=1)
 
 
 class AssistantMessage(BaseModel):
@@ -134,12 +141,22 @@ class AzureAIFoundryProviderConfig(BaseModel):
     embedding_deployment_name: str | None = None
 
 
+class AzureOpenAIProviderConfig(BaseModel):
+    has_api_key: bool
+    endpoint: str | None
+    api_version: str | None
+    configured: bool
+    llm_deployment_name: str | None = None
+    embedding_deployment_name: str | None = None
+
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
     azure_ai_foundry: AzureAIFoundryProviderConfig
+    azure_openai: AzureOpenAIProviderConfig
 
 
 class KnowledgeConfig(BaseModel):

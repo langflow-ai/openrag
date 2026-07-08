@@ -47,6 +47,14 @@ export interface ProviderSettings {
     llm_deployment_name?: string;
     embedding_deployment_name?: string;
   };
+  azure_openai?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    api_version?: string;
+    configured?: boolean;
+    llm_deployment_name?: string;
+    embedding_deployment_name?: string;
+  };
 }
 
 export interface OnboardingState {

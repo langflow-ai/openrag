@@ -16,7 +16,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic", "azure_ai"]
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic", "azure_ai", "azure"]
 
 
 class UnknownEmbeddingProvider(Exception):
@@ -128,6 +128,16 @@ class ModelsService:
                     if llm_model and config.agent.llm_provider == "azure_ai_foundry":
                         new_registry[llm_model] = "azure_ai_foundry"
 
+                # Azure OpenAI Service — register configured deployment names statically;
+                # the user provides deployment names manually (no remote model fetch).
+                if config.providers.azure_openai.configured:
+                    embedding_model = config.knowledge.embedding_model
+                    llm_model = config.agent.llm_model
+                    if embedding_model and config.knowledge.embedding_provider == "azure_openai":
+                        new_registry[embedding_model] = "azure_openai"
+                    if llm_model and config.agent.llm_provider == "azure_openai":
+                        new_registry[llm_model] = "azure_openai"
+
                 ModelsService._model_provider_registry = new_registry
                 logger.info(
                     f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered"
@@ -183,6 +193,9 @@ class ModelsService:
         # Azure AI Foundry uses the azure_ai/ prefix in LiteLLM
         if provider_lower == "azure_ai_foundry":
             return f"azure_ai/{model_name}"
+        # Azure OpenAI Service uses the azure/ prefix in LiteLLM
+        if provider_lower == "azure_openai":
+            return f"azure/{model_name}"
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
     async def get_openai_models(

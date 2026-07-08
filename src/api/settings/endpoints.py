@@ -36,6 +36,7 @@ from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
     AzureAIFoundryProviderConfig,
+    AzureOpenAIProviderConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
     IngestionDefaultsConfig,
@@ -223,6 +224,14 @@ async def get_settings(
                     llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name or None,
                     embedding_deployment_name=openrag_config.providers.azure_ai_foundry.embedding_deployment_name or None,
                 ),
+                azure_openai=AzureOpenAIProviderConfig(
+                    has_api_key=bool(openrag_config.providers.azure_openai.api_key),
+                    endpoint=openrag_config.providers.azure_openai.endpoint or None,
+                    api_version=openrag_config.providers.azure_openai.api_version or None,
+                    configured=openrag_config.providers.azure_openai.configured,
+                    llm_deployment_name=openrag_config.providers.azure_openai.llm_deployment_name or None,
+                    embedding_deployment_name=openrag_config.providers.azure_openai.embedding_deployment_name or None,
+                ),
             )
             if show_providers
             else None,
@@ -292,6 +301,9 @@ async def update_settings(
             "ollama_endpoint",
             "azure_ai_foundry_api_key",
             "azure_ai_foundry_endpoint",
+            "azure_openai_api_key",
+            "azure_openai_endpoint",
+            "azure_openai_api_version",
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
@@ -332,6 +344,7 @@ async def update_settings(
                     api_key = getattr(llm_provider_config, "api_key", None)
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
+                    api_version = getattr(llm_provider_config, "api_version", None)
 
                     if (
                         getattr(body, f"{llm_provider}_api_key", None) is not None
@@ -342,6 +355,8 @@ async def update_settings(
                         endpoint = getattr(body, f"{llm_provider}_endpoint", None)
                     if getattr(body, f"{llm_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{llm_provider}_project_id", None)
+                    if getattr(body, f"{llm_provider}_api_version", None) is not None:
+                        api_version = getattr(body, f"{llm_provider}_api_version", None)
 
                     await validate_provider_setup(
                         provider=llm_provider,
@@ -349,6 +364,7 @@ async def update_settings(
                         llm_model=llm_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        api_version=api_version,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
@@ -374,6 +390,7 @@ async def update_settings(
                     api_key = getattr(embedding_provider_config, "api_key", None)
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
+                    api_version = getattr(embedding_provider_config, "api_version", None)
 
                     if (
                         getattr(body, f"{embedding_provider}_api_key", None) is not None
@@ -384,6 +401,8 @@ async def update_settings(
                         endpoint = getattr(body, f"{embedding_provider}_endpoint", None)
                     if getattr(body, f"{embedding_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{embedding_provider}_project_id", None)
+                    if getattr(body, f"{embedding_provider}_api_version", None) is not None:
+                        api_version = getattr(body, f"{embedding_provider}_api_version", None)
 
                     await validate_provider_setup(
                         provider=embedding_provider,
@@ -391,6 +410,7 @@ async def update_settings(
                         embedding_model=embedding_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        api_version=api_version,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
@@ -417,6 +437,8 @@ async def update_settings(
             effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
             if effective_llm_provider == "azure_ai_foundry":
                 current_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
+            elif effective_llm_provider == "azure_openai":
+                current_config.providers.azure_openai.llm_deployment_name = body.llm_model
 
         if body.llm_provider is not None:
             old_provider = current_config.agent.llm_provider
@@ -457,6 +479,8 @@ async def update_settings(
             effective_embedding_provider = body.embedding_provider or current_config.knowledge.embedding_provider
             if effective_embedding_provider == "azure_ai_foundry":
                 current_config.providers.azure_ai_foundry.embedding_deployment_name = new_embedding_model
+            elif effective_embedding_provider == "azure_openai":
+                current_config.providers.azure_openai.embedding_deployment_name = new_embedding_model
 
         if body.embedding_provider is not None:
             old_provider = current_config.knowledge.embedding_provider
@@ -650,6 +674,26 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.azure_openai_api_key is not None and body.azure_openai_api_key.strip():
+            current_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_openai_endpoint is not None:
+            current_config.providers.azure_openai.endpoint = body.azure_openai_endpoint.strip()
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_openai_api_version is not None:
+            current_config.providers.azure_openai.api_version = (
+                body.azure_openai_api_version.strip()
+            )
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+            provider_updated = True
+
         if body.remove_ollama_config:
             other_providers_configured = (
                 current_config.providers.openai.configured
@@ -804,6 +848,46 @@ async def update_settings(
                 current_config.agent.llm_model = _default_llm_model(fb)
             if current_config.knowledge.embedding_provider == "azure_ai_foundry":
                 fb = _first_configured_embedding_provider(current_config, "azure_ai_foundry")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_azure_openai_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+                or current_config.providers.azure_ai_foundry.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {
+                        "error": "Cannot remove Azure OpenAI configuration: configure another model provider first."
+                    },
+                    status_code=400,
+                )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "azure_openai", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response(
+                        "Azure OpenAI", "azure_openai", affected
+                    )
+            current_config.providers.azure_openai.api_key = ""
+            current_config.providers.azure_openai.endpoint = ""
+            current_config.providers.azure_openai.api_version = ""
+            current_config.providers.azure_openai.configured = False
+            current_config.providers.azure_openai.llm_deployment_name = ""
+            current_config.providers.azure_openai.embedding_deployment_name = ""
+            if current_config.agent.llm_provider == "azure_openai":
+                fb = _first_configured_llm_provider(current_config, "azure_openai")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = _default_llm_model(fb)
+            if current_config.knowledge.embedding_provider == "azure_openai":
+                fb = _first_configured_embedding_provider(current_config, "azure_openai")
                 current_config.knowledge.embedding_provider = fb
                 current_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True

@@ -1048,6 +1048,17 @@ class AppClients:
                     os.environ["AZURE_AI_API_BASE"] = config.providers.azure_ai_foundry.endpoint
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
 
+                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix)
+                if config.providers.azure_openai.api_key:
+                    os.environ["AZURE_API_KEY"] = config.providers.azure_openai.api_key
+                    logger.debug("Loaded Azure OpenAI API key from config")
+                if config.providers.azure_openai.endpoint:
+                    os.environ["AZURE_API_BASE"] = config.providers.azure_openai.endpoint
+                    logger.debug("Loaded Azure OpenAI endpoint from config")
+                if config.providers.azure_openai.api_version:
+                    os.environ["AZURE_API_VERSION"] = config.providers.azure_openai.api_version
+                    logger.debug("Loaded Azure OpenAI API version from config")
+
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = config.knowledge.embedding_provider or "openai"

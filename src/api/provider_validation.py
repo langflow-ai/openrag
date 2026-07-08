@@ -118,12 +118,13 @@ async def validate_provider_setup(
     endpoint: str = None,
     project_id: str = None,
     test_completion: bool = False,
+    api_version: str = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic', 'azure_ai_foundry', 'azure_openai')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
@@ -131,6 +132,7 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        api_version: API version (required for azure_openai).
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -152,6 +154,7 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    api_version=api_version,
                 )
             elif llm_model:
                 # Test completion with tool calling
@@ -161,6 +164,7 @@ async def validate_provider_setup(
                     llm_model=llm_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    api_version=api_version,
                 )
         else:
             # Lightweight validation (no credits consumed)
@@ -169,6 +173,7 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                api_version=api_version,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -184,6 +189,7 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
@@ -197,6 +203,8 @@ async def test_lightweight_health(
         await _test_anthropic_lightweight_health(api_key)
     elif provider == "azure_ai_foundry":
         await _test_azure_ai_foundry_lightweight_health(api_key, endpoint)
+    elif provider == "azure_openai":
+        await _test_azure_openai_lightweight_health(api_key, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -207,6 +215,7 @@ async def test_completion_with_tools(
     llm_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test completion with tool calling for the provider."""
 
@@ -220,6 +229,8 @@ async def test_completion_with_tools(
         await _test_anthropic_completion_with_tools(api_key, llm_model)
     elif provider == "azure_ai_foundry":
         await _test_azure_ai_foundry_completion(api_key, llm_model, endpoint)
+    elif provider == "azure_openai":
+        await _test_azure_openai_completion(api_key, llm_model, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -230,6 +241,7 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -241,6 +253,8 @@ async def test_embedding(
         await _test_ollama_embedding(embedding_model, endpoint)
     elif provider == "azure_ai_foundry":
         await _test_azure_ai_foundry_embedding(api_key, embedding_model, endpoint)
+    elif provider == "azure_openai":
+        await _test_azure_openai_embedding(api_key, embedding_model, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -943,4 +957,185 @@ async def _test_azure_ai_foundry_embedding(
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"Azure AI Foundry embedding test failed: {str(e)}")
+        raise
+
+
+# Azure OpenAI Service validation functions
+def _azure_openai_base(endpoint: str) -> str:
+    """Normalize an Azure OpenAI endpoint to its resource base (no trailing slash).
+
+    Accepts the plain resource endpoint (https://<resource>.openai.azure.com),
+    the newer v1 surface (…/openai/v1), or a stray …/openai suffix, and reduces
+    them all to the resource root so we can append /openai/deployments/...
+    ourselves without doubling the path.
+    """
+    base = endpoint.strip().rstrip("/")
+    for suffix in ("/openai/v1", "/openai"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    return base.rstrip("/")
+
+
+async def _test_azure_openai_lightweight_health(
+    api_key: str, endpoint: str, api_version: str
+) -> None:
+    """Test Azure OpenAI credentials with a lightweight GET to the models list.
+
+    Uses the data-plane models list which validates the key + endpoint without
+    consuming credits.
+    """
+    if not api_key:
+        raise Exception("Azure OpenAI API key is required.")
+    if not endpoint:
+        raise Exception("Azure OpenAI endpoint URL is required.")
+    if not api_version:
+        raise Exception("Azure OpenAI API version is required.")
+
+    try:
+        models_url = f"{_azure_openai_base(endpoint)}/openai/models?api-version={api_version}"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                models_url,
+                headers={"api-key": api_key, "Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            if response.status_code == 401:
+                raise Exception("Invalid API key. Verify the key in the Azure portal.")
+            if response.status_code == 403:
+                raise Exception("Access denied. Verify the API key has the required permissions.")
+            if response.status_code == 404:
+                raise Exception(
+                    "Azure OpenAI endpoint not found. Check the endpoint URL and API version."
+                )
+            if response.status_code >= 400:
+                error_details = _extract_error_details(response)
+                raise Exception(f"Azure OpenAI API error: {error_details}")
+            logger.info("Azure OpenAI lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure OpenAI health check timed out")
+        raise Exception("Azure OpenAI endpoint did not respond. Check the endpoint URL.")
+    except Exception as e:
+        logger.error(f"Azure OpenAI health check failed: {str(e)}")
+        raise
+
+
+async def _test_azure_openai_completion(
+    api_key: str, llm_model: str, endpoint: str, api_version: str
+) -> None:
+    """Test Azure OpenAI chat completion with the given deployment.
+
+    Azure OpenAI takes the deployment name in the URL path (not the request body)
+    and requires an api-version query parameter.
+    """
+    if not api_key:
+        raise Exception("Azure OpenAI API key is required.")
+    if not endpoint:
+        raise Exception("Azure OpenAI endpoint URL is required.")
+    if not api_version:
+        raise Exception("Azure OpenAI API version is required.")
+    if not llm_model:
+        raise Exception("A deployment name is required to test Azure OpenAI completion.")
+
+    try:
+        completions_url = (
+            f"{_azure_openai_base(endpoint)}/openai/deployments/{llm_model}"
+            f"/chat/completions?api-version={api_version}"
+        )
+        payload = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_completion_tokens": 10,
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                completions_url,
+                headers={"api-key": api_key, "Content-Type": "application/json"},
+                json=payload,
+                timeout=30.0,
+            )
+            # Some deployments reject max_completion_tokens; retry with max_tokens.
+            if response.status_code == 400:
+                payload = {
+                    "messages": [{"role": "user", "content": "Hello"}],
+                    "max_tokens": 10,
+                }
+                response = await client.post(
+                    completions_url,
+                    headers={"api-key": api_key, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=30.0,
+                )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in the Azure portal.")
+                if response.status_code == 403:
+                    raise Exception(
+                        "Access denied. Verify the API key has the required permissions."
+                    )
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Deployment '{llm_model}' not found. Check that the deployment name matches "
+                        "exactly what was created in Azure OpenAI, and that the API version is correct."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure OpenAI rate limit exceeded.")
+                raise Exception(f"Azure OpenAI API error: {error_details}")
+            logger.info("Azure OpenAI completion test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure OpenAI completion test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"Azure OpenAI completion test failed: {str(e)}")
+        raise
+
+
+async def _test_azure_openai_embedding(
+    api_key: str, embedding_model: str, endpoint: str, api_version: str
+) -> None:
+    """Test Azure OpenAI embedding generation with the given deployment."""
+    if not api_key:
+        raise Exception("Azure OpenAI API key is required.")
+    if not endpoint:
+        raise Exception("Azure OpenAI endpoint URL is required.")
+    if not api_version:
+        raise Exception("Azure OpenAI API version is required.")
+    if not embedding_model:
+        raise Exception("A deployment name is required to test Azure OpenAI embeddings.")
+
+    try:
+        embeddings_url = (
+            f"{_azure_openai_base(endpoint)}/openai/deployments/{embedding_model}"
+            f"/embeddings?api-version={api_version}"
+        )
+        payload = {"input": ["test"]}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                embeddings_url,
+                headers={"api-key": api_key, "Content-Type": "application/json"},
+                json=payload,
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in the Azure portal.")
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Embedding deployment '{embedding_model}' not found. Check that the "
+                        "deployment name matches exactly what was created in Azure OpenAI, and "
+                        "that the API version is correct."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure OpenAI rate limit exceeded.")
+                raise Exception(f"Azure OpenAI embedding error: {error_details}")
+            logger.info("Azure OpenAI embedding test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure OpenAI embedding test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"Azure OpenAI embedding test failed: {str(e)}")
         raise

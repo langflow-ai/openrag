@@ -33,6 +33,16 @@ class AzureAIFoundryBody(BaseModel):
     test_completion: bool = False
 
 
+class AzureOpenAIBody(BaseModel):
+    api_key: str | None = None
+    endpoint: str | None = None
+    api_version: str | None = None
+    deployment_name: str | None = None
+    llm_deployment_name: str | None = None
+    embedding_deployment_name: str | None = None
+    test_completion: bool = False
+
+
 async def get_openai_models(
     body: OpenAIBody | None = None,
     models_service=Depends(get_models_service),
@@ -363,3 +373,133 @@ async def get_azure_ai_foundry_models(
         return JSONResponse(
             {"error": "Failed to retrieve Azure AI Foundry models"}, status_code=500
         )
+
+
+async def get_azure_openai_models(
+    body: AzureOpenAIBody | None = None,
+    models_service=Depends(get_models_service),
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Get available Azure OpenAI Service models.
+
+    Azure OpenAI deployment names are user-managed (no data-plane catalog for
+    API-key auth). This endpoint validates credentials with a lightweight call
+    and returns the provided deployment names as the available model entries.
+
+    When test_completion=True, runs real inference calls against the deployment
+    names to verify end-to-end connectivity (consumes credits).
+    """
+    from api.provider_validation import (
+        _test_azure_openai_completion,
+        _test_azure_openai_embedding,
+        _test_azure_openai_lightweight_health,
+    )
+
+    try:
+        config = get_openrag_config()
+
+        api_key = (body.api_key if body else None) or config.providers.azure_openai.api_key
+        endpoint = (body.endpoint if body else None) or config.providers.azure_openai.endpoint
+        api_version = (
+            body.api_version if body else None
+        ) or config.providers.azure_openai.api_version
+        deployment_name = body.deployment_name if body else None
+        llm_deployment_name = (body.llm_deployment_name if body else None) or deployment_name
+        embedding_deployment_name = body.embedding_deployment_name if body else None
+        test_completion = body.test_completion if body else False
+
+        if not api_key:
+            return JSONResponse(
+                {
+                    "error": "Azure OpenAI API key is required either in request body or in configuration"
+                },
+                status_code=400,
+            )
+        if not endpoint:
+            return JSONResponse(
+                {
+                    "error": "Azure OpenAI endpoint is required either in request body or in configuration"
+                },
+                status_code=400,
+            )
+        if not api_version:
+            return JSONResponse(
+                {
+                    "error": "Azure OpenAI API version is required either in request body or in configuration"
+                },
+                status_code=400,
+            )
+
+        # Full inference test path — validates deployment names with real calls
+        if test_completion:
+            if not llm_deployment_name and not embedding_deployment_name:
+                return JSONResponse(
+                    {"error": "At least one deployment name is required to test the connection."},
+                    status_code=400,
+                )
+
+            language_models = []
+            embedding_models = []
+            errors = []
+
+            if llm_deployment_name:
+                try:
+                    await _test_azure_openai_completion(
+                        api_key, llm_deployment_name, endpoint, api_version
+                    )
+                    language_models.append(
+                        {"value": llm_deployment_name, "label": llm_deployment_name}
+                    )
+                    logger.info(f"Azure OpenAI LLM test passed for '{llm_deployment_name}'")
+                except Exception as e:
+                    errors.append(f"LLM deployment '{llm_deployment_name}': {str(e)}")
+
+            if embedding_deployment_name:
+                try:
+                    await _test_azure_openai_embedding(
+                        api_key, embedding_deployment_name, endpoint, api_version
+                    )
+                    embedding_models.append(
+                        {"value": embedding_deployment_name, "label": embedding_deployment_name}
+                    )
+                    logger.info(
+                        f"Azure OpenAI embedding test passed for '{embedding_deployment_name}'"
+                    )
+                except Exception as e:
+                    errors.append(f"Embedding deployment '{embedding_deployment_name}': {str(e)}")
+
+            if errors:
+                return JSONResponse({"error": "; ".join(errors)}, status_code=400)
+
+            return JSONResponse(
+                {"language_models": language_models, "embedding_models": embedding_models}
+            )
+
+        # Lightweight credential check — validates endpoint + API key without consuming credits
+        try:
+            await _test_azure_openai_lightweight_health(api_key, endpoint, api_version)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+        # No data-plane deployment catalog for API-key auth — fall back to stored
+        # deployment names, which persist independently of the active provider.
+        language_models = []
+        embedding_models = []
+        if deployment_name:
+            entry = {"value": deployment_name, "label": deployment_name}
+            language_models.append(entry)
+            embedding_models.append(entry)
+        else:
+            stored_llm = config.providers.azure_openai.llm_deployment_name
+            stored_embed = config.providers.azure_openai.embedding_deployment_name
+            if stored_llm:
+                language_models.append({"value": stored_llm, "label": stored_llm})
+            if stored_embed:
+                embedding_models.append({"value": stored_embed, "label": stored_embed})
+
+        return JSONResponse(
+            {"language_models": language_models, "embedding_models": embedding_models}
+        )
+    except Exception as e:
+        logger.error(f"Failed to get Azure OpenAI models: {str(e)}")
+        return JSONResponse({"error": "Failed to retrieve Azure OpenAI models"}, status_code=500)
