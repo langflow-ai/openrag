@@ -74,9 +74,7 @@ def is_image_file(filename: str) -> bool:
 def get_ocr_disabled_image_error(filename: str) -> str | None:
     if bool(getattr(get_openrag_config().knowledge, "ocr", False)) or not is_image_file(filename):
         return None
-    return (
-        f"The file '{filename}' is an image file and cannot be ingested because OCR is disabled."
-    )
+    return f"The file '{filename}' is an image file and cannot be ingested because OCR is disabled."
 
 
 class TaskProcessor:
@@ -474,7 +472,9 @@ class TaskProcessor:
             slim_doc["filename"] = original_filename
 
         warning = None
-        warning_filename = original_filename or slim_doc.get("filename") or os.path.basename(file_path)
+        warning_filename = (
+            original_filename or slim_doc.get("filename") or os.path.basename(file_path)
+        )
         if (
             not effective_ocr
             and slim_doc.get("has_embedded_images")

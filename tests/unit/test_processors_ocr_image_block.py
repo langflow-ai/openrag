@@ -16,9 +16,7 @@ EXPECTED_ERROR = (
 def _disable_ocr(monkeypatch):
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
-        lambda: SimpleNamespace(
-            knowledge=SimpleNamespace(ocr=False, picture_descriptions=False)
-        ),
+        lambda: SimpleNamespace(knowledge=SimpleNamespace(ocr=False, picture_descriptions=False)),
     )
 
 
