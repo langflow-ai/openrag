@@ -681,7 +681,11 @@ async def update_settings(
             provider_updated = True
 
         if body.azure_openai_endpoint is not None:
-            current_config.providers.azure_openai.endpoint = body.azure_openai_endpoint.strip()
+            from utils.container_utils import normalize_azure_openai_base
+
+            current_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
+                body.azure_openai_endpoint.strip()
+            )
             current_config.providers.azure_openai.configured = True
             config_updated = True
             provider_updated = True

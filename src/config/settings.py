@@ -1048,12 +1048,19 @@ class AppClients:
                     os.environ["AZURE_AI_API_BASE"] = config.providers.azure_ai_foundry.endpoint
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
 
-                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix)
+                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).
+                # AZURE_API_BASE must be the bare resource root — LiteLLM appends
+                # /openai/deployments/<name>/... itself, so a pasted /openai/v1
+                # suffix would otherwise produce a doubled path (404 at inference).
                 if config.providers.azure_openai.api_key:
                     os.environ["AZURE_API_KEY"] = config.providers.azure_openai.api_key
                     logger.debug("Loaded Azure OpenAI API key from config")
                 if config.providers.azure_openai.endpoint:
-                    os.environ["AZURE_API_BASE"] = config.providers.azure_openai.endpoint
+                    from utils.container_utils import normalize_azure_openai_base
+
+                    os.environ["AZURE_API_BASE"] = normalize_azure_openai_base(
+                        config.providers.azure_openai.endpoint
+                    )
                     logger.debug("Loaded Azure OpenAI endpoint from config")
                 if config.providers.azure_openai.api_version:
                     os.environ["AZURE_API_VERSION"] = config.providers.azure_openai.api_version

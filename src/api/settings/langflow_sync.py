@@ -92,8 +92,12 @@ async def _update_langflow_global_variables(config, flows_service=None):
             logger.info("Set AZURE_API_KEY global variable in Langflow")
 
         if config.providers.azure_openai.endpoint:
+            from utils.container_utils import normalize_azure_openai_base
+
             await clients._create_langflow_global_variable(
-                "AZURE_API_BASE", config.providers.azure_openai.endpoint, modify=True
+                "AZURE_API_BASE",
+                normalize_azure_openai_base(config.providers.azure_openai.endpoint),
+                modify=True,
             )
             logger.info("Set AZURE_API_BASE global variable in Langflow")
 

@@ -4,7 +4,7 @@ import json
 
 import httpx
 
-from utils.container_utils import transform_localhost_url
+from utils.container_utils import normalize_azure_openai_base, transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -964,17 +964,10 @@ async def _test_azure_ai_foundry_embedding(
 def _azure_openai_base(endpoint: str) -> str:
     """Normalize an Azure OpenAI endpoint to its resource base (no trailing slash).
 
-    Accepts the plain resource endpoint (https://<resource>.openai.azure.com),
-    the newer v1 surface (…/openai/v1), or a stray …/openai suffix, and reduces
-    them all to the resource root so we can append /openai/deployments/...
-    ourselves without doubling the path.
+    Delegates to the shared helper so validation and LiteLLM inference build the
+    request URL from the exact same normalized base.
     """
-    base = endpoint.strip().rstrip("/")
-    for suffix in ("/openai/v1", "/openai"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-            break
-    return base.rstrip("/")
+    return normalize_azure_openai_base(endpoint)
 
 
 async def _test_azure_openai_lightweight_health(
