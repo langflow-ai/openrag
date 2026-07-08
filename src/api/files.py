@@ -39,16 +39,6 @@ async def list_files(
     user: User = Depends(get_current_user),
 ):
     """List ingested files with pagination, filtering, and sorting."""
-    logger.info(
-        "Listing files",
-        connector_type=connector_type,
-        mimetype=mimetype,
-        owner=owner,
-        data_source=data_source,
-        search=search,
-        page=page,
-        page_size=page_size,
-    )
     try:
         result = await file_service.list_files(
             user_id=user.user_id,

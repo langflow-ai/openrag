@@ -44,7 +44,6 @@ class FileService:
         query = self._build_filter_query(
             user_id, connector_type, mimetype, owner, data_source, search
         )
-        logger.info("File list filter query", query=query)
         agg_body = self._build_file_aggregation(query)
 
         try:
@@ -64,11 +63,6 @@ class FileService:
 
         files = self._parse_aggregation_buckets(result)
         files = self._sort_files(files, sort_by, sort_order)
-        logger.info(
-            "File list result",
-            total_files=len(files),
-            filenames=[f["filename"] for f in files[:20]],
-        )
 
         total = len(files)
         start = (page - 1) * page_size

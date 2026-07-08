@@ -52,8 +52,6 @@ export const useListFiles = (
     if (params.search) searchParams.set("search", params.search);
 
     const url = `/api/files?${searchParams.toString()}`;
-    // biome-ignore lint/suspicious/noConsole: temporary diagnostics for knowledge filter debugging
-    console.debug("[useListFiles] request", url);
     const response = await fetch(url);
 
     if (!response.ok) {
