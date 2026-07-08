@@ -144,7 +144,8 @@ function AuthCallbackContent() {
         },
         onError: () => {
           cleanupOAuthStorage();
-        },
+          sessionStorage.removeItem(callbackKey);
+        }
       },
     );
 
