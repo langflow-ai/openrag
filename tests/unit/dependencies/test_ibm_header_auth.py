@@ -21,7 +21,7 @@ if str(SRC) not in sys.path:
 
 import auth.ibm_auth as ibm_auth  # noqa: E402
 import config.settings as app_settings  # noqa: E402
-from dependencies import _get_ibm_user  # noqa: E402
+from auth.request_identity import _get_ibm_user  # noqa: E402
 
 COOKIE_NAME = "ibm-openrag-session"
 
