@@ -24,36 +24,31 @@ function AuthCallbackContent() {
   );
   const [error, setError] = useState<string | null>(null);
   const [purpose, setPurpose] = useState<string>("app_auth");
+  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
 
+  // Handle the OAuth callback exchange
   useEffect(() => {
     const code = searchParams.get("code");
     const callbackKey = `callback_processed_${code}`;
 
-    // Prevent double execution across component remounts
     if (sessionStorage.getItem(callbackKey)) {
       return;
     }
     sessionStorage.setItem(callbackKey, "true");
 
-    let cancelled = false;
-    let redirectTimeoutId: NodeJS.Timeout;
-
     const handleCallback = async () => {
       try {
-        // Get parameters from URL
         const state = searchParams.get("state");
         const errorParam = searchParams.get("error");
 
         console.log("OAuth callback state (raw):", state);
 
-        // Get stored auth info
         const connectorId = localStorage.getItem("connecting_connector_id");
         const storedConnectorType = localStorage.getItem(
           "connecting_connector_type",
         );
         const authPurpose = localStorage.getItem("auth_purpose");
 
-        // Determine purpose - default to app_auth for login, data_source for connectors
         const detectedPurpose =
           authPurpose ||
           (storedConnectorType && storedConnectorType !== "app_auth"
@@ -61,7 +56,6 @@ function AuthCallbackContent() {
             : "app_auth");
         setPurpose(detectedPurpose);
 
-        // Debug logging
         console.log("OAuth Callback Debug:", {
           urlParams: { code: !!code, state: !!state, error: errorParam },
           localStorage: { connectorId, storedConnectorType, authPurpose },
@@ -69,7 +63,6 @@ function AuthCallbackContent() {
           fullUrl: window.location.href,
         });
 
-        // Use state parameter as connection_id if localStorage is missing
         const finalConnectorId = connectorId || state;
 
         if (errorParam) {
@@ -85,12 +78,9 @@ function AuthCallbackContent() {
           throw new Error("Missing required parameters for OAuth callback");
         }
 
-        // Send callback data to backend
         const stateParam = searchParams.get("state");
         let parsedConnectionId = finalConnectorId;
-        let stateReturnUrl: string | null = null;
 
-        // In IBM auth mode, state is base64-encoded: id=<connection_id>&return=<broker_callback_url>
         if (isIbmAuthMode && stateParam) {
           try {
             const decodedState = decodeBase64(stateParam);
@@ -99,28 +89,23 @@ function AuthCallbackContent() {
 
             if (params.has("id")) {
               parsedConnectionId = params.get("id") || finalConnectorId;
-              stateReturnUrl = params.get("return");
               console.log("Parsed Base64 state parameter:", {
                 parsedConnectionId,
-                stateReturnUrl,
+                stateReturnUrl: params.get("return"),
               });
             } else if (stateParam.includes("id=")) {
-              // Fallback: If not base64 but contains id=, try to parse as raw for backward compatibility
               const rawParams = new URLSearchParams(stateParam);
               parsedConnectionId = rawParams.get("id") || finalConnectorId;
-              stateReturnUrl = rawParams.get("return");
             }
           } catch (e) {
             console.error(
               "Failed to Base64 decode or parse state parameter",
               e,
             );
-            // Fallback: If decoding fails, try to parse as raw if it contains id=
             if (stateParam.includes("id=")) {
               try {
                 const params = new URLSearchParams(stateParam);
                 parsedConnectionId = params.get("id") || finalConnectorId;
-                stateReturnUrl = params.get("return");
               } catch (innerE) {
                 console.error("Failed to parse raw state parameter", innerE);
               }
@@ -143,10 +128,7 @@ function AuthCallbackContent() {
         const result = await response.json();
 
         if (response.ok) {
-          setStatus("success");
-
           if (result.purpose === "app_auth" || detectedPurpose === "app_auth") {
-            // App authentication - refresh auth context and redirect to home/original page
             await refreshAuth();
 
             const redirectTo =
@@ -154,33 +136,20 @@ function AuthCallbackContent() {
               searchParams.get("redirect") ||
               "/chat";
 
-            // Clean up localStorage
             localStorage.removeItem("connecting_connector_id");
             localStorage.removeItem("connecting_connector_type");
             localStorage.removeItem("auth_purpose");
             localStorage.removeItem("auth_redirect_to");
 
-            // Redirect to the original page or home
-            if (!cancelled) {
-              redirectTimeoutId = setTimeout(() => {
-                if (!cancelled) router.push(redirectTo);
-              }, 2000);
-            }
+            setRedirectTarget(redirectTo);
           } else {
-            // Connector authentication - redirect to connectors page
-
-            // Clean up localStorage
             localStorage.removeItem("connecting_connector_id");
             localStorage.removeItem("connecting_connector_type");
             localStorage.removeItem("auth_purpose");
 
-            // Redirect to settings page with success indicator
-            if (!cancelled) {
-              redirectTimeoutId = setTimeout(() => {
-                if (!cancelled) router.push("/settings?oauth_success=true");
-              }, 2000);
-            }
+            setRedirectTarget("/settings?oauth_success=true");
           }
+          setStatus("success");
         } else {
           throw new Error(result.error || "Authentication failed");
         }
@@ -189,7 +158,6 @@ function AuthCallbackContent() {
         setError(err instanceof Error ? err.message : "Unknown error occurred");
         setStatus("error");
 
-        // Clean up localStorage on error too
         localStorage.removeItem("connecting_connector_id");
         localStorage.removeItem("connecting_connector_type");
         localStorage.removeItem("auth_purpose");
@@ -198,11 +166,18 @@ function AuthCallbackContent() {
     };
 
     handleCallback();
-    return () => {
-      cancelled = true;
-      clearTimeout(redirectTimeoutId);
-    };
-  }, [searchParams, router, refreshAuth]);
+  }, [searchParams, refreshAuth, isIbmAuthMode]);
+
+  // Redirect after successful callback — separate effect so it works
+  // regardless of which mount's async callback set the status.
+  useEffect(() => {
+    if (status === "success" && redirectTarget) {
+      const timeoutId = setTimeout(() => {
+        router.push(redirectTarget);
+      }, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [status, redirectTarget, router]);
 
   // Dynamic UI content based on purpose
   const isAppAuth = purpose === "app_auth";
