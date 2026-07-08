@@ -38,6 +38,8 @@ export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
 
+  const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
+
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
   const [chunkValidationError, setChunkValidationError] = useState<
@@ -286,16 +288,24 @@ export function IngestSettingsSection() {
   };
 
   const handleRestoreIngestFlow = (closeDialog: () => void) => {
+    setIsRestoringFlow(true);
+
     trackButton({
       CTA: "Restore Flow - Ingest",
       elementId: "restore-ingest-flow-button",
       namespace: "settings",
     });
     fetch("/api/reset-flow/ingest", { method: "POST" })
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      })
+      .then((res) =>
+        res.text().then((text) => {
+          const body = text ? JSON.parse(text) : {};
+          if (!res.ok) {
+            throw new Error(
+              body.error ?? `HTTP ${res.status}: ${res.statusText}`,
+            );
+          }
+        }),
+      )
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
@@ -304,12 +314,17 @@ export function IngestSettingsSection() {
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
+        toast.success("Default ingest flow settings restored successfully");
         closeDialog();
       })
       .catch((err) => {
         console.error("Error restoring ingest flow:", err);
+        toast.error(
+          err.message || "Failed to restore default ingest flow settings",
+        );
         closeDialog();
-      });
+      })
+      .finally(() => setIsRestoringFlow(false));
   };
 
   return (
@@ -337,6 +352,7 @@ export function IngestSettingsSection() {
                 confirmText="Restore"
                 variant="destructive"
                 onConfirm={handleRestoreIngestFlow}
+                isLoading={isRestoringFlow}
               />
               <ConfirmationDialog
                 trigger={
