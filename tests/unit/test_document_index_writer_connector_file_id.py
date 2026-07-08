@@ -5,7 +5,11 @@ though `document_id` is now a stable hash (see
 `tests/unit/test_resolve_document_id_connector_file_id.py`).
 """
 
-from services.document_index_writer import DocumentIndexChunk, DocumentIndexContext, DocumentIndexWriter
+from services.document_index_writer import (
+    DocumentIndexChunk,
+    DocumentIndexContext,
+    DocumentIndexWriter,
+)
 
 
 def _context(**overrides):
@@ -25,7 +29,10 @@ def test_connector_file_id_from_context_is_set_on_document():
     chunk = DocumentIndexChunk(chunk_id="c1", text="hello", vector=[0.1, 0.2])
 
     doc = writer._build_chunk_document(
-        context=context, chunk=chunk, embedding_field="embedding", indexed_time="2026-01-01T00:00:00Z"
+        context=context,
+        chunk=chunk,
+        embedding_field="embedding",
+        indexed_time="2026-01-01T00:00:00Z",
     )
 
     assert doc["connector_file_id"] == "my-bucket::報告書.pdf"
@@ -43,7 +50,10 @@ def test_missing_connector_file_id_falls_back_to_chunk_metadata():
     )
 
     doc = writer._build_chunk_document(
-        context=context, chunk=chunk, embedding_field="embedding", indexed_time="2026-01-01T00:00:00Z"
+        context=context,
+        chunk=chunk,
+        embedding_field="embedding",
+        indexed_time="2026-01-01T00:00:00Z",
     )
 
     assert doc["connector_file_id"] == "legacy-id"
@@ -55,7 +65,10 @@ def test_no_connector_file_id_anywhere_omits_field():
     chunk = DocumentIndexChunk(chunk_id="c1", text="hello", vector=[0.1, 0.2])
 
     doc = writer._build_chunk_document(
-        context=context, chunk=chunk, embedding_field="embedding", indexed_time="2026-01-01T00:00:00Z"
+        context=context,
+        chunk=chunk,
+        embedding_field="embedding",
+        indexed_time="2026-01-01T00:00:00Z",
     )
 
     assert "connector_file_id" not in doc

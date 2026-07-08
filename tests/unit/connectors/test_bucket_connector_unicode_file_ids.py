@@ -18,17 +18,17 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from enhancements.connectors.ibm_cos.connector import (  # noqa: E402
-    _make_file_id as cos_make_file_id,
-)
-from enhancements.connectors.ibm_cos.connector import (  # noqa: E402
-    _split_file_id as cos_split_file_id,
-)
 from enhancements.connectors.azure_blob.connector import (  # noqa: E402
     _make_file_id as azure_make_file_id,
 )
 from enhancements.connectors.azure_blob.connector import (  # noqa: E402
     _split_file_id as azure_split_file_id,
+)
+from enhancements.connectors.ibm_cos.connector import (  # noqa: E402
+    _make_file_id as cos_make_file_id,
+)
+from enhancements.connectors.ibm_cos.connector import (  # noqa: E402
+    _split_file_id as cos_split_file_id,
 )
 
 JAPANESE_KEY = "報告書.pdf"
