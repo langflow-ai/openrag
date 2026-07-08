@@ -138,9 +138,20 @@ function SearchPage() {
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
-  const { parsedFilterData, queryOverride, selectedFilter } =
-    useKnowledgeFilter();
+  const {
+    parsedFilterData,
+    queryOverride,
+    selectedFilter,
+    setSelectedSources,
+  } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+
+  // Keep the filter context aware of checked rows so "Create New Filter"
+  // can pre-populate its sources from the current selection.
+  useEffect(() => {
+    setSelectedSources(selectedRows.map((row) => row.filename).filter(Boolean));
+    return () => setSelectedSources([]);
+  }, [selectedRows, setSelectedSources]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
   const hasInitializedFailedFilesRef = useRef(false);
