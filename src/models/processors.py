@@ -76,6 +76,7 @@ class TaskProcessor:
         on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
         *,
         wait_for_visibility: bool = False,
+        field: str = "document_id",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -106,7 +107,7 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {"document_id": file_hash}},
+                        "query": {"term": {field: file_hash}},
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
@@ -1148,7 +1149,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         if self.connector_service.task_service
                         else None,
                         file_task=file_task,
-                        document_id=document.id,
+                        connector_file_id=document.id,
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
@@ -1166,6 +1167,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         _verification_client(opensearch_client),
                         on_error="assume_exists",
                         wait_for_visibility=True,
+                        field="connector_file_id",
                     ):
                         result = {
                             "status": "error",
@@ -1182,7 +1184,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="document_id",
+                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
                 else:
