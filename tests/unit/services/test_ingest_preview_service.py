@@ -5,7 +5,34 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from models.tasks import FileTask, IngestionPhase, TaskStatus, UploadTask
-from services.ingest_preview_service import IngestPreviewService
+from services.ingest_preview_service import (
+    IngestPreviewService,
+    _chunk_sequence,
+    _extract_hit_total,
+    _sort_hits,
+)
+
+
+def test_chunk_sequence_parses_numeric_suffix():
+    assert _chunk_sequence("hash-abc_10") == 10
+    assert _chunk_sequence("hash-abc_2") == 2
+    assert _chunk_sequence("bad-id") == 0
+
+
+def test_sort_hits_orders_by_page_then_chunk_sequence():
+    hits = [
+        {"_id": "doc_10", "_source": {"page": 1}},
+        {"_id": "doc_2", "_source": {"page": 1}},
+        {"_id": "doc_0", "_source": {"page": 2}},
+    ]
+    sorted_hits = _sort_hits(hits)
+    assert [hit["_id"] for hit in sorted_hits] == ["doc_2", "doc_10", "doc_0"]
+
+
+def test_extract_hit_total_prefers_total_value():
+    assert _extract_hit_total({"total": {"value": 42}, "hits": []}, 0) == 42
+    assert _extract_hit_total({"total": 7, "hits": []}, 0) == 7
+    assert _extract_hit_total({"hits": []}, 3) == 3
 
 
 @pytest.mark.asyncio
@@ -21,18 +48,15 @@ async def test_get_index_proof_selects_file_by_path():
         task_id="task-1",
         total_files=2,
         file_tasks={"/tmp/a.pdf": file_a, "/tmp/b.pdf": file_b},
+        preview_mode=True,
     )
-
-    task_service = MagicMock()
-    task_service.get_upload_task.return_value = upload_task
 
     opensearch_client = AsyncMock()
     opensearch_client.search.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
 
     proof = await service.get_index_proof(
-        user_id="user-1",
+        upload_task=upload_task,
         task_id="task-1",
-        task_service=task_service,
         opensearch_client=opensearch_client,
         file_path="/tmp/b.pdf",
     )
@@ -41,12 +65,32 @@ async def test_get_index_proof_selects_file_by_path():
     assert proof["document_id"] == "hash-b"
     searched_body = opensearch_client.search.await_args.kwargs["body"]
     assert searched_body["query"]["term"]["document_id"] == "hash-b"
+    assert "_id" not in str(searched_body.get("sort", []))
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_rejects_non_preview_task():
+    service = IngestPreviewService()
+    upload_task = UploadTask(
+        task_id="task-1",
+        total_files=0,
+        file_tasks={},
+        preview_mode=False,
+    )
+
+    proof = await service.get_index_proof(
+        upload_task=upload_task,
+        task_id="task-1",
+        opensearch_client=AsyncMock(),
+    )
+
+    assert proof["ready"] is False
+    assert proof["error"] == "not_preview_task"
 
 
 @pytest.mark.asyncio
 async def test_get_index_proof_not_ready_while_ingesting():
     service = IngestPreviewService()
-    task_service = MagicMock()
     file_task = FileTask(
         file_path="/tmp/sample.pdf",
         filename="sample.pdf",
@@ -54,14 +98,15 @@ async def test_get_index_proof_not_ready_while_ingesting():
     )
     file_task.phase = IngestionPhase.LANGFLOW
     upload_task = UploadTask(
-        task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task}
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"/tmp/sample.pdf": file_task},
+        preview_mode=True,
     )
-    task_service.get_upload_task.return_value = upload_task
 
     proof = await service.get_index_proof(
-        user_id="user-1",
+        upload_task=upload_task,
         task_id="task-1",
-        task_service=task_service,
         opensearch_client=AsyncMock(),
     )
 
@@ -82,50 +127,79 @@ async def test_get_index_proof_returns_chunks_when_indexed():
     file_task.phase = IngestionPhase.COMPLETE
     file_task.status = TaskStatus.COMPLETED
     upload_task = UploadTask(
-        task_id="task-1", total_files=1, file_tasks={"/tmp/sample.pdf": file_task}
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"/tmp/sample.pdf": file_task},
+        preview_mode=True,
     )
-
-    task_service = MagicMock()
-    task_service.get_upload_task.return_value = upload_task
 
     opensearch_client = AsyncMock()
     opensearch_client.search.return_value = {
         "hits": {
             "hits": [
                 {
-                    "_id": "hash-abc_0",
+                    "_id": "hash-abc_10",
                     "_source": {
-                        "text": "DocLayNet abstract text " * 5,
+                        "text": "Later chunk",
                         "page": 1,
                         "embedding_model": "text-embedding-3-small",
                         "embedding_dimensions": 1536,
                     },
                 },
                 {
-                    "_id": "hash-abc_1",
+                    "_id": "hash-abc_2",
                     "_source": {
-                        "text": "Table row content",
+                        "text": "Earlier chunk",
                         "page": 1,
                         "embedding_model": "text-embedding-3-small",
                         "embedding_dimensions": 1536,
                     },
                 },
             ],
-            "total": {"value": 2},
+            "total": {"value": 250},
         }
     }
 
     proof = await service.get_index_proof(
-        user_id="user-1",
+        upload_task=upload_task,
         task_id="task-1",
-        task_service=task_service,
         opensearch_client=opensearch_client,
     )
 
     assert proof["ready"] is True
-    assert proof["chunk_count"] == 2
+    assert proof["chunk_count"] == 250
+    assert proof["chunks_returned"] == 2
+    assert proof["chunks_truncated"] is True
     assert proof["embedding_model"] == "text-embedding-3-small"
     assert proof["embedding_dimensions"] == 1536
     assert len(proof["chunks"]) == 2
-    assert proof["chunks"][0]["chunk_id"] == "hash-abc_0"
-    assert proof["chunks"][0]["char_count"] == len("DocLayNet abstract text " * 5)
+    assert proof["chunks"][0]["chunk_id"] == "hash-abc_2"
+    assert proof["chunks"][1]["chunk_id"] == "hash-abc_10"
+    assert proof["chunks"][0]["char_count"] == len("Earlier chunk")
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_returns_file_not_found_for_unknown_path():
+    service = IngestPreviewService()
+    file_task = FileTask(
+        file_path="/tmp/sample.pdf",
+        filename="sample.pdf",
+        document_id="hash-sample",
+    )
+    file_task.phase = IngestionPhase.COMPLETE
+    upload_task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"/tmp/sample.pdf": file_task},
+        preview_mode=True,
+    )
+
+    proof = await service.get_index_proof(
+        upload_task=upload_task,
+        task_id="task-1",
+        opensearch_client=AsyncMock(),
+        file_path="/tmp/missing.pdf",
+    )
+
+    assert proof["ready"] is False
+    assert proof["error"] == "file_not_found"

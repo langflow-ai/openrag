@@ -1454,8 +1454,10 @@ class LangflowFileProcessor(TaskProcessor):
             # landed in OpenSearch before declaring success. We key off the
             # filename — the identifier this path already uses for dedup and
             # delete (see check_filename_exists / delete_document_by_filename
-            # above) — because Langflow assigns its own document_id here, so
-            # hash_id(item) is not stored as document_id.
+            # above). The document_id (hash_id(item) == content hash) is now
+            # threaded through to Langflow so preview-mode index proof can look
+            # chunks up by document_id, but verification stays filename-based to
+            # match this path's existing dedup/delete semantics.
             #
             # wait_for_visibility polls on an empty result so the just-written
             # chunks become visible within OpenSearch's near-real-time refresh

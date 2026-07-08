@@ -48,8 +48,31 @@ def task_service():
 
 
 @pytest.mark.asyncio
-async def test_get_index_proof_returns_chunk_metadata(user, preview_service):
-    task_service = MagicMock()
+async def test_get_index_proof_uses_validated_upload_task_without_refetch(
+    user, preview_service, task_service
+):
+    """Regression: index proof must use the task validated by _require_preview_task."""
+    upload_task = task_service.get_upload_task.return_value
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = AsyncMock()
+
+    await get_index_proof(
+        task_id="task-1",
+        preview_service=preview_service,
+        task_service=task_service,
+        session_manager=session_manager,
+        user=user,
+    )
+
+    task_service.get_upload_task.assert_called_once_with("user-1", "task-1")
+    call_kwargs = preview_service.get_index_proof.await_args.kwargs
+    assert call_kwargs["upload_task"] is upload_task
+    assert "task_service" not in call_kwargs
+    assert "user_id" not in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_returns_chunk_metadata(user, preview_service, task_service):
     session_manager = MagicMock()
     session_manager.get_user_opensearch_client.return_value = AsyncMock()
 
@@ -64,7 +87,7 @@ async def test_get_index_proof_returns_chunk_metadata(user, preview_service):
     assert response.status_code == 200
     preview_service.get_index_proof.assert_awaited_once()
     call_kwargs = preview_service.get_index_proof.await_args.kwargs
-    assert call_kwargs["user_id"] == "user-1"
+    assert call_kwargs["upload_task"] is task_service.get_upload_task.return_value
     assert call_kwargs["task_id"] == "task-1"
 
 
@@ -79,6 +102,34 @@ async def test_get_index_proof_task_not_found(user, preview_service):
         task_service=task_service,
         session_manager=MagicMock(),
         user=user,
+    )
+
+    assert response.status_code == 404
+    preview_service.get_index_proof.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_returns_file_not_found(user, preview_service, task_service):
+    preview_service.get_index_proof = AsyncMock(
+        return_value={
+            "ready": False,
+            "error": "file_not_found",
+            "phase": "docling",
+            "chunk_count": 0,
+            "chunks": [],
+            "chunks_returned": 0,
+            "chunks_truncated": False,
+            "document_id": None,
+        }
+    )
+
+    response = await get_index_proof(
+        task_id="task-1",
+        preview_service=preview_service,
+        task_service=task_service,
+        session_manager=MagicMock(),
+        user=user,
+        file="/tmp/missing.pdf",
     )
 
     assert response.status_code == 404

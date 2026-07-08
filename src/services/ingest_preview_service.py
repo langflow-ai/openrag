@@ -11,6 +11,37 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 TEXT_PREVIEW_MAX_LENGTH = 240
+INDEX_PROOF_MAX_CHUNKS = 200
+
+
+def _chunk_sequence(chunk_id: str | None) -> int:
+    """Numeric suffix from chunk ``_id`` (last underscore-delimited segment)."""
+    if not chunk_id:
+        return 0
+    suffix = chunk_id.rsplit("_", 1)[-1]
+    try:
+        return int(suffix)
+    except ValueError:
+        return 0
+
+
+def _sort_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        hits,
+        key=lambda hit: (
+            (hit.get("_source") or {}).get("page") or 0,
+            _chunk_sequence(hit.get("_id")),
+        ),
+    )
+
+
+def _extract_hit_total(hits_section: dict[str, Any], fallback: int) -> int:
+    total = hits_section.get("total")
+    if isinstance(total, dict):
+        return int(total.get("value", fallback))
+    if isinstance(total, int):
+        return total
+    return fallback
 
 
 class IngestPreviewService:
@@ -19,18 +50,36 @@ class IngestPreviewService:
     async def get_index_proof(
         self,
         *,
-        user_id: str,
+        upload_task: Any,
         task_id: str,
-        task_service: Any,
         opensearch_client: Any,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        upload_task = task_service.get_upload_task(user_id, task_id)
-        if upload_task is None:
-            return {"ready": False, "error": "task_not_found"}
+        if not getattr(upload_task, "preview_mode", False):
+            return {
+                "ready": False,
+                "error": "not_preview_task",
+                "phase": IngestionPhase.DOCLING.value,
+                "chunk_count": 0,
+                "chunks": [],
+                "chunks_returned": 0,
+                "chunks_truncated": False,
+                "document_id": None,
+            }
 
         if file_path is not None:
             file_task = upload_task.file_tasks.get(file_path)
+            if file_task is None:
+                return {
+                    "ready": False,
+                    "error": "file_not_found",
+                    "phase": IngestionPhase.DOCLING.value,
+                    "chunk_count": 0,
+                    "chunks": [],
+                    "chunks_returned": 0,
+                    "chunks_truncated": False,
+                    "document_id": None,
+                }
         else:
             file_task = next(iter(upload_task.file_tasks.values()), None)
         phase = file_task.phase.value if file_task is not None else IngestionPhase.DOCLING.value
@@ -43,6 +92,8 @@ class IngestPreviewService:
                 "phase": phase,
                 "chunk_count": 0,
                 "chunks": [],
+                "chunks_returned": 0,
+                "chunks_truncated": False,
                 "document_id": document_id,
             }
 
@@ -52,6 +103,8 @@ class IngestPreviewService:
                 "phase": phase,
                 "chunk_count": 0,
                 "chunks": [],
+                "chunks_returned": 0,
+                "chunks_truncated": False,
                 "document_id": document_id,
                 "error": "opensearch_unavailable",
             }
@@ -60,16 +113,15 @@ class IngestPreviewService:
             response = await opensearch_client.search(
                 index=get_index_name(),
                 body={
-                    "size": 200,
+                    "size": INDEX_PROOF_MAX_CHUNKS,
                     "query": {"term": {"document_id": document_id}},
-                    "sort": [{"page": "asc"}, {"_id": "asc"}],
+                    "sort": [{"page": "asc"}],
                     "_source": {
                         "includes": [
                             "text",
                             "page",
                             "embedding_model",
                             "embedding_dimensions",
-                            "indexed_time",
                         ]
                     },
                 },
@@ -86,11 +138,17 @@ class IngestPreviewService:
                 "phase": phase,
                 "chunk_count": 0,
                 "chunks": [],
+                "chunks_returned": 0,
+                "chunks_truncated": False,
                 "document_id": document_id,
                 "error": "search_failed",
             }
 
-        hits = response.get("hits", {}).get("hits", [])
+        hits_section = response.get("hits", {})
+        hits = _sort_hits(hits_section.get("hits", []))
+        chunk_count = _extract_hit_total(hits_section, len(hits))
+        chunks_returned = len(hits)
+        chunks_truncated = chunk_count > chunks_returned
         chunks = []
         embedding_model = None
         embedding_dimensions = None
@@ -115,9 +173,11 @@ class IngestPreviewService:
             )
 
         return {
-            "ready": len(chunks) > 0,
+            "ready": chunk_count > 0,
             "phase": phase,
-            "chunk_count": len(chunks),
+            "chunk_count": chunk_count,
+            "chunks_returned": chunks_returned,
+            "chunks_truncated": chunks_truncated,
             "embedding_model": embedding_model,
             "embedding_dimensions": embedding_dimensions,
             "chunks": chunks,
