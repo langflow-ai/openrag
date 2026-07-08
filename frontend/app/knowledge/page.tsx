@@ -19,6 +19,7 @@ import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { trackButton } from "@/lib/analytics";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { formatFileSize } from "@/lib/file-format";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -229,19 +231,23 @@ function SearchPage() {
         ]),
       );
 
-      const mostRecent = [...candidates].sort((a, b) => {
-        const aMs =
-          taskTimestampMsById.get(a.task_id) ??
-          parseTimestampMs(a.updated_at) ??
-          parseTimestampMs(a.created_at) ??
-          0;
-        const bMs =
-          taskTimestampMsById.get(b.task_id) ??
-          parseTimestampMs(b.updated_at) ??
-          parseTimestampMs(b.created_at) ??
-          0;
-        return bMs - aMs;
-      })[0];
+      const mostRecent = candidates.reduce(
+        (best, cur) => {
+          const curMs =
+            taskTimestampMsById.get(cur.task_id) ??
+            parseTimestampMs(cur.updated_at) ??
+            parseTimestampMs(cur.created_at) ??
+            0;
+          if (!best) return cur;
+          const bestMs =
+            taskTimestampMsById.get(best.task_id) ??
+            parseTimestampMs(best.updated_at) ??
+            parseTimestampMs(best.created_at) ??
+            0;
+          return curMs > bestMs ? cur : best;
+        },
+        undefined as (typeof candidates)[0] | undefined,
+      );
 
       return mostRecent?.task_id || null;
     },
@@ -453,6 +459,20 @@ function SearchPage() {
 
   const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
+  const gridReadyRef = useRef(false);
+
+  const handleGridReady = useCallback(() => {
+    gridReadyRef.current = true;
+  }, []);
+
+  const handleGridPreDestroyed = useCallback(() => {
+    gridReadyRef.current = false;
+  }, []);
+
+  const getGridApi = useCallback(() => {
+    if (!gridReadyRef.current) return null;
+    return gridRef.current?.api ?? null;
+  }, []);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
   const gridRowsSelectionKey = useMemo(
@@ -466,7 +486,7 @@ function SearchPage() {
   );
 
   useEffect(() => {
-    const api = gridRef.current?.api;
+    const api = getGridApi();
     if (!api) {
       return;
     }
@@ -475,7 +495,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-  }, [gridRowsSelectionKey, isDeletableKnowledgeRow]);
+  }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   const columnDefs: ColDef<File>[] = [
     {
@@ -563,7 +583,7 @@ function SearchPage() {
       comparator: (valueA?: number, valueB?: number) =>
         (valueA || 0) - (valueB || 0),
       valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+        params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     },
     {
@@ -745,17 +765,18 @@ function SearchPage() {
   };
 
   const onSelectionChanged = useCallback(() => {
-    if (!gridRef.current) {
+    const api = getGridApi();
+    if (!api) {
       return;
     }
     const nextSelected = syncGridSelectionToDeletableRows(
-      gridRef.current.api,
+      api,
       isDeletableKnowledgeRow,
     );
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
-  }, [isDeletableKnowledgeRow]);
+  }, [isDeletableKnowledgeRow, getGridApi]);
 
   const handleBulkDelete = async () => {
     const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
@@ -826,9 +847,7 @@ function SearchPage() {
       setShowBulkDeleteDialog(false);
 
       // Clear selection in the grid
-      if (gridRef.current) {
-        gridRef.current.api.deselectAll();
-      }
+      getGridApi()?.deselectAll();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -886,7 +905,7 @@ function SearchPage() {
                 onDelete={() => setShowBulkDeleteDialog(true)}
                 onCancel={() => {
                   setSelectedRows([]);
-                  gridRef.current?.api.deselectAll();
+                  getGridApi()?.deselectAll();
                 }}
               />
             </div>
@@ -925,6 +944,11 @@ function SearchPage() {
               className="rounded-lg flex-shrink-0"
               disabled={refreshOpenragDocsMutation.isPending}
               onClick={async () => {
+                trackButton({
+                  CTA: "Fetch Latest Docs",
+                  elementId: "fetch-latest-docs-button",
+                  namespace: "knowledge",
+                });
                 try {
                   toast.info("Refreshing OpenRAG docs...");
                   const result = await refreshOpenragDocsMutation.mutateAsync();
@@ -1011,6 +1035,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}
@@ -1045,6 +1071,8 @@ function SearchPage() {
             }
             isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
             domLayout="normal"
+            onGridReady={handleGridReady}
+            onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
             pagination={pagination}
             paginationPageSize={paginationPageSize}

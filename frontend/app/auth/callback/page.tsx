@@ -35,6 +35,9 @@ function AuthCallbackContent() {
     }
     sessionStorage.setItem(callbackKey, "true");
 
+    let cancelled = false;
+    let redirectTimeoutId: NodeJS.Timeout;
+
     const handleCallback = async () => {
       try {
         // Get parameters from URL
@@ -158,9 +161,11 @@ function AuthCallbackContent() {
             localStorage.removeItem("auth_redirect_to");
 
             // Redirect to the original page or home
-            setTimeout(() => {
-              router.push(redirectTo);
-            }, 2000);
+            if (!cancelled) {
+              redirectTimeoutId = setTimeout(() => {
+                if (!cancelled) router.push(redirectTo);
+              }, 2000);
+            }
           } else {
             // Connector authentication - redirect to connectors page
 
@@ -170,9 +175,11 @@ function AuthCallbackContent() {
             localStorage.removeItem("auth_purpose");
 
             // Redirect to settings page with success indicator
-            setTimeout(() => {
-              router.push("/settings?oauth_success=true");
-            }, 2000);
+            if (!cancelled) {
+              redirectTimeoutId = setTimeout(() => {
+                if (!cancelled) router.push("/settings?oauth_success=true");
+              }, 2000);
+            }
           }
         } else {
           throw new Error(result.error || "Authentication failed");
@@ -191,6 +198,10 @@ function AuthCallbackContent() {
     };
 
     handleCallback();
+    return () => {
+      cancelled = true;
+      clearTimeout(redirectTimeoutId);
+    };
   }, [searchParams, router, refreshAuth]);
 
   // Dynamic UI content based on purpose

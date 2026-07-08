@@ -212,6 +212,7 @@ const OllamaSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isOllamaConfigured}
               canRemove={canRemoveOllama}
+              providerKey="ollama"
               removeDisabledTooltip="Configure another model provider before removing Ollama"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

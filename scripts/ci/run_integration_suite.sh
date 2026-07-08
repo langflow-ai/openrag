@@ -11,6 +11,22 @@ else
   compose_cmd=("$container_runtime" compose)
 fi
 
+# Load variables from env file to find COMPOSE_PROJECT_NAME and OPENSEARCH_PORT
+COMPOSE_PROJECT_NAME=""
+OPENSEARCH_PORT=""
+LANGFLOW_PORT=""
+if [[ -f "$env_file" ]]; then
+  COMPOSE_PROJECT_NAME="$(grep -E '^COMPOSE_PROJECT_NAME=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  OPENSEARCH_PORT="$(grep -E '^OPENSEARCH_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+fi
+
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
+OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
+LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
+
+compose_cmd+=("-p" "$COMPOSE_PROJECT_NAME")
+
 red=$'\033[0;31m'
 purple=$'\033[38;2;119;62;255m'
 yellow=$'\033[1;33m'
@@ -52,7 +68,7 @@ test_jwt_opensearch() {
     -o "$response_file" \
     -H "Authorization: Bearer $test_token" \
     -H "Content-Type: application/json" \
-    https://localhost:9200/documents/_search \
+    https://localhost:${OPENSEARCH_PORT}/documents/_search \
     -d '{"query":{"match_all":{}}}'; then
     echo "${red}curl command failed (network error or HTTP 4xx/5xx)${nc}"
     head -c 400 "$response_file" 2>/dev/null || true
@@ -68,20 +84,32 @@ test_jwt_opensearch() {
 }
 
 dump_logs() {
-  echo "${red}=== Tests failed, dumping container logs ===${nc}"
-  echo ""
-  echo "${yellow}=== Langflow logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs langflow 2>&1 | tail -500 || echo "${red}Could not get Langflow logs${nc}"
-  echo ""
-  echo "${yellow}=== Backend logs (last 500 lines) ===${nc}"
-  "$container_runtime" logs openrag-backend 2>&1 | tail -500 || echo "${red}Could not get backend logs${nc}"
-  echo ""
-  echo "${yellow}=== Frontend logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs openrag-frontend 2>&1 | tail -300 || echo "${red}Could not get frontend logs${nc}"
-  echo ""
-  echo "${yellow}=== OpenSearch logs (last 300 lines) ===${nc}"
-  "$container_runtime" logs os 2>&1 | tail -300 || echo "${red}Could not get OpenSearch logs${nc}"
-  echo ""
+  echo "${red}=== Tests failed, saving container logs to service-logs/ ===${nc}"
+  mkdir -p service-logs
+
+  redact() {
+    local pw="${OPENSEARCH_PASSWORD:-__unset__}"
+    pw=$(printf '%s\n' "$pw" | sed -E 's/([][\\/.*+?^$|()])/\\\1/g')
+    sed -E -e 's/Bearer [A-Za-z0-9._-]+/Bearer **REDACTED**/g' \
+           -e 's/token=[A-Za-z0-9._-]+/token=**REDACTED**/g' \
+           -e 's/sk-[A-Za-z0-9._-]+/sk-**REDACTED**/g' \
+           -e "s/${pw}/**REDACTED**/g"
+  }
+
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-langflow" 2>&1 | redact > service-logs/langflow.log || echo "${red}Could not get Langflow logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-frontend" 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
+  "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-opensearch" 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
+  if [[ -f ~/.openrag/tui/docling-serve.log ]]; then
+    redact < ~/.openrag/tui/docling-serve.log > service-logs/docling.log || echo "${red}Could not get Docling logs${nc}"
+  fi
+}
+
+generate_report() {
+  uv run python scripts/ci/generate_test_report.py service-logs || true
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f service-logs/test-failure-report.md ]]; then
+    cat service-logs/test-failure-report.md >> "$GITHUB_STEP_SUMMARY"
+  fi
 }
 
 teardown() {
@@ -89,6 +117,8 @@ teardown() {
   if [[ "$status" -ne 0 && "$test_result" -eq 0 ]]; then
     test_result="$status"
   fi
+
+  generate_report || true
 
   if [[ "$test_result" -ne 0 ]]; then
     dump_logs || true
@@ -108,7 +138,7 @@ if [[ -z "${OPENSEARCH_PASSWORD:-}" ]]; then
 fi
 
 echo "${yellow}Installing test dependencies...${nc}"
-uv sync --group dev
+uv sync --quiet --group dev
 
 echo "::group::Start Infrastructure"
 echo "${yellow}Cleaning up old containers and volumes...${nc}"
@@ -140,7 +170,7 @@ uv run python scripts/docling_ctl.py status 2>&1 || true
 
 echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
 for i in $(seq 1 60); do
-  if "$container_runtime" exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+  if "${compose_cmd[@]}" exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
     break
   fi
   if [[ "$i" -eq 60 ]]; then
@@ -155,7 +185,7 @@ echo "${yellow}Fixing JWT key ownership for test runner (host UID $(id -u))...${
 
 echo "${yellow}Waiting for OpenSearch security config to be fully applied...${nc}"
 for i in $(seq 1 60); do
-  if "$container_runtime" logs os 2>&1 | grep -q "Security configuration applied successfully"; then
+  if "${compose_cmd[@]}" logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then
     echo "${purple}Security configuration applied${nc}"
     break
   fi
@@ -168,7 +198,7 @@ done
 
 echo "${yellow}Verifying OIDC authenticator is active in OpenSearch...${nc}"
 for i in $(seq 1 30); do
-  authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
+  authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:${OPENSEARCH_PORT}/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
   if echo "$authc_config" | grep -q "openid_auth_domain"; then
     echo "${purple}OIDC authenticator configured${nc}"
     echo "$authc_config" | grep -A 5 "openid_auth_domain" || true
@@ -182,9 +212,11 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-wait_for_url "Langflow" "http://localhost:7860/" 60
+wait_for_url "Langflow" "http://localhost:${LANGFLOW_PORT}/" 60
 wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60
 echo "::endgroup::"
+
+mkdir -p service-logs
 
 case "$suite" in
   core)
@@ -192,14 +224,14 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} Core Integration Tests${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
+    mkdir -p service-logs
     LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
       GOOGLE_OAUTH_CLIENT_ID="" \
       GOOGLE_OAUTH_CLIENT_SECRET="" \
-      OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
-      LANGFLOW_OPENSEARCH_HOST=opensearch LANGFLOW_OPENSEARCH_PORT=9200 \
+      OPENSEARCH_HOST=localhost OPENSEARCH_PORT=${OPENSEARCH_PORT} \
       OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
       DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      uv run pytest tests/integration/core -vv -s -o log_cli=true --log-cli-level=DEBUG || test_result=1
+      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || test_result=1
     echo "::endgroup::"
     test_jwt_opensearch || test_result=1
     ;;
@@ -209,8 +241,8 @@ case "$suite" in
     echo "${cyan}════════════════════════════════════════${nc}"
     echo "${purple} SDK Integration Tests (Python)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
-    uv pip install -e sdks/python
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s || test_result=1
+    uv pip install --quiet -e sdks/python
+    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || test_result=1
     echo "::endgroup::"
     ;;
   sdk-typescript)
@@ -220,7 +252,7 @@ case "$suite" in
     echo "${purple} SDK Integration Tests (TypeScript)${nc}"
     echo "${cyan}════════════════════════════════════════${nc}"
     cd sdks/typescript
-    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test || test_result=1
+    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || test_result=1
     cd ../..
     echo "::endgroup::"
     ;;

@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // PVCReclaimPolicy describes what happens to PVCs when the OpenRAG CR is deleted.
@@ -813,5 +814,12 @@ type OpenRAGList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&OpenRAG{}, &OpenRAGList{})
+	SchemeBuilder.Register(func(scheme *runtime.Scheme) error {
+		scheme.AddKnownTypes(GroupVersion,
+			&OpenRAG{},
+			&OpenRAGList{},
+		)
+		metav1.AddToGroupVersion(scheme, GroupVersion)
+		return nil
+	})
 }

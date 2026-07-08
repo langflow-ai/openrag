@@ -36,6 +36,106 @@ import {
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
+const getTaskIcon = (
+  status: Task["status"],
+  hasFailedFiles = false,
+  isTotalFailure = false,
+) => {
+  switch (status) {
+    case "completed":
+      if (hasFailedFiles) {
+        if (isTotalFailure) {
+          return <XCircle className="size-4 text-destructive" />;
+        }
+        return <AlertCircle className="h-4 w-4 text-brand-amber" />;
+      }
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
+    case "failed":
+    case "error":
+      return <XCircle className="size-4 text-destructive" />;
+    case "pending":
+      return <Clock className="h-4 w-4 text-yellow-500" />;
+    case "running":
+    case "processing":
+      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+    default:
+      return <Clock className="h-4 w-4 text-gray-500" />;
+  }
+};
+
+const formatTaskProgress = (
+  task: Task,
+): { basic: string; detailed: TaskProgressDetailed } | null => {
+  const total = task.total_files || 0;
+  const processed = task.processed_files || 0;
+  const successful = task.successful_files || 0;
+  const failed = task.failed_files || 0;
+  const running = task.running_files || 0;
+  const pending = task.pending_files || 0;
+
+  if (total > 0) {
+    return {
+      basic: `${processed}/${total} files`,
+      detailed: {
+        total,
+        processed,
+        successful,
+        failed,
+        running,
+        pending,
+        remaining: total - processed,
+      },
+    };
+  }
+  return null;
+};
+
+const formatDuration = (seconds?: number) => {
+  if (!seconds || seconds < 0) return null;
+
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  } else if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  } else {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+};
+
+const formatRelativeTime = (dateString: string) => {
+  let date: Date;
+
+  if (/^\d+$/.test(dateString)) {
+    const timestamp = parseInt(dateString);
+    date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp);
+  } else if (/^\d+\.\d+$/.test(dateString)) {
+    const timestamp = parseFloat(dateString);
+    date = new Date(timestamp * 1000);
+  } else {
+    date = new Date(dateString);
+  }
+
+  if (isNaN(date.getTime())) {
+    console.warn("Invalid date format:", dateString);
+    return "Unknown time";
+  }
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+};
+
 export function TaskNotificationMenu() {
   const isCloudBrand = useIsCloudBrand();
   const {
@@ -109,33 +209,6 @@ export function TaskNotificationMenu() {
 
   // Don't render if menu is closed
   if (!isMenuOpen) return null;
-
-  const getTaskIcon = (
-    status: Task["status"],
-    hasFailedFiles = false,
-    isTotalFailure = false,
-  ) => {
-    switch (status) {
-      case "completed":
-        if (hasFailedFiles) {
-          if (isTotalFailure) {
-            return <XCircle className="size-4 text-destructive" />;
-          }
-          return <AlertCircle className="h-4 w-4 text-brand-amber" />;
-        }
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "failed":
-      case "error":
-        return <XCircle className="size-4 text-destructive" />;
-      case "pending":
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case "running":
-      case "processing":
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
-    }
-  };
 
   const pastTaskRowClass = cn(
     "w-full py-mmd px-4 transition-colors hover:bg-muted/60",
@@ -247,88 +320,6 @@ export function TaskNotificationMenu() {
           </Badge>
         );
     }
-  };
-
-  const formatTaskProgress = (
-    task: Task,
-  ): { basic: string; detailed: TaskProgressDetailed } | null => {
-    const total = task.total_files || 0;
-    const processed = task.processed_files || 0;
-    const successful = task.successful_files || 0;
-    const failed = task.failed_files || 0;
-    const running = task.running_files || 0;
-    const pending = task.pending_files || 0;
-
-    if (total > 0) {
-      return {
-        basic: `${processed}/${total} files`,
-        detailed: {
-          total,
-          processed,
-          successful,
-          failed,
-          running,
-          pending,
-          remaining: total - processed,
-        },
-      };
-    }
-    return null;
-  };
-
-  const formatDuration = (seconds?: number) => {
-    if (!seconds || seconds < 0) return null;
-
-    if (seconds < 60) {
-      return `${Math.round(seconds)}s`;
-    } else if (seconds < 3600) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.round(seconds % 60);
-      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-    }
-  };
-
-  const formatRelativeTime = (dateString: string) => {
-    // Handle different timestamp formats
-    let date: Date;
-
-    // If it's a number (Unix timestamp), convert it
-    if (/^\d+$/.test(dateString)) {
-      const timestamp = parseInt(dateString);
-      // If it looks like seconds (less than 10^13), convert to milliseconds
-      date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp);
-    }
-    // If it's a decimal number (Unix timestamp with decimals)
-    else if (/^\d+\.\d+$/.test(dateString)) {
-      const timestamp = parseFloat(dateString);
-      // Convert seconds to milliseconds
-      date = new Date(timestamp * 1000);
-    }
-    // Otherwise, try to parse as ISO string or other date format
-    else {
-      date = new Date(dateString);
-    }
-
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      console.warn("Invalid date format:", dateString);
-      return "Unknown time";
-    }
-
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMinutes < 1) return "Just now";
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
   };
 
   const cancelTaskButtonClass = cn(

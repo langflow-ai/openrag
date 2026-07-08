@@ -237,7 +237,7 @@ class APIKeyService:
         jwt_token: str = None,
     ) -> dict[str, Any]:
         """
-        List all API keys for a user (without the actual keys).
+        List all active (non-revoked) API keys for a user (without the actual keys).
 
         Args:
             user_id: The user's ID
@@ -251,7 +251,14 @@ class APIKeyService:
 
             # Search for user's keys
             search_body = {
-                "query": {"term": {"user_id": user_id}},
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"term": {"revoked": False}},
+                        ]
+                    }
+                },
                 "sort": [{"created_at": {"order": "desc"}}],
                 "_source": [
                     "key_id",

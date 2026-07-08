@@ -435,6 +435,7 @@ async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
     monkeypatch.setattr(
         connectors_api,
         "get_synced_file_ids_for_connector",
@@ -459,9 +460,11 @@ async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
     response = await connectors_api.connector_sync(
         "google_drive",
         connectors_api.ConnectorSyncBody(),
+        request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
         user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
     )
 
     assert response.status_code == 201
@@ -475,6 +478,7 @@ async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypa
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
     monkeypatch.setattr(
         connectors_api,
         "get_synced_file_ids_for_connector",
@@ -499,9 +503,11 @@ async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypa
     response = await connectors_api.connector_sync(
         "google_drive",
         connectors_api.ConnectorSyncBody(),
+        request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
         user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
     )
 
     assert response.status_code == 200
@@ -514,6 +520,7 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
 
     async def fake_synced_ids(connector_type, *args, **kwargs):
         if connector_type == "google_drive":
@@ -538,9 +545,11 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
     service.sync_specific_files = AsyncMock()
 
     response = await connectors_api.sync_all_connectors(
+        request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
         user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
     )
 
     body = _json(response)

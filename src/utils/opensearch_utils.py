@@ -132,7 +132,7 @@ def opensearch_error_fields(error: Exception) -> dict[str, Any]:
 
 async def wait_for_opensearch(
     opensearch_client: AsyncOpenSearch,
-    max_retries: int = 15,
+    max_retries: int = 30,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
 ) -> None:
@@ -163,12 +163,60 @@ async def wait_for_opensearch(
                 health = await opensearch_client.cluster.health()
                 status = health.get("status")
                 if status in ["green", "yellow"]:
-                    logger.info(
-                        "Successfully verified that OpenSearch is ready.",
-                        attempt=display_attempt,
-                        status=status,
+                    from config.settings import (
+                        OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                        OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                        OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                        OPENSEARCH_NODE_COUNT_CHECK_ENABLED,
                     )
-                    return
+
+                    if OPENSEARCH_NODE_COUNT_CHECK_ENABLED:
+                        data_node_count = health.get("number_of_data_nodes", 0)
+                        # Reachable cluster-manager (master) nodes.
+                        cm_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/cluster_manager:true/process,transport"
+                        )
+                        cluster_manager_count = cm_info.get("_nodes", {}).get("successful", 0)
+                        # Reachable coordinating-only nodes.
+                        coord_info = await opensearch_client.transport.perform_request(
+                            "GET", "/_nodes/coordinating_only:true/process,transport"
+                        )
+                        coordinating_count = coord_info.get("_nodes", {}).get("successful", 0)
+
+                        if (
+                            data_node_count < OPENSEARCH_EXPECTED_DATA_NODE_COUNT
+                            or cluster_manager_count < OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT
+                            or coordinating_count < OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT
+                        ):
+                            logger.warning(
+                                "OpenSearch healthy but cluster has not reached expected node count.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                                expected_data_nodes=OPENSEARCH_EXPECTED_DATA_NODE_COUNT,
+                                expected_cluster_managers=OPENSEARCH_EXPECTED_CLUSTER_MANAGER_COUNT,
+                                expected_coordinating=OPENSEARCH_EXPECTED_COORDINATING_NODE_COUNT,
+                            )
+                            # Fall through to the retry/backoff below until nodes join.
+                        else:
+                            logger.info(
+                                "Successfully verified that OpenSearch is ready.",
+                                attempt=display_attempt,
+                                status=status,
+                                number_of_data_nodes=data_node_count,
+                                cluster_manager_nodes=cluster_manager_count,
+                                coordinating_nodes=coordinating_count,
+                            )
+                            return
+                    else:
+                        logger.info(
+                            "Successfully verified that OpenSearch is ready.",
+                            attempt=display_attempt,
+                            status=status,
+                        )
+                        return
                 else:
                     logger.warning(
                         "OpenSearch is up but cluster health is red.",

@@ -26,9 +26,7 @@ interface DuplicateHandlingDialogProps {
 
 const MAX_LISTED_DUPLICATES = 5;
 
-export const DuplicateHandlingDialog: React.FC<
-  DuplicateHandlingDialogProps
-> = ({
+export const DuplicateHandlingDialog = ({
   open,
   onOpenChange,
   onOverwrite,
@@ -36,7 +34,7 @@ export const DuplicateHandlingDialog: React.FC<
   duplicateLabel,
   duplicateCount,
   duplicateNames,
-}) => {
+}: DuplicateHandlingDialogProps) => {
   const isCloudBrand = useIsCloudBrand();
 
   const handleOverwrite = async () => {
@@ -45,9 +43,12 @@ export const DuplicateHandlingDialog: React.FC<
   };
 
   const namesProvided = duplicateNames && duplicateNames.length > 0;
-  const effectiveCount = namesProvided
-    ? duplicateNames!.length
-    : duplicateCount;
+  const effectiveCount =
+    typeof duplicateCount === "number"
+      ? duplicateCount
+      : namesProvided
+        ? duplicateNames!.length
+        : undefined;
 
   const description =
     typeof effectiveCount === "number"
@@ -83,8 +84,8 @@ export const DuplicateHandlingDialog: React.FC<
 
         {namesProvided && (
           <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5">
-            {visibleNames.map((name) => (
-              <li key={name} className="break-all">
+            {visibleNames.map((name, index) => (
+              <li key={`${name}-${index}`} className="break-all">
                 {name}
               </li>
             ))}

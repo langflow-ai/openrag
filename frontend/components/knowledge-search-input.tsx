@@ -1,13 +1,8 @@
 import { ArrowRight, Search, X } from "lucide-react";
-import {
-  type ChangeEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
@@ -21,19 +16,28 @@ export const KnowledgeSearchInput = () => {
   } = useKnowledgeFilter();
 
   const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
+  const [prevQueryOverride, setPrevQueryOverride] = useState(queryOverride);
+  if (queryOverride !== prevQueryOverride) {
+    setPrevQueryOverride(queryOverride);
+    setSearchQueryInput(queryOverride);
+  }
 
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
       if (e) e.preventDefault();
+      trackButton({
+        CTA: "Search Knowledge",
+        elementId: "search-knowledge-button",
+        namespace: "knowledge",
+        payload: {
+          queryLength: searchQueryInput.trim().length,
+          hasFilter: !!selectedFilter,
+        },
+      });
       setQueryOverride(searchQueryInput.trim());
     },
-    [searchQueryInput, setQueryOverride],
+    [searchQueryInput, setQueryOverride, selectedFilter],
   );
-
-  // Reset the query text when the selected filter changes
-  useEffect(() => {
-    setSearchQueryInput(queryOverride);
-  }, [queryOverride]);
 
   return (
     <form

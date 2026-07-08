@@ -48,3 +48,33 @@ jobs:
       - name: TypeScript type check
         working-directory: frontend
         run: npm run typecheck
+
+  react-doctor:
+    name: React Doctor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: React Doctor score check
+        working-directory: frontend
+        run: |
+          SCORE=$(npx -y react-doctor@0.5.8 --score --yes)
+          echo "React Doctor score: $SCORE"
+          if [ "$SCORE" -lt 40 ]; then
+            echo "::error::React Doctor score $SCORE is below the minimum threshold of 40"
+            npx -y react-doctor@0.5.8 --verbose --yes
+            exit 1
+          fi

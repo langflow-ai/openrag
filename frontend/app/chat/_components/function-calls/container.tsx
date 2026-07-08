@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FunctionCall as FunctionCallType } from "../../_types/types";
 import { FunctionCall } from "./call";
 import { FunctionCallsHeader } from "./header";
@@ -19,6 +19,9 @@ export function FunctionCallsContainer({
   isStreaming = false,
 }: FunctionCallsContainerProps) {
   const [isGroupExpanded, setIsGroupExpanded] = useState(isStreaming);
+  useEffect(() => {
+    if (isStreaming) setIsGroupExpanded(true);
+  }, [isStreaming]);
 
   if (!functionCalls || functionCalls.length === 0) return null;
 

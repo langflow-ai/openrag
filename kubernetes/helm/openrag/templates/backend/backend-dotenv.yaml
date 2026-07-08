@@ -86,6 +86,7 @@ stringData:
     LANGFLOW_OPENSEARCH_HOST={{ include "openrag.langflow.opensearch.host" . | quote }}
     LANGFLOW_OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
 
+
     # Google OAuth
     {{- if .Values.global.oauth.google.clientId }}
     GOOGLE_OAUTH_CLIENT_ID={{ .Values.global.oauth.google.clientId | quote }}
@@ -100,6 +101,21 @@ stringData:
     {{- end }}
     {{- if .Values.global.oauth.microsoft.clientSecret }}
     MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={{ .Values.global.oauth.microsoft.clientSecret | quote }}
+    {{- end }}
+
+    # Azure Blob Storage connector (optional env defaults; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB)
+    OPENRAG_AZURE_BLOB_ENABLED={{ .Values.global.azureBlob.enabled }}
+    {{- if .Values.global.azureBlob.connectionString }}
+    AZURE_STORAGE_CONNECTION_STRING={{ .Values.global.azureBlob.connectionString | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountName }}
+    AZURE_STORAGE_ACCOUNT_NAME={{ .Values.global.azureBlob.accountName | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.accountKey }}
+    AZURE_STORAGE_ACCOUNT_KEY={{ .Values.global.azureBlob.accountKey | quote }}
+    {{- end }}
+    {{- if .Values.global.azureBlob.endpoint }}
+    AZURE_STORAGE_ENDPOINT={{ .Values.global.azureBlob.endpoint | quote }}
     {{- end }}
 
     # Webhook (continuous ingest)
@@ -196,7 +212,7 @@ stringData:
     {{- if .Values.backend.encryption.key }}
     OPENRAG_ENCRYPTION_KEY={{ .Values.backend.encryption.key  | quote }}
     {{- end }}
-    
+
     # Langflow auth (OpenRag uses this to determine how to authenticate with Langflow)
     LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
 

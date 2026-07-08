@@ -13,16 +13,26 @@ CONNECTOR_ACCESS_SECTION = "connector_access"
 # without touching this module.
 CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_connector_classes())
 
-_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos"})
+_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos", "azure_blob"})
+
+
+def is_bucket_connector_type(connector_type: str) -> bool:
+    """True for object-storage "bucket" connectors (S3, IBM COS, Azure Blob)."""
+    return connector_type in _BUCKET_CONNECTOR_TYPES
 
 
 def governable_connector_types() -> tuple[str, ...]:
     """Types shown in admin Connectors Permission — independent of the live connectors list."""
-    from config.settings import IBM_AUTH_ENABLED, is_cloud_context
+    from config.settings import IBM_AUTH_ENABLED, is_azure_blob_enabled, is_cloud_context
 
+    types = CONNECTOR_TYPES
+    # Honor the Azure Blob kill switch so a force-hidden connector doesn't linger
+    # as a governable row here (mirrors AzureBlobConnector.is_available()).
+    if not is_azure_blob_enabled():
+        types = tuple(t for t in types if t != "azure_blob")
     if is_cloud_context() and not IBM_AUTH_ENABLED:
-        return tuple(t for t in CONNECTOR_TYPES if t not in _BUCKET_CONNECTOR_TYPES)
-    return CONNECTOR_TYPES
+        types = tuple(t for t in types if t not in _BUCKET_CONNECTOR_TYPES)
+    return types
 
 
 async def get_access_map(session: AsyncSession) -> dict[str, bool]:
