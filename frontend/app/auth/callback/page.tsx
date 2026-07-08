@@ -81,15 +81,15 @@ function AuthCallbackContent() {
   });
 
   useEffect(() => {
-    const callbackKey = `callback_processed_${code}`;
-
-    if (sessionStorage.getItem(callbackKey)) return;
-    sessionStorage.setItem(callbackKey, "true");
-
     if (validationError) {
       cleanupOAuthStorage();
       return;
     }
+
+    const callbackKey = `callback_processed_${code}`;
+
+    if (sessionStorage.getItem(callbackKey)) return;
+    sessionStorage.setItem(callbackKey, "true");
 
     let parsedConnectionId = finalConnectorId!;
 
