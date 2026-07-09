@@ -39,6 +39,11 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS runtime
 WORKDIR /opt/app-root/src
 USER 0
 
+# Fix CVEs in global npm nested dependencies
+RUN cd /usr/lib/node_modules_22/npm && \
+    npm install @sigstore/core@3.2.1 sigstore@4.1.1 tar@7.5.16
+
+
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
