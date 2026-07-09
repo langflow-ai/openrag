@@ -12,6 +12,12 @@ from utils.document_processing import (
     resplit_chunks_character_windows,
     split_chunks_by_max_tokens,
 )
+from utils.embedding_kwargs import (
+    COHERE_DOCUMENT_INPUT_TYPE,
+    cohere_input_type_kwargs,
+    is_oci_litellm_model,
+    oci_credential_kwargs,
+)
 from utils.file_utils import (
     auto_cleanup_tempfile,
     clean_connector_filename,
@@ -645,13 +651,25 @@ class TaskProcessor:
 
             gateway_model = public_model_id(embedding_provider, embedding_model)
 
+        # Cohere-family models (e.g. served via OCI Generative AI) need
+        # input_type so the model knows this text is being indexed rather
+        # than a search query -- materially improves retrieval quality.
+        # OCI-routed models additionally need their auth credentials passed
+        # as call-time kwargs; litellm's OCI integration does not read them
+        # from the environment (see utils.embedding_kwargs for details).
+        extra_kwargs = cohere_input_type_kwargs(litellm_embedding_model, COHERE_DOCUMENT_INPUT_TYPE)
+        if is_oci_litellm_model(litellm_embedding_model):
+            extra_kwargs.update(oci_credential_kwargs(get_openrag_config().providers.oci))
+
         for batch in text_batches:
             if gateway_model is not None:
-                response = await gateway_embeddings({"model": gateway_model, "input": batch})
+                response = await gateway_embeddings(
+                    {"model": gateway_model, "input": batch, **extra_kwargs}
+                )
                 data = response.get("data", [])
             else:
                 response = await clients.patched_embedding_client.embeddings.create(
-                    model=litellm_embedding_model, input=batch
+                    model=litellm_embedding_model, input=batch, **extra_kwargs
                 )
                 data = response.data
             embeddings.extend(
