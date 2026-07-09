@@ -61,12 +61,20 @@ def cache_key(
     embedding_project_id: str | None = None,
     credentials: Mapping[str, str] | None = None,
     embedding_credentials: Mapping[str, str] | None = None,
+    embedding_oci_user: str | None = None,
+    embedding_oci_fingerprint: str | None = None,
+    embedding_oci_tenancy: str | None = None,
+    embedding_oci_compartment_id: str | None = None,
+    embedding_oci_key: str | None = None,
+    embedding_oci_key_file: str | None = None,
 ) -> str:
     """Build the cache key for a polled health-check call.
 
     The API keys and credential kwargs are hashed (never stored in plaintext);
     rotating a key busts the cache automatically because the fingerprint
-    changes.
+    changes. The OCI inline key is hashed the same way; the other OCI fields
+    (identifiers, key file path) are not secrets and are included as-is,
+    mirroring endpoint/project_id above.
     """
     parts = [
         provider or "",
@@ -82,6 +90,12 @@ def cache_key(
         _fingerprint(embedding_api_key),
         _fingerprint_mapping(credentials),
         _fingerprint_mapping(embedding_credentials),
+        embedding_oci_user or "",
+        embedding_oci_fingerprint or "",
+        embedding_oci_tenancy or "",
+        embedding_oci_compartment_id or "",
+        _fingerprint(embedding_oci_key),
+        embedding_oci_key_file or "",
     ]
     return hashlib.blake2b("|".join(parts).encode()).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 

@@ -1526,6 +1526,11 @@ async def _test_oci_credential_shape(
         )
 
     if oci_key:
+        if oci_key_file:
+            logger.warning(
+                "OCI configuration has both oci_key and oci_key_file set; "
+                "using oci_key (inline) and ignoring oci_key_file"
+            )
         if "PRIVATE KEY" not in oci_key:
             raise Exception(
                 "OCI oci_key does not look like a PEM private key (missing 'PRIVATE KEY' marker)"

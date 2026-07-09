@@ -372,6 +372,9 @@ class OpenRAGConfig:
             new_data = dict(p_data)
             if "api_key" in new_data:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
+            # OCI's inline PEM private key (key_file is a path, not a secret).
+            if "key" in new_data:
+                new_data["key"] = decrypt_secret(new_data["key"])
             return new_data
 
         def _decrypt_custom_provider(provider: str, p_data: dict) -> GenericProviderConfig:
@@ -394,7 +397,7 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
-                oci=OCIConfig(**providers_data.get("oci", {})),
+                oci=OCIConfig(**_decrypt_provider(providers_data.get("oci", {}))),
                 custom={
                     str(provider).lower(): _decrypt_custom_provider(str(provider), value)
                     for provider, value in custom_data.items()
@@ -696,6 +699,9 @@ class ConfigManager:
             for _provider_name, provider_config in providers.items():
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+                # OCI's inline PEM private key (key_file is a path, not a secret).
+                if "key" in provider_config:
+                    provider_config["key"] = encrypt_secret(provider_config["key"])
             custom = providers.get("custom", {})
             from services.model_catalog import secret_field_keys
 
