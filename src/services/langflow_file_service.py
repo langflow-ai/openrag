@@ -16,6 +16,7 @@ from config.settings import (
     OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
+    get_openrag_config,
 )
 from services.document_index_writer import DocumentIndexContext
 from utils.document_processing import EMBEDDED_IMAGES_OCR_DISABLED_WARNING, has_embedded_images
@@ -925,6 +926,12 @@ class LangflowFileService:
         filename, content, _ = file_tuple
 
         ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        config = get_openrag_config()
+        effective_ocr = (
+            bool(getattr(config.knowledge, "ocr", False))
+            if ocr_override is None
+            else bool(ocr_override)
+        )
         pic_desc_override = (
             settings.get("pictureDescriptions") if isinstance(settings, dict) else None
         )
@@ -1066,7 +1073,7 @@ class LangflowFileService:
             "message": f"File '{filename}' processed via Docling and ingested successfully",
         }
         if (
-            ocr_override is False
+            not effective_ocr
             and poll_result is not None
             and has_embedded_images(poll_result.document_json_content)
         ):
