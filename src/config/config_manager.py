@@ -160,6 +160,27 @@ class GenericProviderConfig:
 
 
 @dataclass
+class OCIConfig:
+    """Oracle Cloud Infrastructure (OCI) Generative AI provider configuration.
+
+    Auth follows OCI's API Signing Key scheme: user/fingerprint/tenancy
+    identify the signer, and either ``key`` (inline PEM) or ``key_file``
+    (path to a PEM file) supplies the private key used to sign requests.
+    ``compartment_id`` is required on every embedText call for IAM
+    authorization and billing/quota attribution.
+    """
+
+    user: str = ""
+    fingerprint: str = ""
+    tenancy: str = ""
+    compartment_id: str = ""
+    key_file: str = ""
+    key: str = ""
+    region: str = ""
+    configured: bool = False
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -167,6 +188,7 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    oci: OCIConfig = field(default_factory=OCIConfig)
     custom: dict[str, GenericProviderConfig] = field(default_factory=dict)
 
     def any_configured(self) -> bool:
@@ -176,6 +198,7 @@ class ProvidersConfig:
             self.anthropic,
             self.watsonx,
             self.ollama,
+            self.oci,
             *self.custom.values(),
         )
         return any(p.configured for p in providers)
@@ -191,6 +214,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "oci":
+            return self.oci
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
@@ -369,6 +394,7 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                oci=OCIConfig(**providers_data.get("oci", {})),
                 custom={
                     str(provider).lower(): _decrypt_custom_provider(str(provider), value)
                     for provider, value in custom_data.items()
@@ -438,6 +464,7 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "oci": {},
                 "custom": {},
             },
             "knowledge": {},
@@ -460,7 +487,14 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama", "custom"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "oci",
+                        "custom",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -552,6 +586,22 @@ class ConfigManager:
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
+
+        # OCI (Oracle Cloud Infrastructure Generative AI) provider settings
+        if os.getenv("OCI_USER"):
+            config_data["providers"]["oci"]["user"] = os.getenv("OCI_USER")
+        if os.getenv("OCI_FINGERPRINT"):
+            config_data["providers"]["oci"]["fingerprint"] = os.getenv("OCI_FINGERPRINT")
+        if os.getenv("OCI_TENANCY"):
+            config_data["providers"]["oci"]["tenancy"] = os.getenv("OCI_TENANCY")
+        if os.getenv("OCI_COMPARTMENT_ID"):
+            config_data["providers"]["oci"]["compartment_id"] = os.getenv("OCI_COMPARTMENT_ID")
+        if os.getenv("OCI_KEY_FILE"):
+            config_data["providers"]["oci"]["key_file"] = os.getenv("OCI_KEY_FILE")
+        if os.getenv("OCI_KEY"):
+            config_data["providers"]["oci"]["key"] = os.getenv("OCI_KEY")
+        if os.getenv("OCI_REGION"):
+            config_data["providers"]["oci"]["region"] = os.getenv("OCI_REGION")
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):

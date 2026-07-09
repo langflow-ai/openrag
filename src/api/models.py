@@ -47,6 +47,13 @@ class IBMBody(BaseModel):
     project_id: str | None = None
 
 
+class OCIBody(BaseModel):
+    # OCI models are a static list (see ModelsService.get_oci_models) — no
+    # credentials are needed to list them, but the body is kept for shape
+    # parity with the other provider endpoints and future extensibility.
+    pass
+
+
 def _models_error_response(exc: Exception) -> JSONResponse:
     """Map model-route failures to client (400) vs upstream (502) vs server (500).
 
@@ -262,3 +269,17 @@ async def get_model_catalog(
         # (CodeQL py/stack-trace-exposure).
         logger.error("Model catalogue unavailable", error=str(e))
         return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)
+
+
+async def get_oci_models(
+    body: OCIBody | None = None,
+    models_service=Depends(get_models_service),
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Get available OCI Generative AI embedding models (static list, no credentials required)"""
+    try:
+        models = await models_service.get_oci_models()
+        return JSONResponse(models)
+    except Exception as e:
+        logger.error(f"Failed to get OCI models: {str(e)}")
+        return _models_error_response(e)

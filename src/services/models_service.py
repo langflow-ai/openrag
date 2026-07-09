@@ -1,5 +1,6 @@
 import asyncio
 import re
+from typing import Any
 
 import httpx
 
@@ -36,6 +37,8 @@ def _watsonx_rate_limited(failures: list[tuple[str, int, str]]) -> bool:
             return True
     return False
 
+
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic", "oci"]
 
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
@@ -202,6 +205,27 @@ class ModelsService:
                         self.add_models(res, "watsonx", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
+
+                # OCI (Oracle Cloud Infrastructure Generative AI). Gate on the
+                # full credential set required for OCI's API Signing Key auth
+                # scheme (user/fingerprint/tenancy/compartment_id plus one of
+                # key/key_file) — a partial credential set can't sign a real
+                # request, so registering models for it would let queries
+                # resolve to a provider that will fail at call time instead
+                # of failing fast in get_litellm_model_name(strict=True).
+                oci_config = config.providers.oci
+                if (
+                    oci_config.user
+                    and oci_config.fingerprint
+                    and oci_config.tenancy
+                    and oci_config.compartment_id
+                    and (oci_config.key or oci_config.key_file)
+                ):
+                    try:
+                        res = await self.get_oci_models(update_index=False)
+                        self.add_models(res, "oci", new_registry)
+                    except Exception as e:
+                        logger.debug(f"Could not fetch OCI models for registry: {str(e)}")
 
                 from services.model_catalog import catalog
 
@@ -790,3 +814,61 @@ class ModelsService:
         except Exception as e:
             logger.error(f"Error fetching IBM models: {str(e)}")
             raise
+
+    async def get_oci_models(self, update_index: bool = True) -> dict[str, list[dict[str, str]]]:
+        """Return the available OCI Generative AI (Cohere) embedding models.
+
+        Unlike get_openai_models/get_ibm_models, this is a STATIC list rather
+        than a live API round-trip: authenticating an OCI Generative AI
+        request requires OCI's RSA-SHA256 HTTP Signing Scheme (a per-request
+        canonical-string signature), which is significantly heavier than a
+        bearer-token or API-key check and not worth performing just to list
+        models that rarely change. The image-input variants
+        (cohere.embed-*-image-v3.0) are intentionally omitted: OpenRAG only
+        ever embeds document text chunks and search queries, never images.
+
+        OCI Generative AI is wired up as an embedding-only provider in
+        OpenRAG (no chat/completion component), so language_models is
+        always empty.
+        """
+        # Typed as dict[str, Any] (not the function's dict[str, str] shape)
+        # because "default" is a real bool, not a string -- matches the
+        # runtime shape get_openai_models/get_ibm_models also produce for
+        # their embedding_models entries.
+        embedding_models: list[dict[str, Any]] = [
+            {
+                "value": "cohere.embed-multilingual-v3.0",
+                "label": "Cohere Embed Multilingual v3.0",
+                "default": True,
+            },
+            {
+                "value": "cohere.embed-english-v3.0",
+                "label": "Cohere Embed English v3.0",
+                "default": False,
+            },
+            {
+                "value": "cohere.embed-multilingual-light-v3.0",
+                "label": "Cohere Embed Multilingual Light v3.0",
+                "default": False,
+            },
+            {
+                "value": "cohere.embed-english-light-v3.0",
+                "label": "Cohere Embed English Light v3.0",
+                "default": False,
+            },
+            {
+                "value": "cohere.embed-v4.0",
+                "label": "Cohere Embed v4.0",
+                "default": False,
+            },
+        ]
+
+        result = {
+            "language_models": [],
+            "embedding_models": embedding_models,
+        }
+
+        if update_index:
+            await self.add_models_to_registry(result, "oci")
+
+        return result

@@ -41,6 +41,7 @@ from api.settings.models import (
     GenericProviderConfig,
     IngestionDefaultsConfig,
     KnowledgeConfig,
+    OCIProviderConfig,
     OllamaProviderConfig,
     OnboardingBody,
     OnboardingResponse,
@@ -331,6 +332,16 @@ async def get_settings(
                 ollama=OllamaProviderConfig(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
+                ),
+                oci=OCIProviderConfig(
+                    has_key=bool(
+                        openrag_config.providers.oci.key or openrag_config.providers.oci.key_file
+                    ),
+                    user=openrag_config.providers.oci.user or None,
+                    tenancy=openrag_config.providers.oci.tenancy or None,
+                    compartment_id=openrag_config.providers.oci.compartment_id or None,
+                    region=openrag_config.providers.oci.region or None,
+                    configured=openrag_config.providers.oci.configured,
                 ),
                 custom=_custom_providers_for_settings(openrag_config),
             )

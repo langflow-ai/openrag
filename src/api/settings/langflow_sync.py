@@ -13,7 +13,6 @@ Lifted verbatim from the original `src/api/settings.py` (lines 46,
 import asyncio
 
 from api.settings.helpers import (
-    _EMBEDDING_PROVIDER_NAMES,
     _LLM_PROVIDER_NAMES,
     _configured_provider_names,
     _get_flows_service,
@@ -273,6 +272,15 @@ async def ensure_required_langflow_global_variables(config=None):
             )
 
 
+# Embedding providers with an actual Langflow flow component to update.
+# Deliberately narrower than api.settings.helpers._EMBEDDING_PROVIDER_NAMES:
+# OCI (and any future non-Langflow-only provider) has no Langflow embedding
+# component, so change_langflow_model_value() rejects any provider outside
+# this exact set. Keep in sync with that allowlist in
+# services/flows_service.py.
+_LANGFLOW_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+
 async def _update_langflow_global_variables(config, flows_service=None):
     """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""
     errors: list[str] = []
@@ -472,7 +480,9 @@ async def _update_langflow_model_values(
                 logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
 
             # 2. Update ALL configured embedding providers
-            embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
+            embedding_providers = _configured_provider_names(
+                config, _LANGFLOW_EMBEDDING_PROVIDER_NAMES
+            )
 
             current_embedding_provider = (config.knowledge.embedding_provider or "openai").lower()
             for provider in embedding_providers:
