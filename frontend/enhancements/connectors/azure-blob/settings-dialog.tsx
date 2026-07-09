@@ -203,7 +203,10 @@ export default function AzureBlobSettingsDialog({
               accountKeySet={defaults?.account_key_set}
               formError={formError}
               showContainers={showContainers}
-              onAuthModeChange={() => setShowContainers(false)}
+              onAuthModeChange={() => {
+                setShowContainers(false);
+                setContainers(null);
+              }}
             />
 
             <DialogFooter className="mt-4">
