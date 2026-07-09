@@ -1224,9 +1224,8 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if (
-                        file_task.status != TaskStatus.COMPLETED
-                        or self._file_task_has_warning(file_task)
+                    if file_task.status != TaskStatus.COMPLETED or self._file_task_has_warning(
+                        file_task
                     ):
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
@@ -1284,9 +1283,8 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if (
-                        file_task.status != TaskStatus.COMPLETED
-                        or self._file_task_has_warning(file_task)
+                    if file_task.status != TaskStatus.COMPLETED or self._file_task_has_warning(
+                        file_task
                     ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
