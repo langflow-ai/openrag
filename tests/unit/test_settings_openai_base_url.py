@@ -9,6 +9,7 @@ openai_base_url got a silent no-op. See src/api/settings/endpoints.py.
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 import api.settings.endpoints as settings_api
 from config.config_manager import (
@@ -32,10 +33,10 @@ class _FakeTask:
         self.done_callback = cb
 
 
-def _make_config(*, edited: bool = True) -> OpenRAGConfig:
+def _make_config(*, edited: bool = True, openai: OpenAIConfig | None = None) -> OpenRAGConfig:
     return OpenRAGConfig(
         providers=ProvidersConfig(
-            openai=OpenAIConfig(),
+            openai=openai if openai is not None else OpenAIConfig(),
             anthropic=AnthropicConfig(),
             watsonx=WatsonXConfig(),
             ollama=OllamaConfig(),
@@ -67,9 +68,7 @@ def _patch_update_settings_deps(monkeypatch, config):
         lambda updated_config: True,
         raising=True,
     )
-    monkeypatch.setattr(
-        settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True
-    )
+    monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
     monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
     monkeypatch.setattr(settings_api.asyncio, "create_task", _fake_create_task, raising=True)
     return fake_task
@@ -110,6 +109,35 @@ async def test_update_settings_strips_openai_base_url_whitespace(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_remove_openai_config_clears_base_url(monkeypatch):
+    """Regression: removing the OpenAI config used to clear api_key/configured
+    but leave a stale base_url behind. A later re-enable of OpenAI would then
+    silently keep routing through the old (possibly now-invalid) gateway
+    instead of falling back to api.openai.com.
+    """
+    settings_api._background_tasks.clear()
+    config = _make_config(
+        openai=OpenAIConfig(
+            api_key="sk-test", base_url="https://gateway.example.com/v1", configured=True
+        )
+    )
+    # remove_openai_config requires another provider to be configured.
+    config.providers.anthropic.configured = True
+    _patch_update_settings_deps(monkeypatch, config)
+
+    response = await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(remove_openai_config=True, force_remove=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_api.SettingsUpdateResponse)
+    assert config.providers.openai.api_key == ""
+    assert config.providers.openai.configured is False
+    assert config.providers.openai.base_url == ""
+
+
+@pytest.mark.asyncio
 async def test_onboarding_persists_openai_base_url(monkeypatch):
     config = _make_config(edited=False)
 
@@ -123,9 +151,7 @@ async def test_onboarding_persists_openai_base_url(monkeypatch):
         lambda updated_config: True,
         raising=True,
     )
-    monkeypatch.setattr(
-        settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True
-    )
+    monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
     monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
     monkeypatch.setattr(settings_api, "wait_for_langflow", AsyncMock(), raising=True)
 
@@ -144,3 +170,19 @@ async def test_onboarding_persists_openai_base_url(monkeypatch):
     assert isinstance(response, settings_api.OnboardingResponse)
     assert config.providers.openai.base_url == "https://gateway.example.com/v1"
     assert config.providers.openai.configured is False
+
+
+class TestWhitespaceOnlyBaseUrlRejected:
+    """A whitespace-only openai_base_url must fail validation instead of being
+    silently accepted and later stripped down to an empty string by the
+    endpoint handlers (which would look identical to "not configured" with
+    no error surfaced to the caller).
+    """
+
+    def test_settings_update_body_rejects_whitespace_only_base_url(self):
+        with pytest.raises(ValidationError):
+            settings_api.SettingsUpdateBody(openai_base_url="   ")
+
+    def test_onboarding_body_rejects_whitespace_only_base_url(self):
+        with pytest.raises(ValidationError):
+            settings_api.OnboardingBody(openai_base_url="   ")
