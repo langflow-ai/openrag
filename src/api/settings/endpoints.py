@@ -410,6 +410,7 @@ async def update_settings(
             "llm_model",
             "embedding_model",
             "openai_api_key",
+            "openai_base_url",
             "anthropic_api_key",
             "watsonx_api_key",
             "watsonx_endpoint",
@@ -844,6 +845,13 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.openai_base_url is not None:
+            # Optional override to point at an OpenAI-compatible gateway. Unlike
+            # an API key, a base URL alone doesn't mean OpenAI is "configured".
+            current_config.providers.openai.base_url = body.openai_base_url.strip()
+            config_updated = True
+            provider_updated = True
+
         if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
             working_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
             working_config.providers.anthropic.configured = True
@@ -1172,6 +1180,12 @@ async def onboarding(
         if body.openai_api_key:
             current_config.providers.openai.api_key = body.openai_api_key.strip()
             current_config.providers.openai.configured = True
+            config_updated = True
+
+        if body.openai_base_url:
+            # Optional override to point at an OpenAI-compatible gateway. Unlike
+            # an API key, a base URL alone doesn't mean OpenAI is "configured".
+            current_config.providers.openai.base_url = body.openai_base_url.strip()
             config_updated = True
 
         if body.anthropic_api_key:
