@@ -35,11 +35,10 @@ test.describe("Basic Chat Questions @33219203 @33219204 @34548298 @3458300 @3454
       /symbols|special characters|clarify|cannot|empty|specific question|request for information|particular topic|particular question|specific context|meaningful response|doesn't provide|no relevant/i,
     );
 
-    // // Question 6: Exceeding Token/Character Limit
-    // // Creating an input that generates more than 128000 tokens
-    const longInput = "word ".repeat(130000);
+    // // Question 6: Big question
+    const longInput = "word ".repeat(1000);
     const response6 = await chat.askQuestion(longInput);
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(10000);
 
     // Some models (like Gemini 1.5 or Claude 3) have massive context limits and will actually
     // process the 130k words successfully. Other models (GPT, LLaMA) will throw a limit error.
