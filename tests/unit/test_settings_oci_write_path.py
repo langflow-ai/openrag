@@ -69,9 +69,19 @@ def _make_config(*, oci_configured: bool, embedding_provider: str = "openai"):
 def _patch_common(monkeypatch, config):
     """Apply the same monkeypatches used by the existing provider-removal
     tests in test_settings_async_post_save.py, so update_settings() can run
-    without touching Langflow, OpenSearch, or the filesystem."""
+    without touching Langflow, OpenSearch, or the filesystem.
+
+    ``update_settings`` stages every mutation on a ``copy.deepcopy`` of the
+    live config (``working_config``) and only calls ``save_config_file`` once
+    all validation has passed -- the live ``config`` object itself is never
+    mutated in place. Callers must therefore assert against the config
+    captured in ``saved_configs`` (the argument passed to
+    ``save_config_file``), not against ``config`` -- mirroring the pattern in
+    ``tests/unit/test_settings_index_name_validation.py``.
+    """
     fake_task = _FakeTask()
     post_save_mock = AsyncMock()
+    saved_configs = []
 
     async def _noop_refresh():
         return None
@@ -85,7 +95,7 @@ def _patch_common(monkeypatch, config):
     monkeypatch.setattr(
         settings_endpoints.config_manager,
         "save_config_file",
-        lambda updated_config: True,
+        lambda updated_config: saved_configs.append(updated_config) or True,
         raising=True,
     )
     monkeypatch.setattr(
@@ -96,14 +106,14 @@ def _patch_common(monkeypatch, config):
         settings_endpoints, "_run_async_post_save_langflow_updates", post_save_mock, raising=True
     )
     monkeypatch.setattr(settings_endpoints.asyncio, "create_task", _fake_create_task, raising=True)
-    return fake_task, post_save_mock
+    return fake_task, post_save_mock, saved_configs
 
 
 @pytest.mark.asyncio
 async def test_update_settings_persists_oci_credential_fields(monkeypatch):
     settings_endpoints._background_tasks.clear()
     config = _make_config(oci_configured=False)
-    _patch_common(monkeypatch, config)
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
 
     response = await settings_endpoints.update_settings(
         SettingsUpdateBody(
@@ -120,21 +130,27 @@ async def test_update_settings_persists_oci_credential_fields(monkeypatch):
     )
 
     assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
-    assert config.providers.oci.user == "ocid1.user.oc1..xxx"
-    assert config.providers.oci.fingerprint == "xx:xx:xx:xx"
-    assert config.providers.oci.tenancy == "ocid1.tenancy.oc1..xxx"
-    assert config.providers.oci.compartment_id == "ocid1.compartment.oc1..xxx"
-    assert config.providers.oci.key == "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
-    assert config.providers.oci.key_file == "/tmp/oci_key.pem"
-    assert config.providers.oci.region == "us-ashburn-1"
-    assert config.providers.oci.configured is True
+    # The staged copy passed to save_config_file carries the new values...
+    saved = saved_configs[0]
+    assert saved.providers.oci.user == "ocid1.user.oc1..xxx"
+    assert saved.providers.oci.fingerprint == "xx:xx:xx:xx"
+    assert saved.providers.oci.tenancy == "ocid1.tenancy.oc1..xxx"
+    assert saved.providers.oci.compartment_id == "ocid1.compartment.oc1..xxx"
+    assert saved.providers.oci.key == "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
+    assert saved.providers.oci.key_file == "/tmp/oci_key.pem"
+    assert saved.providers.oci.region == "us-ashburn-1"
+    assert saved.providers.oci.configured is True
+    # ...but the original config object (the live cache before this call
+    # completes) must never be mutated in place.
+    assert config.providers.oci.user == ""
+    assert config.providers.oci.configured is False
 
 
 @pytest.mark.asyncio
 async def test_update_settings_remove_oci_config_clears_fields(monkeypatch):
     settings_endpoints._background_tasks.clear()
     config = _make_config(oci_configured=True, embedding_provider="oci")
-    _patch_common(monkeypatch, config)
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
 
     response = await settings_endpoints.update_settings(
         SettingsUpdateBody(remove_oci_config=True),
@@ -143,18 +159,25 @@ async def test_update_settings_remove_oci_config_clears_fields(monkeypatch):
     )
 
     assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
-    assert config.providers.oci.user == ""
-    assert config.providers.oci.fingerprint == ""
-    assert config.providers.oci.tenancy == ""
-    assert config.providers.oci.compartment_id == ""
-    assert config.providers.oci.key == ""
-    assert config.providers.oci.key_file == ""
-    assert config.providers.oci.region == ""
-    assert config.providers.oci.configured is False
+    # The staged copy passed to save_config_file carries the cleared values...
+    saved = saved_configs[0]
+    assert saved.providers.oci.user == ""
+    assert saved.providers.oci.fingerprint == ""
+    assert saved.providers.oci.tenancy == ""
+    assert saved.providers.oci.compartment_id == ""
+    assert saved.providers.oci.key == ""
+    assert saved.providers.oci.key_file == ""
+    assert saved.providers.oci.region == ""
+    assert saved.providers.oci.configured is False
     # OCI was the active embedding provider -> falls back to the only other
     # configured provider (openai), mirroring the watsonx removal fallback.
-    assert config.knowledge.embedding_provider == "openai"
-    assert config.knowledge.embedding_model == OPENAI_DEFAULT_EMBEDDING_MODEL
+    assert saved.knowledge.embedding_provider == "openai"
+    assert saved.knowledge.embedding_model == OPENAI_DEFAULT_EMBEDDING_MODEL
+    # ...but the original config object (the live cache before this call
+    # completes) must never be mutated in place.
+    assert config.providers.oci.user == "ocid1.user.oc1..xxx"
+    assert config.providers.oci.configured is True
+    assert config.knowledge.embedding_provider == "oci"
 
 
 @pytest.mark.asyncio

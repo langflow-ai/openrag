@@ -922,44 +922,44 @@ async def update_settings(
             provider_updated = True
 
         if body.oci_user is not None:
-            current_config.providers.oci.user = body.oci_user.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.user = body.oci_user.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_fingerprint is not None:
-            current_config.providers.oci.fingerprint = body.oci_fingerprint.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.fingerprint = body.oci_fingerprint.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_tenancy is not None:
-            current_config.providers.oci.tenancy = body.oci_tenancy.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.tenancy = body.oci_tenancy.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_compartment_id is not None:
-            current_config.providers.oci.compartment_id = body.oci_compartment_id.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.compartment_id = body.oci_compartment_id.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_key is not None:
-            current_config.providers.oci.key = body.oci_key.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.key = body.oci_key.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_key_file is not None:
-            current_config.providers.oci.key_file = body.oci_key_file.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.key_file = body.oci_key_file.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
         if body.oci_region is not None:
-            current_config.providers.oci.region = body.oci_region.strip()
-            current_config.providers.oci.configured = True
+            working_config.providers.oci.region = body.oci_region.strip()
+            working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
 
