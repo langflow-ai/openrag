@@ -384,8 +384,9 @@ class OpenRAGConfig:
 
         def _decrypt_provider(p_data: dict) -> dict:
             new_data = dict(p_data)
-            if "api_key" in new_data:
-                new_data["api_key"] = decrypt_secret(new_data["api_key"])
+            for secret_field in ("api_key", "secret_access_key"):
+                if secret_field in new_data:
+                    new_data[secret_field] = decrypt_secret(new_data[secret_field])
             return new_data
 
         def _decrypt_custom_provider(provider: str, p_data: dict) -> GenericProviderConfig:
@@ -511,14 +512,15 @@ class ConfigManager:
                     ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
-                            # Check if api_key is unencrypted and we have a key
-                            if (
-                                "api_key" in provider_data
-                                and isinstance(provider_data["api_key"], str)
-                                and provider_data["api_key"]
-                            ):
-                                if get_master_secret() is not None:
-                                    needs_encryption_upgrade = True
+                            # Check if a secret field is unencrypted and we have a key
+                            for secret_field in ("api_key", "secret_access_key"):
+                                if (
+                                    secret_field in provider_data
+                                    and isinstance(provider_data[secret_field], str)
+                                    and provider_data[secret_field]
+                                ):
+                                    if get_master_secret() is not None:
+                                        needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
                 for section in ["knowledge", "agent", "onboarding"]:
                     if section in file_config:
@@ -704,8 +706,11 @@ class ConfigManager:
 
             providers = config_dict.get("providers", {})
             for _provider_name, provider_config in providers.items():
-                if "api_key" in provider_config:
-                    provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+                for secret_field in ("api_key", "secret_access_key"):
+                    if secret_field in provider_config:
+                        provider_config[secret_field] = encrypt_secret(
+                            provider_config[secret_field]
+                        )
             custom = providers.get("custom", {})
             from services.model_catalog import secret_field_keys
 
