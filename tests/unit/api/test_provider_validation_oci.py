@@ -1,0 +1,140 @@
+"""Unit tests for OCI credential-shape validation in ``api.provider_validation``.
+
+OCI Generative AI authenticates via a per-request RSA-SHA256 HTTP Signing
+Scheme rather than a bearer token or a simple API key, so — unlike the other
+providers' lightweight health checks — this deliberately does NOT make a
+live network call. It validates that the credential set is shaped
+correctly (the same fields litellm's own OCI ``validate_environment()``
+requires before it will even attempt to sign a request), catching obviously
+broken configuration before it reaches litellm.
+"""
+
+import pytest
+
+from api.provider_validation import _test_oci_credential_shape, validate_provider_setup
+from api.provider_validation import test_lightweight_health as run_lightweight_health
+
+VALID_KWARGS = dict(
+    oci_user="ocid1.user.oc1..xxx",
+    oci_fingerprint="xx:xx:xx:xx",
+    oci_tenancy="ocid1.tenancy.oc1..xxx",
+    oci_compartment_id="ocid1.compartment.oc1..xxx",
+)
+
+
+class TestOciCredentialShapeInlineKey:
+    @pytest.mark.asyncio
+    async def test_valid_inline_pem_key_passes(self):
+        await _test_oci_credential_shape(
+            **VALID_KWARGS,
+            oci_key="-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+            oci_key_file=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_inline_key_without_pem_marker_fails(self):
+        with pytest.raises(Exception, match="does not look like a PEM private key"):
+            await _test_oci_credential_shape(
+                **VALID_KWARGS, oci_key="not-a-pem-key", oci_key_file=None
+            )
+
+
+class TestOciCredentialShapeKeyFile:
+    @pytest.mark.asyncio
+    async def test_valid_key_file_passes(self, tmp_path):
+        key_file = tmp_path / "oci_key.pem"
+        key_file.write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")
+
+        await _test_oci_credential_shape(
+            **VALID_KWARGS, oci_key=None, oci_key_file=str(key_file)
+        )
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_key_file_fails(self, tmp_path):
+        missing = tmp_path / "does_not_exist.pem"
+        with pytest.raises(Exception, match="does not exist"):
+            await _test_oci_credential_shape(
+                **VALID_KWARGS, oci_key=None, oci_key_file=str(missing)
+            )
+
+    @pytest.mark.asyncio
+    async def test_key_file_without_pem_marker_fails(self, tmp_path):
+        key_file = tmp_path / "not_a_key.pem"
+        key_file.write_text("just some text, not a key")
+
+        with pytest.raises(Exception, match="does not look like a PEM private key"):
+            await _test_oci_credential_shape(
+                **VALID_KWARGS, oci_key=None, oci_key_file=str(key_file)
+            )
+
+
+class TestOciCredentialShapeMissingFields:
+    @pytest.mark.asyncio
+    async def test_missing_user_fails(self):
+        kwargs = dict(VALID_KWARGS)
+        kwargs["oci_user"] = None
+        with pytest.raises(Exception, match="user"):
+            await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
+
+    @pytest.mark.asyncio
+    async def test_missing_fingerprint_fails(self):
+        kwargs = dict(VALID_KWARGS)
+        kwargs["oci_fingerprint"] = None
+        with pytest.raises(Exception, match="fingerprint"):
+            await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
+
+    @pytest.mark.asyncio
+    async def test_missing_tenancy_fails(self):
+        kwargs = dict(VALID_KWARGS)
+        kwargs["oci_tenancy"] = None
+        with pytest.raises(Exception, match="tenancy"):
+            await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
+
+    @pytest.mark.asyncio
+    async def test_missing_compartment_id_fails(self):
+        kwargs = dict(VALID_KWARGS)
+        kwargs["oci_compartment_id"] = None
+        with pytest.raises(Exception, match="compartment_id"):
+            await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
+
+    @pytest.mark.asyncio
+    async def test_missing_key_and_key_file_fails(self):
+        with pytest.raises(Exception, match="oci_key"):
+            await _test_oci_credential_shape(**VALID_KWARGS, oci_key=None, oci_key_file=None)
+
+    @pytest.mark.asyncio
+    async def test_all_fields_missing_reports_all(self):
+        with pytest.raises(Exception, match="user, fingerprint, tenancy, compartment_id"):
+            await _test_oci_credential_shape()
+
+
+class TestOciDispatchThroughLightweightHealth:
+    @pytest.mark.asyncio
+    async def test_dispatches_to_oci_shape_check(self, tmp_path):
+        key_file = tmp_path / "oci_key.pem"
+        key_file.write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")
+
+        # Should not raise -- proves the "oci" branch in test_lightweight_health
+        # forwards the oci_* kwargs correctly.
+        await run_lightweight_health(
+            provider="oci",
+            oci_key_file=str(key_file),
+            **VALID_KWARGS,
+        )
+
+    @pytest.mark.asyncio
+    async def test_dispatches_via_validate_provider_setup(self, tmp_path):
+        key_file = tmp_path / "oci_key.pem"
+        key_file.write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")
+
+        await validate_provider_setup(
+            provider="oci",
+            test_completion=False,
+            oci_key_file=str(key_file),
+            **VALID_KWARGS,
+        )
+
+    @pytest.mark.asyncio
+    async def test_validate_provider_setup_propagates_shape_errors(self):
+        with pytest.raises(Exception, match="OCI configuration"):
+            await validate_provider_setup(provider="oci", test_completion=False)
