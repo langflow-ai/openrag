@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -639,7 +640,9 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: Providers with a validation path of their own, so they are never handed to
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
-_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
+_NATIVELY_VALIDATED_PROVIDERS = frozenset(
+    {"openai", "azure", "watsonx", "ollama", "anthropic", "oci"}
+)
 
 
 def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
@@ -662,12 +665,18 @@ async def validate_provider_setup(
     project_id: str = None,
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic', 'oci')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
@@ -675,6 +684,10 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        credentials: Generic LiteLLM kwargs for a provider outside the legacy
+                        openai/watsonx/ollama/anthropic set.
+        oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file:
+                        OCI Generative AI credential fields (only used when provider == 'oci').
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -740,6 +753,12 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    oci_user=oci_user,
+                    oci_fingerprint=oci_fingerprint,
+                    oci_tenancy=oci_tenancy,
+                    oci_compartment_id=oci_compartment_id,
+                    oci_key=oci_key,
+                    oci_key_file=oci_key_file,
                 )
             elif llm_model:
                 # Test completion with tool calling
@@ -758,6 +777,12 @@ async def validate_provider_setup(
                 endpoint=endpoint,
                 project_id=project_id,
                 credentials=supplied,
+                oci_user=oci_user,
+                oci_fingerprint=oci_fingerprint,
+                oci_tenancy=oci_tenancy,
+                oci_compartment_id=oci_compartment_id,
+                oci_key=oci_key,
+                oci_key_file=oci_key_file,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -813,6 +838,12 @@ async def test_lightweight_health(
     endpoint: str = None,
     project_id: str = None,
     credentials: dict[str, str] | None = None,
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
@@ -828,6 +859,10 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "oci":
+        await _test_oci_credential_shape(
+            oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+        )
     elif enhancement := get_provider_enhancement(provider):
         await enhancement.lightweight_health_check(credentials or {})
     else:
@@ -861,6 +896,12 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -870,6 +911,15 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
+    elif provider == "oci":
+        # No live embedText call here: OCI's request signing (RSA-SHA256
+        # over a canonical HTTP Signing Scheme string) is significantly
+        # heavier than the other providers' lightweight checks, so full
+        # credential validation for OCI is a shape check rather than a
+        # live round-trip, even under test_completion=True.
+        await _test_oci_credential_shape(
+            oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1582,3 +1632,62 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
+
+
+# OCI (Oracle Cloud Infrastructure Generative AI) validation functions
+async def _test_oci_credential_shape(
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
+) -> None:
+    """Validate OCI Generative AI credential shape (no live network call).
+
+    OCI Generative AI authenticates via a per-request RSA-SHA256 HTTP
+    Signing Scheme (see litellm's oci/chat/transformation.py), which is
+    significantly heavier to safely exercise here than the bearer-token or
+    API-key checks the other providers use. Instead this validates that the
+    credential set is *shaped* correctly -- the same fields litellm's own
+    validate_environment() requires before it will even attempt to sign a
+    request -- so obviously broken configuration (a missing field, a
+    key_file that doesn't exist, an inline key that isn't PEM-formatted) is
+    caught immediately instead of surfacing as an opaque signing failure on
+    the first real embedding call.
+    """
+    missing = [
+        name
+        for name, value in (
+            ("user", oci_user),
+            ("fingerprint", oci_fingerprint),
+            ("tenancy", oci_tenancy),
+            ("compartment_id", oci_compartment_id),
+        )
+        if not value
+    ]
+    if missing:
+        raise Exception(f"OCI configuration is missing required field(s): {', '.join(missing)}")
+
+    if not oci_key and not oci_key_file:
+        raise Exception(
+            "OCI configuration requires either an inline key (oci_key) or a key file path (oci_key_file)"
+        )
+
+    if oci_key:
+        if "PRIVATE KEY" not in oci_key:
+            raise Exception(
+                "OCI oci_key does not look like a PEM private key (missing 'PRIVATE KEY' marker)"
+            )
+    else:
+        key_path = Path(oci_key_file).expanduser()
+        if not key_path.is_file():
+            raise Exception(f"OCI key_file does not exist: {oci_key_file}")
+        try:
+            content = key_path.read_text()
+        except OSError as e:
+            raise Exception(f"OCI key_file could not be read: {e}") from e
+        if "PRIVATE KEY" not in content:
+            raise Exception(f"OCI key_file does not look like a PEM private key: {oci_key_file}")
+
+    logger.info("OCI credential shape check passed")
