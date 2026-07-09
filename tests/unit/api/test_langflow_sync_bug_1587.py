@@ -128,3 +128,72 @@ async def test_explicit_llm_arguments_bypass_fallback(mock_config):
     assert call.args[0] == "openai"
     assert call.kwargs["llm_model"] == "gpt-4o"
     assert call.kwargs.get("force_llm_update") is True
+
+
+async def _raising_change_langflow_model_value(
+    provider,
+    embedding_model=None,
+    llm_model=None,
+    force_embedding_update=False,
+    force_llm_update=False,
+    flow_configs=None,
+):
+    """Mirrors the real flows_service.change_langflow_model_value(): raises
+    ValueError for any provider outside its own openai/watsonx/ollama/anthropic
+    allowlist (see services/flows_service.py)."""
+    if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
+        raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
+    return {"success": True}
+
+
+@pytest.mark.asyncio
+async def test_explicit_embedding_provider_oci_does_not_raise(mock_config):
+    """Regression test: the explicit embedding-provider branch (triggered by a
+    settings save that sets embedding_provider="oci", e.g. via the onboarding
+    or update_settings endpoints) must NOT call change_langflow_model_value()
+    for OCI - it has no Langflow embedding component and that call raises
+    ValueError. Prior to the fix this branch was not gated by
+    _LANGFLOW_EMBEDDING_PROVIDER_NAMES (unlike the reapply_all_settings
+    fallback path), so it passed "oci" straight through and raised.
+    """
+    mock_config.knowledge.embedding_provider = "oci"
+    mock_config.knowledge.embedding_model = "cohere.embed-v4.0"
+
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock(
+        side_effect=_raising_change_langflow_model_value
+    )
+
+    # Must not raise.
+    await _update_langflow_model_values(
+        mock_config,
+        flows_service,
+        embedding_model=mock_config.knowledge.embedding_model,
+        embedding_provider="oci",
+    )
+
+    # And must not have attempted the doomed call at all.
+    flows_service.change_langflow_model_value.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_explicit_embedding_provider_openai_still_updates(mock_config):
+    """Sanity check that the guard added for OCI does not regress the normal
+    explicit-provider path for a provider that does have a Langflow component."""
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock(
+        side_effect=_raising_change_langflow_model_value
+    )
+
+    await _update_langflow_model_values(
+        mock_config,
+        flows_service,
+        embedding_model="text-embedding-3-large",
+        embedding_provider="openai",
+    )
+
+    flows_service.change_langflow_model_value.assert_awaited_once()
+    call = flows_service.change_langflow_model_value.await_args
+    assert call.args[0] == "openai"
+    assert call.kwargs["embedding_model"] == "text-embedding-3-large"
+    assert call.kwargs.get("force_embedding_update") is True

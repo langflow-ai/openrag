@@ -1,8 +1,10 @@
 """Unit tests for OCI provider config wiring in ``config.config_manager``."""
 
+import base64
 from pathlib import Path
 
 import pytest
+import yaml
 
 from config.config_manager import (
     AnthropicConfig,
@@ -154,3 +156,90 @@ class TestConfigManagerOciEnvOverrides:
         assert reloaded.providers.oci.key_file == "/tmp/saved_key.pem"
         assert reloaded.providers.oci.region == "eu-frankfurt-1"
         assert reloaded.providers.oci.configured is True
+
+
+class TestOCIInlineKeyEncryptionAtRest:
+    """Regression coverage: the inline PEM key (``oci.key``) must be encrypted
+    on disk the same way ``api_key`` is for the other providers.
+    OCIConfig previously bypassed ``_decrypt_provider`` entirely on load, and
+    ``save_config_file``'s encryption loop only targeted ``api_key``, so a
+    user-submitted inline PEM key was persisted to config.yaml in plaintext.
+    ``key_file`` is a filesystem path, not a secret, and must stay untouched.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _encryption_key(self, monkeypatch):
+        import utils.encryption
+
+        utils.encryption._cached_master_secret = None
+        monkeypatch.setenv(
+            "OPENRAG_ENCRYPTION_KEY",
+            base64.b64encode(b"0123456789abcdef0123456789abcdef").decode("ascii"),
+        )
+        yield
+        utils.encryption._cached_master_secret = None
+
+    def _cm(self, tmp_path) -> ConfigManager:
+        return ConfigManager(config_file=str(Path(tmp_path) / "config.yaml"))
+
+    def test_inline_key_encrypted_on_disk_and_decrypts_on_reload(self, tmp_path, monkeypatch):
+        for var in (
+            "OCI_USER",
+            "OCI_FINGERPRINT",
+            "OCI_TENANCY",
+            "OCI_COMPARTMENT_ID",
+            "OCI_KEY_FILE",
+            "OCI_KEY",
+            "OCI_REGION",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+        pem = "-----BEGIN PRIVATE KEY-----\nMIIBogplaintext\n-----END PRIVATE KEY-----"
+
+        cm = self._cm(tmp_path)
+        config = cm.load_config()
+        config.providers.oci.user = "ocid1.user.oc1..xxx"
+        config.providers.oci.fingerprint = "aa:bb:cc"
+        config.providers.oci.tenancy = "ocid1.tenancy.oc1..xxx"
+        config.providers.oci.compartment_id = "ocid1.compartment.oc1..xxx"
+        config.providers.oci.key = pem
+        config.providers.oci.key_file = ""
+        config.providers.oci.region = "us-ashburn-1"
+        config.providers.oci.configured = True
+
+        assert cm.save_config_file(config) is True
+
+        # The raw YAML on disk must NOT contain the plaintext PEM - it must be
+        # an AES-256-GCM envelope, exactly like api_key for other providers.
+        with open(cm.config_file) as f:
+            raw = yaml.safe_load(f)
+        raw_key = raw["providers"]["oci"]["key"]
+        assert isinstance(raw_key, dict), "oci.key must be encrypted (dict envelope) at rest"
+        assert raw_key["algorithm"] == "AES-256-GCM"
+        assert pem not in yaml.dump(raw)
+
+        # Reloading decrypts it back to the original plaintext PEM.
+        cm2 = self._cm(tmp_path)
+        reloaded = cm2.load_config()
+        assert reloaded.providers.oci.key == pem
+
+    def test_key_file_path_left_unencrypted(self, tmp_path, monkeypatch):
+        """key_file is a filesystem path, not a secret - must not be touched."""
+        for var in ("OCI_KEY", "OCI_KEY_FILE"):
+            monkeypatch.delenv(var, raising=False)
+
+        cm = self._cm(tmp_path)
+        config = cm.load_config()
+        config.providers.oci.key = ""
+        config.providers.oci.key_file = "/etc/oci/api_key.pem"
+        config.providers.oci.configured = True
+
+        assert cm.save_config_file(config) is True
+
+        with open(cm.config_file) as f:
+            raw = yaml.safe_load(f)
+        assert raw["providers"]["oci"]["key_file"] == "/etc/oci/api_key.pem"
+
+        cm2 = self._cm(tmp_path)
+        reloaded = cm2.load_config()
+        assert reloaded.providers.oci.key_file == "/etc/oci/api_key.pem"
