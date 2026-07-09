@@ -35,7 +35,7 @@ class KnowledgeFilterService:
             from utils.logging_config import get_logger
             from utils.opensearch_queries import build_existing_filenames_agg_body
 
-            data_sources_by_filter = []
+            data_sources_by_filter: list[list[str] | None] = []
             all_filenames = set()
             for knowledge_filter in filters:
                 try:
