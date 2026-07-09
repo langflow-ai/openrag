@@ -56,10 +56,12 @@ export class Chat {
    * @returns Locator for the chat row
    */
   private getChatRow(chatTitle: string): Locator {
+    const cleanTitle =
+      chatTitle.length > 45 ? chatTitle.substring(0, 45) : chatTitle;
     return this.page
       .locator("button")
       .filter({
-        has: this.page.getByText(chatTitle, { exact: false }),
+        has: this.page.getByText(cleanTitle, { exact: false }),
       })
       .first();
   }
