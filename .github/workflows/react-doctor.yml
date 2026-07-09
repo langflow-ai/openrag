@@ -36,7 +36,7 @@ jobs:
       - uses: millionco/react-doctor@v2
         with:
           directory: frontend
-          version: "0.5.8"
+          version: "0.7.2"
         # Advisory by default: React Doctor reports findings on every PR — a
         # sticky summary comment, inline review comments, and a commit status
         # with the health score — but never fails the check, so it won't red-X

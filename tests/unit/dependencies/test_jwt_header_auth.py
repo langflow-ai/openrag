@@ -24,10 +24,15 @@ if str(SRC) not in sys.path:
 
 import base64  # noqa: E402
 
+import auth.request_identity as deps  # noqa: E402
 import config.settings as app_settings  # noqa: E402
 import config.utils as config_utils  # noqa: E402
-import dependencies as deps  # noqa: E402
-from dependencies import _stage_jwt_roles, get_api_key_user_async  # noqa: E402
+from auth.request_identity import (  # noqa: E402
+    _stage_jwt_roles,
+)
+from auth.request_identity import (  # noqa: E402
+    resolve_api_key_user as get_api_key_user_async,
+)
 
 
 class _FakeRequest:
