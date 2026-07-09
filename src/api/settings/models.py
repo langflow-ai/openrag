@@ -35,6 +35,7 @@ class SettingsUpdateBody(BaseModel):
     embedding_provider: str | None = Field(None, min_length=1)
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
+    openai_base_url: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
     watsonx_endpoint: str | None = Field(None, min_length=1)
@@ -58,6 +59,7 @@ class OnboardingBody(BaseModel):
     embedding_provider: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
+    openai_base_url: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
     watsonx_endpoint: str | None = Field(None, min_length=1)
@@ -151,6 +153,7 @@ class OnboardingStateConfig(BaseModel):
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
+    base_url: str | None
     configured: bool
 
 

@@ -316,6 +316,7 @@ async def get_settings(
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
                     has_api_key=bool(openrag_config.providers.openai.api_key),
+                    base_url=openrag_config.providers.openai.base_url or None,
                     configured=openrag_config.providers.openai.configured,
                 ),
                 anthropic=AnthropicProviderConfig(
