@@ -28,7 +28,7 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
-  onIngestSuccess?: (result: { task_ids?: string[] }) => void;
+  onIngestSuccess?: (result: { task_ids?: string[]; message?: string }) => void;
 }
 
 export function FileBrowserDialog({

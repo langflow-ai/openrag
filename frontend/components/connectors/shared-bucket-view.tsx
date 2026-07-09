@@ -349,7 +349,9 @@ export function SharedBucketView({
               trackIngestTasks(result.task_ids);
               onDone();
             } else {
-              toast.info("No files were queued for ingestion.");
+              toast.info(
+                result.message ?? "No files were queued for ingestion.",
+              );
             }
           }}
         />
