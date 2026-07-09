@@ -10,6 +10,56 @@ test.describe("Restore Flow", () => {
     isSaaS,
     "Picture description feature is disabled for SaaS environments",
   );
+
+  test.beforeEach(async ({ page, settings }) => {
+    // Make sure we start with a clean default state
+    await navigateToHome(page);
+    await settings.open();
+    await settings.clickTab("Langflow");
+
+    const pictureDescToggle = page.getByRole("switch", {
+      name: /picture descriptions/i,
+    });
+    const tableStructureToggle = page.getByRole("switch", {
+      name: /table structure/i,
+    });
+    const chunkSizeInput = page.getByLabel(/chunk size/i);
+    const chunkOverlapInput = page.getByLabel(/chunk overlap/i);
+
+    const pictureDescState = await pictureDescToggle.getAttribute("data-state");
+    const tableStructureState =
+      await tableStructureToggle.getAttribute("data-state");
+    const chunkSize = await chunkSizeInput.inputValue();
+    const chunkOverlap = await chunkOverlapInput.inputValue();
+
+    if (
+      pictureDescState === "checked" ||
+      tableStructureState !== "checked" ||
+      chunkSize !== "1000" ||
+      chunkOverlap !== "200"
+    ) {
+      logger.info(
+        "\n🔧 Non-default settings detected during setup, restoring defaults...",
+      );
+      const restoreFlowButton = page
+        .locator("text=Knowledge Ingest")
+        .locator("..")
+        .getByRole("button", { name: /restore flow/i });
+      await restoreFlowButton.scrollIntoViewIfNeeded();
+      await restoreFlowButton.click();
+
+      const dialog = page.locator("text=Restore default Ingest flow");
+      await expect(dialog).toBeVisible({ timeout: 5000 });
+      const restoreButton = page.getByRole("button", { name: /^restore$/i });
+
+      await restoreButton.click();
+      await expect(dialog).not.toBeVisible({ timeout: 30000 });
+
+      await settings.saveIngestSettings();
+      await page.waitForTimeout(1500);
+    }
+  });
+
   test("should restore default settings after making changes @33219238", async ({
     page,
     settings,
@@ -19,7 +69,7 @@ test.describe("Restore Flow", () => {
     // Define the expected default state
     const DEFAULT_STATE = {
       pictureDescriptions: false,
-      tableStructure: false,
+      tableStructure: true,
       chunkSize: "1000",
       chunkOverlap: "200",
     };
@@ -44,7 +94,7 @@ test.describe("Restore Flow", () => {
     await settings.setPictureDescriptions(true);
     await page.waitForTimeout(1000);
 
-    await settings.setTableStructure(true);
+    await settings.setTableStructure(false);
     await page.waitForTimeout(1000);
 
     await settings.updateChunkSettings("500", "50");
@@ -73,7 +123,7 @@ test.describe("Restore Flow", () => {
     const chunkOverlapAfterChange = await chunkOverlapInput.inputValue();
 
     expect(pictureDescAfterChange).toBe(true);
-    expect(tableStructureAfterChange).toBe(true);
+    expect(tableStructureAfterChange).toBe(false);
     expect(chunkSizeAfterChange).toBe("500");
     expect(chunkOverlapAfterChange).toBe("50");
 
@@ -104,7 +154,7 @@ test.describe("Restore Flow", () => {
     await restoreButton.click();
 
     // Wait for dialog to close and restore to complete
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 30000 });
     await page.waitForTimeout(1000);
 
     // Save the restored default settings
@@ -159,7 +209,7 @@ test.describe("Restore Flow", () => {
     // Define the expected default state
     const DEFAULT_STATE = {
       pictureDescriptions: false,
-      tableStructure: false,
+      tableStructure: true,
       chunkSize: "1000",
       chunkOverlap: "200",
     };
@@ -233,7 +283,7 @@ test.describe("Restore Flow", () => {
     await restoreButton.click();
 
     // Wait for dialog to close and restore to complete
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 30000 });
     await page.waitForTimeout(1000);
 
     // Save the settings

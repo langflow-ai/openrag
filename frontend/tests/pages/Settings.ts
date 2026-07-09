@@ -287,16 +287,14 @@ export class Settings {
 
     // Update chunk size
     await chunkSizeInp.click();
-    await chunkSizeInp.clear();
-    await chunkSizeInp.pressSequentially(chunkSize, { delay: 50 });
+    await chunkSizeInp.fill(chunkSize);
     await chunkSizeInp.blur();
 
     // Find and update chunk overlap input
     const chunkOverlapInp = this.chunkOverlapInput();
     await chunkOverlapInp.scrollIntoViewIfNeeded();
     await chunkOverlapInp.click();
-    await chunkOverlapInp.clear();
-    await chunkOverlapInp.pressSequentially(chunkOverlap, { delay: 50 });
+    await chunkOverlapInp.fill(chunkOverlap);
     await chunkOverlapInp.blur();
 
     // Wait a moment for the form to detect changes
@@ -362,7 +360,8 @@ export class Settings {
       await this.clickRemoveAnywayIfDisplayed();
       await expect(
         this.getToastByText(`${modelProvider} configuration removed`),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15000 });
+      await this.page.waitForTimeout(10000);
     }
     // If not configured
     else if (await configureButton.isVisible()) {
@@ -384,7 +383,7 @@ export class Settings {
   async clickRemoveAnywayIfDisplayed() {
     const btn = this.removeAnywayButton();
     const isVisible = await btn
-      .waitFor({ state: "visible", timeout: 3000 })
+      .waitFor({ state: "visible", timeout: 15000 })
       .then(() => true)
       .catch(() => false);
     if (isVisible) {

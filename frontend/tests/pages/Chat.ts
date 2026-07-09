@@ -141,11 +141,18 @@ export class Chat {
     } catch {
       // fallback to UI
     }
-    // Fallback if API parsing fails
-    if (!fullResponse) {
-      const lastResponse = this.lastMarkdownResponse();
-      await lastResponse.waitFor({ state: "visible", timeout });
-      fullResponse = (await lastResponse.textContent()) || "";
+
+    // Always wait for the UI response to be visible and stable
+    const lastResponse = this.lastMarkdownResponse();
+    await lastResponse.waitFor({ state: "visible", timeout });
+
+    // Retrieve text content from the enclosing message bubble to ensure both LLM text and citations/filenames are included
+    const messageContainer = lastResponse.locator(
+      'xpath=ancestor::div[contains(@class, "flex-1")][1]',
+    );
+    const uiText = (await messageContainer.textContent()) || "";
+    if (uiText) {
+      fullResponse = uiText;
     }
 
     return fullResponse.trim();
