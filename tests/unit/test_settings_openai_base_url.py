@@ -1,0 +1,146 @@
+"""Tests for the OpenAI custom base URL settings write path.
+
+Regression coverage: SettingsUpdateBody.openai_base_url and
+OnboardingBody.openai_base_url were accepted by the API but never written
+onto current_config.providers.openai.base_url — a client POSTing
+openai_base_url got a silent no-op. See src/api/settings/endpoints.py.
+"""
+
+from unittest.mock import AsyncMock
+
+import pytest
+
+import api.settings.endpoints as settings_api
+from config.config_manager import (
+    AgentConfig,
+    AnthropicConfig,
+    KnowledgeConfig,
+    OllamaConfig,
+    OnboardingState,
+    OpenAIConfig,
+    OpenRAGConfig,
+    ProvidersConfig,
+    WatsonXConfig,
+)
+
+
+class _FakeTask:
+    def __init__(self):
+        self.done_callback = None
+
+    def add_done_callback(self, cb):
+        self.done_callback = cb
+
+
+def _make_config(*, edited: bool = True) -> OpenRAGConfig:
+    return OpenRAGConfig(
+        providers=ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+        ),
+        knowledge=KnowledgeConfig(),
+        agent=AgentConfig(),
+        onboarding=OnboardingState(),
+        edited=edited,
+    )
+
+
+def _patch_update_settings_deps(monkeypatch, config):
+    """Mirrors the mocking pattern used in test_settings_async_post_save.py."""
+    fake_task = _FakeTask()
+
+    async def _noop_refresh():
+        return None
+
+    def _fake_create_task(coro):
+        # We only care about the config write in these tests, not the
+        # background Langflow sync that provider changes normally schedule.
+        coro.close()
+        return fake_task
+
+    monkeypatch.setattr(settings_api, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(
+        settings_api.config_manager,
+        "save_config_file",
+        lambda updated_config: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True
+    )
+    monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
+    monkeypatch.setattr(settings_api.asyncio, "create_task", _fake_create_task, raising=True)
+    return fake_task
+
+
+@pytest.mark.asyncio
+async def test_update_settings_persists_openai_base_url(monkeypatch):
+    settings_api._background_tasks.clear()
+    config = _make_config()
+    _patch_update_settings_deps(monkeypatch, config)
+
+    response = await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(openai_base_url="https://gateway.example.com/v1"),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_api.SettingsUpdateResponse)
+    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
+    # An optional base_url override should not, by itself, mark OpenAI as
+    # "configured" the way an api_key does.
+    assert config.providers.openai.configured is False
+
+
+@pytest.mark.asyncio
+async def test_update_settings_strips_openai_base_url_whitespace(monkeypatch):
+    settings_api._background_tasks.clear()
+    config = _make_config()
+    _patch_update_settings_deps(monkeypatch, config)
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(openai_base_url="  https://gateway.example.com/v1  "),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_persists_openai_base_url(monkeypatch):
+    config = _make_config(edited=False)
+
+    async def _noop_refresh():
+        return None
+
+    monkeypatch.setattr(settings_api, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(
+        settings_api.config_manager,
+        "save_config_file",
+        lambda updated_config: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True
+    )
+    monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
+    monkeypatch.setattr(settings_api, "wait_for_langflow", AsyncMock(), raising=True)
+
+    response = await settings_api.onboarding(
+        settings_api.OnboardingBody(openai_base_url="https://gateway.example.com/v1"),
+        flows_service=None,
+        session_manager=object(),
+        document_service=None,
+        models_service=None,
+        task_service=None,
+        langflow_file_service=None,
+        knowledge_filter_service=None,
+        user=None,
+    )
+
+    assert isinstance(response, settings_api.OnboardingResponse)
+    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
+    assert config.providers.openai.configured is False
