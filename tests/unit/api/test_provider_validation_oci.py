@@ -9,8 +9,11 @@ requires before it will even attempt to sign a request), catching obviously
 broken configuration before it reaches litellm.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
+import api.provider_validation as provider_validation
 from api.provider_validation import _test_oci_credential_shape, validate_provider_setup
 from api.provider_validation import test_lightweight_health as run_lightweight_health
 
@@ -37,6 +40,44 @@ class TestOciCredentialShapeInlineKey:
             await _test_oci_credential_shape(
                 **VALID_KWARGS, oci_key="not-a-pem-key", oci_key_file=None
             )
+
+    @pytest.mark.asyncio
+    async def test_both_key_and_key_file_set_warns_and_prefers_inline_key(
+        self, tmp_path, monkeypatch
+    ):
+        """.env.example says provide exactly one of OCI_KEY_FILE or OCI_KEY.
+        When both are set, oci_key silently wins (precedence unchanged by
+        this test) but a warning must be logged so misconfiguration is
+        visible instead of silent."""
+        mock_logger = MagicMock()
+        monkeypatch.setattr(provider_validation, "logger", mock_logger)
+
+        key_file = tmp_path / "oci_key.pem"
+        key_file.write_text("-----BEGIN PRIVATE KEY-----\nunused\n-----END PRIVATE KEY-----")
+
+        await _test_oci_credential_shape(
+            **VALID_KWARGS,
+            oci_key="-----BEGIN PRIVATE KEY-----\ninline\n-----END PRIVATE KEY-----",
+            oci_key_file=str(key_file),
+        )
+
+        assert mock_logger.warning.called
+        warning_message = mock_logger.warning.call_args[0][0]
+        assert "oci_key" in warning_message
+        assert "oci_key_file" in warning_message
+
+    @pytest.mark.asyncio
+    async def test_only_inline_key_set_does_not_warn(self, monkeypatch):
+        mock_logger = MagicMock()
+        monkeypatch.setattr(provider_validation, "logger", mock_logger)
+
+        await _test_oci_credential_shape(
+            **VALID_KWARGS,
+            oci_key="-----BEGIN PRIVATE KEY-----\ninline\n-----END PRIVATE KEY-----",
+            oci_key_file=None,
+        )
+
+        mock_logger.warning.assert_not_called()
 
 
 class TestOciCredentialShapeKeyFile:
