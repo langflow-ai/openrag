@@ -90,8 +90,8 @@ async def all_tasks_enhanced_endpoint(
     added to any failed file entry whose cause can be classified.
 
     Note: completed files are omitted from each task's ``files`` dict to
-    reduce payload size; use GET /v1/tasks/{task_id}/enhanced for the full
-    file list of a specific task.
+    reduce payload size unless they carry a warning; use
+    GET /v1/tasks/{task_id}/enhanced for the full file list of a specific task.
     """
     tasks = task_service.get_all_tasks2(user.user_id)
     return JSONResponse({"tasks": tasks})

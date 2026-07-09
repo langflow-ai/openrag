@@ -466,6 +466,77 @@ class TestGetTaskStatus2AnonymousFallback:
 
 
 # ---------------------------------------------------------------------------
+# get_all_tasks/get_all_tasks2 — completed warning files stay visible
+# ---------------------------------------------------------------------------
+
+
+class TestGetAllTasksWarnings:
+    def test_get_all_tasks2_includes_completed_files_with_warning(self, task_service):
+        warned = _make_file_task(
+            file_path="warned.pdf",
+            filename="warned.pdf",
+            status=TaskStatus.COMPLETED,
+            phase=IngestionPhase.COMPLETE,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=None,
+        )
+        warned.result = {
+            "status": "success",
+            "warning": "OCR is disabled. Embedded images were skipped.",
+        }
+        plain = _make_file_task(
+            file_path="plain.pdf",
+            filename="plain.pdf",
+            status=TaskStatus.COMPLETED,
+            phase=IngestionPhase.COMPLETE,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=None,
+        )
+        plain.result = {"status": "success"}
+        task = _make_upload_task("warn-task", {"warned.pdf": warned, "plain.pdf": plain})
+        task.status = TaskStatus.COMPLETED
+        task.successful_files = 2
+        _store_task(task_service, "user1", task)
+
+        result = task_service.get_all_tasks2("user1")
+
+        files = result[0]["files"]
+        assert "warned.pdf" in files
+        assert files["warned.pdf"]["status"] == "completed"
+        assert files["warned.pdf"]["result"]["warning"] == (
+            "OCR is disabled. Embedded images were skipped."
+        )
+        assert "plain.pdf" not in files
+
+    def test_get_all_tasks_includes_completed_files_with_warning(self, task_service):
+        warned = _make_file_task(
+            file_path="warned.pdf",
+            filename="warned.pdf",
+            status=TaskStatus.COMPLETED,
+            phase=IngestionPhase.COMPLETE,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=None,
+        )
+        warned.result = {
+            "status": "success",
+            "warning": "OCR is disabled. Embedded images were skipped.",
+        }
+        task = _make_upload_task("warn-task", {"warned.pdf": warned})
+        task.status = TaskStatus.COMPLETED
+        task.successful_files = 1
+        _store_task(task_service, "user1", task)
+
+        result = task_service.get_all_tasks("user1")
+
+        files = result[0]["files"]
+        assert "warned.pdf" in files
+        assert files["warned.pdf"]["status"] == "completed"
+        assert files["warned.pdf"]["result"]["warning"] == (
+            "OCR is disabled. Embedded images were skipped."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Regression: get_task_status remains unchanged
 # ---------------------------------------------------------------------------
 

@@ -935,6 +935,14 @@ class TaskService:
             "docling_task_id": file_task.docling_task_id,
         }
 
+    def _file_task_has_warning(self, file_task: FileTask) -> bool:
+        """Return True when a file task result carries a user-visible warning."""
+        result = file_task.result
+        if not isinstance(result, dict):
+            return False
+        warning = result.get("warning")
+        return isinstance(warning, str) and bool(warning.strip())
+
     def _infer_failure_metadata(self, file_task: FileTask) -> dict | None:
         """Infer structured failure metadata for a failed FileTask.
 
@@ -1216,7 +1224,10 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status != TaskStatus.COMPLETED:
+                    if (
+                        file_task.status != TaskStatus.COMPLETED
+                        or self._file_task_has_warning(file_task)
+                    ):
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)
@@ -1273,7 +1284,10 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status.value != "completed":
+                    if (
+                        file_task.status != TaskStatus.COMPLETED
+                        or self._file_task_has_warning(file_task)
+                    ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
                             "result": file_task.result,
