@@ -848,7 +848,7 @@ async def update_settings(
         if body.openai_base_url is not None:
             # Optional override to point at an OpenAI-compatible gateway. Unlike
             # an API key, a base URL alone doesn't mean OpenAI is "configured".
-            current_config.providers.openai.base_url = body.openai_base_url.strip()
+            working_config.providers.openai.base_url = body.openai_base_url.strip()
             config_updated = True
             provider_updated = True
 
@@ -934,6 +934,7 @@ async def update_settings(
                 if affected:
                     return _embedding_conflict_response("OpenAI", "openai", affected)
             working_config.providers.openai.api_key = ""
+            working_config.providers.openai.base_url = ""
             working_config.providers.openai.configured = False
             if working_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(working_config, "openai")
