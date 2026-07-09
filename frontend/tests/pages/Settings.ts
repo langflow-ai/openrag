@@ -2,6 +2,10 @@ import { expect, Page } from "@playwright/test";
 import config from "../config/test.config";
 import logger from "../utils/logger";
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export type SettingsTab =
   | "Connectors"
   | "Providers"
@@ -110,7 +114,7 @@ export class Settings {
    */
   private getModelDropdown(section: string) {
     return this.page
-      .getByText(new RegExp(section, "i"))
+      .getByText(new RegExp(escapeRegExp(section), "i"))
       .locator("..")
       .getByRole("combobox");
   }
@@ -141,7 +145,7 @@ export class Settings {
    */
   private getModelOption(model: string) {
     return this.page.getByRole("option", {
-      name: new RegExp(`^${model}$`),
+      name: new RegExp(`^${escapeRegExp(model)}$`),
     });
   }
 

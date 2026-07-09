@@ -2,6 +2,10 @@ import { expect, Locator, Page } from "@playwright/test";
 import path from "path";
 import logger from "../utils/logger";
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export class Knowledge {
   // Locators - defined at class level for better maintainability
   private readonly knowledgeLink = () =>
@@ -104,7 +108,7 @@ export class Knowledge {
   private getSourceCellByExactText(key: string): Locator {
     return this.page
       .locator('[col-id="source"]')
-      .getByText(new RegExp(`^${key}$`))
+      .getByText(new RegExp(`^${escapeRegExp(key)}$`))
       .first();
   }
 
@@ -539,7 +543,9 @@ export class Knowledge {
         return null;
       }
     };
-    while (true) {
+    let pagesChecked = 0;
+    const MAX_PAGES = 50;
+    while (pagesChecked < MAX_PAGES) {
       // Check the current viewport first
       const found = await tryFind(3000);
       if (found) return found;
@@ -572,6 +578,7 @@ export class Knowledge {
           !(await nextButton.isEnabled());
         if (isDisabled) break;
         await nextButton.click();
+        pagesChecked++;
         await this.page.waitForTimeout(500);
       }
     }

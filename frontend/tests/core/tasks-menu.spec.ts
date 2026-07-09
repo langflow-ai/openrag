@@ -193,7 +193,14 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     // Close Tasks Menu
     await tasksMenu.close();
 
-    expect(true).toBeTruthy();
+    expect(
+      result1.status === "Complete" || result1.status === "COMPLETED",
+      result1.statusLine,
+    ).toBe(true);
+    expect(
+      result2.status === "Complete" || result2.status === "COMPLETED",
+      result2.statusLine,
+    ).toBe(true);
   });
 
   //  test('Negative: Cancel file upload from Tasks Menu and verify failed status', async ({ page, knowledge }) => {

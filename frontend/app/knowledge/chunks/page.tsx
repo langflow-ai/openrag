@@ -81,7 +81,7 @@ function ChunksPageContent() {
     setChunks(
       fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
     );
-  }, [searchFiles, filename, fileData?.chunks?.map]);
+  }, [searchFiles, filename, fileData?.chunks]);
 
   // Set selected state for all checkboxes when selectAll changes
   // useEffect(() => {

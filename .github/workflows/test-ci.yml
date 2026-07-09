@@ -430,6 +430,8 @@ jobs:
     needs: [changes, e2e-run]
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4

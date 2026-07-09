@@ -59,7 +59,7 @@ export class Chat {
     return this.page
       .locator("button")
       .filter({
-        has: this.page.getByText(/Please ingest this URL/i),
+        has: this.page.getByText(chatTitle, { exact: false }),
       })
       .first();
   }
@@ -190,14 +190,16 @@ export class Chat {
     };
     this.page.on("response", responseHandler);
 
-    await input.fill(`Please ingest this URL: ${url}`);
-    await this.page.keyboard.press("Enter");
+    try {
+      await input.fill(`Please ingest this URL: ${url}`);
+      await this.page.keyboard.press("Enter");
 
-    // Wait for the full streaming response to stabilise in the UI
-    await this.waitForStreamingResponse(120000);
-
-    // Stop collecting responses
-    this.page.off("response", responseHandler);
+      // Wait for the full streaming response to stabilise in the UI
+      await this.waitForStreamingResponse(120000);
+    } finally {
+      // Stop collecting responses
+      this.page.off("response", responseHandler);
+    }
 
     // Parse all collected API responses for tool call data and response text
     for (const raw of collectedResponses) {
