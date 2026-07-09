@@ -7,6 +7,7 @@ Langflow-sync helpers in `api.settings.langflow_sync`. No behavior change.
 """
 
 import asyncio
+import copy
 import json
 
 from fastapi import Depends, HTTPException, Request
@@ -55,6 +56,7 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
+from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_index_name
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -391,13 +393,17 @@ async def update_settings(
                 return JSONResponse({"error": f"{str(e)}"}, status_code=400)
 
         # Update configuration
-        # Only reached if validation passed or wasn't needed
+        # Only reached if validation passed or wasn't needed.
+        # Stage every mutation on a deep copy so a validation failure partway
+        # through (e.g. the index_name or chunk_overlap checks below) can't
+        # leave the live cached config half-updated and unsaved.
+        working_config = copy.deepcopy(current_config)
         config_updated = False
 
         # Update agent settings
         if body.llm_model is not None:
-            old_model = current_config.agent.llm_model
-            current_config.agent.llm_model = body.llm_model
+            old_model = working_config.agent.llm_model
+            working_config.agent.llm_model = body.llm_model
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_LLM_MODEL
@@ -405,8 +411,8 @@ async def update_settings(
             logger.info(f"LLM model changed from {old_model} to {body.llm_model}")
 
         if body.llm_provider is not None:
-            old_provider = current_config.agent.llm_provider
-            current_config.agent.llm_provider = body.llm_provider
+            old_provider = working_config.agent.llm_provider
+            working_config.agent.llm_provider = body.llm_provider
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_LLM_PROVIDER
@@ -414,7 +420,7 @@ async def update_settings(
             logger.info(f"LLM provider changed from {old_provider} to {body.llm_provider}")
 
         if body.system_prompt is not None:
-            current_config.agent.system_prompt = body.system_prompt
+            working_config.agent.system_prompt = body.system_prompt
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_SYSTEM_PROMPT
@@ -423,7 +429,7 @@ async def update_settings(
             # Also update the chat flow with the new system prompt
             try:
                 flows_service = _get_flows_service()
-                await _update_langflow_system_prompt(current_config, flows_service)
+                await _update_langflow_system_prompt(working_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update chat flow system prompt: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -431,9 +437,9 @@ async def update_settings(
 
         # Update knowledge settings
         if body.embedding_model is not None:
-            old_model = current_config.knowledge.embedding_model
+            old_model = working_config.knowledge.embedding_model
             new_embedding_model = body.embedding_model.strip()
-            current_config.knowledge.embedding_model = new_embedding_model
+            working_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_EMBED_MODEL
@@ -441,8 +447,8 @@ async def update_settings(
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
 
         if body.embedding_provider is not None:
-            old_provider = current_config.knowledge.embedding_provider
-            current_config.knowledge.embedding_provider = body.embedding_provider
+            old_provider = working_config.knowledge.embedding_provider
+            working_config.knowledge.embedding_provider = body.embedding_provider
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_EMBED_PROVIDER
@@ -452,7 +458,7 @@ async def update_settings(
             )
 
         if body.table_structure is not None:
-            current_config.knowledge.table_structure = body.table_structure
+            working_config.knowledge.table_structure = body.table_structure
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
@@ -461,12 +467,12 @@ async def update_settings(
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                await _update_langflow_docling_settings(current_config, flows_service)
+                await _update_langflow_docling_settings(working_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if body.ocr is not None:
-            current_config.knowledge.ocr = body.ocr
+            working_config.knowledge.ocr = body.ocr
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
@@ -475,12 +481,12 @@ async def update_settings(
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                await _update_langflow_docling_settings(current_config, flows_service)
+                await _update_langflow_docling_settings(working_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if body.picture_descriptions is not None:
-            current_config.knowledge.picture_descriptions = body.picture_descriptions
+            working_config.knowledge.picture_descriptions = body.picture_descriptions
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
@@ -489,12 +495,12 @@ async def update_settings(
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                await _update_langflow_docling_settings(current_config, flows_service)
+                await _update_langflow_docling_settings(working_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if body.disable_ingest_with_langflow is not None:
-            current_config.knowledge.disable_ingest_with_langflow = (
+            working_config.knowledge.disable_ingest_with_langflow = (
                 body.disable_ingest_with_langflow
             )
             config_updated = True
@@ -506,13 +512,13 @@ async def update_settings(
             effective_overlap = (
                 body.chunk_overlap
                 if body.chunk_overlap is not None
-                else current_config.knowledge.chunk_overlap
+                else working_config.knowledge.chunk_overlap
             )
             if effective_overlap >= body.chunk_size:
                 raise HTTPException(
                     status_code=422, detail="chunk_overlap must be less than chunk_size"
                 )
-            current_config.knowledge.chunk_size = body.chunk_size
+            working_config.knowledge.chunk_size = body.chunk_size
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_CHUNK_UPDATED
@@ -532,13 +538,13 @@ async def update_settings(
             effective_chunk_size = (
                 body.chunk_size
                 if body.chunk_size is not None
-                else current_config.knowledge.chunk_size
+                else working_config.knowledge.chunk_size
             )
             if body.chunk_overlap >= effective_chunk_size:
                 raise HTTPException(
                     status_code=422, detail="chunk_overlap must be less than chunk_size"
                 )
-            current_config.knowledge.chunk_overlap = body.chunk_overlap
+            working_config.knowledge.chunk_overlap = body.chunk_overlap
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_CHUNK_UPDATED
@@ -555,9 +561,18 @@ async def update_settings(
                 logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
         if body.index_name is not None:
-            old_index_name = current_config.knowledge.index_name
+            old_index_name = working_config.knowledge.index_name
             new_index_name = body.index_name.strip()
-            current_config.knowledge.index_name = new_index_name
+            if not is_permitted_index_name(new_index_name):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Index name '{new_index_name}' is not permitted. The OpenSearch "
+                        "security role only grants search access to indices starting "
+                        f"with {' or '.join(ALLOWED_INDEX_NAME_PREFIXES)}."
+                    ),
+                )
+            working_config.knowledge.index_name = new_index_name
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_INDEX_NAME_UPDATED
@@ -581,46 +596,46 @@ async def update_settings(
         # Update provider-specific settings
         provider_updated = False
         if body.openai_api_key is not None and body.openai_api_key.strip():
-            current_config.providers.openai.api_key = body.openai_api_key.strip()
-            current_config.providers.openai.configured = True
+            working_config.providers.openai.api_key = body.openai_api_key.strip()
+            working_config.providers.openai.configured = True
             config_updated = True
             provider_updated = True
 
         if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
-            current_config.providers.anthropic.api_key = body.anthropic_api_key
-            current_config.providers.anthropic.configured = True
+            working_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
+            working_config.providers.anthropic.configured = True
             config_updated = True
             provider_updated = True
 
         if body.watsonx_api_key is not None and body.watsonx_api_key.strip():
-            current_config.providers.watsonx.api_key = body.watsonx_api_key
-            current_config.providers.watsonx.configured = True
+            working_config.providers.watsonx.api_key = body.watsonx_api_key.strip()
+            working_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
         if body.watsonx_endpoint is not None:
-            current_config.providers.watsonx.endpoint = body.watsonx_endpoint.strip()
-            current_config.providers.watsonx.configured = True
+            working_config.providers.watsonx.endpoint = body.watsonx_endpoint.strip()
+            working_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
         if body.watsonx_project_id is not None:
-            current_config.providers.watsonx.project_id = body.watsonx_project_id.strip()
-            current_config.providers.watsonx.configured = True
+            working_config.providers.watsonx.project_id = body.watsonx_project_id.strip()
+            working_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
         if body.ollama_endpoint is not None:
-            current_config.providers.ollama.endpoint = body.ollama_endpoint.strip()
-            current_config.providers.ollama.configured = True
+            working_config.providers.ollama.endpoint = body.ollama_endpoint.strip()
+            working_config.providers.ollama.configured = True
             config_updated = True
             provider_updated = True
 
         if body.remove_ollama_config:
             other_providers_configured = (
-                current_config.providers.openai.configured
-                or current_config.providers.anthropic.configured
-                or current_config.providers.watsonx.configured
+                working_config.providers.openai.configured
+                or working_config.providers.anthropic.configured
+                or working_config.providers.watsonx.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -635,24 +650,24 @@ async def update_settings(
                 )
                 if affected:
                     return _embedding_conflict_response("Ollama", "ollama", affected)
-            current_config.providers.ollama.endpoint = ""
-            current_config.providers.ollama.configured = False
-            if current_config.agent.llm_provider == "ollama":
-                fb = _first_configured_llm_provider(current_config, "ollama")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
-            if current_config.knowledge.embedding_provider == "ollama":
-                fb = _first_configured_embedding_provider(current_config, "ollama")
-                current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            working_config.providers.ollama.endpoint = ""
+            working_config.providers.ollama.configured = False
+            if working_config.agent.llm_provider == "ollama":
+                fb = _first_configured_llm_provider(working_config, "ollama")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
+            if working_config.knowledge.embedding_provider == "ollama":
+                fb = _first_configured_embedding_provider(working_config, "ollama")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
         if body.remove_openai_config:
             other_providers_configured = (
-                current_config.providers.anthropic.configured
-                or current_config.providers.watsonx.configured
-                or current_config.providers.ollama.configured
+                working_config.providers.anthropic.configured
+                or working_config.providers.watsonx.configured
+                or working_config.providers.ollama.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -667,24 +682,24 @@ async def update_settings(
                 )
                 if affected:
                     return _embedding_conflict_response("OpenAI", "openai", affected)
-            current_config.providers.openai.api_key = ""
-            current_config.providers.openai.configured = False
-            if current_config.agent.llm_provider == "openai":
-                fb = _first_configured_llm_provider(current_config, "openai")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
-            if current_config.knowledge.embedding_provider == "openai":
-                fb = _first_configured_embedding_provider(current_config, "openai")
-                current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            working_config.providers.openai.api_key = ""
+            working_config.providers.openai.configured = False
+            if working_config.agent.llm_provider == "openai":
+                fb = _first_configured_llm_provider(working_config, "openai")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
+            if working_config.knowledge.embedding_provider == "openai":
+                fb = _first_configured_embedding_provider(working_config, "openai")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
         if body.remove_anthropic_config:
             other_providers_configured = (
-                current_config.providers.openai.configured
-                or current_config.providers.watsonx.configured
-                or current_config.providers.ollama.configured
+                working_config.providers.openai.configured
+                or working_config.providers.watsonx.configured
+                or working_config.providers.ollama.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -693,21 +708,21 @@ async def update_settings(
                     },
                     status_code=400,
                 )
-            current_config.providers.anthropic.api_key = ""
-            current_config.providers.anthropic.configured = False
-            if current_config.agent.llm_provider == "anthropic":
-                fb = _first_configured_llm_provider(current_config, "anthropic")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
+            working_config.providers.anthropic.api_key = ""
+            working_config.providers.anthropic.configured = False
+            if working_config.agent.llm_provider == "anthropic":
+                fb = _first_configured_llm_provider(working_config, "anthropic")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
             # Anthropic is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
 
         if body.remove_watsonx_config:
             other_providers_configured = (
-                current_config.providers.openai.configured
-                or current_config.providers.anthropic.configured
-                or current_config.providers.ollama.configured
+                working_config.providers.openai.configured
+                or working_config.providers.anthropic.configured
+                or working_config.providers.ollama.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -722,18 +737,18 @@ async def update_settings(
                 )
                 if affected:
                     return _embedding_conflict_response("IBM watsonx.ai", "watsonx", affected)
-            current_config.providers.watsonx.api_key = ""
-            current_config.providers.watsonx.endpoint = ""
-            current_config.providers.watsonx.project_id = ""
-            current_config.providers.watsonx.configured = False
-            if current_config.agent.llm_provider == "watsonx":
-                fb = _first_configured_llm_provider(current_config, "watsonx")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
-            if current_config.knowledge.embedding_provider == "watsonx":
-                fb = _first_configured_embedding_provider(current_config, "watsonx")
-                current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            working_config.providers.watsonx.api_key = ""
+            working_config.providers.watsonx.endpoint = ""
+            working_config.providers.watsonx.project_id = ""
+            working_config.providers.watsonx.configured = False
+            if working_config.agent.llm_provider == "watsonx":
+                fb = _first_configured_llm_provider(working_config, "watsonx")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
+            if working_config.knowledge.embedding_provider == "watsonx":
+                fb = _first_configured_embedding_provider(working_config, "watsonx")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -746,7 +761,7 @@ async def update_settings(
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
         # Save the updated configuration
-        if not config_manager.save_config_file(current_config):
+        if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
         provider_health_cache.invalidate()
@@ -785,6 +800,10 @@ async def update_settings(
         )
         return SettingsUpdateResponse(message="Configuration updated successfully")
 
+    except HTTPException:
+        # Preserve intentional client-error status codes (e.g. 422 validation
+        # failures) instead of letting the catch-all below flatten them to 500.
+        raise
     except Exception:
         logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
