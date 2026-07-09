@@ -119,6 +119,13 @@ class SettingsUpdateBody(BaseModel):
             ["en"] if "en" in cleaned else []
         )
 
+    @field_validator("openai_base_url")
+    @classmethod
+    def reject_whitespace_only_base_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("openai_base_url must not be blank")
+        return value
+
 
 class OnboardingBody(BaseModel):
     llm_provider: str | None = Field(None, min_length=1)
@@ -135,6 +142,13 @@ class OnboardingBody(BaseModel):
     provider_credentials: dict[str, dict[str, str]] | None = None
     provider_credential_removals: dict[str, list[str]] | None = None
     provider_auth_methods: dict[str, str] | None = None
+
+    @field_validator("openai_base_url")
+    @classmethod
+    def reject_whitespace_only_base_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("openai_base_url must not be blank")
+        return value
 
 
 class CitationDisplayData(BaseModel):
