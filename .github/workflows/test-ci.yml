@@ -16,7 +16,7 @@ env:
   PLAYWRIGHT_BROWSERS_PATH: "ms-playwright"
   PLAYWRIGHT_VERSION: "1.57.0"
   # Total number of parallel E2E test shards
-  TOTAL_SHARDS: 4
+  TOTAL_SHARDS: 8
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
@@ -304,8 +304,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-        total_shards: [4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
       - name: Cleanup Docker cache
