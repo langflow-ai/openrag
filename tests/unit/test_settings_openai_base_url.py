@@ -51,6 +51,7 @@ def _make_config(*, edited: bool = True, openai: OpenAIConfig | None = None) -> 
 def _patch_update_settings_deps(monkeypatch, config):
     """Mirrors the mocking pattern used in test_settings_async_post_save.py."""
     fake_task = _FakeTask()
+    saved_configs = []
 
     async def _noop_refresh():
         return None
@@ -65,20 +66,20 @@ def _patch_update_settings_deps(monkeypatch, config):
     monkeypatch.setattr(
         settings_api.config_manager,
         "save_config_file",
-        lambda updated_config: True,
+        lambda updated_config: saved_configs.append(updated_config) or True,
         raising=True,
     )
     monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
     monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
     monkeypatch.setattr(settings_api.asyncio, "create_task", _fake_create_task, raising=True)
-    return fake_task
+    return fake_task, saved_configs
 
 
 @pytest.mark.asyncio
 async def test_update_settings_persists_openai_base_url(monkeypatch):
     settings_api._background_tasks.clear()
     config = _make_config()
-    _patch_update_settings_deps(monkeypatch, config)
+    _, saved_configs = _patch_update_settings_deps(monkeypatch, config)
 
     response = await settings_api.update_settings(
         settings_api.SettingsUpdateBody(openai_base_url="https://gateway.example.com/v1"),
@@ -87,17 +88,19 @@ async def test_update_settings_persists_openai_base_url(monkeypatch):
     )
 
     assert isinstance(response, settings_api.SettingsUpdateResponse)
-    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
+    # Mutations are staged on a deep copy and only that copy is saved; the
+    # live config object passed in must never be mutated in place.
+    assert saved_configs[0].providers.openai.base_url == "https://gateway.example.com/v1"
     # An optional base_url override should not, by itself, mark OpenAI as
     # "configured" the way an api_key does.
-    assert config.providers.openai.configured is False
+    assert saved_configs[0].providers.openai.configured is False
 
 
 @pytest.mark.asyncio
 async def test_update_settings_strips_openai_base_url_whitespace(monkeypatch):
     settings_api._background_tasks.clear()
     config = _make_config()
-    _patch_update_settings_deps(monkeypatch, config)
+    _, saved_configs = _patch_update_settings_deps(monkeypatch, config)
 
     await settings_api.update_settings(
         settings_api.SettingsUpdateBody(openai_base_url="  https://gateway.example.com/v1  "),
@@ -105,7 +108,7 @@ async def test_update_settings_strips_openai_base_url_whitespace(monkeypatch):
         user=None,
     )
 
-    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
+    assert saved_configs[0].providers.openai.base_url == "https://gateway.example.com/v1"
 
 
 @pytest.mark.asyncio
@@ -123,7 +126,7 @@ async def test_remove_openai_config_clears_base_url(monkeypatch):
     )
     # remove_openai_config requires another provider to be configured.
     config.providers.anthropic.configured = True
-    _patch_update_settings_deps(monkeypatch, config)
+    _, saved_configs = _patch_update_settings_deps(monkeypatch, config)
 
     response = await settings_api.update_settings(
         settings_api.SettingsUpdateBody(remove_openai_config=True, force_remove=True),
@@ -132,9 +135,9 @@ async def test_remove_openai_config_clears_base_url(monkeypatch):
     )
 
     assert isinstance(response, settings_api.SettingsUpdateResponse)
-    assert config.providers.openai.api_key == ""
-    assert config.providers.openai.configured is False
-    assert config.providers.openai.base_url == ""
+    assert saved_configs[0].providers.openai.api_key == ""
+    assert saved_configs[0].providers.openai.configured is False
+    assert saved_configs[0].providers.openai.base_url == ""
 
 
 @pytest.mark.asyncio
