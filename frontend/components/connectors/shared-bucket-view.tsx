@@ -345,8 +345,12 @@ export function SharedBucketView({
           buckets={[browseDialogBucket]}
           onIngestSuccess={(result) => {
             invalidate();
-            trackIngestTasks(result.task_ids);
-            onDone();
+            if (result.task_ids?.length) {
+              trackIngestTasks(result.task_ids);
+              onDone();
+            } else {
+              toast.info("No files were queued for ingestion.");
+            }
           }}
         />
       )}
