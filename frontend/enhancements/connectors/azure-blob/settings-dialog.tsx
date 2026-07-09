@@ -49,10 +49,12 @@ export default function AzureBlobSettingsDialog({
   const [selectedContainers, setSelectedContainers] = useState<string[]>(
     defaults?.container_names ?? [],
   );
+  const [showContainers, setShowContainers] = useState(false);
   useEffect(() => {
     if (defaults?.container_names?.length) {
       setContainers(defaults.container_names);
       setSelectedContainers(defaults.container_names);
+      setShowContainers(true);
     }
   }, [defaults]);
 
@@ -107,6 +109,7 @@ export default function AzureBlobSettingsDialog({
       const fetched: string[] = json.containers;
       setContainers(fetched);
       setSelectedContainers((prev) => prev.filter((c) => fetched.includes(c)));
+      setShowContainers(true);
     } catch (err: unknown) {
       // Ignore cancellations — they are intentional (dialog closed or new test
       // started) and must not surface an error message to the user.
@@ -114,6 +117,7 @@ export default function AzureBlobSettingsDialog({
       setContainersError(
         err instanceof Error ? err.message : "Connection failed",
       );
+      setShowContainers(false);
     } finally {
       // Only clear the loading flag if this invocation is still the active one.
       // If the user started a second test while this one was in flight, the
@@ -127,6 +131,7 @@ export default function AzureBlobSettingsDialog({
 
   const onSubmit = handleSubmit(async (data) => {
     setFormError(null);
+    setContainersError(null);
     if (containers === null) {
       setFormError("Test the connection first to validate credentials.");
       return;
@@ -197,6 +202,8 @@ export default function AzureBlobSettingsDialog({
               connectionStringSet={defaults?.connection_string_set}
               accountKeySet={defaults?.account_key_set}
               formError={formError}
+              showContainers={showContainers}
+              onAuthModeChange={() => setShowContainers(false)}
             />
 
             <DialogFooter className="mt-4">
