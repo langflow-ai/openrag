@@ -170,6 +170,23 @@ class TestConfigManagerBedrockEnvOverrides:
 
 
 class TestConfigManagerBedrockFileRoundTrip:
+    @pytest.fixture(autouse=True)
+    def _encryption_key(self, monkeypatch):
+        """Provide a master secret so encrypt_secret()/decrypt_secret() are
+        active (they no-op to plaintext without one), mirroring the fixture
+        used in tests/unit/test_encryption.py."""
+        import base64
+
+        import utils.encryption
+
+        utils.encryption._cached_master_secret = None
+        monkeypatch.setenv(
+            "OPENRAG_ENCRYPTION_KEY",
+            base64.b64encode(b"0123456789abcdef0123456789abcdef").decode("ascii"),
+        )
+        yield
+        utils.encryption._cached_master_secret = None
+
     def test_save_and_reload_round_trips_bedrock_fields(self, tmp_path, monkeypatch):
         for var in ("BEDROCK_REGION", "BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY"):
             monkeypatch.delenv(var, raising=False)
@@ -184,15 +201,28 @@ class TestConfigManagerBedrockFileRoundTrip:
 
         assert cm.save_config_file(config) is True
 
+        # secret_access_key is a genuine AWS credential (unlike access_key_id,
+        # which AWS treats as an identifier, not a secret) and must be
+        # encrypted at rest, mirroring how api_key is handled for every other
+        # provider. Assert the plaintext value never touches disk.
+        raw_on_disk = cfg_path.read_text()
+        assert "shh" not in raw_on_disk
+
+        import yaml
+
+        with open(cfg_path) as f:
+            saved_data = yaml.safe_load(f)
+        bedrock_data = saved_data["providers"]["bedrock"]
+        assert isinstance(bedrock_data["secret_access_key"], dict)
+        assert bedrock_data["secret_access_key"]["algorithm"] == "AES-256-GCM"
+        # access_key_id is not a secret and stays plaintext, same as before.
+        assert bedrock_data["access_key_id"] == "AKIA123"
+
         cm2 = ConfigManager(config_file=str(cfg_path))
         reloaded = cm2.load_config()
 
         assert reloaded.providers.bedrock.region == "ca-central-1"
         assert reloaded.providers.bedrock.access_key_id == "AKIA123"
-        # secret_access_key isn't named "api_key" so the existing
-        # encrypt-on-save logic (keyed on the literal field name "api_key")
-        # doesn't touch it - it round-trips as plaintext in config.yaml,
-        # same as e.g. WatsonX's endpoint/project_id fields.
         assert reloaded.providers.bedrock.secret_access_key == "shh"
         assert reloaded.providers.bedrock.configured is True
 
