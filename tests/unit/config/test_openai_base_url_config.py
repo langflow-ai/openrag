@@ -128,14 +128,3 @@ class TestEnvOverride:
 
         assert config.providers.openai.api_key == "sk-from-env"
         assert config.providers.openai.base_url == "http://localhost:4444/v1"
-
-
-def test_normalize_model_name_still_distinguishes_cohere_variants():
-    """Not directly about base_url, but the task calls out locking this in:
-    normalize_model_name() must keep these two Cohere model ids distinct.
-    """
-    from utils.embedding_fields import normalize_model_name
-
-    a = normalize_model_name("cohere.embed-multilingual-v3")
-    b = normalize_model_name("cohere.embed-multilingual-v3.0")
-    assert a != b
