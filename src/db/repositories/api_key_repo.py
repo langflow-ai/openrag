@@ -8,6 +8,7 @@ from datetime import UTC
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import ApiKey
 
@@ -18,12 +19,12 @@ class ApiKeyRepo:
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         result = await self.session.execute(
-            select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.revoked.is_(False))
+            select(ApiKey).where(col(ApiKey.key_hash) == key_hash, col(ApiKey.revoked).is_(False))
         )
         return result.scalar_one_or_none()
 
     async def list_for_user(self, user_id: str) -> list[ApiKey]:
-        result = await self.session.execute(select(ApiKey).where(ApiKey.user_id == user_id))
+        result = await self.session.execute(select(ApiKey).where(col(ApiKey.user_id) == user_id))
         return list(result.scalars().all())
 
     async def add(self, api_key: ApiKey) -> ApiKey:

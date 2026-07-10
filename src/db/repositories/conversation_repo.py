@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import Conversation
 
@@ -19,8 +20,8 @@ class ConversationRepo:
     async def list_for_user(self, user_id: str, limit: int = 200) -> list[Conversation]:
         result = await self.session.execute(
             select(Conversation)
-            .where(Conversation.user_id == user_id)
-            .order_by(Conversation.last_activity.desc())
+            .where(col(Conversation.user_id) == user_id)
+            .order_by(col(Conversation.last_activity).desc())
             .limit(limit)
         )
         return list(result.scalars().all())
