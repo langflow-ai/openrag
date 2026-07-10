@@ -53,45 +53,56 @@ def is_oci_litellm_model(formatted_model: str) -> bool:
     return bool(formatted_model) and formatted_model.startswith(OCI_LITELLM_PREFIX)
 
 
-def oci_credential_kwargs(oci_config: Any) -> dict[str, str]:
+def oci_credential_kwargs(oci_config: Any, signer: Any | None = None) -> dict[str, Any]:
     """Build the ``oci_*`` kwargs litellm's OCI integration needs per-call.
 
-    Unlike WatsonX (``WATSONX_API_KEY``/``WATSONX_API_BASE``) or most other
-    litellm providers, OCI Generative AI credentials are NOT read from
-    environment variables anywhere in litellm's OCI code path. Verified
-    directly against the installed litellm==1.84.0 source
-    (``litellm/llms/oci/embed/transformation.py`` and
-    ``litellm/llms/oci/chat/transformation.py``): both
-    ``validate_environment`` and ``transform_embedding_request`` pull every
-    credential exclusively from ``optional_params`` (i.e. call-time kwargs
-    forwarded from ``litellm.aembedding(**kwargs)``), with no
-    ``os.environ``/``get_secret`` fallback anywhere in that package. So the
-    ``OCI_USER``/``OCI_FINGERPRINT``/etc. environment variables set in
-    ``config.settings.patched_async_client`` (mirroring the WatsonX pattern
-    for consistency and any future SDK-based use) are NOT sufficient on
-    their own -- callers must also pass these as explicit kwargs on every
-    ``.embeddings.create(...)`` call routed to an ``oci/...`` model.
+    ``compartment_id`` and ``region`` are always included regardless of
+    auth method -- they scope which resource the request targets, not how
+    it's signed. When ``signer`` is provided (built by
+    ``utils.oci_auth.build_oci_signer`` for instance_principal/
+    workload_identity), it's passed through as ``oci_signer`` and the
+    manual user/fingerprint/tenancy/key fields are omitted entirely --
+    litellm's ``sign_oci_request`` dispatch uses ``oci_signer`` when
+    present and never falls back to manual credentials in that case, so
+    including stale/irrelevant key-based fields alongside a signer would
+    be misleading, not merely redundant.
+
+    When ``signer`` is None (the "api_key" auth method), behavior is
+    unchanged from before this function gained the ``signer`` parameter:
+    the manual user/fingerprint/tenancy/key/key_file fields are included
+    exactly as litellm's OCI integration requires (see
+    litellm/llms/oci/embed/transformation.py and
+    litellm/llms/oci/chat/transformation.py, verified directly against the
+    installed litellm==1.84.0 source: OCI credentials are read exclusively
+    from call-time kwargs, never from the environment, so these must be
+    passed explicitly on every call).
 
     Args:
         oci_config: The ``OCIConfig`` from ``OpenRAGConfig.providers.oci``.
+        signer: A pre-built OCI SDK Signer object, or None for api_key auth.
 
     Returns:
         A dict of only the fields that are actually set, so callers can
         unconditionally splat the result into ``.embeddings.create(**kwargs)``.
     """
-    kwargs: dict[str, str] = {}
+    kwargs: dict[str, Any] = {}
+    if getattr(oci_config, "compartment_id", None):
+        kwargs["oci_compartment_id"] = oci_config.compartment_id
+    if getattr(oci_config, "region", None):
+        kwargs["oci_region"] = oci_config.region
+
+    if signer is not None:
+        kwargs["oci_signer"] = signer
+        return kwargs
+
     if getattr(oci_config, "user", None):
         kwargs["oci_user"] = oci_config.user
     if getattr(oci_config, "fingerprint", None):
         kwargs["oci_fingerprint"] = oci_config.fingerprint
     if getattr(oci_config, "tenancy", None):
         kwargs["oci_tenancy"] = oci_config.tenancy
-    if getattr(oci_config, "compartment_id", None):
-        kwargs["oci_compartment_id"] = oci_config.compartment_id
     if getattr(oci_config, "key", None):
         kwargs["oci_key"] = oci_config.key
     if getattr(oci_config, "key_file", None):
         kwargs["oci_key_file"] = oci_config.key_file
-    if getattr(oci_config, "region", None):
-        kwargs["oci_region"] = oci_config.region
     return kwargs

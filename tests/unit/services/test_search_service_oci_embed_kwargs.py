@@ -64,6 +64,7 @@ async def test_embed_with_model_passes_cohere_input_type_and_oci_credentials(mon
         key_file="/tmp/oci_key.pem",
         region="us-ashburn-1",
         configured=True,
+        auth_method="api_key",
     )
     fake_openrag_config = SimpleNamespace(
         providers=SimpleNamespace(ollama=SimpleNamespace(endpoint=""), oci=oci_config),
