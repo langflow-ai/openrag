@@ -29,6 +29,14 @@ class TestOCIConfigDefaults:
         assert cfg.region == ""
         assert cfg.configured is False
 
+    def test_oci_config_auth_method_defaults_to_api_key(self):
+        config = OCIConfig()
+        assert config.auth_method == "api_key"
+
+    def test_oci_config_auth_method_accepts_instance_principal(self):
+        config = OCIConfig(auth_method="instance_principal")
+        assert config.auth_method == "instance_principal"
+
 
 class TestProvidersConfigOci:
     def _make_providers(self, **oci_kwargs) -> ProvidersConfig:
@@ -121,6 +129,12 @@ class TestConfigManagerOciEnvOverrides:
         config = cm.load_config()
 
         assert config.providers.oci == OCIConfig()
+
+    def test_oci_auth_method_env_override(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OCI_AUTH_METHOD", "workload_identity")
+        cm = self._cm(tmp_path)
+        config = cm.load_config()
+        assert config.providers.oci.auth_method == "workload_identity"
 
     def test_round_trips_through_save_and_reload(self, tmp_path, monkeypatch):
         for var in (

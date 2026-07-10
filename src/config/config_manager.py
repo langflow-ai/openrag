@@ -163,11 +163,17 @@ class GenericProviderConfig:
 class OCIConfig:
     """Oracle Cloud Infrastructure (OCI) Generative AI provider configuration.
 
-    Auth follows OCI's API Signing Key scheme: user/fingerprint/tenancy
-    identify the signer, and either ``key`` (inline PEM) or ``key_file``
-    (path to a PEM file) supplies the private key used to sign requests.
-    ``compartment_id`` is required on every embedText call for IAM
-    authorization and billing/quota attribution.
+    ``auth_method`` selects how requests are signed:
+      - "api_key" (default): OCI's API Signing Key scheme. user/fingerprint/
+        tenancy identify the signer, and either ``key`` (inline PEM) or
+        ``key_file`` (path to a PEM file) supplies the private key.
+      - "instance_principal": the workload's identity as an OCI Compute
+        instance. None of user/fingerprint/tenancy/key/key_file apply.
+      - "workload_identity": the workload's identity as an OKE pod with
+        Workload Identity enabled on the cluster. None of
+        user/fingerprint/tenancy/key/key_file apply.
+    ``compartment_id`` is required on every embedText call regardless of
+    auth_method, for IAM authorization and billing/quota attribution.
     """
 
     user: str = ""
@@ -177,6 +183,7 @@ class OCIConfig:
     key_file: str = ""
     key: str = ""
     region: str = ""
+    auth_method: str = "api_key"
     configured: bool = False
 
 
@@ -605,6 +612,8 @@ class ConfigManager:
             config_data["providers"]["oci"]["key"] = os.getenv("OCI_KEY")
         if os.getenv("OCI_REGION"):
             config_data["providers"]["oci"]["region"] = os.getenv("OCI_REGION")
+        if os.getenv("OCI_AUTH_METHOD"):
+            config_data["providers"]["oci"]["auth_method"] = os.getenv("OCI_AUTH_METHOD")
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
