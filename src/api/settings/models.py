@@ -74,6 +74,7 @@ class SettingsUpdateBody(BaseModel):
     oci_key_file: str | None = Field(None, min_length=1)
     oci_key: str | None = Field(None, min_length=1)
     oci_region: str | None = Field(None, min_length=1)
+    oci_auth_method: str | None = None
     remove_ollama_config: bool | None = None
     remove_openai_config: bool | None = None
     remove_anthropic_config: bool | None = None
@@ -145,6 +146,7 @@ class OnboardingBody(BaseModel):
     oci_key_file: str | None = Field(None, min_length=1)
     oci_key: str | None = Field(None, min_length=1)
     oci_region: str | None = Field(None, min_length=1)
+    oci_auth_method: str | None = None
     provider_credentials: dict[str, dict[str, str]] | None = None
     provider_credential_removals: dict[str, list[str]] | None = None
     provider_auth_methods: dict[str, str] | None = None
@@ -268,6 +270,7 @@ class OCIProviderConfig(BaseModel):
     tenancy: str | None
     compartment_id: str | None
     region: str | None
+    auth_method: str = "api_key"
     configured: bool
 
 
