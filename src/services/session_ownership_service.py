@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from config.paths import get_data_file
@@ -71,7 +71,7 @@ class SessionOwnershipService:
 
     async def claim_session(self, user_id: str, session_id: str) -> None:
         if file_writes_enabled():
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             if session_id not in self.ownership_data:
                 self.ownership_data[session_id] = {
                     "user_id": user_id,

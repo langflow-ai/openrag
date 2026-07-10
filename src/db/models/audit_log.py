@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import JSON, Column
@@ -9,7 +9,7 @@ class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_log"
 
     id: str = Field(primary_key=True, max_length=64)
-    ts: datetime = Field(default_factory=datetime.utcnow, index=True)
+    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True)
     actor_user_id: Optional[str] = Field(
         default=None, foreign_key="users.id", max_length=64, index=True
     )

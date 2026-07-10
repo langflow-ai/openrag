@@ -350,12 +350,12 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Subscription not found"}
 
             # Update the filter document
-            from datetime import datetime
+            from datetime import datetime, timezone
 
             update_body = {
                 "doc": {
                     "subscriptions": updated_subscriptions,
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
             }
 

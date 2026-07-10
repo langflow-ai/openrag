@@ -5,7 +5,7 @@ Each row is one logical section ('providers' | 'knowledge' | 'agent' |
 to/from ``OpenRAGConfig`` is the service's job.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -40,14 +40,14 @@ class WorkspaceConfigRepo:
             row = WorkspaceConfig(
                 section=section,
                 value=value,
-                updated_at=datetime.utcnow(),
+                updated_at=datetime.now(timezone.utc),
                 updated_by=actor_user_id,
             )
             self.session.add(row)
             await self.session.flush()
             return row
         existing.value = value
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(timezone.utc)
         if actor_user_id is not None:
             existing.updated_by = actor_user_id
         self.session.add(existing)

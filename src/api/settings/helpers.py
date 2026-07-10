@@ -161,7 +161,7 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
     """Create the OpenRAG Docs knowledge filter for onboarding"""
     import json
     import uuid
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     if not knowledge_filter_service:
         logger.error("Knowledge filter service not available")
@@ -205,8 +205,8 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
         "owner": owner_user_id,
         "allowed_users": [],
         "allowed_groups": [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     result = await knowledge_filter_service.create_knowledge_filter(

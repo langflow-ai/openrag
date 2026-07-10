@@ -9,7 +9,7 @@ inserts only what's missing. Implementation lives in db.seed so the
 catalog has a single source of truth.
 
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence, Union
 import uuid
 
@@ -27,7 +27,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)    
 
     # Permissions
     perms_table = sa.table(

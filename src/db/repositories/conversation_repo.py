@@ -1,6 +1,6 @@
 """Async CRUD over the ``conversations`` table — chat-history metadata."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -40,7 +40,7 @@ class ConversationRepo:
         created_at: Optional[datetime] = None,
         last_activity: Optional[datetime] = None,
     ) -> Conversation:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         existing = await self.get(response_id)
         if existing is None:
             row = Conversation(

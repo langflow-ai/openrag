@@ -5,7 +5,7 @@ is a deterministic SHA-256 of the lowercase email so we keep a unique
 constraint and exact-match lookup despite the encrypted blob.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Column, UniqueConstraint
@@ -40,6 +40,6 @@ class User(SQLModel, table=True):
     picture_url: Optional[str] = Field(default=None, max_length=2048)
 
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_login: Optional[datetime] = Field(default=None)

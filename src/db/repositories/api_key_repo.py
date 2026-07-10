@@ -34,10 +34,10 @@ class ApiKeyRepo:
         return api_key
 
     async def revoke(self, key_id: str) -> None:
-        from datetime import datetime
+        from datetime import datetime, timezone
         row = await self.session.get(ApiKey, key_id)
         if row:
             row.revoked = True
-            row.revoked_at = datetime.utcnow()
+            row.revoked_at = datetime.now(timezone.utc)
             self.session.add(row)
             await self.session.flush()
