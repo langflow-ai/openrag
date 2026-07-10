@@ -102,9 +102,9 @@ export default function ConnectorCard({
                   isCloudBrand && "!text-layer-contextual-foreground",
                 )}
               >
-                {isConnected || connector?.available
+                {isConnected
                   ? `${connector.name} is configured.`
-                  : "Allowed for this workspace — OAuth credentials not configured yet."}
+                  : "Allowed for this workspace — credentials not configured yet."}
               </CardDescription>
             </div>
           </div>
