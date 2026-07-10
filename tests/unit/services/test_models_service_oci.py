@@ -35,6 +35,7 @@ def _config_with_oci(**oci_overrides) -> SimpleNamespace:
         key_file="",
         region="",
         configured=False,
+        auth_method="api_key",
     )
     oci_defaults.update(oci_overrides)
     return SimpleNamespace(
@@ -197,6 +198,29 @@ class TestUpdateModelRegistryOciGating:
         await service.update_model_registry()
 
         assert ModelsService._model_provider_registry == {}
+
+    @pytest.mark.asyncio
+    async def test_instance_principal_registers_without_key_fields(self, monkeypatch):
+        # No api_key fields set at all -- the point of this test is that
+        # registration must NOT require user/fingerprint/tenancy/key(_file)
+        # when auth_method is instance_principal. update_model_registry's
+        # gate deliberately never calls build_oci_signer() itself (that
+        # would trigger a live IMDS call on every registry refresh), so
+        # there's no signer construction to mock here.
+        config = _config_with_oci(
+            auth_method="instance_principal",
+            compartment_id="ocid1.compartment.oc1..aaa",
+            region="us-ashburn-1",
+        )
+        monkeypatch.setattr(
+            "config.config_manager.config_manager.get_config", lambda: config
+        )
+
+        service = ModelsService()
+        await service.update_model_registry()
+
+        assert "cohere.embed-multilingual-v3.0" in ModelsService._model_provider_registry
+        assert ModelsService._model_provider_registry["cohere.embed-multilingual-v3.0"] == "oci"
 
 
 class TestGetLitellmModelNameResolvesOciThroughRegistry:

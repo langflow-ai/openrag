@@ -127,3 +127,45 @@ class TestOciCredentialKwargs:
         )
         kwargs = oci_credential_kwargs(oci_config)
         assert "oci_region" not in kwargs
+
+    def test_signer_present_omits_secret_fields_keeps_region_and_compartment(self):
+        oci_config = SimpleNamespace(
+            user="should-be-ignored",
+            fingerprint="should-be-ignored",
+            tenancy="should-be-ignored",
+            compartment_id="ocid1.compartment.oc1..aaa",
+            key="should-be-ignored",
+            key_file="",
+            region="eu-frankfurt-1",
+        )
+        fake_signer = object()
+
+        kwargs = oci_credential_kwargs(oci_config, signer=fake_signer)
+
+        assert kwargs == {
+            "oci_compartment_id": "ocid1.compartment.oc1..aaa",
+            "oci_region": "eu-frankfurt-1",
+            "oci_signer": fake_signer,
+        }
+
+    def test_signer_none_keeps_existing_api_key_behavior(self):
+        oci_config = SimpleNamespace(
+            user="ocid1.user.oc1..aaa",
+            fingerprint="ab:cd",
+            tenancy="ocid1.tenancy.oc1..aaa",
+            compartment_id="ocid1.compartment.oc1..aaa",
+            key="-----BEGIN PRIVATE KEY-----",
+            key_file="",
+            region="us-ashburn-1",
+        )
+
+        kwargs = oci_credential_kwargs(oci_config, signer=None)
+
+        assert kwargs == {
+            "oci_user": "ocid1.user.oc1..aaa",
+            "oci_fingerprint": "ab:cd",
+            "oci_tenancy": "ocid1.tenancy.oc1..aaa",
+            "oci_compartment_id": "ocid1.compartment.oc1..aaa",
+            "oci_key": "-----BEGIN PRIVATE KEY-----",
+            "oci_region": "us-ashburn-1",
+        }

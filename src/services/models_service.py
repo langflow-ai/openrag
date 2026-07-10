@@ -214,13 +214,17 @@ class ModelsService:
                 # resolve to a provider that will fail at call time instead
                 # of failing fast in get_litellm_model_name(strict=True).
                 oci_config = config.providers.oci
-                if (
-                    oci_config.user
-                    and oci_config.fingerprint
-                    and oci_config.tenancy
-                    and oci_config.compartment_id
-                    and (oci_config.key or oci_config.key_file)
-                ):
+                oci_ready = bool(oci_config.compartment_id) and (
+                    (
+                        oci_config.auth_method == "api_key"
+                        and oci_config.user
+                        and oci_config.fingerprint
+                        and oci_config.tenancy
+                        and (oci_config.key or oci_config.key_file)
+                    )
+                    or oci_config.auth_method in ("instance_principal", "workload_identity")
+                )
+                if oci_ready:
                     try:
                         res = await self.get_oci_models(update_index=False)
                         self.add_models(res, "oci", new_registry)
