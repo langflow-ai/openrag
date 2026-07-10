@@ -13,6 +13,7 @@ import httpx
 from enhancements.providers.registry import get as get_provider_enhancement
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.oci_auth import OCISignerConstructionError  # noqa: F401 - re-exported for tests
 
 logger = get_logger(__name__)
 
@@ -675,6 +676,7 @@ async def validate_provider_setup(
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
     stored_credentials: Mapping[str, Any] | None = None,
+    oci_auth_method: str = "api_key",
     oci_user: str = None,
     oci_fingerprint: str = None,
     oci_tenancy: str = None,
@@ -699,8 +701,11 @@ async def validate_provider_setup(
                         Only a provider enhancement's lightweight check reads it: a provider with
                         separate chat and embedding endpoints has ``credentials`` narrowed to one
                         of them, and the check has to see both to probe both.
+        oci_auth_method: OCI auth method ('api_key', 'instance_principal', 'workload_identity').
+                        Only used when provider == 'oci'. Default: 'api_key'.
         oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file:
-                        OCI Generative AI credential fields (only used when provider == 'oci').
+                        OCI Generative AI credential fields (only used when provider == 'oci' and
+                        oci_auth_method == 'api_key').
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -767,6 +772,7 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    oci_auth_method=oci_auth_method,
                     oci_user=oci_user,
                     oci_fingerprint=oci_fingerprint,
                     oci_tenancy=oci_tenancy,
@@ -792,6 +798,7 @@ async def validate_provider_setup(
                 project_id=project_id,
                 credentials=supplied,
                 stored_credentials=stored_credentials,
+                oci_auth_method=oci_auth_method,
                 oci_user=oci_user,
                 oci_fingerprint=oci_fingerprint,
                 oci_tenancy=oci_tenancy,
@@ -854,6 +861,7 @@ async def test_lightweight_health(
     project_id: str = None,
     credentials: dict[str, str] | None = None,
     stored_credentials: Mapping[str, Any] | None = None,
+    oci_auth_method: str = "api_key",
     oci_user: str = None,
     oci_fingerprint: str = None,
     oci_tenancy: str = None,
@@ -881,9 +889,12 @@ async def test_lightweight_health(
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
     elif provider == "oci":
-        await _test_oci_credential_shape(
-            oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
-        )
+        if oci_auth_method == "api_key":
+            await _test_oci_credential_shape(
+                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+            )
+        else:
+            await _test_oci_signer_construction(oci_auth_method)
     elif enhancement := get_provider_enhancement(provider):
         await enhancement.lightweight_health_check(
             stored_credentials if stored_credentials is not None else (credentials or {})
@@ -919,6 +930,7 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    oci_auth_method: str = "api_key",
     oci_user: str = None,
     oci_fingerprint: str = None,
     oci_tenancy: str = None,
@@ -940,9 +952,12 @@ async def test_embedding(
         # heavier than the other providers' lightweight checks, so full
         # credential validation for OCI is a shape check rather than a
         # live round-trip, even under test_completion=True.
-        await _test_oci_credential_shape(
-            oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
-        )
+        if oci_auth_method == "api_key":
+            await _test_oci_credential_shape(
+                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+            )
+        else:
+            await _test_oci_signer_construction(oci_auth_method)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1727,3 +1742,22 @@ async def _test_oci_credential_shape(
             raise Exception(f"OCI key_file does not look like a PEM private key: {oci_key_file}")
 
     logger.info("OCI credential shape check passed")
+
+
+async def _test_oci_signer_construction(oci_auth_method: str) -> None:
+    """Validate OCI instance_principal / workload_identity auth by
+    attempting to construct the real signer.
+
+    Unlike ``_test_oci_credential_shape`` (a pure shape check, no I/O),
+    this makes exactly one local/in-cluster call -- to the OCI instance
+    metadata service, or the in-cluster OKE proxymux service -- never to
+    OCI's public Generative AI API. That's a deliberate, narrow exception
+    to "no live calls in validation": it's cheap, has no cost/quota
+    impact, and it's the only way to catch a missing dynamic-group policy
+    or a cluster without Workload Identity enabled before a real embedding
+    call fails with a much less obvious error.
+    """
+    from utils.oci_auth import build_oci_signer
+
+    build_oci_signer(oci_auth_method)
+    logger.info(f"OCI {oci_auth_method} signer construction check passed")

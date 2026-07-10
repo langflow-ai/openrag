@@ -9,6 +9,7 @@ positive, not a crash) instead of reporting whatever's actually wrong.
 
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -24,6 +25,7 @@ def _oci_config(**overrides):
         key="-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
         key_file="",
         region="us-ashburn-1",
+        auth_method="api_key",
         configured=True,
     )
     defaults.update(overrides)
@@ -82,3 +84,27 @@ class TestCheckProviderHealthOciExplicit:
 
         # Would be a 400 "Invalid provider" if "oci" weren't in valid_providers.
         assert response.status_code != 400
+
+
+class TestCheckProviderHealthOciAuthMethod:
+    @pytest.mark.asyncio
+    async def test_instance_principal_auth_method_is_forwarded(self, monkeypatch):
+        """Regression guard for the oci_auth_method local var check_provider_health
+        derives via getattr(provider_config, "auth_method", None): without it (or
+        with a stale test double missing the field), the check falls back to None,
+        which _test_oci_signer_construction rejects as an unknown auth_method
+        instead of dispatching to the signer-construction check."""
+        config = _config_with_oci(
+            _oci_config(
+                user="", fingerprint="", tenancy="", key="", key_file="",
+                auth_method="instance_principal",
+            )
+        )
+        monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+
+        with patch("api.provider_validation._test_oci_signer_construction") as mock_signer:
+            response = await check_provider_health(provider="oci", test_completion=False, user=None)
+
+        mock_signer.assert_called_once_with("instance_principal")
+        assert response.status_code == 200
+        assert _body(response)["status"] == "healthy"

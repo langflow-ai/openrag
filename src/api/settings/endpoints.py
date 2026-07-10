@@ -638,6 +638,10 @@ async def update_settings(
                     oci_compartment_id = getattr(embedding_provider_config, "compartment_id", None)
                     oci_key = getattr(embedding_provider_config, "key", None)
                     oci_key_file = getattr(embedding_provider_config, "key_file", None)
+                    # No body.oci_auth_method field exists (auth_method isn't yet
+                    # settable via this endpoint), so unlike its sibling oci_*
+                    # locals above, this one has no request-body override step.
+                    oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
 
                     if body.oci_user is not None:
                         oci_user = body.oci_user
@@ -663,6 +667,7 @@ async def update_settings(
                             embedding_provider_key,
                             submitted_credentials.get(embedding_provider_key, {}),
                         ),
+                        oci_auth_method=oci_auth_method,
                         oci_user=oci_user,
                         oci_fingerprint=oci_fingerprint,
                         oci_tenancy=oci_tenancy,
@@ -1534,6 +1539,7 @@ async def onboarding(
                     credentials=current_config.providers.credential_values(
                         embedding_provider, kind="embedding"
                     ),
+                    oci_auth_method=getattr(embedding_provider_config, "auth_method", None),
                     oci_user=getattr(embedding_provider_config, "user", None),
                     oci_fingerprint=getattr(embedding_provider_config, "fingerprint", None),
                     oci_tenancy=getattr(embedding_provider_config, "tenancy", None),
