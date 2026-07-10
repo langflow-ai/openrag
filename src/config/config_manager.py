@@ -58,6 +58,23 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 _SAFE_CONFIG_PATH = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]+\.ya?ml$")
 
+# ---------------------------------------------------------------------------
+# The OpenSearch security role `openrag_user_role` (securityconfig/roles.yml)
+# only grants indices:data/read/search on the index_patterns "documents",
+# "documents*", "knowledge_filters", "knowledge_filters*". Nothing re-templates
+# that static role config from OPENSEARCH_INDEX_NAME, so an index name outside
+# those patterns causes ingestion/search to fail with a 403
+# AuthorizationException. Keep this allowlist in sync with securityconfig/roles.yml.
+# ---------------------------------------------------------------------------
+ALLOWED_INDEX_NAME_PREFIXES = ("documents", "knowledge_filters")
+_PERMITTED_INDEX_NAME = re.compile(r"^(documents|knowledge_filters)[a-z0-9._-]*$")
+
+
+def is_permitted_index_name(index_name: str) -> bool:
+    """True if index_name matches an index_pattern the OpenSearch security
+    role (securityconfig/roles.yml) actually grants read/search access to."""
+    return bool(_PERMITTED_INDEX_NAME.match(index_name))
+
 
 def _validate_config_path(config_file: str | Path) -> Path:
     """Validate a config file path against a strict allowlist (anti path-injection)."""
@@ -382,7 +399,17 @@ class ConfigManager:
         if os.getenv("CHUNK_OVERLAP"):
             config_data["knowledge"]["chunk_overlap"] = int(os.getenv("CHUNK_OVERLAP"))
         if os.getenv("OPENSEARCH_INDEX_NAME"):
-            config_data["knowledge"]["index_name"] = os.getenv("OPENSEARCH_INDEX_NAME")
+            env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
+            if is_permitted_index_name(env_index_name):
+                config_data["knowledge"]["index_name"] = env_index_name
+            else:
+                logger.error(
+                    f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
+                    f"OpenSearch security role (must start with one of "
+                    f"{ALLOWED_INDEX_NAME_PREFIXES}); ignoring and keeping "
+                    f"{config_data['knowledge'].get('index_name', 'documents')!r}. "
+                    "See securityconfig/roles.yml."
+                )
         if os.getenv("OCR_ENABLED"):
             config_data["knowledge"]["ocr"] = os.getenv("OCR_ENABLED").lower() in (
                 "true",
