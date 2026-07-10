@@ -341,6 +341,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Wait for apt locks
+        run: |
+          sudo systemctl stop unattended-upgrades || true
+          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+            echo "Waiting for other apt/dpkg process to release the lock..."
+            sleep 5
+          done
+
       - name: Install Playwright Browsers
         working-directory: frontend
         run: |
