@@ -54,6 +54,14 @@ class TestOciRequestFields:
         assert body.oci_user == "u"
         assert body.oci_key == "pem-content"
 
+    def test_settings_update_body_accepts_oci_auth_method(self):
+        body = SettingsUpdateBody(oci_auth_method="workload_identity")
+        assert body.oci_auth_method == "workload_identity"
+
+    def test_onboarding_body_accepts_oci_auth_method(self):
+        body = OnboardingBody(oci_auth_method="instance_principal")
+        assert body.oci_auth_method == "instance_principal"
+
 
 class TestOciProviderConfigResponseModel:
     def test_shape_mirrors_watsonx_style(self):
@@ -67,6 +75,29 @@ class TestOciProviderConfigResponseModel:
         )
         assert cfg.has_key is True
         assert cfg.configured is True
+
+    def test_default_auth_method_is_api_key(self):
+        cfg = OCIProviderConfig(
+            has_key=True,
+            user="ocid1.user.oc1..xxx",
+            tenancy="ocid1.tenancy.oc1..xxx",
+            compartment_id="ocid1.compartment.oc1..xxx",
+            region="us-ashburn-1",
+            configured=True,
+        )
+        assert cfg.auth_method == "api_key"
+
+    def test_oci_provider_config_response_includes_auth_method(self):
+        cfg = OCIProviderConfig(
+            has_key=False,
+            user=None,
+            tenancy="t",
+            compartment_id="c",
+            region="eu-frankfurt-1",
+            auth_method="instance_principal",
+            configured=True,
+        )
+        assert cfg.auth_method == "instance_principal"
 
     def test_providers_config_requires_oci_field(self):
         with pytest.raises(ValidationError):
