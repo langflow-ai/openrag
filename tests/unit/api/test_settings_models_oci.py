@@ -62,6 +62,32 @@ class TestOciRequestFields:
         body = OnboardingBody(oci_auth_method="instance_principal")
         assert body.oci_auth_method == "instance_principal"
 
+    def test_settings_update_body_rejects_invalid_oci_auth_method(self):
+        with pytest.raises(ValidationError):
+            SettingsUpdateBody(oci_auth_method="invalid")
+
+    def test_onboarding_body_rejects_invalid_oci_auth_method(self):
+        with pytest.raises(ValidationError):
+            OnboardingBody(oci_auth_method="invalid")
+
+    @pytest.mark.parametrize("auth_method", ["api_key", "instance_principal", "workload_identity"])
+    def test_settings_update_body_accepts_all_legal_oci_auth_methods(self, auth_method):
+        body = SettingsUpdateBody(oci_auth_method=auth_method)
+        assert body.oci_auth_method == auth_method
+
+    @pytest.mark.parametrize("auth_method", ["api_key", "instance_principal", "workload_identity"])
+    def test_onboarding_body_accepts_all_legal_oci_auth_methods(self, auth_method):
+        body = OnboardingBody(oci_auth_method=auth_method)
+        assert body.oci_auth_method == auth_method
+
+    def test_settings_update_body_accepts_omitted_oci_auth_method(self):
+        body = SettingsUpdateBody()
+        assert body.oci_auth_method is None
+
+    def test_onboarding_body_accepts_omitted_oci_auth_method(self):
+        body = OnboardingBody()
+        assert body.oci_auth_method is None
+
 
 class TestOciProviderConfigResponseModel:
     def test_shape_mirrors_watsonx_style(self):
