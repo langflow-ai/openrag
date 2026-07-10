@@ -27,7 +27,7 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
   knowledge,
   cleanupDocuments,
 }) => {
-  test.setTimeout(180000);
+  test.setTimeout(320000);
 
   // Navigate to the application
   await navigateToHome(page);

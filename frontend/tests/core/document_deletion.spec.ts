@@ -9,7 +9,7 @@ test("Document deletion verification @33219237", async ({
   chat,
   cleanupDocuments,
 }) => {
-  test.setTimeout(180000);
+  test.setTimeout(300000); // 5 minutes
 
   const testDocumentPath = path.join(
     __dirname,

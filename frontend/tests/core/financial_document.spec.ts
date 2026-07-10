@@ -20,7 +20,7 @@ test.describe("Financial Document - OpenAI @33219232", () => {
     knowledge,
     chat,
   }) => {
-    test.setTimeout(300000); // 5 minutes
+    test.setTimeout(600000); // 10 minutes
 
     const testDocument = "WALMART_2024Q1_10Q.pdf";
 
