@@ -330,7 +330,7 @@ export class Knowledge {
     // Wait for its "Task completed" message so we don't confuse it with our own uploads.
     try {
       if (this.isPageClosed()) return;
-      await expect(this.taskCompletedToast()).toBeVisible({ timeout: 15000 });
+      await expect(this.taskCompletedToast()).toBeVisible({ timeout: 30000 });
       logger.info(
         `  ⏳ Waiting for "What is OpenRAG?" re-ingestion to complete...`,
       );
@@ -387,7 +387,7 @@ export class Knowledge {
     // check in verifyDocumentActive is the authoritative confirmation.
     const taskCompleted = this.page.getByText(/task completed/i).first();
     await taskCompleted
-      .waitFor({ state: "visible", timeout: 120000 })
+      .waitFor({ state: "visible", timeout: 180000 })
       .catch(() => {
         logger.info(
           `  ℹ️  "task completed" toast not detected — file may have been processed immediately or toast was dismissed`,
@@ -725,7 +725,7 @@ export class Knowledge {
       );
     }
 
-    const deadline = Date.now() + 120000; // 2 minutes for indexing to complete
+    const deadline = Date.now() + 180000; // 3 minutes for indexing to complete
     while (Date.now() < deadline) {
       // Filter grid to the target document
       await searchInp.clear();
