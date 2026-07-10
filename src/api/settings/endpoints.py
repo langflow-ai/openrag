@@ -1662,4 +1662,4 @@ async def refresh_openrag_docs(
         raise HTTPException(
             status_code=500,
             detail="Failed to refresh OpenRAG docs. Please try again or contact support.",
-        )
+        ) from e
