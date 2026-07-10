@@ -101,12 +101,12 @@ export function ChatRenderer({
     }
   }, [showLayout, pathname, router]);
 
+  const userDocFilterId = settings?.onboarding?.user_doc_filter_id;
+  const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
+
   // Helper to store default filter ID for new conversations after onboarding
   const storeDefaultFilterForNewConversations = useCallback(
     async (preferUserDoc: boolean, settingsToUse?: Settings) => {
-      // Use provided settings or fall back to prop
-      const currentSettings = settingsToUse || settings;
-
       if (typeof window === "undefined") {
         return;
       }
@@ -140,12 +140,18 @@ export function ChatRenderer({
 
       if (preferUserDoc) {
         // Completed full onboarding - prefer user document filter
-        filterId = currentSettings?.onboarding?.user_doc_filter_id || null;
+        filterId =
+          settingsToUse?.onboarding?.user_doc_filter_id ||
+          userDocFilterId ||
+          null;
       }
 
       // Fall back to OpenRAG docs filter
       if (!filterId) {
-        filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
+        filterId =
+          settingsToUse?.onboarding?.openrag_docs_filter_id ||
+          openragDocsFilterId ||
+          null;
       }
 
       if (filterId) {
@@ -165,12 +171,7 @@ export function ChatRenderer({
         }
       }
     },
-    [
-      setConversationFilter,
-      settings?.onboarding?.user_doc_filter_id,
-      settings?.onboarding?.openrag_docs_filter_id,
-      settings,
-    ],
+    [setConversationFilter, userDocFilterId, openragDocsFilterId],
   );
 
   // Note: Current step is now saved to backend via handleStepComplete
