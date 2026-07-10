@@ -42,14 +42,6 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     const files = allFiles.filter((file: string) => !file.startsWith("."));
     const fileCount = files.length;
 
-    // Convert .txt filenames to .md (as they get converted on ingestion)
-    const ingestedFileNames = files.map((file) => {
-      if (file.endsWith(".txt")) {
-        return file.replace(".txt", ".md");
-      }
-      return file;
-    });
-
     logger.info(`\n📦 Bulk Document Ingestion Test`);
     logger.info(`  📁 Folder: bulk_doc_test`);
     logger.info(`  📄 Files found: ${fileCount} (excluding hidden files)`);
@@ -60,7 +52,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     // Step 1: Clear all files from the folder if they exist in the KB
     logger.info(`\n  🧹 Cleaning up existing files from knowledge base...`);
 
-    const deleteResult = await knowledge.deleteDocument(ingestedFileNames);
+    const deleteResult = await knowledge.deleteDocument(files);
 
     if (typeof deleteResult === "object") {
       logger.info(`     ✓ Deleted: ${deleteResult.found.length} file(s)`);
@@ -91,7 +83,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     }
 
     // Register files for cleanup after test (use ingested names)
-    await cleanupDocuments(ingestedFileNames);
+    await cleanupDocuments(files);
 
     // Step 2: Ingest the entire folder
     logger.info(`\n  📤 Ingesting bulk folder (5 files)...`);
@@ -113,7 +105,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     let activeCount = 0;
     const failedFiles: string[] = [];
 
-    for (const fileName of ingestedFileNames) {
+    for (const fileName of files) {
       try {
         await knowledge.verifyDocumentActive(fileName);
         activeCount++;
@@ -123,9 +115,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       }
     }
 
-    logger.info(
-      `     ✓ Active files: ${activeCount}/${ingestedFileNames.length}`,
-    );
+    logger.info(`     ✓ Active files: ${activeCount}/${files.length}`);
 
     // Final verification
     if (failedFiles.length > 0) {
@@ -165,16 +155,11 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     const files = allFiles.filter((file: string) => !file.startsWith("."));
     const totalFileCount = files.length;
 
-    // Identify supported files (.txt files that will be converted to .md)
+    // Identify supported files
     const supportedFiles = files.filter((file) => file.endsWith(".txt"));
     const unsupportedFiles = files.filter((file) => !file.endsWith(".txt"));
     const expectedSuccessCount = supportedFiles.length;
     const expectedSkippedCount = unsupportedFiles.length;
-
-    // Convert .txt filenames to .md (as they get converted on ingestion)
-    const ingestedFileNames = supportedFiles.map((file) =>
-      file.replace(".txt", ".md"),
-    );
 
     logger.info(`\n🧪 NEGATIVE TEST: Combo Folder with Mixed File Types`);
     logger.info(`  📁 Folder: combo`);
@@ -189,7 +174,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     // Step 1: Clear existing files from knowledge base
     logger.info(`\n  🧹 Cleaning up existing files...`);
 
-    const deleteResult = await knowledge.deleteDocument(ingestedFileNames);
+    const deleteResult = await knowledge.deleteDocument(supportedFiles);
 
     if (typeof deleteResult === "object") {
       logger.info(
@@ -220,7 +205,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     }
 
     // Register files for cleanup after test
-    await cleanupDocuments(ingestedFileNames);
+    await cleanupDocuments(supportedFiles);
 
     // Step 2: Upload combo folder
     logger.info(
@@ -273,7 +258,7 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     let activeCount = 0;
     const failedFiles: string[] = [];
 
-    for (const fileName of ingestedFileNames) {
+    for (const fileName of supportedFiles) {
       try {
         await knowledge.verifyDocumentActive(fileName);
         activeCount++;
