@@ -14,7 +14,6 @@ import { navigateToHome } from "../utils/navigation";
  * - Waits for "Task completed" with "5 files uploaded successfully" message
  * - Timeout: 2 minutes for bulk upload processing
  *
- * Note: .txt files are converted to .md files upon ingestion
  */
 
 test.describe("Bulk Document Ingestion @33219230", () => {

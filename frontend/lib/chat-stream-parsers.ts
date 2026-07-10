@@ -380,17 +380,6 @@ export function detectImplicitToolCall(
 
   const c = chunk as Chunk;
 
-  const toolRelatedKeys = Object.keys(c).filter(
-    (key) =>
-      key.toLowerCase().includes("tool") ||
-      key.toLowerCase().includes("call") ||
-      key.toLowerCase().includes("retrieval") ||
-      key.toLowerCase().includes("function") ||
-      key.toLowerCase().includes("result"),
-  );
-  if (toolRelatedKeys.length > 0) {
-  }
-
   const data = c.data as Chunk | undefined;
 
   const nonEmpty = (v: unknown): v is unknown[] =>

@@ -6,8 +6,6 @@ import { navigateToHome } from "../utils/navigation";
 
 const TEST_DOCUMENT = "OpenRAG.Index.Test.Document.txt";
 const TEST_DOCUMENT_PATH = path.join(__dirname, "../test-data", TEST_DOCUMENT);
-// After ingestion, .txt files become .md files
-const TEST_DOCUMENT_INGESTED = "OpenRAG.Index.Test.Document.md";
 const UNIQUE_SEARCH_TOKEN = "OPENSEARCH-7419-ZX";
 
 test("Opensearch Indexing - OpenAI @33219220", async ({
@@ -23,10 +21,9 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
 
   logger.info(`\n🧪 Testing Opensearch Indexing with OpenAI`);
 
-  // Step 1: Cleanup test document if it exists (.txt becomes .md after ingestion)
   logger.info(`  🧹 Cleaning up existing test document...`);
   try {
-    await knowledge.deleteDocument(TEST_DOCUMENT_INGESTED);
+    await knowledge.deleteDocument(TEST_DOCUMENT);
     logger.info(`  ✓ Test document cleaned up`);
   } catch (_error) {
     logger.info(`  ℹ️  No existing test document to clean up`);
@@ -43,12 +40,12 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
   const ingestedFileName = await knowledge.ingestFile(TEST_DOCUMENT_PATH);
   logger.info(`  ✓ Document ingested: ${ingestedFileName}`);
 
-  // Register for cleanup (use .md extension as that's what it becomes)
-  await cleanupDocuments([TEST_DOCUMENT_INGESTED]);
+  // Register for cleanup
+  await cleanupDocuments([TEST_DOCUMENT]);
 
   // Step 4: Wait for document to be indexed (Active status)
   logger.info(`  ⏳ Waiting for document to be indexed...`);
-  await knowledge.verifyDocumentActive(TEST_DOCUMENT_INGESTED);
+  await knowledge.verifyDocumentActive(TEST_DOCUMENT);
   logger.info(`  ✓ Document is indexed and active`);
 
   // Step 5: Search for the unique token
@@ -63,11 +60,11 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
 
   // Step 6: Verify results
   // The test document must be in the results (other documents may also appear)
-  const targetDocumentFound = searchResults.includes(TEST_DOCUMENT_INGESTED);
+  const targetDocumentFound = searchResults.includes(TEST_DOCUMENT);
 
   if (!targetDocumentFound) {
     throw new Error(
-      `❌ FAILED: Test document "${TEST_DOCUMENT_INGESTED}" not found in search results for token "${UNIQUE_SEARCH_TOKEN}"\n` +
+      `❌ FAILED: Test document "${TEST_DOCUMENT}" not found in search results for token "${UNIQUE_SEARCH_TOKEN}"\n` +
         `   Search returned ${searchResults.length} document(s): ${searchResults.join(", ")}\n` +
         `   This means the document was not properly indexed or the search functionality is not working.`,
     );
@@ -75,14 +72,10 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
 
   // Success!
   if (searchResults.length === 1) {
-    logger.info(
-      `  ✅ SUCCESS: "${TEST_DOCUMENT_INGESTED}" found as the only result`,
-    );
+    logger.info(`  ✅ SUCCESS: "${TEST_DOCUMENT}" found as the only result`);
   } else {
-    const otherDocs = searchResults.filter(
-      (doc) => doc !== TEST_DOCUMENT_INGESTED,
-    );
-    logger.info(`  ✅ SUCCESS: "${TEST_DOCUMENT_INGESTED}" found in results`);
+    const otherDocs = searchResults.filter((doc) => doc !== TEST_DOCUMENT);
+    logger.info(`  ✅ SUCCESS: "${TEST_DOCUMENT}" found in results`);
     logger.info(
       `     ℹ️  Also found ${otherDocs.length} other document(s): ${otherDocs.join(", ")}`,
     );
@@ -91,5 +84,5 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
 
   // Assertions for Playwright reporting
   expect(targetDocumentFound).toBe(true);
-  expect(searchResults).toContain(TEST_DOCUMENT_INGESTED);
+  expect(searchResults).toContain(TEST_DOCUMENT);
 });

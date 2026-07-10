@@ -227,10 +227,6 @@ export class SharePointV8Handler {
   }
 
   private handleWindowMessage(event: MessageEvent): void {
-    // === DIAGNOSTIC: Log all messages from picker window (before filtering) ===
-    if (event.source === this.win) {
-    }
-
     // Verify the message is from our picker window
     if (event.source !== this.win) {
       return;

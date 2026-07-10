@@ -440,7 +440,6 @@ function ChatPage() {
 
             if (functionCalls.length > 0) {
               message.functionCalls = functionCalls;
-            } else {
             }
 
             // Extract usage data from response_data
