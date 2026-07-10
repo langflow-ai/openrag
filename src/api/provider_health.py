@@ -87,6 +87,7 @@ async def check_provider_health(
                 oci_compartment_id = getattr(provider_config, "compartment_id", None)
                 oci_key = getattr(provider_config, "key", None)
                 oci_key_file = getattr(provider_config, "key_file", None)
+                oci_auth_method = getattr(provider_config, "auth_method", None)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -143,6 +144,7 @@ async def check_provider_health(
             embedding_oci_compartment_id = getattr(embedding_provider_config, "compartment_id", None)
             embedding_oci_key = getattr(embedding_provider_config, "key", None)
             embedding_oci_key_file = getattr(embedding_provider_config, "key_file", None)
+            embedding_oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -217,6 +219,7 @@ async def check_provider_health(
                 project_id=project_id,
                 test_completion=test_completion,
                 credentials=credentials,
+                oci_auth_method=oci_auth_method,
                 oci_user=oci_user,
                 oci_fingerprint=oci_fingerprint,
                 oci_tenancy=oci_tenancy,
@@ -290,6 +293,7 @@ async def check_provider_health(
                     project_id=embedding_project_id,
                     test_completion=test_completion,
                     credentials=embedding_credentials,
+                    oci_auth_method=embedding_oci_auth_method,
                     oci_user=embedding_oci_user,
                     oci_fingerprint=embedding_oci_fingerprint,
                     oci_tenancy=embedding_oci_tenancy,
