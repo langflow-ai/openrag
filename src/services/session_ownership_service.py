@@ -159,13 +159,13 @@ class SessionOwnershipService:
             async with sess_factory() as session:
                 result = await session.execute(select(SessionOwnership))
                 rows = result.scalars().all()
-            users: dict[str, int] = {}
+            user_counts: dict[str, int] = {}
             for r in rows:
-                users[r.user_id] = users.get(r.user_id, 0) + 1
+                user_counts[r.user_id] = user_counts.get(r.user_id, 0) + 1
             return {
                 "total_tracked_sessions": len(rows),
-                "unique_users": len(users),
-                "sessions_per_user": users,
+                "unique_users": len(user_counts),
+                "sessions_per_user": user_counts,
             }
         except Exception as exc:  # noqa: BLE001
             logger.warning("ownership stats DB read failed", error=str(exc))
