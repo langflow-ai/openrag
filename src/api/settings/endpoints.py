@@ -341,6 +341,7 @@ async def get_settings(
                     tenancy=openrag_config.providers.oci.tenancy or None,
                     compartment_id=openrag_config.providers.oci.compartment_id or None,
                     region=openrag_config.providers.oci.region or None,
+                    auth_method=openrag_config.providers.oci.auth_method,
                     configured=openrag_config.providers.oci.configured,
                 ),
                 custom=_custom_providers_for_settings(openrag_config),
@@ -577,9 +578,6 @@ async def update_settings(
                     oci_compartment_id = getattr(embedding_provider_config, "compartment_id", None)
                     oci_key = getattr(embedding_provider_config, "key", None)
                     oci_key_file = getattr(embedding_provider_config, "key_file", None)
-                    # No body.oci_auth_method field exists (auth_method isn't yet
-                    # settable via this endpoint), so unlike its sibling oci_*
-                    # locals above, this one has no request-body override step.
                     oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
 
                     if body.oci_user is not None:
@@ -594,6 +592,8 @@ async def update_settings(
                         oci_key = body.oci_key
                     if body.oci_key_file is not None:
                         oci_key_file = body.oci_key_file
+                    if body.oci_auth_method is not None:
+                        oci_auth_method = body.oci_auth_method
 
                     await validate_provider_setup(
                         provider=embedding_provider,
@@ -964,6 +964,12 @@ async def update_settings(
 
         if body.oci_region is not None:
             working_config.providers.oci.region = body.oci_region.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_auth_method is not None:
+            working_config.providers.oci.auth_method = body.oci_auth_method.strip()
             working_config.providers.oci.configured = True
             config_updated = True
             provider_updated = True
@@ -1361,6 +1367,11 @@ async def onboarding(
 
         if body.oci_region:
             current_config.providers.oci.region = body.oci_region.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_auth_method:
+            current_config.providers.oci.auth_method = body.oci_auth_method.strip()
             current_config.providers.oci.configured = True
             config_updated = True
 

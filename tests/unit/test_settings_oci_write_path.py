@@ -19,11 +19,12 @@ hit ``AttributeError: module 'api.settings' has no attribute
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import api.settings.endpoints as settings_endpoints
+import utils.oci_auth as oci_auth
 from api.settings.models import SettingsUpdateBody
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
@@ -52,9 +53,17 @@ def _make_config(*, oci_configured: bool, embedding_provider: str = "openai"):
             else "",
             key_file="",
             region="us-ashburn-1" if oci_configured else "",
+            # Matches OCIConfig's default auth_method regardless of whether
+            # credentials are configured -- see config.config_manager.OCIConfig.
+            auth_method="api_key",
             configured=oci_configured,
         ),
     )
+    # update_settings()'s embedding-provider validation branch resolves the
+    # effective provider config via current_config.providers.get_provider_config(...)
+    # (see config.config_manager.ProvidersConfig.get_provider_config). The real
+    # config object has this method; this fake needs it too for that branch to run.
+    providers.get_provider_config = lambda provider: getattr(providers, provider)
     return SimpleNamespace(
         edited=True,
         agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-5.4-mini"),
@@ -202,3 +211,46 @@ async def test_update_settings_remove_oci_config_blocked_without_other_provider(
     assert b"Cannot remove OCI Generative AI configuration" in bytes(response.body)
     # Nothing was cleared since the removal was rejected.
     assert config.providers.oci.configured is True
+
+
+@pytest.mark.asyncio
+async def test_update_settings_oci_auth_method_override_reaches_validation(monkeypatch):
+    """Regression test for the ordering bug flagged during Task 4 and closed
+    in Task 5: ``update_settings()`` builds its local ``oci_auth_method``
+    variable (used for provider validation) from the pre-existing config
+    *before* ``working_config`` -- the deep copy staged for persistence --
+    even exists. Unlike its 7 sibling oci_* locals, ``oci_auth_method`` had
+    no pre-validation override step for a request-body value, so a PATCH
+    that changed auth_method (while also touching the embedding provider)
+    would validate against the OLD auth_method while persisting the NEW one.
+
+    Drives update_settings() with a body that sets both
+    ``embedding_provider="oci"`` (required to enter the embedding validation
+    branch at all) and ``oci_auth_method="instance_principal"``, against a
+    config whose stored auth_method is still the "api_key" default, and
+    asserts that the signer-construction check invoked deep inside
+    validation actually receives "instance_principal" -- not the stale
+    "api_key" config value. ``build_oci_signer`` is mocked so no real OCI
+    SDK / instance-metadata call happens.
+    """
+    settings_endpoints._background_tasks.clear()
+    config = _make_config(oci_configured=True, embedding_provider="oci")
+    assert config.providers.oci.auth_method == "api_key"  # the stale value this test guards against
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
+
+    build_signer_mock = Mock(return_value=object())
+    monkeypatch.setattr(oci_auth, "build_oci_signer", build_signer_mock, raising=True)
+
+    response = await settings_endpoints.update_settings(
+        SettingsUpdateBody(embedding_provider="oci", oci_auth_method="instance_principal"),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
+    # Proves the local-override fix: validation received the NEW auth_method,
+    # not the config's stale "api_key" value.
+    build_signer_mock.assert_called_once_with("instance_principal")
+    # Proves the working_config write also lands: the new auth_method is
+    # what actually gets persisted, not just what validation saw.
+    assert saved_configs[0].providers.oci.auth_method == "instance_principal"
