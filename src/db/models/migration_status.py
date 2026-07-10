@@ -1,6 +1,6 @@
 """Tracks one-shot runtime migrations (e.g. JSON->DB)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from sqlmodel import Field, SQLModel
 
@@ -9,5 +9,5 @@ class MigrationStatus(SQLModel, table=True):
     __tablename__ = "migration_status"
 
     name: str = Field(primary_key=True, max_length=128)
-    completed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     notes: str = Field(default="", max_length=2048)

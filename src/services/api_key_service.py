@@ -5,7 +5,7 @@ API Key Service for managing user API keys for public API authentication.
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from config.settings import API_KEYS_INDEX_NAME
@@ -113,7 +113,7 @@ class APIKeyService:
             # Create a unique key_id
             key_id = secrets.token_urlsafe(16)
 
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
 
             # Create the document to store
             key_doc = {
@@ -209,7 +209,7 @@ class APIKeyService:
             # Update last_used_at and opportunistically migrate legacy hashes.
             try:
                 write_client = self._get_write_opensearch_client()
-                update_doc = {"last_used_at": datetime.now(timezone.utc).isoformat()}
+                update_doc = {"last_used_at": datetime.now(UTC).isoformat()}
                 if matched_hash != key_hash:
                     update_doc["key_hash"] = key_hash
                 await write_client.update(

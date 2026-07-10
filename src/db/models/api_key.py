@@ -4,7 +4,7 @@ Placed in Phase 1 only as a forward-compatible schema; the existing
 OpenSearch-backed APIKeyService is unchanged.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Optional
 
 from sqlalchemy import JSON, Column
@@ -19,10 +19,10 @@ class ApiKey(SQLModel, table=True):
     name: str = Field(max_length=128)
     key_hash: str = Field(max_length=128, unique=True, index=True)
     key_prefix: str = Field(max_length=32)
-    scope_role_ids: Optional[list] = Field(
+    scope_role_ids: list | None = Field(
         default=None, sa_column=Column("scope_role_ids", JSON, nullable=True)
     )
-    last_used_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    revoked_at: Optional[datetime] = Field(default=None)
+    last_used_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    revoked_at: datetime | None = Field(default=None)
     revoked: bool = Field(default=False)

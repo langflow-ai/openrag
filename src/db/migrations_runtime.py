@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,7 +53,7 @@ async def _already_done(session: AsyncSession, name: str) -> bool:
 
 
 async def _mark_done(session: AsyncSession, name: str, notes: str = "") -> None:
-    session.add(MigrationStatus(name=name, completed_at=datetime.now(timezone.utc), notes=notes))
+    session.add(MigrationStatus(name=name, completed_at=datetime.now(UTC), notes=notes))
     await session.flush()
 
 
