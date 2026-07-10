@@ -81,7 +81,7 @@
   },
   "overrides": {
     "postcss-selector-parser": "6.1.4",
-    "brace-expansion": "5.0.6",
+    "brace-expansion": "5.0.7",
     "js-cookie": "3.0.7",
     "picomatch": "4.0.4",
     "sharp": "file:./stubs/sharp-0.34.5.tgz",
