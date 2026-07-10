@@ -9,12 +9,17 @@ requires before it will even attempt to sign a request), catching obviously
 broken configuration before it reaches litellm.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import api.provider_validation as provider_validation
-from api.provider_validation import _test_oci_credential_shape, validate_provider_setup
+from api.provider_validation import (
+    OCISignerConstructionError,
+    _test_oci_credential_shape,
+    _test_oci_signer_construction,
+    validate_provider_setup,
+)
 from api.provider_validation import test_lightweight_health as run_lightweight_health
 
 VALID_KWARGS = dict(
@@ -179,3 +184,54 @@ class TestOciDispatchThroughLightweightHealth:
     async def test_validate_provider_setup_propagates_shape_errors(self):
         with pytest.raises(Exception, match="OCI configuration"):
             await validate_provider_setup(provider="oci", test_completion=False)
+
+
+class TestOciSignerConstructionValidation:
+    # Patched at "oci.auth.signers.*" (the real SDK module), not
+    # "utils.oci_auth.oci...": build_oci_signer() imports `oci.auth.signers`
+    # locally inside its function body, so that name is never bound as a
+    # module-level attribute of utils.oci_auth for mock.patch's dotted-path
+    # lookup to find. Patching the real oci.auth.signers module directly (as
+    # tests/unit/utils/test_oci_auth.py already does for build_oci_signer
+    # itself) is the pattern that actually intercepts the call.
+    @pytest.mark.asyncio
+    @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
+    async def test_instance_principal_success(self, mock_signer_cls):
+        mock_signer_cls.return_value = MagicMock()
+        await _test_oci_signer_construction("instance_principal")  # must not raise
+
+    @pytest.mark.asyncio
+    @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
+    async def test_instance_principal_failure_raises(self, mock_signer_cls):
+        mock_signer_cls.side_effect = Exception("not on OCI compute")
+        with pytest.raises(OCISignerConstructionError):
+            await _test_oci_signer_construction("instance_principal")
+
+    @pytest.mark.asyncio
+    @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
+    async def test_workload_identity_success(self, mock_factory):
+        mock_factory.return_value = MagicMock()
+        await _test_oci_signer_construction("workload_identity")  # must not raise
+
+
+class TestValidateProviderSetupOciAuthMethodDispatch:
+    @pytest.mark.asyncio
+    @patch("api.provider_validation._test_oci_signer_construction")
+    @patch("api.provider_validation._test_oci_credential_shape")
+    async def test_api_key_uses_credential_shape_check(self, mock_shape, mock_signer):
+        await run_lightweight_health(
+            provider="oci",
+            oci_auth_method="api_key",
+            oci_user="u", oci_fingerprint="f", oci_tenancy="t",
+            oci_compartment_id="c", oci_key="-----BEGIN PRIVATE KEY-----",
+        )
+        mock_shape.assert_called_once()
+        mock_signer.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("api.provider_validation._test_oci_signer_construction")
+    @patch("api.provider_validation._test_oci_credential_shape")
+    async def test_instance_principal_uses_signer_construction_check(self, mock_shape, mock_signer):
+        await run_lightweight_health(provider="oci", oci_auth_method="instance_principal")
+        mock_signer.assert_called_once_with("instance_principal")
+        mock_shape.assert_not_called()
