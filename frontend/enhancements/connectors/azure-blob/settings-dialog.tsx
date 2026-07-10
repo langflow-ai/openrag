@@ -49,14 +49,19 @@ export default function AzureBlobSettingsDialog({
   const [selectedContainers, setSelectedContainers] = useState<string[]>(
     defaults?.container_names ?? [],
   );
-  const [showContainers, setShowContainers] = useState(false);
-  useEffect(() => {
+  const [showContainers, setShowContainers] = useState(
+    !!defaults?.container_names?.length,
+  );
+
+  const [prevDefaults, setPrevDefaults] = useState(defaults);
+  if (defaults !== prevDefaults) {
+    setPrevDefaults(defaults);
     if (defaults?.container_names?.length) {
       setContainers(defaults.container_names);
       setSelectedContainers(defaults.container_names);
       setShowContainers(true);
     }
-  }, [defaults]);
+  }
 
   const [isFetchingContainers, setIsFetchingContainers] = useState(false);
   const [containersError, setContainersError] = useState<string | null>(null);
@@ -206,6 +211,8 @@ export default function AzureBlobSettingsDialog({
               onAuthModeChange={() => {
                 setShowContainers(false);
                 setContainers(null);
+                setContainersError(null);
+                setFormError(null);
               }}
             />
 
