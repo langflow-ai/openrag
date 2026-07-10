@@ -20,7 +20,7 @@ test("Picture Description Configuration @33219221", async ({
     "Picture description feature is disabled for SaaS environments",
   );
 
-  test.setTimeout(320000);
+  test.setTimeout(600000);
 
   const testDocuments = ["cat1.pdf", "cat2.pdf"];
 

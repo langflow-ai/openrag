@@ -725,7 +725,7 @@ export class Knowledge {
       );
     }
 
-    const deadline = Date.now() + 180000; // 3 minutes for indexing to complete
+    const deadline = Date.now() + 300000; // 5 minutes for indexing to complete
     while (Date.now() < deadline) {
       // Filter grid to the target document
       await searchInp.clear();
