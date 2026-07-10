@@ -165,7 +165,7 @@ services:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
-      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data
+      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:z
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"
