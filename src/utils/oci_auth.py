@@ -86,3 +86,33 @@ def build_oci_signer(auth_method: str) -> Any | None:
         f"Unknown OCI auth_method: {auth_method!r}. Expected one of "
         "'api_key', 'instance_principal', 'workload_identity'."
     )
+
+
+# Signers constructed via IMDS/OKE-proxymux are designed to be built once
+# and reused for the process lifetime -- they self-refresh their token as
+# needed via do_request_sign(). Cache per auth_method so hot-path embed
+# calls (search_service, processors) don't pay a fresh IMDS/proxymux round
+# trip on every request. Keyed by auth_method so switching between
+# instance_principal and workload_identity mid-process still works.
+_signer_cache: dict[str, Any] = {}
+
+
+def get_cached_oci_signer(auth_method: str) -> Any | None:
+    """Like ``build_oci_signer``, but caches successful constructions per
+    ``auth_method`` for the process lifetime.
+
+    Intended for hot-path call sites (embedding calls on every search/ingest
+    request); do NOT use this for the health-check path, which must always
+    verify current connectivity via ``build_oci_signer`` directly.
+
+    A construction failure (OCISignerConstructionError/ValueError) is never
+    cached, so a transient IMDS/proxymux blip doesn't become a permanent
+    failure -- the next call retries construction from scratch.
+    """
+    if auth_method in _signer_cache:
+        return _signer_cache[auth_method]
+
+    signer = build_oci_signer(auth_method)
+    if signer is not None:
+        _signer_cache[auth_method] = signer
+    return signer
