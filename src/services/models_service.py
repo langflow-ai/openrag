@@ -206,13 +206,18 @@ class ModelsService:
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
-                # OCI (Oracle Cloud Infrastructure Generative AI). Gate on the
-                # full credential set required for OCI's API Signing Key auth
-                # scheme (user/fingerprint/tenancy/compartment_id plus one of
-                # key/key_file) — a partial credential set can't sign a real
-                # request, so registering models for it would let queries
-                # resolve to a provider that will fail at call time instead
-                # of failing fast in get_litellm_model_name(strict=True).
+                # OCI (Oracle Cloud Infrastructure Generative AI). Gate on
+                # compartment_id plus auth_method-specific requirements: for
+                # api_key, the full API Signing Key credential set (user/
+                # fingerprint/tenancy plus one of key/key_file); for
+                # instance_principal/workload_identity, compartment_id alone
+                # is sufficient — the signer is constructed lazily at call
+                # time (build_oci_signer()), not here, to avoid a live IMDS/
+                # proxymux call on every registry refresh. A partial
+                # credential set can't sign a real request, so registering
+                # models for it would let queries resolve to a provider that
+                # will fail at call time instead of failing fast in
+                # get_litellm_model_name(strict=True).
                 oci_config = config.providers.oci
                 oci_ready = bool(oci_config.compartment_id) and (
                     (
