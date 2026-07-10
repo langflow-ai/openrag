@@ -1161,7 +1161,9 @@ async def onboarding(
 
                     if not config_manager.save_config_file(current_config):
                         logger.error("Failed to save embedding model to config")
-                        return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+                        return JSONResponse(
+                            {"error": "Failed to save configuration"}, status_code=500
+                        )
 
                     provider_health_cache.invalidate()
 
@@ -1194,7 +1196,9 @@ async def onboarding(
                 except Exception as e:
                     logger.error("Failed to complete sample data ingestion", error=str(e))
                     return JSONResponse(
-                        {"error": "Failed to ingest sample documents. Please try again or contact support."},
+                        {
+                            "error": "Failed to ingest sample documents. Please try again or contact support."
+                        },
                         status_code=500,
                     )
 
