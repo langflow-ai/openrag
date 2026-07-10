@@ -11,8 +11,8 @@ the JSON envelope; no DB-level encryption is added here because the
 other fields (embedding model, prompt, etc.) are not secrets.
 """
 
-from datetime import UTC, datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel

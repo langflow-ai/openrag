@@ -5,7 +5,7 @@ API Key Service for managing user API keys for public API authentication.
 import hashlib
 import hmac
 import secrets
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from config.settings import API_KEYS_INDEX_NAME

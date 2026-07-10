@@ -12,8 +12,7 @@ catalog has a single source of truth.
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime, timezone
-from typing import Union
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 

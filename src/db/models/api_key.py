@@ -4,8 +4,7 @@ Placed in Phase 1 only as a forward-compatible schema; the existing
 OpenSearch-backed APIKeyService is unchanged.
 """
 
-from datetime import UTC, datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel

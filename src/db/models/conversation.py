@@ -9,8 +9,7 @@ reason as ``session_ownership.user_id`` — legacy JSON may reference
 ids not in the users table yet.
 """
 
-from datetime import UTC, datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import Index
 from sqlmodel import Field, SQLModel

@@ -1,5 +1,4 @@
-from datetime import UTC, datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel

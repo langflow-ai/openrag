@@ -5,8 +5,7 @@ is a deterministic SHA-256 of the lowercase email so we keep a unique
 constraint and exact-match lookup despite the encrypted blob.
 """
 
-from datetime import UTC, datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, SQLModel

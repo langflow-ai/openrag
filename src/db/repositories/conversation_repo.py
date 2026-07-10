@@ -1,7 +1,7 @@
 """Async CRUD over the ``conversations`` table — chat-history metadata."""
 
-from datetime import UTC, datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

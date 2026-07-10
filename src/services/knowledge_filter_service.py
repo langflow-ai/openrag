@@ -351,7 +351,7 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Subscription not found"}
 
             # Update the filter document
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             update_body = {
                 "doc": {

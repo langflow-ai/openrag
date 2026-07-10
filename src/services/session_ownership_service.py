@@ -14,12 +14,11 @@ flipped from sync to ``await`` as part of this migration.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from collections.abc import Callable
-from datetime import UTC, datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from config.paths import get_data_file
 from config.storage_mode import (

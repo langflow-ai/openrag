@@ -439,7 +439,7 @@ class SharePointConnector(BaseConnector):
 
     def _get_subscription_expiry(self) -> str:
         """Get subscription expiry time (max 3 days for Graph API)"""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         expiry = datetime.now(UTC) + timedelta(days=3)  # 3 days max for Graph
         return expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ")

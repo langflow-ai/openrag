@@ -5,7 +5,6 @@ remains the source of truth until Phase 2 migrates keys here.
 """
 
 from datetime import UTC
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +32,7 @@ class ApiKeyRepo:
         return api_key
 
     async def revoke(self, key_id: str) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         row = await self.session.get(ApiKey, key_id)
         if row:
