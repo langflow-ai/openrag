@@ -84,6 +84,7 @@ def test_invalidate_clears_all_entries():
         ),
         ("embedding_oci_key", "-----BEGIN PRIVATE KEY-----\naaa", "-----BEGIN PRIVATE KEY-----\nbbb"),
         ("embedding_oci_key_file", "/tmp/a.pem", "/tmp/b.pem"),
+        ("embedding_oci_auth_method", "instance_principal", "workload_identity"),
     ],
 )
 def test_cache_key_differs_when_any_field_changes(field, a, b):

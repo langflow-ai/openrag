@@ -67,6 +67,7 @@ def cache_key(
     embedding_oci_compartment_id: str | None = None,
     embedding_oci_key: str | None = None,
     embedding_oci_key_file: str | None = None,
+    embedding_oci_auth_method: str | None = None,
 ) -> str:
     """Build the cache key for a polled health-check call.
 
@@ -96,6 +97,7 @@ def cache_key(
         embedding_oci_compartment_id or "",
         _fingerprint(embedding_oci_key),
         embedding_oci_key_file or "",
+        embedding_oci_auth_method or "",
     ]
     return hashlib.blake2b("|".join(parts).encode()).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 
