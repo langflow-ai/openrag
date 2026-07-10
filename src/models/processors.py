@@ -27,7 +27,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.oci_auth import build_oci_signer
+from utils.oci_auth import get_cached_oci_signer
 from utils.opensearch_queries import build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
@@ -576,7 +576,7 @@ class TaskProcessor:
         extra_kwargs = cohere_input_type_kwargs(litellm_embedding_model, COHERE_DOCUMENT_INPUT_TYPE)
         if is_oci_litellm_model(litellm_embedding_model):
             oci_config = get_openrag_config().providers.oci
-            oci_signer = build_oci_signer(oci_config.auth_method)
+            oci_signer = get_cached_oci_signer(oci_config.auth_method)
             extra_kwargs.update(oci_credential_kwargs(oci_config, signer=oci_signer))
 
         for batch in text_batches:
