@@ -52,6 +52,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=8.0.0",
     "litellm>=1.96.2,<2.0.0",
     "joserfc>=1.7.3,<2.0.0",
+    "oci>=2.150.0,<3",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
     "fastmcp>=3.4.0",
