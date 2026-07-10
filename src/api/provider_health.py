@@ -170,6 +170,7 @@ async def check_provider_health(
                 embedding_oci_compartment_id=embedding_oci_compartment_id,
                 embedding_oci_key=embedding_oci_key,
                 embedding_oci_key_file=embedding_oci_key_file,
+                embedding_oci_auth_method=embedding_oci_auth_method,
             )
             # A cached *healthy* verdict must not outlive a real failure. The
             # cache exists to coalesce identical probes, and a recorded failure
