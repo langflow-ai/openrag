@@ -210,6 +210,18 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Cleanup workspace and Docker images
+        if: always()
+        run: |
+          rm -rf .ci-artifacts
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
   test-suite:
     needs: [changes, build-images]
     if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
@@ -257,6 +269,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdks/typescript/package-lock.json
 
       - name: Python version
         run: uv python install 3.13
@@ -268,7 +282,9 @@ jobs:
           path: .ci-artifacts
 
       - name: Load OpenRAG images
-        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+        run: |
+          docker load -i .ci-artifacts/openrag-ci-images.tar
+          rm -rf .ci-artifacts
 
       - name: Run ${{ matrix.suite }} integration suite
         env:
@@ -295,6 +311,17 @@ jobs:
           name: service-logs-${{ matrix.suite }}
           path: service-logs/
           retention-days: 7
+
+      - name: Teardown and Cleanup
+        if: always()
+        run: |
+          make clean || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
 
   e2e-run:
     needs: [changes, build-images]
@@ -333,6 +360,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Python
         run: uv python install 3.13
@@ -372,7 +401,9 @@ jobs:
           path: .ci-artifacts
 
       - name: Load OpenRAG images
-        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+        run: |
+          docker load -i .ci-artifacts/openrag-ci-images.tar
+          rm -rf .ci-artifacts
 
       - name: Setup E2E infrastructure
         run: |
@@ -432,6 +463,11 @@ jobs:
           docker rm -f openrag-backend-proxy 2>/dev/null || true
           make clean || true
           docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
 
   e2e-merge-reports:
     if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
@@ -448,6 +484,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend

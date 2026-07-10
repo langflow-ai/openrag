@@ -145,7 +145,7 @@ echo "${yellow}Cleaning up old containers and volumes...${nc}"
 "${compose_cmd[@]}" down -v 2>/dev/null || true
 
 echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENRAG_VERSION:-latest}'${nc}"
-OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch dashboards langflow openrag-backend openrag-frontend
+OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend
 
 echo "${cyan}Architecture: $(uname -m), Platform: $(uname -s)${nc}"
 echo "${yellow}Starting docling-serve...${nc}"
