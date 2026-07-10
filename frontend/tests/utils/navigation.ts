@@ -61,8 +61,8 @@ export async function navigateToKnowledge(page: Page): Promise<void> {
  */
 export async function navigateToSettings(page: Page): Promise<void> {
   await navigateToApp(page, "/settings");
-  // Check for either Model Providers text or Settings heading with ibm-section-title class
-  const modelProvidersVisible = page.getByText("Model Providers").first();
+  // Check for either Providers text or Settings heading with ibm-section-title class
+  const modelProvidersVisible = page.getByText("Providers").first();
   const settingsHeadingVisible = page.locator(
     'h2.ibm-section-title:has-text("Settings")',
   );

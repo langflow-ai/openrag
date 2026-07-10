@@ -19,9 +19,9 @@ export class ProviderDetector {
   async isProviderConfigured(providerName: string): Promise<boolean> {
     await this.settings.open();
 
-    // Wait for Model Providers section to be visible
+    // Wait for Providers section to be visible
     await this.page
-      .getByText("Model Providers")
+      .getByText("Providers")
       .waitFor({ state: "visible", timeout: 10000 });
 
     // Find the heading that contains the provider name
