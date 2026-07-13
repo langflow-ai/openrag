@@ -384,29 +384,24 @@ export function IngestSettingsSection() {
 
   const [vlmAccordionValue, setVlmAccordionValue] = useState<string>("");
 
-  const [autoSelectedVlm, setAutoSelectedVlm] = useState<boolean>(false);
+  const autoSelectedVlm = useRef(false);
   useEffect(() => {
     if (settings.knowledge?.vlm_model) {
-      setAutoSelectedVlm(false);
+      autoSelectedVlm.current = false;
       return;
     }
-    if (autoSelectedVlm) return;
+    if (autoSelectedVlm.current) return;
     if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
       setVlmModel(settings.local_vlm_models[0]);
       setVlmProvider("local");
-      setAutoSelectedVlm(true);
+      autoSelectedVlm.current = true;
     } else if (allVlmOptions.length > 0) {
       const fallback = allVlmOptions.find((o) => o.default) || allVlmOptions[0];
       setVlmModel(fallback.value);
       setVlmProvider(fallback.provider || "openai");
-      setAutoSelectedVlm(true);
+      autoSelectedVlm.current = true;
     }
-  }, [
-    settings.knowledge?.vlm_model,
-    settings.local_vlm_models,
-    allVlmOptions,
-    autoSelectedVlm,
-  ]);
+  }, [settings.knowledge?.vlm_model, settings.local_vlm_models, allVlmOptions]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setVlmModel(value);
