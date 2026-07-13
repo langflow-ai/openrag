@@ -107,6 +107,7 @@ class TaskProcessor:
         # field tokenizes the query value and rarely matches the raw id, so
         # also match its `.keyword` multi-field. document_id has always been
         # explicitly `keyword` since index creation and never has this issue.
+        query: dict[str, Any]
         if field == "connector_file_id":
             query = {
                 "bool": {
