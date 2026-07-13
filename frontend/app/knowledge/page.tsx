@@ -149,7 +149,9 @@ function SearchPage() {
   // Keep the filter context aware of checked rows so "Create New Filter"
   // can pre-populate its sources from the current selection.
   useEffect(() => {
-    setSelectedSources(selectedRows.map((row) => row.filename).filter(Boolean));
+    setSelectedSources(
+      selectedRows.flatMap((row) => (row.filename ? [row.filename] : [])),
+    );
     return () => setSelectedSources([]);
   }, [selectedRows, setSelectedSources]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
