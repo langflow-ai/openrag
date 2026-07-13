@@ -1068,10 +1068,21 @@ class ConnectorFileProcessor(TaskProcessor):
                             delete_document_ids,
                         )
 
+                        # Match both fields: bucket-connector chunks carry the
+                        # raw connector id in connector_file_id (document_id is
+                        # a hash), while pre-migration chunks only have it in
+                        # document_id.
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),
-                            query={"term": {"document_id": document.id}},
+                            query={
+                                "bool": {
+                                    "should": [
+                                        {"term": {"document_id": document.id}},
+                                        {"term": {"connector_file_id": document.id}},
+                                    ]
+                                }
+                            },
                         )
                         deleted_count = await delete_document_ids(
                             opensearch_client,

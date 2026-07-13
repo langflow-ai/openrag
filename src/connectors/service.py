@@ -135,7 +135,7 @@ class ConnectorService:
                 docling_polling_service=self.task_service.docling_polling_service
                 if self.task_service
                 else None,
-                document_id=document.id,
+                connector_file_id=document.id,
                 source_url=document.source_url,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
@@ -213,6 +213,7 @@ class ConnectorService:
                     file_size=len(document.content) if document.content else 0,
                     connector_type=connector_type,
                     acl=document.acl,
+                    connector_file_id=document.id,
                     **standard_kwargs,
                 )
 
@@ -226,7 +227,11 @@ class ConnectorService:
                 if result["status"] in ["indexed", "unchanged"]:
                     # Update all chunks with connector-specific metadata
                     await self._update_connector_metadata(
-                        document, owner_user_id, connector_type, jwt_token
+                        document,
+                        owner_user_id,
+                        connector_type,
+                        jwt_token,
+                        id_field="connector_file_id",
                     )
 
                 return {
