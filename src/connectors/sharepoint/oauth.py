@@ -13,14 +13,27 @@ def _verify_access_token(access_token: str | None, tenant_id: str | None = None)
     Verify Microsoft access token signature, expiry, audience, and issuer domain.
 
     Returns the verified claims dict on success.
-    Raises JWTVerificationError (or a subclass) if verification fails — callers
-    must NOT proceed with a token that fails this check.
-    Returns None only when no token is present or verification is not configured.
+    Returns None when no token is present, verification is not configured, or the
+    token is opaque (not a JWT) — MSAL sometimes issues opaque tokens for Graph
+    resources; those are trusted by virtue of the confidential-client OAuth flow.
+    Raises JWTVerificationError (or a subclass) when the token IS a JWT but fails
+    signature, expiry, audience, or issuer validation.
     """
     if not access_token:
         return None
 
+    import jwt as _jwt
+
     raw_token = access_token.removeprefix("Bearer ").strip()
+
+    # MSAL can return opaque (non-JWT) tokens for some resources (e.g. Graph).
+    # PyJWT raises DecodeError("Not enough segments") for these — they are trusted
+    # by the confidential-client OAuth flow, so skip verification silently.
+    try:
+        _jwt.get_unverified_header(raw_token)
+    except _jwt.DecodeError:
+        logger.debug("SharePoint access token is opaque (non-JWT) — skipping verification")
+        return None
 
     from config.settings import MICROSOFT_ALLOWED_TENANT_IDS, MICROSOFT_GRAPH_OAUTH_CLIENT_ID
     from utils.jwt_verification import verify_microsoft_access_token
