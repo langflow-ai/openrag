@@ -164,6 +164,7 @@ class LangflowIngestTokenService:
             "ingest_run_id": context.ingest_run_id,
             "is_sample_data": context.is_sample_data,
             "index_name": context.index_name,
+            "connector_file_id": context.connector_file_id,
         }
 
     @staticmethod
@@ -192,4 +193,5 @@ class LangflowIngestTokenService:
             ingest_run_id=payload.get("ingest_run_id"),
             is_sample_data=bool(payload.get("is_sample_data")),
             index_name=payload.get("index_name"),
+            connector_file_id=payload.get("connector_file_id"),
         )
