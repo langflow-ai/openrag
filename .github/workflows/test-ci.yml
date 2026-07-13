@@ -67,7 +67,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     steps:
       - run: df -h
 
@@ -226,7 +226,7 @@ jobs:
     needs: [changes, build-images]
     if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     strategy:
       fail-fast: false
       matrix:
@@ -327,7 +327,7 @@ jobs:
     needs: [changes, build-images]
     if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     strategy:
       fail-fast: false
       matrix:
@@ -473,7 +473,7 @@ jobs:
     if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
     needs: [changes, e2e-run]
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     permissions:
       contents: read
     steps:
@@ -513,7 +513,7 @@ jobs:
     needs: [changes, build-images, test-suite]
     if: always()
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     steps:
       - name: Check split integration result
         run: |
@@ -533,7 +533,7 @@ jobs:
     needs: [changes, build-images, e2e-run]
     if: always()
     runs-on:
-      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+      labels: "ubuntu-latest"
     steps:
       - name: Check E2E result
         run: |
