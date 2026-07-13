@@ -100,6 +100,25 @@ class TaskProcessor:
         max_retries = 3
         retry_delay = 1.0
 
+        # Some deployments' indices predate connector_file_id's addition to the
+        # explicit mapping (config/settings.py), so OpenSearch dynamically
+        # mapped it as analyzed `text` (with a `.keyword` multi-field) instead
+        # of the intended `keyword` type. A plain term query against such a
+        # field tokenizes the query value and rarely matches the raw id, so
+        # also match its `.keyword` multi-field. document_id has always been
+        # explicitly `keyword` since index creation and never has this issue.
+        if field == "connector_file_id":
+            query = {
+                "bool": {
+                    "should": [
+                        {"term": {field: file_hash}},
+                        {"term": {f"{field}.keyword": file_hash}},
+                    ]
+                }
+            }
+        else:
+            query = {"term": {field: file_hash}}
+
         for attempt in range(max_retries):
             try:
                 response = await opensearch_client.search(
@@ -107,7 +126,7 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {field: file_hash}},
+                        "query": query,
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
@@ -340,6 +359,11 @@ class TaskProcessor:
                                 "should": [
                                     {"term": {"document_id": file_id}},
                                     {"term": {"connector_file_id": file_id}},
+                                    # Some deployments' indices predate this field's
+                                    # addition to the explicit mapping, so it was
+                                    # dynamically mapped as analyzed text with a
+                                    # `.keyword` multi-field instead of `keyword`.
+                                    {"term": {"connector_file_id.keyword": file_id}},
                                 ],
                                 "minimum_should_match": 1,
                             }
@@ -1080,6 +1104,10 @@ class ConnectorFileProcessor(TaskProcessor):
                                     "should": [
                                         {"term": {"document_id": document.id}},
                                         {"term": {"connector_file_id": document.id}},
+                                        # See check_document_exists: some indices
+                                        # predate the explicit keyword mapping for
+                                        # this field.
+                                        {"term": {"connector_file_id.keyword": document.id}},
                                     ]
                                 }
                             },

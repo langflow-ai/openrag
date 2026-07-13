@@ -302,6 +302,10 @@ class ConnectorService:
                             "should": [
                                 {"term": {"document_id": document.id}},
                                 {"term": {"connector_file_id": document.id}},
+                                # See check_document_exists (models/processors.py):
+                                # some indices predate the explicit keyword
+                                # mapping for this field.
+                                {"term": {"connector_file_id.keyword": document.id}},
                             ],
                             "minimum_should_match": 1,
                         }
