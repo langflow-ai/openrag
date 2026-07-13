@@ -103,7 +103,7 @@ jobs:
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: "ubuntu-latest"
+              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
 
           # langflow
           - image: langflow
@@ -118,7 +118,7 @@ jobs:
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: "ubuntu-latest"
+              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
 
           # opensearch
           - image: opensearch
@@ -133,7 +133,7 @@ jobs:
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: "ubuntu-latest"
+              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
 
     runs-on: ${{ matrix.runs-on }}
 
