@@ -8,18 +8,19 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
+    DOCLING_MAX_CONCURRENCY,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
+    ENABLE_BACKEND_DOCLING_POLLING,
     IBM_AUTH_ENABLED,
     get_openrag_config,
-    DOCLING_MAX_CONCURRENCY,
-    ENABLE_BACKEND_DOCLING_POLLING,
 )
 from utils.logging_config import get_logger
+
 
 def is_transient_error(exception: Exception) -> bool:
     if isinstance(exception, httpx.RequestError):
@@ -164,7 +165,6 @@ class DoclingService:
                 DoclingService._semaphore.release()
                 logger.debug("Released Docling concurrency slot", task_id=task_id)
 
-
     def _get_client(self) -> httpx.AsyncClient:
         if self.httpx_client:
             return self.httpx_client
@@ -286,7 +286,11 @@ class DoclingService:
                 logger.debug("Holding Docling concurrency slot", task_id=task_id, filename=filename)
             else:
                 DoclingService._semaphore.release()
-                logger.debug("Released Docling concurrency slot immediately after upload", task_id=task_id, filename=filename)
+                logger.debug(
+                    "Released Docling concurrency slot immediately after upload",
+                    task_id=task_id,
+                    filename=filename,
+                )
             return task_id
         except Exception as e:
             DoclingService._semaphore.release()
@@ -357,7 +361,9 @@ class DoclingService:
             if isinstance(e, httpx.HTTPStatusError):
                 response = e.response
                 if response.status_code == 404:
-                    return DoclingStatusSnapshot(state=DoclingTaskState.NOT_FOUND, detail="Task not found")
+                    return DoclingStatusSnapshot(
+                        state=DoclingTaskState.NOT_FOUND, detail="Task not found"
+                    )
                 if response.status_code >= 500:
                     logger.debug(
                         "Transient HTTP error from docling status endpoint",
@@ -374,7 +380,9 @@ class DoclingService:
                         detail=f"HTTP {response.status_code}: {response.text[:300]}",
                     )
             elif isinstance(e, httpx.RequestError):
-                logger.debug("Transient error checking docling status", task_id=task_id, error=str(e))
+                logger.debug(
+                    "Transient error checking docling status", task_id=task_id, error=str(e)
+                )
                 return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, detail=str(e))
             raise
 

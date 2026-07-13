@@ -593,7 +593,6 @@ DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH",
 DOCLING_MAX_CONCURRENCY = get_env_int("DOCLING_MAX_CONCURRENCY", 2)
 
 
-
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     if IBM_AUTH_ENABLED:

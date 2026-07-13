@@ -4,12 +4,14 @@ These are the single-poll primitives that the backend's polling coordinator
 uses instead of the legacy in-method polling loop.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
+
 from services.docling_service import (
-    DoclingService,
     DoclingServeError,
+    DoclingService,
     DoclingTaskState,
 )
 
@@ -24,8 +26,10 @@ def _resp(status_code: int, json_data: dict | None = None, text: str = "") -> Ma
         r.json.side_effect = ValueError("no json")
 
     if status_code >= 400:
+
         def raise_status():
             raise httpx.HTTPStatusError("Error", request=MagicMock(), response=r)
+
         r.raise_for_status.side_effect = raise_status
     else:
         r.raise_for_status.return_value = None
@@ -50,7 +54,6 @@ def no_sleep():
     """Patch asyncio.sleep so tests run instantly."""
     with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         yield mock_sleep
-
 
 
 # ── check_task_status ─────────────────────────────────────────────────

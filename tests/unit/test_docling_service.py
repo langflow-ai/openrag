@@ -249,7 +249,9 @@ async def test_concurrency_limit_semaphore():
 
         with patch("services.docling_service.get_openrag_config"):
             # First task
-            task_id1 = await svc.upload_to_docling_direct_async("test1.pdf", b"data", hold_semaphore=True)
+            task_id1 = await svc.upload_to_docling_direct_async(
+                "test1.pdf", b"data", hold_semaphore=True
+            )
             assert task_id1 == "task-1"
             assert "task-1" in DoclingService._active_tasks
 
@@ -260,4 +262,3 @@ async def test_concurrency_limit_semaphore():
             svc.release_task_slot("task-1")
             assert not DoclingService._semaphore.locked()
             assert "task-1" not in DoclingService._active_tasks
-
