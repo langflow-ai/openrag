@@ -742,7 +742,13 @@ export class Knowledge {
       });
       await this.page.waitForTimeout(300);
       const status = this.getStatusCell(row);
-      const statusText = (await status.textContent().catch(() => "")) || "";
+      let statusText = (await status.innerText().catch(() => "")) || "";
+      if (!statusText) {
+        statusText = (await status.textContent().catch(() => "")) || "";
+      }
+      if (statusText.includes("Animated Processing Icon")) {
+        statusText = "Processing";
+      }
       if (statusText.toLowerCase().includes("active")) {
         // Clear search before returning
         await searchInp.clear();
@@ -785,7 +791,14 @@ export class Knowledge {
     const row = await this.findRowAcrossPages(docName);
     const status = this.getStatusCell(row).first();
     await expect(status).toBeVisible({ timeout: 30000 });
-    return ((await status.textContent()) || "").trim();
+    let statusText = (await status.innerText().catch(() => "")) || "";
+    if (!statusText) {
+      statusText = (await status.textContent().catch(() => "")) || "";
+    }
+    if (statusText.includes("Animated Processing Icon")) {
+      statusText = "Processing";
+    }
+    return statusText.trim();
   }
 
   /**
