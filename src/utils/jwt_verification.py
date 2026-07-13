@@ -209,32 +209,49 @@ def _resolve_ms_jwks_url(tenant_id: str, token_version: str) -> str:
     return MICROSOFT_JWKS_URL_V2_TEMPLATE.format(tenant=tenant_id)
 
 
-def _validate_ms_issuer(issuer: str, token_tid: str, signing_key_issuer: str) -> None:
+# Known Microsoft issuer URL prefixes used when the JWKS key entry omits "issuer".
+_MS_ISSUER_PREFIXES = (
+    "https://login.microsoftonline.com/",
+    "https://sts.windows.net/",
+)
+
+
+def _validate_ms_issuer(issuer: str, token_tid: str, signing_key_issuer: str | None) -> None:
     """
     Validate the token issuer following Microsoft's documented algorithm:
 
-    1. Check iss is a well-known Microsoft issuer URL form.
-    2. For templated signing-key issuers ({tenantid}), substitute tid and
-       require exact match against iss (per Microsoft docs pseudo-code).
-    3. Verify the tid segment of iss matches the tid claim exactly.
+    1. When the JWKS key entry carries an ``issuer`` property, substitute
+       ``{tenantid}`` and require an exact match against the token ``iss`` claim
+       (Microsoft's documented multi-tenant issuer validation algorithm).
+    2. When the key entry omits ``issuer`` (common for tenant-specific JWKS
+       endpoints), fall back to verifying that ``iss`` starts with a known
+       Microsoft issuer URL prefix — preventing cross-issuer attacks without
+       rejecting otherwise valid tokens.
+    3. In both cases, confirm that the ``tid`` claim matches the tenant segment
+       embedded in the ``iss`` URL.
 
     Raises InvalidIssuerError on any failure.
     """
-    # Resolve the expected issuer from the signing key's issuer property.
-    # Keys from the tenant-independent endpoint carry "{tenantid}" as a placeholder.
-    resolved_key_issuer = signing_key_issuer.replace("{tenantid}", token_tid)
+    if signing_key_issuer:
+        # Keys from the tenant-independent endpoint carry "{tenantid}" as a
+        # placeholder; tenant-specific keys may carry a literal issuer URL.
+        resolved_key_issuer = signing_key_issuer.replace("{tenantid}", token_tid)
+        if resolved_key_issuer != issuer:
+            raise InvalidIssuerError(
+                f"Token issuer {issuer!r} does not match signing key issuer "
+                f"{resolved_key_issuer!r} (tid={token_tid!r})"
+            )
+    else:
+        # JWKS key entry has no issuer field — validate against known MS prefixes.
+        if not any(issuer.startswith(prefix) for prefix in _MS_ISSUER_PREFIXES):
+            raise InvalidIssuerError(
+                f"Token issuer {issuer!r} is not a recognised Microsoft issuer URL"
+            )
 
-    if resolved_key_issuer != issuer:
-        raise InvalidIssuerError(
-            f"Token issuer {issuer!r} does not match signing key issuer "
-            f"{resolved_key_issuer!r} (tid={token_tid!r})"
-        )
-
-    # Additionally confirm the tid claim matches the tenant segment in iss.
+    # Confirm the tid claim matches the tenant GUID segment in the iss URL.
     # Handles both v2 form (login.microsoftonline.com/{tid}/v2.0)
     # and v1 form (sts.windows.net/{tid}/).
     iss_segments = issuer.rstrip("/").split("/")
-    # tid appears right after the host in both URL forms
     tid_in_iss = next(
         (seg for seg in iss_segments if seg and "-" in seg and len(seg) == 36),
         None,
@@ -355,7 +372,7 @@ def verify_microsoft_access_token(
         if signing_key_entry is None:
             raise JWTVerificationError(f"Signing key with kid '{kid}' not found in JWKS")
 
-        signing_key_issuer = signing_key_entry.get("issuer", "")
+        signing_key_issuer = signing_key_entry.get("issuer") or None
         # from_jwk() is typed as RSAPrivateKey | RSAPublicKey but JWKS endpoints
         # only ever contain public keys — cast so mypy accepts it for jwt.decode().
         signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(signing_key_entry))

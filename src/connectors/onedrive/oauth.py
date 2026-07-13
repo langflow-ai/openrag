@@ -1,60 +1,16 @@
 import json
-import logging
 import os
 from typing import Any
 
 import msal
 
-logger = logging.getLogger(__name__)
+from connectors.microsoft_oauth_utils import verify_ms_access_token
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
-def _verify_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
-    """
-    Verify Microsoft access token signature, expiry, audience, and issuer domain.
-
-    Returns the verified claims dict on success.
-    Returns None when no token is present, verification is not configured, or the
-    token is opaque (not a JWT) — MSAL sometimes issues opaque tokens for Graph
-    resources; those are trusted by virtue of the confidential-client OAuth flow.
-    Raises JWTVerificationError (or a subclass) when the token IS a JWT but fails
-    signature, expiry, audience, or issuer validation.
-    """
-    if not access_token:
-        return None
-
-    import jwt as _jwt
-
-    raw_token = access_token.removeprefix("Bearer ").strip()
-
-    # MSAL can return opaque (non-JWT) tokens for some resources (e.g. Graph).
-    # PyJWT raises DecodeError("Not enough segments") for these — they are trusted
-    # by the confidential-client OAuth flow, so skip verification silently.
-    try:
-        _jwt.get_unverified_header(raw_token)
-    except _jwt.DecodeError:
-        logger.debug("OneDrive access token is opaque (non-JWT) — skipping verification")
-        return None
-
-    from config.settings import MICROSOFT_ALLOWED_TENANT_IDS, MICROSOFT_GRAPH_OAUTH_CLIENT_ID
-    from utils.jwt_verification import verify_microsoft_access_token
-
-    if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
-        logger.warning(
-            "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - skipping access token verification"
-        )
-        return None
-
-    # Raises JWTVerificationError on any failure — intentionally not caught here
-    # so that callers (get_access_token) propagate the error and refuse to return
-    # an unverified token.
-    claims = verify_microsoft_access_token(
-        raw_token,
-        MICROSOFT_GRAPH_OAUTH_CLIENT_ID,
-        tenant_id=tenant_id,
-        allowed_tenant_ids=MICROSOFT_ALLOWED_TENANT_IDS,
-    )
-    logger.debug("OneDrive access token verified, tenant=%s", claims.get("tid"))
-    return claims
+# Backward-compat alias used by get_access_token() call sites in this module.
+_verify_access_token = verify_ms_access_token
 
 
 class OneDriveOAuth:

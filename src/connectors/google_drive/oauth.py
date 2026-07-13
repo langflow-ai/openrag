@@ -35,7 +35,7 @@ def _verify_id_token(id_token: str | None) -> dict | None:
     # Raises JWTVerificationError on any failure — intentionally not caught here
     # so that callers propagate the error and refuse to use invalid credentials.
     claims = verify_google_id_token(id_token, GOOGLE_OAUTH_CLIENT_ID)
-    logger.debug("Google ID token verified, email=%s", claims.get("email"))
+    logger.debug("Google ID token verified, sub=%s", claims.get("sub"))
     return claims
 
 

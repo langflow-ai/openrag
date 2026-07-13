@@ -192,6 +192,25 @@ class TestValidateMsIssuer:
         synthetic_iss = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0"
         _validate_ms_issuer(synthetic_iss, TENANT_ID, synthetic_iss)
 
+    def test_none_signing_key_issuer_valid_ms_prefix_passes(self):
+        """JWKS key entry omits issuer — iss starts with known MS prefix, should pass."""
+        _validate_ms_issuer(MS_V2_ISS, TENANT_ID, None)
+
+    def test_none_signing_key_issuer_v1_prefix_passes(self):
+        """JWKS key entry omits issuer — v1 sts.windows.net iss passes prefix check."""
+        _validate_ms_issuer(MS_V1_ISS, TENANT_ID, None)
+
+    def test_none_signing_key_issuer_unknown_prefix_raises(self):
+        """JWKS key entry omits issuer — iss from unknown origin is rejected."""
+        with pytest.raises(InvalidIssuerError, match="not a recognised Microsoft issuer URL"):
+            _validate_ms_issuer("https://evil.example.com/tenant/v2.0", TENANT_ID, None)
+
+    def test_none_signing_key_issuer_tid_mismatch_raises(self):
+        """JWKS key entry omits issuer — tid mismatch in iss still caught."""
+        different_tid = "cccccccc-2222-2222-2222-cccccccccccc"
+        with pytest.raises(InvalidIssuerError, match="does not match tid claim"):
+            _validate_ms_issuer(MS_V2_ISS, different_tid, None)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # verify_microsoft_access_token
