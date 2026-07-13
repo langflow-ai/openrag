@@ -432,9 +432,20 @@ async def compute_orphans_for_connector_type(
     for conn in active:
         try:
             connector = await connector_service.get_connector(conn.connection_id)
-            if not connector or not connector.is_authenticated:
+            if not connector:
                 logger.info(
                     "Skipping orphan compute — connection unauthenticated",
+                    connector_type=connector_type,
+                    connection_id=conn.connection_id,
+                )
+                return None
+
+            # Always re-authenticate before making API calls so that stale
+            # cached access tokens (Google tokens last 1 hour) are refreshed.
+            # This mirrors the pattern used in connector_sync.
+            if not await connector.authenticate():
+                logger.info(
+                    "Skipping orphan compute — re-authentication failed",
                     connector_type=connector_type,
                     connection_id=conn.connection_id,
                 )
@@ -482,6 +493,7 @@ async def compute_orphans_for_connector_type(
                 connector_type=connector_type,
                 connection_id=conn.connection_id,
                 error=str(e),
+                error_type=type(e).__name__,
             )
             return None
 

@@ -140,7 +140,15 @@ class GoogleDriveOAuth:
             except Exception as e:
                 logger.debug("[GoogleDrive] load_credentials: token refresh failed: %s", e)
                 self.creds = None
-                self._remove_token_file()
+                # Only wipe the token file for permanent failures (revoked or
+                # invalid grant). Transient failures (network timeout, etc.)
+                # should not force the user through re-authentication.
+                error_str = str(e).lower()
+                is_permanent = any(
+                    k in error_str for k in ("invalid_grant", "revoked", "unauthorized_client")
+                )
+                if is_permanent:
+                    self._remove_token_file()
                 raise ValueError(
                     f"Failed to refresh Google Drive credentials. "
                     f"The refresh token may have expired or been revoked. "
