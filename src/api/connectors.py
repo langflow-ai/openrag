@@ -1,3 +1,4 @@
+import copy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -636,20 +637,19 @@ async def _expand_selected_connector_files(
     expanded_files_info: list[dict[str, Any]] = []
 
     if file_ids and hasattr(connector, "cfg"):
-        original_file_ids = getattr(connector.cfg, "file_ids", None)
-        original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+        # The connector is cached and shared across requests by
+        # ConnectionManager, so scope the listing to a per-call copy with its
+        # own cfg instead of mutating (and racing on) the shared config.
+        scoped_connector = copy.copy(connector)
+        scoped_connector.cfg = copy.copy(connector.cfg)
+        scoped_connector.cfg.file_ids = file_ids
+        scoped_connector.cfg.folder_ids = None
         try:
-            connector.cfg.file_ids = file_ids
-            connector.cfg.folder_ids = None
-
-            result = await connector.list_files()
+            result = await scoped_connector.list_files()
             for f in result.get("files", []):
                 expanded_files_info.append(_connector_file_response(f))
         except Exception as e:
             logger.error("Failed to expand files in duplicate check", error=str(e))
-        finally:
-            connector.cfg.file_ids = original_file_ids
-            connector.cfg.folder_ids = original_folder_ids
 
     if not expanded_files_info:
         for f in selected_files_raw:
