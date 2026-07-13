@@ -9,10 +9,12 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 
 export interface SharedBucketViewProps {
   connector: any;
@@ -49,7 +51,8 @@ export function SharedBucketView({
   initialSelectedBuckets,
 }: SharedBucketViewProps) {
   const queryClient = useQueryClient();
-  const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { isAuthenticated, isNoAuthMode, runMode } = useAuth();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
   const { data: apiSettings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
@@ -64,6 +67,11 @@ export function SharedBucketView({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
+  );
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
+  const [previewFilename, setPreviewFilename] = useState<string | undefined>(
+    undefined,
   );
 
   useEffect(() => {
@@ -342,8 +350,28 @@ export function SharedBucketView({
           connectorType={connector.type}
           connectionId={connector.connectionId}
           buckets={[browseDialogBucket]}
+          preview={ingestPreviewEnabled}
+          onIngestStarted={(taskId, filename) => {
+            setPreviewTaskId(taskId);
+            setPreviewFilename(filename);
+            setPreviewOpen(true);
+          }}
         />
       )}
+
+      <IngestReviewDialog
+        open={ingestPreviewEnabled && previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open) {
+            setPreviewTaskId(null);
+            setPreviewFilename(undefined);
+            onDone();
+          }
+        }}
+        taskId={previewTaskId}
+        filename={previewFilename}
+      />
     </>
   );
 }

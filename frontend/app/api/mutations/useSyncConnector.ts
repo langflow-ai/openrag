@@ -77,6 +77,9 @@ const syncConnector = async ({
     bucket_filter?: string[];
     /** When true, replace any indexed document with the same filename. */
     replace_duplicates?: boolean;
+    /** When true (OSS only), ingest in preview mode so the layout/visual
+     * parser preview is cached per file. */
+    preview?: boolean;
     /** When true (COS only), index without an owner so all users in the instance can retrieve the document. */
     shared?: boolean;
   };

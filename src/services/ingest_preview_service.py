@@ -1,0 +1,247 @@
+"""Ephemeral ingest preview cache for onboarding layout visualization."""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from config.settings import get_index_name
+from models.tasks import IngestionPhase
+from utils.hash_utils import hash_id
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+TEXT_PREVIEW_MAX_LENGTH = 240
+
+# Cap how many per-file previews we retain for a single upload task. Preview
+# documents can embed full-page rasters, so an unbounded folder/connector sync
+# could otherwise grow the in-memory cache without limit. Previews beyond this
+# count are simply not cached (the UI falls back to the local/expired state).
+MAX_PREVIEWS_PER_TASK = 50
+
+
+def summarize_docling_document(document: dict[str, Any]) -> dict[str, int]:
+    """Return layout element counts for a DoclingDocument dict."""
+    return {
+        "page_count": len(document.get("pages") or []),
+        "text_count": len(document.get("texts") or []),
+        "table_count": len(document.get("tables") or []),
+        "picture_count": len(document.get("pictures") or []),
+    }
+
+
+@dataclass
+class _PreviewEntry:
+    user_id: str
+    file_path: str | None
+    document: dict[str, Any]
+    stats: dict[str, int]
+    expires_at: float
+    document_id: str | None = None
+    filename: str | None = None
+
+
+class IngestPreviewService:
+    """In-memory TTL cache for Docling parse previews (single-worker safe).
+
+    Entries are keyed per file (``(user_id, task_id, file_path)``) so a single
+    preview-mode upload task can hold a parse preview for each of its files
+    (the onboarding/knowledge carousel). ``file_path`` may be ``None`` for
+    legacy single-file callers, in which case lookups without an explicit
+    ``file_path`` return that entry.
+    """
+
+    def __init__(self, ttl_seconds: int = 1800):
+        self._ttl_seconds = ttl_seconds
+        self._entries: dict[tuple[str, str, str | None], _PreviewEntry] = {}
+
+    def store_docling_preview(
+        self,
+        user_id: str,
+        task_id: str,
+        document: dict[str, Any],
+        *,
+        file_path: str | None = None,
+        document_id: str | None = None,
+        filename: str | None = None,
+    ) -> None:
+        key = (user_id, task_id, file_path)
+        if key not in self._entries:
+            existing = sum(
+                1
+                for (entry_user, entry_task, _entry_file) in self._entries
+                if entry_user == user_id and entry_task == task_id
+            )
+            if existing >= MAX_PREVIEWS_PER_TASK:
+                logger.debug(
+                    "Skipping ingest parse preview cache (per-task cap reached)",
+                    user_id=user_id,
+                    task_id=task_id,
+                    file_path=file_path,
+                    cap=MAX_PREVIEWS_PER_TASK,
+                )
+                return
+        stats = summarize_docling_document(document)
+        self._entries[key] = _PreviewEntry(
+            user_id=user_id,
+            file_path=file_path,
+            filename=filename,
+            document=document,
+            stats=stats,
+            expires_at=time.time() + self._ttl_seconds,
+            document_id=document_id,
+        )
+        logger.info(
+            "Stored ingest parse preview",
+            user_id=user_id,
+            task_id=task_id,
+            file_path=file_path,
+            page_count=stats["page_count"],
+            text_count=stats["text_count"],
+            table_count=stats["table_count"],
+        )
+
+    def get_docling_preview(
+        self,
+        user_id: str,
+        task_id: str,
+        file_path: str | None = None,
+    ) -> dict[str, Any] | None:
+        if file_path is not None:
+            entry = self._entries.get((user_id, task_id, file_path))
+        else:
+            entry = next(
+                (
+                    candidate
+                    for (entry_user, entry_task, _entry_file), candidate in self._entries.items()
+                    if entry_user == user_id and entry_task == task_id
+                ),
+                None,
+            )
+        if entry is None:
+            return None
+        if time.time() > entry.expires_at:
+            self._entries.pop((entry.user_id, task_id, entry.file_path), None)
+            return None
+        return {
+            "document": entry.document,
+            "stats": entry.stats,
+            "expires_at": entry.expires_at,
+            "document_id": entry.document_id,
+            "file_path": entry.file_path,
+            "filename": entry.filename,
+        }
+
+    async def get_index_proof(
+        self,
+        *,
+        user_id: str,
+        task_id: str,
+        task_service: Any,
+        opensearch_client: Any,
+        file_path: str | None = None,
+    ) -> dict[str, Any]:
+        upload_task = task_service.get_upload_task(user_id, task_id)
+        if upload_task is None:
+            return {"ready": False, "error": "task_not_found"}
+
+        if file_path is not None:
+            file_task = upload_task.file_tasks.get(file_path)
+        else:
+            file_task = next(iter(upload_task.file_tasks.values()), None)
+        phase = file_task.phase.value if file_task is not None else IngestionPhase.DOCLING.value
+
+        preview = self.get_docling_preview(user_id, task_id, file_path)
+        document_id = preview.get("document_id") if preview else None
+
+        if file_task is None or file_task.phase != IngestionPhase.COMPLETE:
+            return {
+                "ready": False,
+                "phase": phase,
+                "chunk_count": 0,
+                "chunks": [],
+                "document_id": document_id,
+            }
+
+        if not document_id and file_task is not None:
+            document_id = hash_id(file_task.file_path)
+
+        if opensearch_client is None:
+            return {
+                "ready": False,
+                "phase": phase,
+                "chunk_count": 0,
+                "chunks": [],
+                "document_id": document_id,
+                "error": "opensearch_unavailable",
+            }
+
+        try:
+            response = await opensearch_client.search(
+                index=get_index_name(),
+                body={
+                    "size": 200,
+                    "query": {"term": {"document_id": document_id}},
+                    "sort": [{"page": "asc"}, {"_id": "asc"}],
+                    "_source": {
+                        "includes": [
+                            "text",
+                            "page",
+                            "embedding_model",
+                            "embedding_dimensions",
+                            "indexed_time",
+                        ]
+                    },
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to query index proof chunks",
+                task_id=task_id,
+                document_id=document_id,
+                error=str(exc),
+            )
+            return {
+                "ready": False,
+                "phase": phase,
+                "chunk_count": 0,
+                "chunks": [],
+                "document_id": document_id,
+                "error": "search_failed",
+            }
+
+        hits = response.get("hits", {}).get("hits", [])
+        chunks = []
+        embedding_model = None
+        embedding_dimensions = None
+
+        for hit in hits:
+            source = hit.get("_source") or {}
+            text = source.get("text") or ""
+            if embedding_model is None and source.get("embedding_model"):
+                embedding_model = source["embedding_model"]
+            if embedding_dimensions is None and source.get("embedding_dimensions"):
+                embedding_dimensions = source["embedding_dimensions"]
+            preview_text = text.strip()
+            if len(preview_text) > TEXT_PREVIEW_MAX_LENGTH:
+                preview_text = preview_text[:TEXT_PREVIEW_MAX_LENGTH] + "…"
+            chunks.append(
+                {
+                    "chunk_id": hit.get("_id"),
+                    "page": source.get("page"),
+                    "text_preview": preview_text,
+                    "char_count": len(text),
+                }
+            )
+
+        return {
+            "ready": len(chunks) > 0,
+            "phase": phase,
+            "chunk_count": len(chunks),
+            "embedding_model": embedding_model,
+            "embedding_dimensions": embedding_dimensions,
+            "chunks": chunks,
+            "document_id": document_id,
+        }

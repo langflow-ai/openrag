@@ -7,9 +7,12 @@ import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateO
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
+import { IngestPreviewPanel } from "@/components/ingest-review";
 import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { trackButton } from "@/lib/analytics";
+import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -17,12 +20,15 @@ interface OnboardingUploadProps {
 }
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
+  const { runMode } = useAuth();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +38,9 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const STEP_LIST = [
     "Uploading your document",
-    "Generating embeddings",
-    "Ingesting document",
-    "Processing your document",
+    "Reading layout & structure",
+    "Creating searchable chunks",
+    "Indexing for search",
   ];
 
   // Query tasks to track completion
@@ -62,6 +68,23 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       return;
     }
 
+    const filesArray = matchingTask.files
+      ? (Object.values(matchingTask.files) as {
+          status: string;
+          error?: string;
+          phase?: string;
+        }[])
+      : [];
+    const filePhase = filesArray[0]?.phase;
+
+    if (filePhase === "docling" && currentStep < 1) {
+      setCurrentStep(1);
+    } else if (filePhase === "langflow" && currentStep < 2) {
+      setCurrentStep(2);
+    } else if (filePhase === "complete" && currentStep < 3) {
+      setCurrentStep(3);
+    }
+
     // Check if the matching task is still active (pending, running, or processing)
     const isTaskActive =
       matchingTask.status === "pending" ||
@@ -73,12 +96,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       matchingTask.status === "failed" || matchingTask.status === "error";
 
     // Check if any file inside the task failed
-    const filesArray = matchingTask.files
-      ? (Object.values(matchingTask.files) as {
-          status: string;
-          error?: string;
-        }[])
-      : [];
     const hasFailedFile = filesArray.some(
       (file) => file.status === "failed" || file.status === "error",
     );
@@ -214,7 +231,16 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     setError(null);
     try {
       setCurrentStep(0);
-      const result = await uploadFile(file, true, true); // Pass createFilter=true
+      if (ingestPreviewEnabled) {
+        setPreviewFile(file);
+      }
+      const result = await uploadFile(
+        file,
+        true,
+        true,
+        undefined,
+        ingestPreviewEnabled,
+      );
       console.log("Document upload task started successfully");
 
       // Store task ID to track the specific upload task
@@ -257,6 +283,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       // Reset on error
       setCurrentStep(null);
       setUploadedTaskId(null);
+      setPreviewFile(null);
     } finally {
       setIsUploading(false);
     }
@@ -339,6 +366,14 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             isCompleted={false}
             steps={STEP_LIST}
           />
+          {ingestPreviewEnabled &&
+            currentStep !== null &&
+            (previewFile || uploadedTaskId) && (
+              <IngestPreviewPanel
+                taskId={uploadedTaskId}
+                previewFile={previewFile}
+              />
+            )}
         </motion.div>
       )}
     </AnimatePresence>

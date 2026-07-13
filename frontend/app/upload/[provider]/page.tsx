@@ -10,16 +10,19 @@ import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorToke
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 
 interface ConnectorDuplicateCheckResponse {
   duplicate_names?: string[];
@@ -34,6 +37,8 @@ export default function UploadProviderPage() {
   const router = useRouter();
   const provider = params.provider as string;
   const { addTask } = useTask();
+  const { runMode } = useAuth();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
 
   const {
     data: connectors = [],
@@ -77,6 +82,9 @@ export default function UploadProviderPage() {
     duplicateCount: number;
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
+  const [previewFilename, setPreviewFilename] = useState<string>("");
 
   const accessToken = tokenData?.access_token || null;
   const isLoading =
@@ -122,6 +130,7 @@ export default function UploadProviderPage() {
           })),
           settings: ingestSettings,
           replace_duplicates: replaceDuplicates,
+          preview: ingestPreviewEnabled,
         },
       },
       {
@@ -132,7 +141,17 @@ export default function UploadProviderPage() {
               connectorType: connector.type,
               source: "connector",
             });
-            router.push("/knowledge");
+            if (ingestPreviewEnabled) {
+              // Show the live parse/index preview for the connector files.
+              // Navigation to /knowledge happens when the dialog is closed.
+              setPreviewTaskId(taskIds[0]);
+              setPreviewFilename(
+                files.length === 1 ? files[0].name : `${files.length} files`,
+              );
+              setPreviewOpen(true);
+            } else {
+              router.push("/knowledge");
+            }
           }
         },
         onError: (err) => {
@@ -454,6 +473,19 @@ export default function UploadProviderPage() {
         isLoading={isIngesting}
         duplicateNames={pendingSync?.duplicateNames}
         duplicateCount={pendingSync?.duplicateCount}
+      />
+
+      <IngestReviewDialog
+        open={ingestPreviewEnabled && previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open) {
+            setPreviewTaskId(null);
+            router.push("/knowledge");
+          }
+        }}
+        taskId={previewTaskId}
+        filename={previewFilename}
       />
     </>
   );

@@ -1,4 +1,5 @@
 """Utilities for determining the OpenRAG application run mode."""
+
 import os
 
 RUN_MODE_OSS: str = "oss"
@@ -22,6 +23,11 @@ def is_run_mode_saas() -> bool:
 def is_run_mode_on_prem() -> bool:
     """Return True if the current run mode is "on_prem"."""
     return get_run_mode() == RUN_MODE_ON_PREM
+
+
+def is_ingest_preview_enabled() -> bool:
+    """Ingest layout preview is an OSS-only onboarding/experimentation feature."""
+    return is_run_mode_oss()
 
 
 def get_run_mode() -> str:

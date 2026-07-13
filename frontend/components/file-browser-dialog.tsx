@@ -28,6 +28,13 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
+  /** When true, request the ephemeral parse preview for the ingested files. */
+  preview?: boolean;
+  /**
+   * Called after ingestion is queued so a stable parent can own the preview
+   * dialog (this dialog unmounts on close, which would tear down its own).
+   */
+  onIngestStarted?: (taskId: string, filename: string) => void;
 }
 
 export function FileBrowserDialog({
@@ -36,6 +43,8 @@ export function FileBrowserDialog({
   connectorType,
   connectionId,
   buckets,
+  preview = false,
+  onIngestStarted,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -127,7 +136,7 @@ export function FileBrowserDialog({
     const hasStale = selectedFiles.some((f) => f.is_stale);
 
     try {
-      await syncMutation.mutateAsync({
+      const result = await syncMutation.mutateAsync({
         connectorType,
         body: {
           selected_files: selectedFiles.map((f) => ({
@@ -136,6 +145,7 @@ export function FileBrowserDialog({
             mimeType: "",
             size: f.size,
           })),
+          preview,
           ...(hasStale ? { replace_duplicates: true } : {}),
         },
       });
@@ -144,6 +154,16 @@ export function FileBrowserDialog({
         description: `${selectedFiles.length} file(s) queued for ingestion.`,
       });
 
+      const taskId = result.task_ids?.[0];
+      if (preview && taskId) {
+        onIngestStarted?.(
+          taskId,
+          selectedFiles.length === 1
+            ? selectedFiles[0].name
+            : `${selectedFiles.length} files`,
+        );
+      }
+
       setSelectedFileIds(new Set());
       onOpenChange(false);
     } catch (err) {
@@ -151,7 +171,14 @@ export function FileBrowserDialog({
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [selectedFiles, connectorType, syncMutation, onOpenChange]);
+  }, [
+    selectedFiles,
+    connectorType,
+    syncMutation,
+    onOpenChange,
+    preview,
+    onIngestStarted,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
