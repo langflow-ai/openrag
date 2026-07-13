@@ -102,7 +102,7 @@ async def get_synced_file_ids_for_connector(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -184,7 +184,7 @@ async def get_synced_id_to_filename_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -241,7 +241,7 @@ async def get_synced_id_to_modified_time_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
