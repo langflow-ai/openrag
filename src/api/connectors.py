@@ -1099,6 +1099,8 @@ async def connector_sync(
                     user_id=user.user_id,
                     session_manager=session_manager,
                     jwt_token=jwt_token,
+                    ingest_settings=body.settings,
+                    shared=body.shared,
                 )
                 existing_set = set(existing_ids)
                 modified_map = await get_synced_id_to_modified_time_map(
