@@ -26,6 +26,7 @@ interface BucketDuplicateFile {
 interface BucketDuplicateCheckResponse {
   duplicate_names?: string[];
   duplicate_count?: number;
+  duplicate_files?: BucketDuplicateFile[];
   non_duplicate_files?: BucketDuplicateFile[];
 }
 
@@ -90,6 +91,7 @@ export function SharedBucketView({
   const [pendingDuplicates, setPendingDuplicates] = useState<{
     duplicateNames: string[];
     duplicateCount: number;
+    duplicateFiles: BucketDuplicateFile[];
     nonDuplicateFiles: BucketDuplicateFile[];
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
@@ -182,9 +184,15 @@ export function SharedBucketView({
     );
   };
 
-  // Sync only the given (new, not-yet-ingested) files — used when the user
-  // skips overwriting duplicates.
-  const runSelectedFilesSync = (files: BucketDuplicateFile[]) => {
+  // Sync explicit files. `replaceDuplicates` forces an unconditional
+  // re-ingest (bypassing the bucket_filter path's modified-time gate) —
+  // used when the user confirms "Overwrite duplicates" so an already
+  // up-to-date file still gets re-ingested, matching what "overwrite" means
+  // for the OAuth connectors.
+  const runSelectedFilesSync = (
+    files: BucketDuplicateFile[],
+    replaceDuplicates = false,
+  ) => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -192,6 +200,7 @@ export function SharedBucketView({
           connection_id: connector.connectionId!,
           selected_files: files,
           settings: ingestSettings,
+          replace_duplicates: replaceDuplicates,
           shared: showSharedToggle
             ? (ingestSettings.shared ?? false)
             : undefined,
@@ -250,6 +259,7 @@ export function SharedBucketView({
       setPendingDuplicates({
         duplicateNames,
         duplicateCount,
+        duplicateFiles: checkData.duplicate_files || [],
         nonDuplicateFiles: checkData.non_duplicate_files || [],
       });
       setDuplicateDialogOpen(true);
@@ -266,7 +276,8 @@ export function SharedBucketView({
   const handleOverwriteDuplicates = () => {
     if (!pendingDuplicates) return;
     isOverwriteConfirmedRef.current = true;
-    runBucketSync();
+    const { duplicateFiles, nonDuplicateFiles } = pendingDuplicates;
+    runSelectedFilesSync([...duplicateFiles, ...nonDuplicateFiles], true);
     setPendingDuplicates(null);
   };
 
@@ -283,7 +294,7 @@ export function SharedBucketView({
           runSelectedFilesSync(nonDuplicateFiles);
         } else {
           toast.info(
-            `All ${duplicateCount} changed file(s) were skipped. Nothing was synced.`,
+            `All ${duplicateCount} file(s) already exist and were skipped. Nothing was synced.`,
           );
         }
       }

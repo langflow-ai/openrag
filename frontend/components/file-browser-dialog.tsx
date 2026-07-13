@@ -78,12 +78,9 @@ export function FileBrowserDialog({
   }, [allFiles, search]);
 
   // Selectable files within the current (filtered) view — drives "Select all".
-  // A file is selectable when it's not yet ingested, or it's ingested but stale
-  // (a newer version exists at the source, so re-ingest is allowed).
-  const visibleSelectable = useMemo(
-    () => files.filter((f) => !f.is_ingested || f.is_stale),
-    [files],
-  );
+  // Already-ingested files are selectable too (re-checking one is an explicit
+  // request to re-ingest it — handleIngest sets replace_duplicates for those).
+  const visibleSelectable = files;
 
   const allVisibleSelected =
     visibleSelectable.length > 0 &&
@@ -128,10 +125,10 @@ export function FileBrowserDialog({
   const handleIngest = useCallback(async () => {
     if (selectedFiles.length === 0) return;
 
-    // If any selected file is a stale re-ingest, replace the indexed copy so the
-    // newer version overwrites the old chunks (rather than being skipped as a
-    // duplicate filename). New files are unaffected by this flag.
-    const hasStale = selectedFiles.some((f) => f.is_stale);
+    // If any selected file is already ingested (stale or not), replace the
+    // indexed copy so it overwrites the old chunks instead of being skipped
+    // as a duplicate filename. New files are unaffected by this flag.
+    const hasAlreadyIngested = selectedFiles.some((f) => f.is_ingested);
 
     try {
       await syncMutation.mutateAsync({
@@ -145,7 +142,7 @@ export function FileBrowserDialog({
           })),
           settings: ingestSettings,
           shared: showShared ? (ingestSettings?.shared ?? false) : undefined,
-          ...(hasStale ? { replace_duplicates: true } : {}),
+          ...(hasAlreadyIngested ? { replace_duplicates: true } : {}),
         },
       });
 
@@ -311,20 +308,11 @@ function FileRow({
     return idx >= 0 ? key.slice(0, idx + 1) : "";
   }, [file.key]);
 
-  // Unchanged ingested files are locked; stale ones (newer version at source) stay
-  // selectable so the user can re-ingest the update.
-  const locked = file.is_ingested && !file.is_stale;
-
   return (
-    <label
-      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors ${
-        locked ? "opacity-60" : ""
-      }`}
-    >
+    <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors">
       <input
         type="checkbox"
-        checked={selected || locked}
-        disabled={locked}
+        checked={selected}
         onChange={onToggle}
         className="h-4 w-4 rounded border border-input"
       />

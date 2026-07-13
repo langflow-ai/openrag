@@ -172,12 +172,15 @@ async def test_connector_check_duplicates():
 
 
 @pytest.mark.asyncio
-async def test_connector_check_duplicates_bucket_filter_classifies_new_changed_unchanged():
+async def test_connector_check_duplicates_bucket_filter_is_existence_based():
     """Bucket-kind connectors (Azure Blob/S3/COS) select whole buckets, not
-    individual files, so check-duplicates must accept bucket_filter and
-    classify each remote blob as new/changed/unchanged the same way the real
-    bucket_filter sync does — unlike the filename-only check used for OAuth
-    connectors."""
+    individual files, so check-duplicates must accept bucket_filter and list
+    files from those buckets. Classification must be existence-based — any
+    blob already ingested under this connector_type is a duplicate — the same
+    semantics the filename-based OAuth check uses, NOT the modified-time
+    "changed" gate the real bucket_filter sync uses to silently skip unchanged
+    blobs. Otherwise re-selecting an up-to-date bucket reports zero duplicates
+    and the overwrite dialog never appears."""
     import json
 
     from fastapi.responses import JSONResponse
@@ -200,26 +203,19 @@ async def test_connector_check_duplicates_bucket_filter_classifies_new_changed_u
     connector.list_files = AsyncMock(
         return_value={
             "files": [
-                # Already ingested, remote is newer -> "changed" (duplicate).
+                # Already ingested (remote timestamp is irrelevant) -> duplicate.
                 {
-                    "id": "bucket::changed.pdf",
-                    "name": "changed.pdf",
+                    "id": "bucket::already-ingested.pdf",
+                    "name": "already-ingested.pdf",
                     "mimeType": "application/pdf",
-                    "modified_time": "2026-07-13T00:00:00Z",
+                    "modified_time": "2026-01-01T00:00:00Z",
                 },
-                # Not ingested yet -> "new".
+                # Not ingested yet -> new.
                 {
                     "id": "bucket::new.pdf",
                     "name": "new.pdf",
                     "mimeType": "application/pdf",
                     "modified_time": "2026-07-13T00:00:00Z",
-                },
-                # Already ingested, remote is not newer -> "unchanged", dropped.
-                {
-                    "id": "bucket::unchanged.pdf",
-                    "name": "unchanged.pdf",
-                    "mimeType": "application/pdf",
-                    "modified_time": "2026-01-01T00:00:00Z",
                 },
             ]
         }
@@ -227,42 +223,18 @@ async def test_connector_check_duplicates_bucket_filter_classifies_new_changed_u
     connector_service.get_connector = AsyncMock(return_value=connector)
 
     session_manager = MagicMock()
-
-    async def fake_search(*, index, body):
-        aggs = body["aggs"]
-        if "unique_connector_file_ids" in aggs:
-            return {
-                "aggregations": {
-                    "unique_connector_file_ids": {
-                        "buckets": [
-                            {"key": "bucket::changed.pdf"},
-                            {"key": "bucket::unchanged.pdf"},
-                        ]
-                    },
-                    "unique_document_ids": {"buckets": []},
-                    "unique_filenames": {"buckets": []},
-                }
-            }
-        return {
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={
             "aggregations": {
-                "by_connector_file_id": {
-                    "buckets": [
-                        {
-                            "key": "bucket::changed.pdf",
-                            "latest_modified": {"value": 1735689600000.0},  # 2025-01-01
-                        },
-                        {
-                            "key": "bucket::unchanged.pdf",
-                            "latest_modified": {"value": 1767225600000.0},  # 2026-01-01
-                        },
-                    ]
+                "unique_connector_file_ids": {
+                    "buckets": [{"key": "bucket::already-ingested.pdf"}],
                 },
-                "by_document_id": {"buckets": []},
+                "unique_document_ids": {"buckets": []},
+                "unique_filenames": {"buckets": []},
             }
         }
-
-    opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(side_effect=fake_search)
+    )
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
 
     user = MagicMock()
@@ -285,9 +257,9 @@ async def test_connector_check_duplicates_bucket_filter_classifies_new_changed_u
 
     assert isinstance(response, JSONResponse)
     data = json.loads(response.body.decode())
-    assert data["duplicate_names"] == ["changed.pdf"]
+    assert data["duplicate_names"] == ["already-ingested.pdf"]
     assert data["duplicate_count"] == 1
-    assert data["total_files"] == 3
+    assert data["total_files"] == 2
     assert [f["id"] for f in data["non_duplicate_files"]] == ["bucket::new.pdf"]
 
 

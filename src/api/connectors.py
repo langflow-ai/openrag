@@ -69,6 +69,15 @@ def _connector_sync_should_replace(connector_type: str) -> bool:
     return connector_type in ["google_drive", "sharepoint", "onedrive"]
 
 
+def _is_unmapped_keyword_agg_error(err: Exception) -> bool:
+    """True when a terms aggregation failed because the target field is an
+    analyzed `text` field without fielddata enabled — the error OpenSearch
+    raises for connector_file_id on indices that predate its addition to the
+    explicit `keyword` mapping in config/settings.py."""
+    msg = str(err)
+    return "Text fields are not optimised" in msg or "fielddata" in msg
+
+
 async def get_synced_file_ids_for_connector(
     connector_type: str,
     user_id: str,
@@ -105,7 +114,19 @@ async def get_synced_file_ids_for_connector(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # Some indices predate connector_file_id's addition to the explicit
+            # mapping (config/settings.py), so it was dynamically mapped as
+            # analyzed text instead of keyword — terms aggs need the
+            # `.keyword` multi-field on those indices.
+            query_body["aggs"]["unique_connector_file_ids"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
 
         # Prefer connector_file_id — these are set by ConnectorFileProcessor (non-Langflow)
         # and hold the actual connector source IDs (e.g. SharePoint GUIDs), not SHA hashes.
@@ -235,7 +256,17 @@ async def get_synced_id_to_modified_time_map(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # See get_synced_file_ids_for_connector: some indices predate the
+            # explicit keyword mapping for connector_file_id.
+            query_body["aggs"]["by_connector_file_id"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
         aggs = result.get("aggregations", {})
 
         mapping: dict[str, float | None] = {}
@@ -754,13 +785,14 @@ async def _classify_bucket_connector_duplicates(
         jwt_token=jwt_token,
     )
     existing_set = set(existing_ids)
-    modified_map = await get_synced_id_to_modified_time_map(
-        connector_type=connector_type,
-        user_id=user_id,
-        session_manager=session_manager,
-        jwt_token=jwt_token,
-    )
 
+    # Existence-based, like the OAuth connector duplicate check: any blob
+    # already ingested under this connector_type is a "duplicate" regardless
+    # of whether the remote copy is newer. (The real bucket_filter sync uses
+    # modified_time to auto-skip unchanged blobs on ITS OWN — that's a
+    # separate, silent optimization; the confirm dialog here is about whether
+    # the user wants to touch an already-indexed file at all, same as it
+    # would for Google Drive/OneDrive/SharePoint.)
     duplicate_files: list[dict[str, Any]] = []
     duplicate_names: list[str] = []
     non_duplicate_files: list[dict[str, Any]] = []
@@ -768,16 +800,12 @@ async def _classify_bucket_connector_duplicates(
         fid = f.get("id")
         if not fid:
             continue
-        status = classify_remote_file_change(
-            fid, f.get("modified_time"), fid in existing_set, modified_map
-        )
-        if status == "changed":
+        if fid in existing_set:
             response_file = _connector_file_response(f)
             duplicate_files.append(response_file)
             duplicate_names.append(response_file["name"])
-        elif status == "new":
+        else:
             non_duplicate_files.append(_connector_file_response(f))
-        # "unchanged" → already ingested and not newer at source; skip entirely.
 
     return {
         "duplicate_names": list(dict.fromkeys(duplicate_names)),
