@@ -7,6 +7,11 @@
       "name": "openrag",
       "source": "./plugins/openrag",
       "description": "Guided installation and SDK integration skills for OpenRAG."
+    },
+    {
+      "name": "openrag-dev",
+      "source": "./plugins/openrag-dev",
+      "description": "Developer/QA workflow skills for OpenRAG contributors."
     }
   ]
 }
