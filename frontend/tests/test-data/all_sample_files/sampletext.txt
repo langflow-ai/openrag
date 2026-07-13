@@ -1,0 +1,9 @@
+Artificial Intelligence is transforming industries across the globe.
+From healthcare to finance, AI enables automation, prediction, and
+data-driven decision-making.
+
+However, challenges remain in terms of ethics, bias, and transparency.
+Organizations must ensure responsible AI adoption.
+
+In the future, AI will likely become even more integrated into daily life.
+Example: Chatgpt

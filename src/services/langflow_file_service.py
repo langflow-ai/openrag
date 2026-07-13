@@ -360,6 +360,8 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
         selected_embedding_model: str | None = None,
         docling_task_id: str | None = None,
+        original_filename: str | None = None,
+        original_mimetype: str | None = None,
     ) -> dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -409,8 +411,10 @@ class LangflowFileService:
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         # Extract file metadata if file_tuples is provided
-        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
-        mimetype = (
+        filename = original_filename or (
+            str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
+        )
+        mimetype = original_mimetype or (
             str(file_tuples[0][2])
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
             else ""
@@ -893,6 +897,8 @@ class LangflowFileService:
         allowed_groups: list[str] | None = None,
         allowed_principals: list[str] | None = None,
         allowed_principal_labels: list[dict[str, Any]] | None = None,
+        original_filename: str | None = None,
+        original_mimetype: str | None = None,
     ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
@@ -1036,6 +1042,8 @@ class LangflowFileService:
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
                 allowed_principal_labels=allowed_principal_labels,
+                original_filename=original_filename,
+                original_mimetype=original_mimetype,
             )
             total_duration = round(time.time() - total_start_time, 2)
             logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")

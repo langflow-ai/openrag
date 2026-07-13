@@ -656,6 +656,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isOnboardingActive,
     clearTaskMetadata,
     queryClient,
+    selectTask,
   ]);
 
   const addTask = useCallback(

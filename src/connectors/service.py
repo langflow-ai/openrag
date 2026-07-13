@@ -141,6 +141,8 @@ class ConnectorService:
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
                 allowed_principal_labels=allowed_principal_labels,
+                original_filename=document.filename,
+                original_mimetype=document.mimetype,
             )
             return {
                 "status": "indexed",
