@@ -104,7 +104,7 @@ export const BannerAction = ({
 
 export type BannerCloseProps = ComponentProps<typeof Button>;
 
-const BannerClose = ({
+const _BannerClose = ({
   variant = "ghost",
   size = "icon",
   onClick,

@@ -18,7 +18,7 @@ function Input({
   ref,
   ...props
 }: InputProps) {
-  const [hasValue, setHasValue] = React.useState(
+  const [_hasValue, setHasValue] = React.useState(
     Boolean(props.value || props.defaultValue),
   );
   const [showPassword, setShowPassword] = React.useState(false);

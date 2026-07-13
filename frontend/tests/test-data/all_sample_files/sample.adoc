@@ -1,0 +1,19 @@
+= Software Deployment Process
+
+== Steps
+
+. Code Development
+. Code Review
+. Testing
+. Deployment
+. Monitoring
+
+== Tools Used
+
+* Git for version control
+* Jenkins for CI/CD
+* Docker for containerization
+
+== Outcome
+
+Ensures reliable and repeatable software releases.

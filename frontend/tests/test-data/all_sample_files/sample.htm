@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenRAG Sample Knowledge Base</title>
+</head>
+<body>
+
+<header>
+    <h1>OpenRAG Sample Knowledge Base</h1>
+    <p>
+        This document is intended for testing document ingestion,
+        semantic search, chunking, metadata extraction, and chatbot retrieval.
+    </p>
+</header>
+
+<hr>
+
+<section id="company">
+    <h2>Company Overview</h2>
+
+    <p>
+        Contoso AI Solutions develops enterprise software for document search,
+        Retrieval-Augmented Generation (RAG), AI assistants, and workflow automation.
+    </p>
+
+    <p>
+        Headquarters: Seattle, Washington<br>
+        Founded: 2021<br>
+        Employees: 180
+    </p>
+</section>
+
+<section id="products">
+    <h2>Products</h2>
+
+    <ul>
+        <li>OpenRAG Enterprise</li>
+        <li>Document Search API</li>
+        <li>AI Knowledge Assistant</li>
+        <li>Workflow Automation Platform</li>
+    </ul>
+</section>
+
+<section id="features">
+    <h2>Platform Features</h2>
+
+    <table border="1" cellpadding="8">
+        <thead>
+            <tr>
+                <th>Feature</th>
+                <th>Description</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Document Upload</td>
+                <td>Supports PDF, DOCX, HTML, TXT, and Markdown.</td>
+                <td>Available</td>
+            </tr>
+            <tr>
+                <td>Semantic Search</td>
+                <td>Vector search using embeddings.</td>
+                <td>Available</td>
+            </tr>
+            <tr>
+                <td>Chat with Documents</td>
+                <td>Answers questions using indexed documents.</td>
+                <td>Available</td>
+            </tr>
+            <tr>
+                <td>Multilingual Support</td>
+                <td>Supports more than 40 languages.</td>
+                <td>Beta</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<section id="installation">
+    <h2>Installation</h2>
+
+<pre><code>
+git clone https://github.com/example/openrag-demo.git
+
+cd openrag-demo
+
+pip install -r requirements.txt
+
+python app.py
+</code></pre>
+
+</section>
+
+<section id="configuration">
+    <h2>Configuration</h2>
+
+    <p>
+        Configure the application using environment variables:
+    </p>
+
+<pre><code>
+OPENAI_API_KEY=your_api_key
+VECTOR_DB=qdrant
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+EMBEDDING_MODEL=text-embedding-3-large
+</code></pre>
+
+</section>
+
+<section id="workflow">
+    <h2>Document Processing Workflow</h2>
+
+    <ol>
+        <li>Upload a document.</li>
+        <li>Extract text.</li>
+        <li>Split into chunks.</li>
+        <li>Create embeddings.</li>
+        <li>Store vectors.</li>
+        <li>Perform semantic retrieval.</li>
+        <li>Generate answers using the retrieved context.</li>
+    </ol>
+</section>
+
+<section id="faq">
+    <h2>Frequently Asked Questions</h2>
+
+    <h3>What file formats are supported?</h3>
+    <p>
+        PDF, HTML, DOCX, TXT, Markdown, CSV, and JSON.
+    </p>
+
+    <h3>Which embedding model is used?</h3>
+    <p>
+        The default embedding model is
+        <strong>text-embedding-3-large</strong>.
+    </p>
+
+    <h3>Can I upload multiple documents?</h3>
+    <p>
+        Yes. Documents are indexed independently while sharing the same
+        searchable vector database.
+    </p>
+
+    <h3>Does the system support citations?</h3>
+    <p>
+        Yes. Retrieved chunks can be returned with source references.
+    </p>
+</section>
+
+<section id="contact">
+    <h2>Support</h2>
+
+    <p>
+        Email: support@example.com
+    </p>
+
+    <p>
+        Documentation:
+        <a href="https://example.com/docs">
+            https://example.com/docs
+        </a>
+    </p>
+</section>
+
+<footer>
+    <hr>
+    <p>
+        End of OpenRAG Sample Document.
+    </p>
+</footer>
+
+</body>
+</html>

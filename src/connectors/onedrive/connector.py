@@ -406,7 +406,7 @@ class OneDriveConnector(BaseConnector):
         """Get subscription expiry time (Graph caps duration; often <= 3 days)."""
         from datetime import datetime, timedelta
 
-        expiry = datetime.utcnow() + timedelta(days=3)
+        expiry = datetime.now(UTC) + timedelta(days=3)
         return expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     async def list_files(
