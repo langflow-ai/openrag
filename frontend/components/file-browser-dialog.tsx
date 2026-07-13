@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Download, Loader2, RefreshCw, Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import {
@@ -145,7 +145,6 @@ export function FileBrowserDialog({
     duplicateNames: string[];
     duplicateCount: number;
   } | null>(null);
-  const isOverwriteConfirmedRef = useRef(false);
 
   const submitSync = useCallback(
     async (syncFiles: SyncFilePayload[], replaceDuplicates: boolean) => {
@@ -235,28 +234,26 @@ export function FileBrowserDialog({
 
   const handleOverwriteDuplicates = () => {
     if (!pendingSync) return;
-    isOverwriteConfirmedRef.current = true;
     submitSync(pendingSync.allFiles, true);
-    setPendingSync(null);
+  };
+
+  // Only fires from the explicit "Skip duplicates & continue" button —
+  // dismissing the dialog via the X button, outside click, or Escape should
+  // be a true no-op cancel and must not trigger a sync.
+  const handleSkipDuplicates = () => {
+    if (!pendingSync) return;
+    const { nonDuplicateFiles, duplicateCount } = pendingSync;
+    if (nonDuplicateFiles.length > 0) {
+      submitSync(nonDuplicateFiles, false);
+    } else {
+      toast.info(
+        `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
+      );
+    }
   };
 
   const handleDuplicateDialogOpenChange = (open: boolean) => {
-    if (!open && pendingSync) {
-      if (isOverwriteConfirmedRef.current) {
-        // Overwrite already submitted in handleOverwriteDuplicates; this close
-        // event fires immediately after and would otherwise re-enter the
-        // "skip duplicates" branch.
-        isOverwriteConfirmedRef.current = false;
-      } else {
-        const { nonDuplicateFiles, duplicateCount } = pendingSync;
-        if (nonDuplicateFiles.length > 0) {
-          submitSync(nonDuplicateFiles, false);
-        } else {
-          toast.info(
-            `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
-          );
-        }
-      }
+    if (!open) {
       setPendingSync(null);
     }
     setDuplicateDialogOpen(open);
@@ -396,6 +393,7 @@ export function FileBrowserDialog({
         open={duplicateDialogOpen}
         onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteDuplicates}
+        onSkip={handleSkipDuplicates}
         isLoading={syncMutation.isPending}
         duplicateNames={pendingSync?.duplicateNames}
         duplicateCount={pendingSync?.duplicateCount}

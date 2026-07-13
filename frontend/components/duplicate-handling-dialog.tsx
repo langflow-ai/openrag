@@ -18,6 +18,11 @@ interface DuplicateHandlingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOverwrite: () => void | Promise<void>;
+  /** Called only when the user explicitly clicks "Skip duplicates & continue"
+   * (not when the dialog is dismissed via the X button, outside click, or
+   * Escape — those should be a true no-op cancel). Omit when dismissing
+   * without confirming should just close the dialog and do nothing. */
+  onSkip?: () => void | Promise<void>;
   isLoading?: boolean;
   duplicateLabel?: string;
   duplicateCount?: number;
@@ -30,6 +35,7 @@ export const DuplicateHandlingDialog = ({
   open,
   onOpenChange,
   onOverwrite,
+  onSkip,
   isLoading = false,
   duplicateLabel,
   duplicateCount,
@@ -39,6 +45,13 @@ export const DuplicateHandlingDialog = ({
 
   const handleOverwrite = async () => {
     await onOverwrite();
+    onOpenChange(false);
+  };
+
+  const handleSkip = async () => {
+    if (onSkip) {
+      await onSkip();
+    }
     onOpenChange(false);
   };
 
@@ -99,7 +112,7 @@ export const DuplicateHandlingDialog = ({
           <Button
             type="button"
             variant="ghost"
-            onClick={() => onOpenChange(false)}
+            onClick={handleSkip}
             disabled={isLoading}
             size="sm"
             className="whitespace-nowrap"

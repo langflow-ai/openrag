@@ -151,7 +151,6 @@ export function KnowledgeDropdown() {
     duplicateNames: string[];
     unsupportedCount: number;
   } | null>(null);
-  const isFolderOverwriteConfirmedRef = useRef(false);
   const [cloudConnectors, setCloudConnectors] = useState<{
     [key: string]: {
       name: string;
@@ -433,7 +432,6 @@ export function KnowledgeDropdown() {
 
   const handleOverwriteFile = async () => {
     if (pendingFolderUpload) {
-      isFolderOverwriteConfirmedRef.current = true;
       const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
       await uploadFolderBatches(allFiles, true);
@@ -442,7 +440,6 @@ export function KnowledgeDropdown() {
       toast.success(
         `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
       );
-      resetDuplicateDialogState();
       return;
     }
 
@@ -469,42 +466,39 @@ export function KnowledgeDropdown() {
       });
 
       await uploadFile(pendingFile, true);
-
-      resetDuplicateDialogState();
     }
   };
 
-  const handleDuplicateDialogOpenChange = async (open: boolean) => {
-    if (!open && pendingFolderUpload) {
-      if (isFolderOverwriteConfirmedRef.current) {
-        isFolderOverwriteConfirmedRef.current = false;
-      } else {
-        const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
-          pendingFolderUpload;
-        if (nonDuplicateFiles.length > 0) {
-          await uploadFolderBatches(nonDuplicateFiles, false);
-          const extraParts: string[] = [];
-          if (duplicateNames.length > 0) {
-            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
-          }
-          if (unsupportedCount > 0) {
-            extraParts.push(`skipped ${unsupportedCount} unsupported`);
-          }
-          const suffix =
-            extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-          toast.success(
-            `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
-          );
-        } else {
-          toast.info(
-            "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
-          );
-        }
+  // Only fires from the explicit "Skip duplicates & continue" button —
+  // dismissing the dialog via the X button, outside click, or Escape should
+  // be a true no-op cancel and must not trigger an upload. No-op when the
+  // dialog is showing a single-file duplicate instead of a folder upload.
+  const handleSkipFolderDuplicates = async () => {
+    if (!pendingFolderUpload) return;
+    const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
+      pendingFolderUpload;
+    if (nonDuplicateFiles.length > 0) {
+      await uploadFolderBatches(nonDuplicateFiles, false);
+      const extraParts: string[] = [];
+      if (duplicateNames.length > 0) {
+        extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
       }
+      if (unsupportedCount > 0) {
+        extraParts.push(`skipped ${unsupportedCount} unsupported`);
+      }
+      const suffix = extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
+      toast.success(`Processed ${nonDuplicateFiles.length} file(s)${suffix}`);
+    } else {
+      toast.info(
+        "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
+      );
+    }
+  };
 
+  const handleDuplicateDialogOpenChange = (open: boolean) => {
+    if (!open) {
       resetDuplicateDialogState();
     }
-
     setShowDuplicateDialog(open);
   };
 
@@ -920,6 +914,7 @@ export function KnowledgeDropdown() {
         open={showDuplicateDialog}
         onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteFile}
+        onSkip={handleSkipFolderDuplicates}
         isLoading={fileUploading || folderLoading}
         duplicateLabel={duplicateFilename}
         duplicateNames={pendingFolderUpload?.duplicateNames}

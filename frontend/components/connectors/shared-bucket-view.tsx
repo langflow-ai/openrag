@@ -94,7 +94,6 @@ export function SharedBucketView({
     duplicateFiles: BucketDuplicateFile[];
     nonDuplicateFiles: BucketDuplicateFile[];
   } | null>(null);
-  const isOverwriteConfirmedRef = useRef(false);
 
   useEffect(() => {
     if (
@@ -275,29 +274,27 @@ export function SharedBucketView({
 
   const handleOverwriteDuplicates = () => {
     if (!pendingDuplicates) return;
-    isOverwriteConfirmedRef.current = true;
     const { duplicateFiles, nonDuplicateFiles } = pendingDuplicates;
     runSelectedFilesSync([...duplicateFiles, ...nonDuplicateFiles], true);
-    setPendingDuplicates(null);
+  };
+
+  // Only fires from the explicit "Skip duplicates & continue" button —
+  // dismissing the dialog via the X button, outside click, or Escape should
+  // be a true no-op cancel and must not trigger a sync.
+  const handleSkipDuplicates = () => {
+    if (!pendingDuplicates) return;
+    const { nonDuplicateFiles, duplicateCount } = pendingDuplicates;
+    if (nonDuplicateFiles.length > 0) {
+      runSelectedFilesSync(nonDuplicateFiles);
+    } else {
+      toast.info(
+        `All ${duplicateCount} file(s) already exist and were skipped. Nothing was synced.`,
+      );
+    }
   };
 
   const handleDuplicateDialogOpenChange = (open: boolean) => {
-    if (!open && pendingDuplicates) {
-      if (isOverwriteConfirmedRef.current) {
-        // Overwrite already submitted in handleOverwriteDuplicates; this close
-        // event fires immediately after and would otherwise re-enter the
-        // "skip duplicates" branch.
-        isOverwriteConfirmedRef.current = false;
-      } else {
-        const { nonDuplicateFiles, duplicateCount } = pendingDuplicates;
-        if (nonDuplicateFiles.length > 0) {
-          runSelectedFilesSync(nonDuplicateFiles);
-        } else {
-          toast.info(
-            `All ${duplicateCount} file(s) already exist and were skipped. Nothing was synced.`,
-          );
-        }
-      }
+    if (!open) {
       setPendingDuplicates(null);
     }
     setDuplicateDialogOpen(open);
@@ -502,6 +499,7 @@ export function SharedBucketView({
         open={duplicateDialogOpen}
         onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteDuplicates}
+        onSkip={handleSkipDuplicates}
         isLoading={syncMutation.isPending}
         duplicateNames={pendingDuplicates?.duplicateNames}
         duplicateCount={pendingDuplicates?.duplicateCount}
