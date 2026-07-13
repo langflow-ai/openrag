@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import HTTPException
@@ -304,7 +304,7 @@ class AuthService:
 
             # Add expiry if provided
             if token_data.get("expires_in"):
-                expiry = datetime.utcnow() + timedelta(seconds=int(token_data["expires_in"]))
+                expiry = datetime.now(UTC) + timedelta(seconds=int(token_data["expires_in"]))
                 token_file_data["expiry"] = expiry.isoformat()
 
             # Save tokens to file

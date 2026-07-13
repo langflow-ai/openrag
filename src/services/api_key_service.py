@@ -5,7 +5,7 @@ API Key Service for managing user API keys for public API authentication.
 import hashlib
 import hmac
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from config.settings import API_KEYS_INDEX_NAME
@@ -113,7 +113,7 @@ class APIKeyService:
             # Create a unique key_id
             key_id = secrets.token_urlsafe(16)
 
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
 
             # Create the document to store
             key_doc = {
@@ -209,7 +209,7 @@ class APIKeyService:
             # Update last_used_at and opportunistically migrate legacy hashes.
             try:
                 write_client = self._get_write_opensearch_client()
-                update_doc = {"last_used_at": datetime.utcnow().isoformat()}
+                update_doc = {"last_used_at": datetime.now(UTC).isoformat()}
                 if matched_hash != key_hash:
                     update_doc["key_hash"] = key_hash
                 await write_client.update(
@@ -237,7 +237,7 @@ class APIKeyService:
         jwt_token: str = None,
     ) -> dict[str, Any]:
         """
-        List all API keys for a user (without the actual keys).
+        List all active (non-revoked) API keys for a user (without the actual keys).
 
         Args:
             user_id: The user's ID
@@ -251,7 +251,14 @@ class APIKeyService:
 
             # Search for user's keys
             search_body = {
-                "query": {"term": {"user_id": user_id}},
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"term": {"revoked": False}},
+                        ]
+                    }
+                },
                 "sort": [{"created_at": {"order": "desc"}}],
                 "_source": [
                     "key_id",

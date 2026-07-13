@@ -88,6 +88,12 @@ export function SharedBucketView({
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
   };
 
+  const trackIngestTasks = (taskIds?: string[]) => {
+    for (const id of taskIds ?? []) {
+      addTask(id, { connectorType: connector.type, source: "connector" });
+    }
+  };
+
   const toggleBucket = (bucketName: string) => {
     setSelectedBuckets((prev) => {
       const next = new Set(prev);
@@ -131,12 +137,7 @@ export function SharedBucketView({
           if (result.task_ids?.length) {
             // The container path may return two tasks (new files + changed files);
             // track them all.
-            for (const id of result.task_ids) {
-              addTask(id, {
-                connectorType: connector.type,
-                source: "connector",
-              });
-            }
+            trackIngestTasks(result.task_ids);
             onDone();
           } else {
             toast.info(
@@ -342,6 +343,17 @@ export function SharedBucketView({
           connectorType={connector.type}
           connectionId={connector.connectionId}
           buckets={[browseDialogBucket]}
+          onIngestSuccess={(result) => {
+            invalidate();
+            if (result.task_ids?.length) {
+              trackIngestTasks(result.task_ids);
+              onDone();
+            } else {
+              toast.info(
+                result.message ?? "No files were queued for ingestion.",
+              );
+            }
+          }}
         />
       )}
     </>

@@ -8,6 +8,7 @@ Lifted verbatim from the original `src/api/settings.py` (lines 371–480 and
 1388–1455). No behavior change.
 """
 
+from datetime import UTC
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -205,8 +206,8 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
         "owner": owner_user_id,
         "allowed_users": [],
         "allowed_groups": [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
     result = await knowledge_filter_service.create_knowledge_filter(

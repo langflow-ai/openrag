@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from dependencies import _get_ibm_user  # noqa: E402
+from auth.request_identity import _get_ibm_user  # noqa: E402
 
 
 @pytest.mark.asyncio

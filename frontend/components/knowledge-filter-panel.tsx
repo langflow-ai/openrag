@@ -192,6 +192,7 @@ export function KnowledgeFilterPanel() {
 
   const tableRows = buildKnowledgeTableRows(allSearchData, taskFiles);
   const sourceOptions = buildActiveSourceOptions(tableRows);
+  const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
@@ -372,7 +373,13 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <MultiSelect
                 options={sourceOptions}
-                value={selectedFilters.data_sources}
+                value={
+                  selectedFilters.data_sources[0] === "*"
+                    ? selectedFilters.data_sources
+                    : selectedFilters.data_sources.filter((source) =>
+                        availableSourceValues.has(source),
+                      )
+                }
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }

@@ -9,25 +9,25 @@ inserts only what's missing. Implementation lives in db.seed so the
 catalog has a single source of truth.
 
 """
-from datetime import datetime
-from typing import Sequence, Union
-import uuid
 
-from alembic import op
+import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime
+
 import sqlalchemy as sa
 
+from alembic import op
 from db.seed import BUILTIN_ROLES, PERMISSIONS, ROLE_PERMISSION_MAP, permission_name
 
-
 revision: str = "0002_seed_roles_permissions"
-down_revision: Union[str, Sequence[str], None] = "0001_initial"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0001_initial"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     bind = op.get_bind()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     # Permissions
     perms_table = sa.table(
@@ -94,8 +94,7 @@ def upgrade() -> None:
         for row in bind.execute(sa.text("SELECT id, name FROM permissions")).fetchall()
     }
     role_id_by_name = {
-        row[1]: row[0]
-        for row in bind.execute(sa.text("SELECT id, name FROM roles")).fetchall()
+        row[1]: row[0] for row in bind.execute(sa.text("SELECT id, name FROM roles")).fetchall()
     }
     existing_rp = {
         (row[0], row[1])
@@ -132,19 +131,22 @@ def downgrade() -> None:
     perm_names = [permission_name(r, a) for r, a, _ in PERMISSIONS]
     if role_names:
         bind.execute(
-            sa.text("DELETE FROM role_permissions WHERE role_id IN "
-                    "(SELECT id FROM roles WHERE name IN :names)")
-            .bindparams(sa.bindparam("names", expanding=True)),
+            sa.text(
+                "DELETE FROM role_permissions WHERE role_id IN "
+                "(SELECT id FROM roles WHERE name IN :names)"
+            ).bindparams(sa.bindparam("names", expanding=True)),
             {"names": role_names},
         )
         bind.execute(
-            sa.text("DELETE FROM roles WHERE name IN :names AND is_system = 1")
-            .bindparams(sa.bindparam("names", expanding=True)),
+            sa.text("DELETE FROM roles WHERE name IN :names AND is_system = 1").bindparams(
+                sa.bindparam("names", expanding=True)
+            ),
             {"names": role_names},
         )
     if perm_names:
         bind.execute(
-            sa.text("DELETE FROM permissions WHERE name IN :names")
-            .bindparams(sa.bindparam("names", expanding=True)),
+            sa.text("DELETE FROM permissions WHERE name IN :names").bindparams(
+                sa.bindparam("names", expanding=True)
+            ),
             {"names": perm_names},
         )

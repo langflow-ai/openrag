@@ -28,6 +28,7 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
+  onIngestSuccess?: (result: { task_ids?: string[]; message?: string }) => void;
 }
 
 export function FileBrowserDialog({
@@ -36,6 +37,7 @@ export function FileBrowserDialog({
   connectorType,
   connectionId,
   buckets,
+  onIngestSuccess,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -127,7 +129,7 @@ export function FileBrowserDialog({
     const hasStale = selectedFiles.some((f) => f.is_stale);
 
     try {
-      await syncMutation.mutateAsync({
+      const result = await syncMutation.mutateAsync({
         connectorType,
         body: {
           selected_files: selectedFiles.map((f) => ({
@@ -146,12 +148,19 @@ export function FileBrowserDialog({
 
       setSelectedFileIds(new Set());
       onOpenChange(false);
+      onIngestSuccess?.(result);
     } catch (err) {
       toast.error("Ingestion failed", {
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [selectedFiles, connectorType, syncMutation, onOpenChange]);
+  }, [
+    selectedFiles,
+    connectorType,
+    syncMutation,
+    onOpenChange,
+    onIngestSuccess,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

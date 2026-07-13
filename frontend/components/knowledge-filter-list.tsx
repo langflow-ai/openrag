@@ -154,7 +154,8 @@ export function KnowledgeFilterList({
                           const dataSources = parseQueryData(filter.query_data)
                             .filters.data_sources;
                           if (dataSources[0] === "*") return "All sources";
-                          const count = dataSources.length;
+                          const count =
+                            filter.active_source_count ?? dataSources.length;
                           return `${count} ${
                             count === 1 ? "source" : "sources"
                           }`;
