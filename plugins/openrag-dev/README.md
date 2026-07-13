@@ -36,13 +36,13 @@ Read `plugins/openrag-dev/skills/qa-handoff/SKILL.md` directly — the frontmatt
 [`npx skills`](https://github.com/vercel-labs/skills) is a third-party, agent-agnostic package manager for `SKILL.md`-based skills (Claude Code, Cursor, OpenCode, Codex, and others). It scans a source for `SKILL.md` files and installs them into the target agent's skills directory.
 
 ```bash
-# from a clone of this repo
-npx skills add . --skill qa-handoff
+# from a clone of this repo — --skill matches the SKILL.md frontmatter `name`, not the directory name
+npx skills add . --skill openrag_dev_qa_handoff
 
 # once this repo/branch is pushed, from anywhere
-npx skills add langflow-ai/openrag --skill qa-handoff
+npx skills add langflow-ai/openrag --skill openrag_dev_qa_handoff
 
-# or point at the skill directly
+# or point at the skill's directory directly (no --skill needed)
 npx skills add https://github.com/langflow-ai/openrag/tree/main/plugins/openrag-dev/skills/qa-handoff
 ```
 

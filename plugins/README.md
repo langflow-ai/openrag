@@ -74,10 +74,10 @@ Read `SKILL.md` directly. The frontmatter `description` tells the agent when the
 # from a clone of this repo — discovers every SKILL.md across all plugins
 npx skills add . --list
 
-# once pushed, from anywhere
-npx skills add langflow-ai/openrag --skill qa-handoff
+# once pushed, from anywhere — --skill matches the SKILL.md frontmatter `name`, not the directory name
+npx skills add langflow-ai/openrag --skill openrag_dev_qa_handoff
 
-# or point at one skill directly
+# or point at one skill's directory directly (no --skill needed)
 npx skills add https://github.com/langflow-ai/openrag/tree/main/plugins/openrag-dev/skills/qa-handoff
 ```
 
