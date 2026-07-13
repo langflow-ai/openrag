@@ -350,6 +350,8 @@ export function SharedBucketView({
           connectorType={connector.type}
           connectionId={connector.connectionId}
           buckets={[browseDialogBucket]}
+          showShared={showSharedToggle}
+          ingestSettings={ingestSettings}
         />
       )}
     </>
