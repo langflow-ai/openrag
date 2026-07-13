@@ -8,9 +8,7 @@ import msal
 logger = logging.getLogger(__name__)
 
 
-def _verify_access_token(
-    access_token: str | None, tenant_id: str | None = None
-) -> dict | None:
+def _verify_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
     """
     Verify Microsoft access token signature, expiry, audience, and issuer domain.
 

@@ -287,6 +287,7 @@ class AuthService:
             # Raises JWTVerificationError on any validation failure — connection is rejected.
             if connector_type == "google_drive":
                 from connectors.google_drive.oauth import _verify_id_token
+
                 _verify_id_token(token_data.get("id_token"))
                 logger.debug("[AUTH] Google ID token verification completed for OAuth callback")
 

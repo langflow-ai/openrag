@@ -35,6 +35,7 @@ def get_env_float(key: str, default: float | None = None) -> float | None:
     """Get an environment variable as a float."""
     return safe_float(os.getenv(key), default)
 
+
 def get_env_set(key: str) -> set[str] | None:
     """Return a set of non-empty strings from a comma-separated env var.
 

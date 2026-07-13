@@ -38,6 +38,7 @@ def _verify_id_token(id_token: str | None) -> dict | None:
     logger.debug("Google ID token verified, email=%s", claims.get("email"))
     return claims
 
+
 _REFRESH_TIMEOUT_SECONDS = 30
 
 

@@ -151,9 +151,7 @@ def verify_google_id_token(token: str, client_id: str) -> dict[str, Any]:
         JWTVerificationError: For other verification failures
     """
     if not client_id:
-        raise JWTVerificationError(
-            "client_id is required for Google ID token verification"
-        )
+        raise JWTVerificationError("client_id is required for Google ID token verification")
 
     try:
         # Fetch JWKS
@@ -243,8 +241,7 @@ def _validate_ms_issuer(issuer: str, token_tid: str, signing_key_issuer: str) ->
     )
     if tid_in_iss and tid_in_iss != token_tid:
         raise InvalidIssuerError(
-            f"Tenant ID in issuer URL {tid_in_iss!r} does not match "
-            f"tid claim {token_tid!r}"
+            f"Tenant ID in issuer URL {tid_in_iss!r} does not match tid claim {token_tid!r}"
         )
 
 
@@ -300,9 +297,7 @@ def verify_microsoft_access_token(
         JWTVerificationError:  Any other verification failure.
     """
     if not client_id:
-        raise JWTVerificationError(
-            "client_id is required for Microsoft access token verification"
-        )
+        raise JWTVerificationError("client_id is required for Microsoft access token verification")
 
     try:
         # Decode without verification to inspect claims and pick the JWKS endpoint.
@@ -356,9 +351,7 @@ def verify_microsoft_access_token(
         if not kid:
             raise JWTVerificationError("Token header missing 'kid' field")
 
-        signing_key_entry = next(
-            (k for k in jwks.get("keys", []) if k.get("kid") == kid), None
-        )
+        signing_key_entry = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
         if signing_key_entry is None:
             raise JWTVerificationError(f"Signing key with kid '{kid}' not found in JWKS")
 
@@ -428,5 +421,6 @@ def clear_jwks_cache():
     """Clear the JWKS cache. Useful for testing."""
     _jwks_cache.clear()
     logger.debug("JWKS cache cleared")
+
 
 # Made with Bob

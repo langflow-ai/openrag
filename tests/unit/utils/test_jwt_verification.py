@@ -45,7 +45,6 @@ from utils.jwt_verification import (  # noqa: E402
     verify_microsoft_access_token,
 )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,8 +63,10 @@ def _generate_rsa_key_pair():
     public_key = private_key.public_key()
 
     # Build a minimal JWK for the public key (PyJWT RSAAlgorithm.from_jwk accepts this).
-    from jwt.algorithms import RSAAlgorithm
     import json
+
+    from jwt.algorithms import RSAAlgorithm
+
     jwk_str = RSAAlgorithm.to_jwk(public_key)
     jwk_dict = json.loads(jwk_str)
     jwk_dict["kid"] = KID
@@ -136,10 +137,11 @@ def _clear_cache():
 # _resolve_ms_jwks_url
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestResolveMsJwksUrl:
     def test_v2_token_uses_v2_endpoint(self):
         url = _resolve_ms_jwks_url(TENANT_ID, "2.0")
-        assert f"/discovery/v2.0/keys" in url
+        assert "/discovery/v2.0/keys" in url
         assert TENANT_ID in url
 
     def test_v1_token_uses_v1_endpoint(self):
@@ -156,6 +158,7 @@ class TestResolveMsJwksUrl:
 # ─────────────────────────────────────────────────────────────────────────────
 # _validate_ms_issuer
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestValidateMsIssuer:
     def test_v2_exact_match_passes(self):
@@ -194,6 +197,7 @@ class TestValidateMsIssuer:
 # verify_microsoft_access_token
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestVerifyMsAccessToken:
     """Tests for verify_microsoft_access_token()."""
 
@@ -222,9 +226,12 @@ class TestVerifyMsAccessToken:
         token = _make_ms_token(self.private_key, aud=MS_GRAPH_AUD)
 
         with patch("utils.jwt_verification._fetch_jwks"):
-            with pytest.raises(InvalidIssuerError, match="not in the configured allowed tenant list"):
+            with pytest.raises(
+                InvalidIssuerError, match="not in the configured allowed tenant list"
+            ):
                 verify_microsoft_access_token(
-                    token, CLIENT_ID,
+                    token,
+                    CLIENT_ID,
                     allowed_tenant_ids={"ffffffff-ffff-ffff-ffff-ffffffffffff"},
                 )
 
@@ -235,7 +242,8 @@ class TestVerifyMsAccessToken:
 
         with patch("utils.jwt_verification._fetch_jwks"):
             claims = verify_microsoft_access_token(
-                token, CLIENT_ID,
+                token,
+                CLIENT_ID,
                 allowed_tenant_ids={TENANT_ID},
             )
         assert claims["tid"] == TENANT_ID
@@ -331,9 +339,12 @@ class TestVerifyMsAccessToken:
         token = _make_ms_token(self.private_key)
 
         with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
-            with pytest.raises(InvalidIssuerError, match="not in the configured allowed tenant list"):
+            with pytest.raises(
+                InvalidIssuerError, match="not in the configured allowed tenant list"
+            ):
                 verify_microsoft_access_token(
-                    token, CLIENT_ID,
+                    token,
+                    CLIENT_ID,
                     allowed_tenant_ids={"ffffffff-ffff-ffff-ffff-ffffffffffff"},
                 )
 
@@ -343,7 +354,8 @@ class TestVerifyMsAccessToken:
 
         with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
             claims = verify_microsoft_access_token(
-                token, CLIENT_ID,
+                token,
+                CLIENT_ID,
                 allowed_tenant_ids={TENANT_ID},
             )
         assert claims["tid"] == TENANT_ID
@@ -392,8 +404,9 @@ class TestVerifyMsAccessToken:
         """Network failure during JWKS fetch propagates as JWTVerificationError."""
         token = _make_ms_token(self.private_key)
 
-        with patch("utils.jwt_verification._fetch_jwks",
-                   side_effect=JWTVerificationError("network error")):
+        with patch(
+            "utils.jwt_verification._fetch_jwks", side_effect=JWTVerificationError("network error")
+        ):
             with pytest.raises(JWTVerificationError):
                 verify_microsoft_access_token(token, CLIENT_ID)
 
@@ -429,6 +442,7 @@ class TestVerifyMsAccessToken:
 # ─────────────────────────────────────────────────────────────────────────────
 # verify_google_id_token
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestVerifyGoogleIdToken:
     """Tests for verify_google_id_token()."""
@@ -523,44 +537,52 @@ class TestVerifyGoogleIdToken:
 # get_env_set (env_utils helper)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestGetEnvSet:
     """Tests for the get_env_set() helper used for MICROSOFT_ALLOWED_TENANT_IDS."""
 
     def test_unset_returns_none(self, monkeypatch):
         monkeypatch.delenv("MICROSOFT_ALLOWED_TENANT_IDS", raising=False)
         from utils.env_utils import get_env_set
+
         assert get_env_set("MICROSOFT_ALLOWED_TENANT_IDS") is None
 
     def test_empty_string_returns_none(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", "")
         from utils.env_utils import get_env_set
+
         assert get_env_set("MICROSOFT_ALLOWED_TENANT_IDS") is None
 
     def test_whitespace_only_returns_none(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", "   ")
         from utils.env_utils import get_env_set
+
         assert get_env_set("MICROSOFT_ALLOWED_TENANT_IDS") is None
 
     def test_single_value_returns_set(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", "aaaa-1111")
         from utils.env_utils import get_env_set
+
         result = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
         assert result == {"aaaa-1111"}
 
     def test_multiple_values_returns_set(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", "aaaa-1111,bbbb-2222,cccc-3333")
         from utils.env_utils import get_env_set
+
         result = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
         assert result == {"aaaa-1111", "bbbb-2222", "cccc-3333"}
 
     def test_values_are_stripped(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", " aaaa-1111 , bbbb-2222 ")
         from utils.env_utils import get_env_set
+
         result = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
         assert result == {"aaaa-1111", "bbbb-2222"}
 
     def test_empty_segments_ignored(self, monkeypatch):
         monkeypatch.setenv("MICROSOFT_ALLOWED_TENANT_IDS", "aaaa-1111,,bbbb-2222,")
         from utils.env_utils import get_env_set
+
         result = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
         assert result == {"aaaa-1111", "bbbb-2222"}

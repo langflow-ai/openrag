@@ -8,9 +8,7 @@ import msal
 logger = logging.getLogger(__name__)
 
 
-def _verify_access_token(
-    access_token: str | None, tenant_id: str | None = None
-) -> dict | None:
+def _verify_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
     """
     Verify Microsoft access token signature, expiry, audience, and issuer domain.
 
@@ -154,7 +152,11 @@ class SharePointOAuth:
                 logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
                 if accounts:
                     self._current_account = accounts[0]
-                    username = self._current_account.get('username', 'no username') if self._current_account else 'no username'
+                    username = (
+                        self._current_account.get("username", "no username")
+                        if self._current_account
+                        else "no username"
+                    )
                     logger.debug(f"Set current account: {username}")
 
                     if needs_upgrade:
@@ -216,7 +218,11 @@ class SharePointOAuth:
                 logger.debug(f"After refresh, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
-                    username = self._current_account.get('username', 'no username') if self._current_account else 'no username'
+                    username = (
+                        self._current_account.get("username", "no username")
+                        if self._current_account
+                        else "no username"
+                    )
                     logger.debug(f"Set current account after refresh: {username}")
                 return True
 
