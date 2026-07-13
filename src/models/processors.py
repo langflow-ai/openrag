@@ -1224,7 +1224,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
                 else:
@@ -1272,7 +1271,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
 

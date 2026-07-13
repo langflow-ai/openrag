@@ -231,7 +231,6 @@ class ConnectorService:
                         owner_user_id,
                         connector_type,
                         jwt_token,
-                        id_field="connector_file_id",
                     )
 
                 return {
@@ -246,7 +245,6 @@ class ConnectorService:
         owner_user_id: str,
         connector_type: str,
         jwt_token: str = None,
-        id_field: str = "document_id",
         indexed_filename: str | None = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
