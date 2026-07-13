@@ -593,15 +593,8 @@ export class Knowledge {
    */
   async deleteDocument(
     documentNames: string | string[],
-    skipFetch = false,
   ): Promise<boolean | { found: string[]; notFound: string[] }> {
     await this.open();
-    // Fetch latest docs to ensure fresh data (only if not in cleanup phase)
-    // Skip fetchLatestDocs during cleanup to avoid timeouts
-    const isCleanup = new Error().stack?.includes("cleanupDocuments");
-    if (!isCleanup && !skipFetch) {
-      await this.fetchLatestDocs();
-    }
     // Handle single document case
     if (typeof documentNames === "string") {
       let row: Locator;
@@ -672,9 +665,6 @@ export class Knowledge {
   async openDocument(fileName: string) {
     await this.open();
 
-    // Fetch latest docs to ensure fresh data
-    await this.fetchLatestDocs();
-
     // Find the document row using reliable method
     const row = await this.findRowAcrossPages(fileName);
 
@@ -744,7 +734,6 @@ export class Knowledge {
         logger.info(`  ⏳ Document "${docName}" not yet visible, retrying...`);
         // Refresh the grid before the next poll so newly ingested docs appear
         await searchInp.clear();
-        await this.fetchLatestDocs();
         continue;
       }
       // Row is visible — scroll right to reveal the Status column and read it
@@ -772,13 +761,12 @@ export class Knowledge {
 
   /**
    * Verify that a document has been removed from the knowledge grid.
-   * Fetches latest docs, searches for the document, and asserts it is NOT visible.
+   * Searches for the document, and asserts it is NOT visible.
    * Passes immediately when the document is absent; fails if it is still present.
    * @param docName - The name of the document that should no longer exist
    */
   async verifyDocumentDeleted(docName: string): Promise<void> {
     await this.open();
-    await this.fetchLatestDocs();
     const searchInp = this.searchInput();
     await searchInp.clear();
     await searchInp.fill(docName);
@@ -794,7 +782,6 @@ export class Knowledge {
 
   async getDocumentStatus(docName: string): Promise<string> {
     await this.open();
-    await this.fetchLatestDocs();
     const row = await this.findRowAcrossPages(docName);
     const status = this.getStatusCell(row).first();
     await expect(status).toBeVisible({ timeout: 30000 });
@@ -830,8 +817,6 @@ export class Knowledge {
    */
   async getSearchResults(searchTerm: string): Promise<string[]> {
     await this.open();
-    // Fetch latest docs to ensure fresh data
-    await this.fetchLatestDocs();
     const searchInp = this.searchInput();
     await searchInp.fill(searchTerm);
     await this.page.keyboard.press("Enter");
@@ -865,7 +850,6 @@ export class Knowledge {
    * @param sourceFileName - Name of the source file to include in the filter
    */
   async createKnowledgeFilter(filterName: string, sourceFileName: string) {
-    // Don't call open() here as it triggers fetchLatestDocs unnecessarily
     // Just navigate to knowledge page directly
     await this.knowledgeLink().click();
     await expect(this.projectKnowledgeHeading()).toBeVisible();
@@ -938,7 +922,6 @@ export class Knowledge {
    * @param filterName - Name of the filter to delete
    */
   async deleteKnowledgeFilter(filterName: string) {
-    // Don't call open() here to avoid unnecessary fetchLatestDocs
     await this.knowledgeLink().click();
     await expect(this.projectKnowledgeHeading()).toBeVisible();
     // Find the filter in the sidebar and click on it to open the form

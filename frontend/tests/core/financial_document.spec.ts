@@ -40,7 +40,7 @@ test.describe("Financial Document - OpenAI @33219232", () => {
 
     // Remove existing copy and re-ingest with table structure ON
     await knowledge.open();
-    await knowledge.deleteDocument(testDocument, true);
+    await knowledge.deleteDocument(testDocument);
 
     await settings.open();
     await settings.clickTab("Langflow");

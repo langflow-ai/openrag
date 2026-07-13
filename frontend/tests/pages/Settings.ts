@@ -260,6 +260,7 @@ export class Settings {
     await this.page
       .waitForLoadState("networkidle", { timeout: 30000 })
       .catch(() => {});
+    await this.page.waitForTimeout(15000); // Wait for background operations to run
   }
 
   /**

@@ -61,7 +61,6 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       if (deleteResult.found.length > 0) {
         logger.info(`\n  🔍 Verifying deleted files are gone...`);
         await knowledge.open();
-        await knowledge.fetchLatestDocs();
 
         for (const fileName of deleteResult.found) {
           try {
@@ -99,7 +98,6 @@ test.describe("Bulk Document Ingestion @33219230", () => {
     // Step 3: Verify all files are active (using ingested names)
     logger.info(`\n  🔍 Verifying all files are active...`);
     await knowledge.open();
-    await knowledge.fetchLatestDocs();
 
     let activeCount = 0;
     const failedFiles: string[] = [];
@@ -183,7 +181,6 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       // Verify deleted files are actually gone
       if (deleteResult.found.length > 0) {
         await knowledge.open();
-        await knowledge.fetchLatestDocs();
 
         for (const fileName of deleteResult.found) {
           try {
@@ -252,7 +249,6 @@ test.describe("Bulk Document Ingestion @33219230", () => {
       `\n  ✓ Verifying all ${expectedSuccessCount} files are active...`,
     );
     await knowledge.open();
-    await knowledge.fetchLatestDocs();
 
     let activeCount = 0;
     const failedFiles: string[] = [];

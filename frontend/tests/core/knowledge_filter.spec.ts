@@ -22,7 +22,7 @@ test("@smoke Knowledge filter functionality @33219234", async ({
   await navigateToHome(page);
 
   // Cleanup and setup (skipFetch=true: no need for fresh grid data when deleting pre-test leftovers)
-  await knowledge.deleteDocument(testDocumentName, true);
+  await knowledge.deleteDocument(testDocumentName);
   await knowledge.deleteKnowledgeFilter(filterName);
 
   // Ingest document and create filter
@@ -93,7 +93,7 @@ test("Knowledge filter deletion verification", async ({
   await navigateToHome(page);
 
   // Cleanup and setup (skipFetch=true: avoid slow re-ingestion wait during pre-test cleanup)
-  await knowledge.deleteDocument(testDocumentName, true);
+  await knowledge.deleteDocument(testDocumentName);
   await knowledge.deleteKnowledgeFilter(filterName);
 
   // Ingest document and create filter
@@ -145,8 +145,8 @@ test("Knowledge filter scope restriction - Negative test", async ({
   logger.info(`\n🧪 Testing Knowledge Filter Scope Restriction`);
 
   // Cleanup (skipFetch=true: no need for fresh grid data when deleting pre-test leftovers)
-  await knowledge.deleteDocument(projectDocName, true);
-  await knowledge.deleteDocument(leavePolicyName, true);
+  await knowledge.deleteDocument(projectDocName);
+  await knowledge.deleteDocument(leavePolicyName);
   await knowledge.deleteKnowledgeFilter(filterName);
 
   // Ingest both documents
