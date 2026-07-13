@@ -399,6 +399,7 @@ class TaskService:
             upload_task = UploadTask(
                 task_id=task_id,
                 total_files=len(items),
+                connector_type=getattr(processor, "connector_type", "local") or "local",
                 file_tasks=file_tasks,
             )
             upload_task.processor = processor
@@ -1232,6 +1233,7 @@ class TaskService:
                 tasks_by_id[task_id] = {
                     "task_id": upload_task.task_id,
                     "status": upload_task.status.value,
+                    "connector_type": upload_task.connector_type,
                     "total_files": upload_task.total_files,
                     "processed_files": upload_task.processed_files,
                     "successful_files": upload_task.successful_files,

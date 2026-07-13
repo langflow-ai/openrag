@@ -103,9 +103,7 @@ export function inferTaskFileConnectorType(
   // Bucket connectors (aws_s3, ibm_cos, azure_blob) key task files by a bare
   // object key or composite "<container>::<blob>" id — none of which are
   // distinguishable here — so we rely on the connector_type captured at ingest
-  // time (taskConnectorTypesRef) and fall through to "local" otherwise. The
-  // processing-row icon for these is tracked as a follow-up
-  // (see [[task-connector-type-processing-icon]]).
+  // time (taskConnectorTypesRef, seeded from the task API on initial load).
   return "local";
 }
 

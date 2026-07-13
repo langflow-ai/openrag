@@ -74,6 +74,7 @@ class UploadTask:
     processed_files: int = 0
     successful_files: int = 0
     failed_files: int = 0
+    connector_type: str = "local"
     file_tasks: dict[str, FileTask] = field(default_factory=dict)
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)

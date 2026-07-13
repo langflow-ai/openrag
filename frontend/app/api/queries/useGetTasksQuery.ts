@@ -54,6 +54,7 @@ export interface TaskFileEntry {
 
 export interface Task {
   task_id: string;
+  connector_type?: string;
   status:
     | "pending"
     | "running"

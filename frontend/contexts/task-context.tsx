@@ -270,6 +270,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         (prev) => prev.task_id === currentTask.task_id,
       );
 
+      // Seed connector type from the task payload so that in-progress rows
+      // show the correct icon even after a page refresh (before addTask fires).
+      if (
+        currentTask.connector_type &&
+        currentTask.connector_type !== "local" &&
+        !taskConnectorTypesRef.current.has(currentTask.task_id)
+      ) {
+        taskConnectorTypesRef.current.set(
+          currentTask.task_id,
+          currentTask.connector_type,
+        );
+      }
+
       const isTaskInProgress = isTaskInProgressStatus(currentTask.status);
 
       // On initial load, previousTasksRef is empty, so we need to process all in-progress tasks
