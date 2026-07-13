@@ -135,7 +135,7 @@ class ConnectorService:
                 docling_polling_service=self.task_service.docling_polling_service
                 if self.task_service
                 else None,
-                document_id=document.id,
+                connector_file_id=document.id,
                 source_url=document.source_url,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
@@ -215,6 +215,7 @@ class ConnectorService:
                     file_size=len(document.content) if document.content else 0,
                     connector_type=connector_type,
                     acl=document.acl,
+                    connector_file_id=document.id,
                     **standard_kwargs,
                 )
 
@@ -228,7 +229,10 @@ class ConnectorService:
                 if result["status"] in ["indexed", "unchanged"]:
                     # Update all chunks with connector-specific metadata
                     await self._update_connector_metadata(
-                        document, owner_user_id, connector_type, jwt_token
+                        document,
+                        owner_user_id,
+                        connector_type,
+                        jwt_token,
                     )
 
                 return {
@@ -243,7 +247,6 @@ class ConnectorService:
         owner_user_id: str,
         connector_type: str,
         jwt_token: str = None,
-        id_field: str = "document_id",
         indexed_filename: str | None = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
@@ -260,9 +263,11 @@ class ConnectorService:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
 
         # Update ACL if changed (hash-based skip optimization).
-        # Match both document_id and connector_file_id: non-Langflow connector
-        # chunks store the connector id in connector_file_id (document_id holds the
-        # content hash), while Langflow chunks store it in document_id.
+        # Match both document_id and connector_file_id: both the Langflow and
+        # non-Langflow ingestion paths store the raw connector id in
+        # connector_file_id (document_id holds a content/id hash), except for
+        # pre-migration chunks indexed before that split existed, which only
+        # have document_id set to the raw connector id.
         acl_result = await update_document_acl(
             document_id=document.id,
             acl=document.acl,
@@ -288,14 +293,19 @@ class ConnectorService:
             await write_client.update_by_query(
                 index=self.index_name,
                 body={
-                    # Match both fields: non-Langflow chunks carry the connector id
-                    # in connector_file_id (document_id is the content hash),
-                    # Langflow chunks carry it in document_id.
+                    # Match both fields: both ingestion paths carry the raw
+                    # connector id in connector_file_id (document_id is a
+                    # content/id hash); pre-migration chunks only have it in
+                    # document_id.
                     "query": {
                         "bool": {
                             "should": [
                                 {"term": {"document_id": document.id}},
                                 {"term": {"connector_file_id": document.id}},
+                                # See check_document_exists (models/processors.py):
+                                # some indices predate the explicit keyword
+                                # mapping for this field.
+                                {"term": {"connector_file_id.keyword": document.id}},
                             ],
                             "minimum_should_match": 1,
                         }
