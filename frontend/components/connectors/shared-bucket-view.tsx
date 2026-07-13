@@ -8,11 +8,26 @@ import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
+import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+
+interface BucketDuplicateFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  downloadUrl?: string;
+  size?: number;
+}
+
+interface BucketDuplicateCheckResponse {
+  duplicate_names?: string[];
+  duplicate_count?: number;
+  non_duplicate_files?: BucketDuplicateFile[];
+}
 
 export interface SharedBucketViewProps {
   connector: any;
@@ -70,6 +85,14 @@ export function SharedBucketView({
   const [browseDialogBucket, setBrowseDialogBucket] = useState<string | null>(
     null,
   );
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [pendingDuplicates, setPendingDuplicates] = useState<{
+    duplicateNames: string[];
+    duplicateCount: number;
+    nonDuplicateFiles: BucketDuplicateFile[];
+  } | null>(null);
+  const isOverwriteConfirmedRef = useRef(false);
 
   useEffect(() => {
     if (
@@ -105,20 +128,43 @@ export function SharedBucketView({
     });
   };
 
-  const ingestSelected = () => {
-    const chunkErr = getIngestChunkSettingsError(ingestSettings);
-    if (chunkErr) {
-      toast.error("Could not start ingest", { description: chunkErr });
-      return;
-    }
-    trackStartProcess({
+  const onSyncSettled = () => {
+    invalidate();
+  };
+
+  const onSyncError = (err: unknown) => {
+    trackProcessFailure({
       processType: "Ingestion",
       process: "Document Upload",
       category: "Knowledge",
       source: "connector",
       connector_type: connector.type,
-      total_buckets: selectedBuckets.size,
+      resultValue: err instanceof Error ? err.message : "Sync failed",
     });
+    toast.error(err instanceof Error ? err.message : "Sync failed");
+  };
+
+  const onSyncSuccess = (result: { task_ids?: string[]; message?: string }) => {
+    onSyncSettled();
+    if (result.task_ids?.length) {
+      // The container path may return two tasks (new files + changed files);
+      // track them all.
+      for (const id of result.task_ids) {
+        addTask(id, {
+          connectorType: connector.type,
+          source: "connector",
+        });
+      }
+      onDone();
+    } else {
+      toast.info(result.message ?? "No files found in the selected buckets.");
+    }
+  };
+
+  // Full bucket sync: backend classifies new/changed/unchanged itself and
+  // re-ingests both new and changed blobs (used both when there are no
+  // duplicates and when the user chooses to overwrite them).
+  const runBucketSync = () => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -132,38 +178,118 @@ export function SharedBucketView({
             : undefined,
         },
       },
+      { onSuccess: onSyncSuccess, onError: onSyncError },
+    );
+  };
+
+  // Sync only the given (new, not-yet-ingested) files — used when the user
+  // skips overwriting duplicates.
+  const runSelectedFilesSync = (files: BucketDuplicateFile[]) => {
+    syncMutation.mutate(
       {
-        onSuccess: (result) => {
-          invalidate();
-          if (result.task_ids?.length) {
-            // The container path may return two tasks (new files + changed files);
-            // track them all.
-            for (const id of result.task_ids) {
-              addTask(id, {
-                connectorType: connector.type,
-                source: "connector",
-              });
-            }
-            onDone();
-          } else {
-            toast.info(
-              result.message ?? "No files found in the selected buckets.",
-            );
-          }
-        },
-        onError: (err) => {
-          trackProcessFailure({
-            processType: "Ingestion",
-            process: "Document Upload",
-            category: "Knowledge",
-            source: "connector",
-            connector_type: connector.type,
-            resultValue: err instanceof Error ? err.message : "Sync failed",
-          });
-          toast.error(err instanceof Error ? err.message : "Sync failed");
+        connectorType: connector.type,
+        body: {
+          connection_id: connector.connectionId!,
+          selected_files: files,
+          settings: ingestSettings,
+          shared: showSharedToggle
+            ? (ingestSettings.shared ?? false)
+            : undefined,
         },
       },
+      { onSuccess: onSyncSuccess, onError: onSyncError },
     );
+  };
+
+  const ingestSelected = async () => {
+    const chunkErr = getIngestChunkSettingsError(ingestSettings);
+    if (chunkErr) {
+      toast.error("Could not start ingest", { description: chunkErr });
+      return;
+    }
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "connector",
+      connector_type: connector.type,
+      total_buckets: selectedBuckets.size,
+    });
+
+    setIsCheckingDuplicates(true);
+    try {
+      const checkResponse = await fetch(
+        `/api/connectors/${connector.type}/check-duplicates`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            connection_id: connector.connectionId,
+            bucket_filter: Array.from(selectedBuckets),
+          }),
+        },
+      );
+
+      if (!checkResponse.ok) {
+        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
+      }
+
+      const checkData =
+        (await checkResponse.json()) as BucketDuplicateCheckResponse;
+      const duplicateNames = checkData.duplicate_names || [];
+      const duplicateCount =
+        typeof checkData.duplicate_count === "number"
+          ? checkData.duplicate_count
+          : duplicateNames.length;
+
+      if (duplicateCount === 0) {
+        runBucketSync();
+        return;
+      }
+
+      setPendingDuplicates({
+        duplicateNames,
+        duplicateCount,
+        nonDuplicateFiles: checkData.non_duplicate_files || [],
+      });
+      setDuplicateDialogOpen(true);
+    } catch (err) {
+      console.error("[Bucket Sync] Duplicate check failed:", err);
+      // Fallback: proceed with the normal full sync (backend still handles
+      // new/changed reconciliation on its own).
+      runBucketSync();
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
+  const handleOverwriteDuplicates = () => {
+    if (!pendingDuplicates) return;
+    isOverwriteConfirmedRef.current = true;
+    runBucketSync();
+    setPendingDuplicates(null);
+  };
+
+  const handleDuplicateDialogOpenChange = (open: boolean) => {
+    if (!open && pendingDuplicates) {
+      if (isOverwriteConfirmedRef.current) {
+        // Overwrite already submitted in handleOverwriteDuplicates; this close
+        // event fires immediately after and would otherwise re-enter the
+        // "skip duplicates" branch.
+        isOverwriteConfirmedRef.current = false;
+      } else {
+        const { nonDuplicateFiles, duplicateCount } = pendingDuplicates;
+        if (nonDuplicateFiles.length > 0) {
+          runSelectedFilesSync(nonDuplicateFiles);
+        } else {
+          toast.info(
+            `All ${duplicateCount} changed file(s) were skipped. Nothing was synced.`,
+          );
+        }
+      }
+      setPendingDuplicates(null);
+    }
+    setDuplicateDialogOpen(open);
   };
 
   return (
@@ -329,14 +455,20 @@ export function SharedBucketView({
           <Button
             className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
             onClick={ingestSelected}
-            disabled={syncMutation.isPending || selectedBuckets.size === 0}
-            loading={syncMutation.isPending}
+            disabled={
+              syncMutation.isPending ||
+              isCheckingDuplicates ||
+              selectedBuckets.size === 0
+            }
+            loading={syncMutation.isPending || isCheckingDuplicates}
           >
             {syncMutation.isPending
               ? "Ingesting…"
-              : selectedBuckets.size > 0
-                ? `Ingest ${selectedBuckets.size} Bucket${selectedBuckets.size !== 1 ? "s" : ""}`
-                : "Select Buckets to Ingest"}
+              : isCheckingDuplicates
+                ? "Checking…"
+                : selectedBuckets.size > 0
+                  ? `Ingest ${selectedBuckets.size} Bucket${selectedBuckets.size !== 1 ? "s" : ""}`
+                  : "Select Buckets to Ingest"}
           </Button>
         </div>
       </div>
@@ -354,6 +486,15 @@ export function SharedBucketView({
           ingestSettings={ingestSettings}
         />
       )}
+
+      <DuplicateHandlingDialog
+        open={duplicateDialogOpen}
+        onOpenChange={handleDuplicateDialogOpenChange}
+        onOverwrite={handleOverwriteDuplicates}
+        isLoading={syncMutation.isPending}
+        duplicateNames={pendingDuplicates?.duplicateNames}
+        duplicateCount={pendingDuplicates?.duplicateCount}
+      />
     </>
   );
 }

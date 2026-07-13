@@ -569,6 +569,11 @@ class ConnectorSyncBody(BaseModel):
 class ConnectorCheckDuplicatesBody(BaseModel):
     connection_id: str | None = None
     selected_files: list[Any] | None = None
+    # Bucket-kind connectors (aws_s3, azure_blob, ibm_cos) select whole
+    # buckets rather than individual files; when set (and selected_files is
+    # not), the check lists files from these buckets and classifies each as
+    # new/changed/unchanged instead of a plain filename match.
+    bucket_filter: list[str] | None = None
 
 
 def _connector_file_response(file_info: dict[str, Any], cleaned_name: str | None = None) -> dict:
@@ -703,6 +708,86 @@ async def _classify_connector_duplicates(
     }
 
 
+async def _classify_bucket_connector_duplicates(
+    connector,
+    connector_type: str,
+    bucket_filter: list[str],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> dict[str, Any]:
+    """Preview a bucket_filter sync: classify remote blobs new/changed/unchanged
+    without ingesting anything, mirroring the reconciliation in connector_sync's
+    bucket_filter branch. "changed" blobs are reported as duplicates (they would
+    overwrite an already-indexed version); "unchanged" blobs are silently
+    dropped (the real sync would skip them too); "new" blobs are returned as
+    ``non_duplicate_files`` so the caller can sync just those when the user
+    chooses to skip duplicates.
+    """
+    original_buckets = connector.bucket_names
+    connector.bucket_names = bucket_filter
+    try:
+        all_files: list[dict[str, Any]] = []
+        page_token = None
+        while True:
+            result = await connector.list_files(page_token=page_token)
+            all_files.extend(result.get("files", []))
+            page_token = result.get("next_page_token")
+            if not page_token:
+                break
+    finally:
+        connector.bucket_names = original_buckets
+
+    if not all_files:
+        return {
+            "duplicate_names": [],
+            "duplicate_files": [],
+            "non_duplicate_files": [],
+            "duplicate_count": 0,
+            "total_files": 0,
+        }
+
+    existing_ids, _, _ = await get_synced_file_ids_for_connector(
+        connector_type=connector_type,
+        user_id=user_id,
+        session_manager=session_manager,
+        jwt_token=jwt_token,
+    )
+    existing_set = set(existing_ids)
+    modified_map = await get_synced_id_to_modified_time_map(
+        connector_type=connector_type,
+        user_id=user_id,
+        session_manager=session_manager,
+        jwt_token=jwt_token,
+    )
+
+    duplicate_files: list[dict[str, Any]] = []
+    duplicate_names: list[str] = []
+    non_duplicate_files: list[dict[str, Any]] = []
+    for f in all_files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        status = classify_remote_file_change(
+            fid, f.get("modified_time"), fid in existing_set, modified_map
+        )
+        if status == "changed":
+            response_file = _connector_file_response(f)
+            duplicate_files.append(response_file)
+            duplicate_names.append(response_file["name"])
+        elif status == "new":
+            non_duplicate_files.append(_connector_file_response(f))
+        # "unchanged" → already ingested and not newer at source; skip entirely.
+
+    return {
+        "duplicate_names": list(dict.fromkeys(duplicate_names)),
+        "duplicate_files": duplicate_files,
+        "non_duplicate_files": non_duplicate_files,
+        "duplicate_count": len(duplicate_files),
+        "total_files": len(all_files),
+    }
+
+
 async def connector_check_duplicates(
     connector_type: str,
     body: ConnectorCheckDuplicatesBody,
@@ -717,7 +802,7 @@ async def connector_check_duplicates(
         return denied
 
     selected_files_raw = body.selected_files
-    if not selected_files_raw:
+    if not selected_files_raw and not body.bucket_filter:
         return JSONResponse({"duplicate_names": []})
 
     try:
@@ -757,6 +842,18 @@ async def connector_check_duplicates(
             return JSONResponse(
                 {"error": f"Connection '{working_connection.connection_id}' not found"},
                 status_code=404,
+            )
+
+        if body.bucket_filter and not selected_files_raw:
+            return JSONResponse(
+                await _classify_bucket_connector_duplicates(
+                    connector=connector,
+                    connector_type=connector_type,
+                    bucket_filter=body.bucket_filter,
+                    session_manager=session_manager,
+                    user_id=user.user_id,
+                    jwt_token=jwt_token,
+                )
             )
 
         return JSONResponse(
