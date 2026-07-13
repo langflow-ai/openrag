@@ -74,9 +74,9 @@ echo "Starting E2E Setup..."
 mkdir -p langflow-data
 chmod 777 langflow-data
 
-# Start full stack using make
-echo "Starting full stack (CPU)..."
-make dev-cpu
+# Start required services (CPU)
+echo "Starting required services (CPU)..."
+make dev-cpu SERVICES="opensearch langflow openrag-backend openrag-frontend"
 
 echo "Starting docling..."
 make docling

@@ -144,8 +144,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const refreshConversations = useCallback((force = false) => {
-    console.log("[REFRESH] refreshConversations called, force:", force);
-
     if (force) {
       // Immediate refresh for important updates like new conversations
       setRefreshTrigger((prev) => prev + 1);
@@ -180,12 +178,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
   const loadConversation = useCallback(
     async (conversation: ConversationData) => {
-      console.log("[CONVERSATION] Loading conversation:", {
-        conversationId: conversation.response_id,
-        title: conversation.title,
-        endpoint: conversation.endpoint,
-      });
-
       setCurrentConversationId(conversation.response_id);
       setEndpoint(conversation.endpoint);
       // Store the full conversation data for the chat page to use
@@ -201,10 +193,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
         const savedFilterId = localStorage.getItem(
           `conversation_filter_${conversation.response_id}`,
         );
-        console.log("[CONVERSATION] Looking for filter:", {
-          conversationId: conversation.response_id,
-          savedFilterId,
-        });
 
         if (savedFilterId) {
           // Import getFilterById dynamically to avoid circular dependency
@@ -215,11 +203,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
             const filter = await getFilterById(savedFilterId);
 
             if (filter) {
-              console.log(
-                "[CONVERSATION] Loaded filter:",
-                filter.name,
-                filter.id,
-              );
               setConversationFilterState(filter);
               // Update conversation data with the loaded filter
               setConversationData((prev) => {
@@ -236,8 +219,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
             setConversationFilterState(null);
           }
         } else {
-          // No saved filter in localStorage, clear the current filter
-          console.log("[CONVERSATION] No filter found for this conversation");
           setConversationFilterState(null);
         }
       }
@@ -252,8 +233,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
   );
 
   const startNewConversation = useCallback(async () => {
-    console.log("[CONVERSATION] Starting new conversation");
-
     // Check if there's existing conversation data - if so, this is a manual "new conversation" action
     // Check state values before clearing them
     const hasExistingConversation =
@@ -271,12 +250,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
       const defaultFilterId = localStorage.getItem(
         "default_conversation_filter_id",
       );
-      console.log("[CONVERSATION] Default filter ID:", defaultFilterId);
 
       if (defaultFilterId) {
         // Clear the default filter now so it's only used once
         localStorage.removeItem("default_conversation_filter_id");
-        console.log("[CONVERSATION] Cleared default filter (used once)");
 
         try {
           const { getFilterById } = await import(
@@ -285,11 +262,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
           const filter = await getFilterById(defaultFilterId);
 
           if (filter) {
-            console.log(
-              "[CONVERSATION] Loaded default filter:",
-              filter.name,
-              filter.id,
-            );
             setConversationFilterState(filter);
           } else {
             // Default filter was deleted
@@ -302,17 +274,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       } else {
         // No default filter in localStorage
         if (hasExistingConversation) {
-          // User is manually starting a new conversation - clear the filter
-          console.log(
-            "[CONVERSATION] Manual new conversation - clearing filter",
-          );
           setConversationFilterState(null);
         } else {
-          // First time after onboarding - preserve existing filter if set
-          // This prevents clearing the filter when startNewConversation is called multiple times during onboarding
-          console.log(
-            "[CONVERSATION] No default filter set, preserving existing filter if any",
-          );
           // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
         }
       }

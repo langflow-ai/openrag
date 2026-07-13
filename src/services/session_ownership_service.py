@@ -14,11 +14,11 @@ flipped from sync to ``await`` as part of this migration.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from config.paths import get_data_file
 from config.storage_mode import (
@@ -34,24 +34,22 @@ logger = get_logger(__name__)
 class SessionOwnershipService:
     """Tracks which user owns which session."""
 
-    def __init__(self, session_factory: Optional[Callable] = None):
+    def __init__(self, session_factory: Callable | None = None):
         self.ownership_file = get_data_file("session_ownership.json")
         os.makedirs(os.path.dirname(self.ownership_file), exist_ok=True)
         self._session_factory = session_factory
         # JSON cache — eagerly loaded so `files` and `hybrid` modes
         # behave like the legacy implementation.
-        self.ownership_data: Dict[str, Dict[str, Any]] = (
-            self._load_ownership_data()
-        )
+        self.ownership_data: dict[str, dict[str, Any]] = self._load_ownership_data()
 
     # ------------------------------------------------------------------
     # JSON helpers (legacy + hybrid fallback)
     # ------------------------------------------------------------------
 
-    def _load_ownership_data(self) -> Dict[str, Dict[str, Any]]:
+    def _load_ownership_data(self) -> dict[str, dict[str, Any]]:
         if os.path.exists(self.ownership_file):
             try:
-                with open(self.ownership_file, "r") as f:
+                with open(self.ownership_file) as f:
                     return json.load(f)
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"Error loading session ownership data: {exc}")
@@ -71,7 +69,7 @@ class SessionOwnershipService:
 
     async def claim_session(self, user_id: str, session_id: str) -> None:
         if file_writes_enabled():
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             if session_id not in self.ownership_data:
                 self.ownership_data[session_id] = {
                     "user_id": user_id,
@@ -85,7 +83,7 @@ class SessionOwnershipService:
         if db_writes_enabled():
             await self._db_claim(user_id, session_id)
 
-    async def get_session_owner(self, session_id: str) -> Optional[str]:
+    async def get_session_owner(self, session_id: str) -> str | None:
         mode = get_storage_mode()
         if mode != "files":
             owner = await self._db_get_owner(session_id)
@@ -97,7 +95,7 @@ class SessionOwnershipService:
         data = self.ownership_data.get(session_id)
         return data.get("user_id") if data else None
 
-    async def get_user_sessions(self, user_id: str) -> List[str]:
+    async def get_user_sessions(self, user_id: str) -> list[str]:
         mode = get_storage_mode()
         if mode != "files":
             db_sessions = await self._db_list_for_user(user_id)
@@ -105,26 +103,16 @@ class SessionOwnershipService:
                 return db_sessions
             # hybrid: union with JSON-only entries
             json_sessions = [
-                sid
-                for sid, data in self.ownership_data.items()
-                if data.get("user_id") == user_id
+                sid for sid, data in self.ownership_data.items() if data.get("user_id") == user_id
             ]
             return list(dict.fromkeys(db_sessions + json_sessions))
         # files mode
-        return [
-            sid
-            for sid, data in self.ownership_data.items()
-            if data.get("user_id") == user_id
-        ]
+        return [sid for sid, data in self.ownership_data.items() if data.get("user_id") == user_id]
 
-    async def is_session_owned_by_user(
-        self, session_id: str, user_id: str
-    ) -> bool:
+    async def is_session_owned_by_user(self, session_id: str, user_id: str) -> bool:
         return (await self.get_session_owner(session_id)) == user_id
 
-    async def filter_sessions_for_user(
-        self, session_ids: List[str], user_id: str
-    ) -> List[str]:
+    async def filter_sessions_for_user(self, session_ids: list[str], user_id: str) -> list[str]:
         owned = set(await self.get_user_sessions(user_id))
         return [sid for sid in session_ids if sid in owned]
 
@@ -138,8 +126,7 @@ class SessionOwnershipService:
                 released = True
             else:
                 logger.warning(
-                    f"User {user_id} tried to release session "
-                    f"{session_id} they don't own (json)"
+                    f"User {user_id} tried to release session {session_id} they don't own (json)"
                 )
 
         if db_writes_enabled():
@@ -148,14 +135,10 @@ class SessionOwnershipService:
 
         return released
 
-    async def get_ownership_stats(self) -> Dict[str, Any]:
+    async def get_ownership_stats(self) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode == "files":
-            users = {
-                d.get("user_id")
-                for d in self.ownership_data.values()
-                if d.get("user_id")
-            }
+            users = {d.get("user_id") for d in self.ownership_data.values() if d.get("user_id")}
             return {
                 "total_tracked_sessions": len(self.ownership_data),
                 "unique_users": len(users),
@@ -166,8 +149,9 @@ class SessionOwnershipService:
             }
         # db / hybrid — best-effort summary from DB only
         try:
-            from db.models import SessionOwnership
             from sqlalchemy import select
+
+            from db.models import SessionOwnership
 
             sess_factory = self._resolve_session_factory()
             if sess_factory is None:
@@ -175,13 +159,13 @@ class SessionOwnershipService:
             async with sess_factory() as session:
                 result = await session.execute(select(SessionOwnership))
                 rows = result.scalars().all()
-            users: Dict[str, int] = {}
+            user_counts: dict[str, int] = {}
             for r in rows:
-                users[r.user_id] = users.get(r.user_id, 0) + 1
+                user_counts[r.user_id] = user_counts.get(r.user_id, 0) + 1
             return {
                 "total_tracked_sessions": len(rows),
-                "unique_users": len(users),
-                "sessions_per_user": users,
+                "unique_users": len(user_counts),
+                "sessions_per_user": user_counts,
             }
         except Exception as exc:  # noqa: BLE001
             logger.warning("ownership stats DB read failed", error=str(exc))
@@ -197,6 +181,7 @@ class SessionOwnershipService:
         # Lazy: try the module-level SessionLocal
         try:
             from db.engine import SessionLocal
+
             return SessionLocal
         except Exception:  # noqa: BLE001
             return None
@@ -214,7 +199,7 @@ class SessionOwnershipService:
         except Exception as exc:  # noqa: BLE001
             logger.error("DB claim_session failed", error=str(exc))
 
-    async def _db_get_owner(self, session_id: str) -> Optional[str]:
+    async def _db_get_owner(self, session_id: str) -> str | None:
         from db.repositories import SessionOwnershipRepo
 
         sess_factory = self._resolve_session_factory()
@@ -228,7 +213,7 @@ class SessionOwnershipService:
             logger.debug("DB get_session_owner failed", error=str(exc))
             return None
 
-    async def _db_list_for_user(self, user_id: str) -> List[str]:
+    async def _db_list_for_user(self, user_id: str) -> list[str]:
         from db.repositories import SessionOwnershipRepo
 
         sess_factory = self._resolve_session_factory()

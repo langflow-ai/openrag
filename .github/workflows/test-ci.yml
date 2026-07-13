@@ -15,6 +15,8 @@ env:
   PYTHON_VERSION: "3.13"
   PLAYWRIGHT_BROWSERS_PATH: "ms-playwright"
   PLAYWRIGHT_VERSION: "1.57.0"
+  # Total number of parallel E2E test shards
+  TOTAL_SHARDS: 8
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
@@ -208,6 +210,18 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Cleanup workspace and Docker images
+        if: always()
+        run: |
+          rm -rf .ci-artifacts
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
   test-suite:
     needs: [changes, build-images]
     if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
@@ -255,6 +269,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdks/typescript/package-lock.json
 
       - name: Python version
         run: uv python install 3.13
@@ -266,7 +282,9 @@ jobs:
           path: .ci-artifacts
 
       - name: Load OpenRAG images
-        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+        run: |
+          docker load -i .ci-artifacts/openrag-ci-images.tar
+          rm -rf .ci-artifacts
 
       - name: Run ${{ matrix.suite }} integration suite
         env:
@@ -294,11 +312,28 @@ jobs:
           path: service-logs/
           retention-days: 7
 
+      - name: Teardown and Cleanup
+        if: always()
+        run: |
+          make clean || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
   e2e-run:
     needs: [changes, build-images]
     if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
       labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total_shards: [8]
+    name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
       - name: Cleanup Docker cache
         run: |
@@ -325,6 +360,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Python
         run: uv python install 3.13
@@ -332,6 +369,14 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Wait for apt locks
+        run: |
+          sudo systemctl stop unattended-upgrades || true
+          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+            echo "Waiting for other apt/dpkg process to release the lock..."
+            sleep 5
+          done
 
       - name: Install Playwright Browsers
         working-directory: frontend
@@ -356,14 +401,16 @@ jobs:
           path: .ci-artifacts
 
       - name: Load OpenRAG images
-        run: docker load -i .ci-artifacts/openrag-ci-images.tar
+        run: |
+          docker load -i .ci-artifacts/openrag-ci-images.tar
+          rm -rf .ci-artifacts
 
       - name: Setup E2E infrastructure
         run: |
           chmod +x scripts/setup-e2e.sh
           OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         working-directory: frontend
         env:
           CI: "true"
@@ -373,7 +420,7 @@ jobs:
           OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
-        run: npx playwright test
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
 
       - name: Collect service logs on failure
         if: failure()
@@ -389,23 +436,23 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: service-logs
+          name: service-logs-shard-${{ matrix.shard }}
           path: service-logs/
           retention-days: 7
 
-      - name: Upload Playwright report
+      - name: Upload blob report (for merge)
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
-          path: frontend/playwright-report/
-          retention-days: 14
+          name: blob-report-shard-${{ matrix.shard }}
+          path: frontend/blob-report/
+          retention-days: 1
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-test-results
+          name: playwright-test-results-shard-${{ matrix.shard }}
           path: frontend/test-results/
           retention-days: 7
 
@@ -416,6 +463,51 @@ jobs:
           docker rm -f openrag-backend-proxy 2>/dev/null || true
           make clean || true
           docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+  e2e-merge-reports:
+    if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
+    needs: [changes, e2e-run]
+    runs-on:
+      labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download all shard blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: frontend/all-blob-reports
+          pattern: blob-report-shard-*
+          merge-multiple: true
+
+      - name: Merge into HTML report
+        working-directory: frontend
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
 
   tests:
     needs: [changes, build-images, test-suite]
@@ -451,7 +543,7 @@ jobs:
               exit 1
             fi
             if [ "${{ needs.e2e-run.result }}" != "success" ]; then
-              echo "E2E tests failed"
+              echo "one or more E2E shards failed"
               exit 1
             fi
           fi

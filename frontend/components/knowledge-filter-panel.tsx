@@ -133,8 +133,6 @@ export function KnowledgeFilterPanel() {
         connector_types: filters.connector_types ?? ["*"],
       };
 
-      console.log("[DEBUG] Loading filter selections:", processedFilters);
-
       setSelectedFilters(processedFilters);
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
@@ -192,6 +190,7 @@ export function KnowledgeFilterPanel() {
 
   const tableRows = buildKnowledgeTableRows(allSearchData, taskFiles);
   const sourceOptions = buildActiveSourceOptions(tableRows);
+  const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
@@ -372,7 +371,13 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <MultiSelect
                 options={sourceOptions}
-                value={selectedFilters.data_sources}
+                value={
+                  selectedFilters.data_sources[0] === "*"
+                    ? selectedFilters.data_sources
+                    : selectedFilters.data_sources.filter((source) =>
+                        availableSourceValues.has(source),
+                      )
+                }
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }

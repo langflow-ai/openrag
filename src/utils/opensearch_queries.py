@@ -33,6 +33,23 @@ def build_filename_search_body(
     return {"query": build_filename_query(filename), "size": size, "_source": source}
 
 
+def build_existing_filenames_agg_body(filenames: list[str]) -> dict:
+    """
+    build a search body for checking which of the given filenames currently have indexed chunks
+
+    Args:
+        filenames: Filenames to check for existence
+
+    Returns:
+        A dict containing the complete OpenSearch search body
+    """
+    return {
+        "query": {"terms": {"filename": filenames}},
+        "size": 0,
+        "aggs": {"filenames": {"terms": {"field": "filename", "size": len(filenames)}}},
+    }
+
+
 def build_owned_filename_query(filename: str, owner: str) -> dict:
     """Build a query for chunks with a filename owned by a specific user."""
     return {
