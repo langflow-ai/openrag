@@ -210,12 +210,27 @@ export class Chat {
         try {
           const chunk = JSON.parse(line);
           // Capture tool call data (first occurrence wins)
-          if (
-            !capturedToolData &&
-            chunk.type === "response.output_item.done" &&
-            chunk.item?.type === "tool_call"
-          ) {
-            capturedToolData = chunk.item;
+          if (!capturedToolData) {
+            if (
+              (chunk.type === "response.output_item.done" ||
+                chunk.type === "response.output_item.added") &&
+              (chunk.item?.type === "tool_call" ||
+                chunk.item?.type === "function_call")
+            ) {
+              capturedToolData = chunk.item;
+            } else if (chunk.delta?.tool_calls) {
+              for (const tc of chunk.delta.tool_calls) {
+                if (tc.function?.name) {
+                  capturedToolData = {
+                    type: tc.type || "function_call",
+                    id: tc.id,
+                    name: tc.function.name,
+                    arguments: tc.function.arguments,
+                  };
+                  break;
+                }
+              }
+            }
           }
           // Build full response text
           if (chunk.delta?.content) {
@@ -228,6 +243,26 @@ export class Chat {
           // ignore malformed chunks
         }
       }
+    }
+
+    if (capturedToolData) {
+      const name = capturedToolData.tool_name || capturedToolData.name || "";
+      let inputs = capturedToolData.inputs;
+      if (!inputs && capturedToolData.arguments) {
+        try {
+          inputs =
+            typeof capturedToolData.arguments === "string"
+              ? JSON.parse(capturedToolData.arguments)
+              : capturedToolData.arguments;
+        } catch {
+          inputs = {};
+        }
+      }
+      capturedToolData = {
+        ...capturedToolData,
+        tool_name: name,
+        inputs: inputs || {},
+      };
     }
 
     // Fallback: read response text from the UI if API parsing yielded nothing
