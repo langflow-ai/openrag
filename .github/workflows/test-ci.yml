@@ -38,6 +38,7 @@ env:
   LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
   # Single-node test cluster never reaches the multi-node readiness counts
   OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
+  HF_HOME: ${{ github.workspace }}/.cache/huggingface
 
 jobs:
   changes:
@@ -73,18 +74,23 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 35840
+          root-reserve-mb: 10240
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
 
-      - name: Restart Docker
+      - name: Move Docker to Maximized Space
         continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
+        run: |
+          sudo systemctl stop docker.service || true
+          sudo systemctl stop docker.socket || true
+          sudo mkdir -p ${{ github.workspace }}/docker
+          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker.service || sudo service docker start || true
+          docker info | grep "Docker Root Dir" || true
 
       - run: df -h
 
@@ -131,37 +137,37 @@ jobs:
       - name: Cache OpenSearch Image
         uses: actions/cache@v4
         with:
-          path: /tmp/image-cache/opensearch.tar
+          path: image-cache/opensearch.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
-          path: /tmp/image-cache/backend.tar
+          path: image-cache/backend.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
-          path: /tmp/image-cache/frontend.tar
+          path: image-cache/frontend.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
-          path: /tmp/image-cache/langflow.tar
+          path: image-cache/langflow.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
           
-          mkdir -p /tmp/image-cache
+          mkdir -p image-cache
           
           build_or_load_image() {
             local name=$1
             local dockerfile=$2
-            local tar_path="/tmp/image-cache/${name}.tar"
+            local tar_path="image-cache/${name}.tar"
             local use_cache=false
             
             if [ -f "$tar_path" ]; then
@@ -280,18 +286,23 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 35840
+          root-reserve-mb: 10240
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
 
-      - name: Restart Docker
+      - name: Move Docker to Maximized Space
         continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
+        run: |
+          sudo systemctl stop docker.service || true
+          sudo systemctl stop docker.socket || true
+          sudo mkdir -p ${{ github.workspace }}/docker
+          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker.service || sudo service docker start || true
+          docker info | grep "Docker Root Dir" || true
 
       - run: df -h
 
@@ -399,18 +410,23 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 35840
+          root-reserve-mb: 10240
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
 
-      - name: Restart Docker
+      - name: Move Docker to Maximized Space
         continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
+        run: |
+          sudo systemctl stop docker.service || true
+          sudo systemctl stop docker.socket || true
+          sudo mkdir -p ${{ github.workspace }}/docker
+          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker.service || sudo service docker start || true
+          docker info | grep "Docker Root Dir" || true
 
       - name: Cleanup Docker cache
         run: |
