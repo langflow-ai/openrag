@@ -28,8 +28,8 @@ from services.connector_access_service import (
     set_connector_access_bulk,
 )
 from session_manager import User
-from utils.logging_config import get_logger
 from utils.ingest_preview_flag import is_ingest_preview_enabled
+from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)

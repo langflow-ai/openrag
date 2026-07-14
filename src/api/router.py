@@ -17,8 +17,8 @@ from dependencies import (
     get_task_service,
 )
 from session_manager import User
-from utils.logging_config import get_logger
 from utils.ingest_preview_flag import is_ingest_preview_enabled
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
