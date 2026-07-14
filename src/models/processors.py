@@ -723,6 +723,10 @@ class DocumentFileProcessor(TaskProcessor):
 
             # Compute hash
             file_hash = hash_id(item)
+            # Chunks are indexed with document_id=file_hash (see
+            # process_document_standard -> DocumentIndexContext), so record it on
+            # the file_task for preview-mode index proof lookups.
+            file_task.document_id = file_hash
 
             # Get file size
             try:
