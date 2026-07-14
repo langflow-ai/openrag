@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import HTTPException
@@ -283,6 +283,14 @@ class AuthService:
 
             token_data = token_response.json()
 
+            # Verify Google ID token immediately after code exchange, before persisting credentials.
+            # Raises JWTVerificationError on any validation failure — connection is rejected.
+            if connector_type == "google_drive":
+                from connectors.google_drive.oauth import _verify_id_token
+
+                _verify_id_token(token_data.get("id_token"))
+                logger.debug("[AUTH] Google ID token verification completed for OAuth callback")
+
             # Store tokens in the token file (without client_secret)
             # Use actual scopes from OAuth response
             granted_scopes = token_data.get("scope")
@@ -299,12 +307,13 @@ class AuthService:
             token_file_data = {
                 "token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
+                "id_token": token_data.get("id_token"),
                 "scopes": scopes,
             }
 
             # Add expiry if provided
             if token_data.get("expires_in"):
-                expiry = datetime.utcnow() + timedelta(seconds=int(token_data["expires_in"]))
+                expiry = datetime.now(UTC) + timedelta(seconds=int(token_data["expires_in"]))
                 token_file_data["expiry"] = expiry.isoformat()
 
             # Save tokens to file

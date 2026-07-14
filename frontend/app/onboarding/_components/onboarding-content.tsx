@@ -182,12 +182,6 @@ export function OnboardingContent({
             if (filter) {
               // Pass explicit newResponseId to ensure correct localStorage association
               setConversationFilter(filter, newResponseId);
-              console.log(
-                "[ONBOARDING] Saved filter association:",
-                `conversation_filter_${newResponseId}`,
-                "=",
-                openragDocsFilterId,
-              );
             }
           } catch (error) {
             console.error(
@@ -232,11 +226,9 @@ export function OnboardingContent({
 
       // Load and set the OpenRAG docs filter if available
       let filterToUse = null;
-      console.log("[ONBOARDING] openragDocsFilterId:", openragDocsFilterId);
       if (openragDocsFilterId) {
         try {
           const filter = await getFilterById(openragDocsFilterId);
-          console.log("[ONBOARDING] Loaded filter:", filter);
           if (filter) {
             // Pass null to skip localStorage save - no conversation exists yet
             setConversationFilter(filter, null);
@@ -246,11 +238,6 @@ export function OnboardingContent({
           console.error("Failed to load OpenRAG docs filter:", error);
         }
       }
-
-      console.log(
-        "[ONBOARDING] Sending message with filter_id:",
-        filterToUse?.id,
-      );
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,

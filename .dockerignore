@@ -41,6 +41,7 @@ README.md
 # Logs
 *.log
 logs/
+frontend/tests/logs/
 
 # OS files
 .DS_Store

@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,7 +53,7 @@ async def _already_done(session: AsyncSession, name: str) -> bool:
 
 
 async def _mark_done(session: AsyncSession, name: str, notes: str = "") -> None:
-    session.add(MigrationStatus(name=name, completed_at=datetime.utcnow(), notes=notes))
+    session.add(MigrationStatus(name=name, completed_at=datetime.now(UTC), notes=notes))
     await session.flush()
 
 
@@ -194,6 +194,17 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
     return written
 
 
+def _parse_legacy_dt(value: str | None) -> datetime | None:
+    """Parse a legacy ISO datetime string, coercing naive values to UTC."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
 async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, int]:
     """Copy ``data/session_ownership.json`` and ``data/conversations.json``
     into the DB. Idempotent — only inserts rows that aren't already present.
@@ -214,20 +225,8 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
             uid = data.get("user_id")
             if not uid:
                 continue
-            try:
-                created = (
-                    datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
-                )
-            except Exception:  # noqa: BLE001
-                created = None
-            try:
-                last = (
-                    datetime.fromisoformat(data["last_accessed"])
-                    if data.get("last_accessed")
-                    else None
-                )
-            except Exception:  # noqa: BLE001
-                last = None
+            created = _parse_legacy_dt(data.get("created_at"))
+            last = _parse_legacy_dt(data.get("last_accessed"))
             inserted = await repo.upsert_raw(
                 response_id=str(sid),
                 user_id=str(uid),
@@ -249,22 +248,8 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                     continue
                 if await crepo.get(str(resp_id)) is not None:
                     continue
-                try:
-                    created = (
-                        datetime.fromisoformat(meta["created_at"])
-                        if meta.get("created_at")
-                        else None
-                    )
-                except Exception:  # noqa: BLE001
-                    created = None
-                try:
-                    last = (
-                        datetime.fromisoformat(meta["last_activity"])
-                        if meta.get("last_activity")
-                        else None
-                    )
-                except Exception:  # noqa: BLE001
-                    last = None
+                created = _parse_legacy_dt(meta.get("created_at"))
+                last = _parse_legacy_dt(meta.get("last_activity"))
                 await crepo.upsert(
                     response_id=str(resp_id),
                     user_id=str(uid),

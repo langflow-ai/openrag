@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Depends, Request
@@ -128,8 +128,8 @@ async def create_knowledge_filter(
         "owner": user.user_id,
         "allowed_users": body.allowedUsers,
         "allowed_groups": body.allowedGroups,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
     result = await knowledge_filter_service.create_knowledge_filter(
@@ -225,7 +225,7 @@ async def update_knowledge_filter(
         if body.allowedGroups is not None
         else existing_filter.get("allowed_groups", []),
         "created_at": existing_filter["created_at"],
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
     result = await knowledge_filter_service.create_knowledge_filter(
@@ -291,7 +291,7 @@ async def subscribe_to_knowledge_filter(
         "subscription_id": monitor_result["subscription_id"],
         "monitor_id": monitor_result["monitor_id"],
         "webhook_url": monitor_result["webhook_url"],
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "notification_config": body.notification_config or {},
     }
 
@@ -420,7 +420,7 @@ async def knowledge_filter_webhook(
                 "filter_id": filter_id,
                 "subscription_id": subscription_id,
                 "matched_documents": len(matched_documents),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 

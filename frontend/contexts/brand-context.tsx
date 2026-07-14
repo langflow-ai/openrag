@@ -2,8 +2,8 @@
 
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -71,9 +71,9 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useBrand = () => useContext(BrandContext);
+export const useBrand = () => use(BrandContext);
 
 export const useIsCloudBrand = () => {
-  const { brand } = useContext(BrandContext);
+  const { brand } = use(BrandContext);
   return isCloudBrand(brand);
 };

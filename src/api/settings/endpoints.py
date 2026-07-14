@@ -1196,7 +1196,9 @@ async def onboarding(
                 except Exception as e:
                     logger.error("Failed to complete sample data ingestion", error=str(e))
                     return JSONResponse(
-                        {"error": f"Failed to ingest sample documents: {str(e)}"},
+                        {
+                            "error": "Failed to ingest sample documents. Please try again or contact support."
+                        },
                         status_code=500,
                     )
 
@@ -1279,7 +1281,7 @@ async def onboarding(
         logger.error("Failed to update onboarding settings", error=str(e))
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_FAILED)
         return JSONResponse(
-            {"error": str(e)},
+            {"error": "Failed to complete onboarding. Please try again or contact support."},
             status_code=500,
         )
 
@@ -1315,7 +1317,7 @@ async def update_onboarding_state(
     except Exception as e:
         logger.error(f"Error updating onboarding state: {str(e)}")
         return JSONResponse(
-            {"error": f"Failed to update onboarding state: {str(e)}"},
+            {"error": "Failed to update onboarding state. Please try again or contact support."},
             status_code=500,
         )
 
@@ -1659,5 +1661,5 @@ async def refresh_openrag_docs(
         logger.error("Failed to refresh OpenRAG docs on demand", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to refresh OpenRAG docs: {str(e)}",
+            detail="Failed to refresh OpenRAG docs. Please try again or contact support.",
         ) from e

@@ -1,0 +1,7 @@
+
+Artificial Intelligence and Machine Learning test document for OpenRAG ingestion testing.
+Reinforcement learning trains agents using rewards and penalties.
+Natural language processing allows computers to understand text.
+Retrieval Augmented Generation combines document retrieval with LLM generation.
+
+Document number 13
