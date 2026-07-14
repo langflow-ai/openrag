@@ -71,11 +71,23 @@ jobs:
     steps:
       - name: Free up disk space
         run: |
-          echo "Disk before cleanup:"; df -h /
-          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
-          # them so building/loading the OpenRAG images does not exhaust disk.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:"; df -h /
+          echo "Disk before cleanup:"; df -h
+          # Trim large preinstalled toolchains these jobs never use.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift /usr/local/share/powershell || true
+          sudo apt-get clean || true
+          # The root filesystem is small (~30GB); relocate Docker's data-root
+          # onto the much larger ephemeral /mnt disk (~70GB) so building/loading
+          # the OpenRAG images (OpenSearch + backend + langflow + frontend) has
+          # room to unpack without "no space left on device".
+          sudo systemctl stop docker docker.socket || true
+          sudo mkdir -p /mnt/docker
+          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
+          sudo rm -rf /var/lib/docker
+          sudo systemctl start docker
+          echo "Disk after cleanup:"; df -h
+          docker info 2>/dev/null | grep -i "docker root dir" || true
 
       - run: df -h
 
@@ -243,11 +255,23 @@ jobs:
     steps:
       - name: Free up disk space
         run: |
-          echo "Disk before cleanup:"; df -h /
-          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
-          # them so loading the OpenRAG images does not exhaust disk.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:"; df -h /
+          echo "Disk before cleanup:"; df -h
+          # Trim large preinstalled toolchains these jobs never use.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift /usr/local/share/powershell || true
+          sudo apt-get clean || true
+          # The root filesystem is small (~30GB); relocate Docker's data-root
+          # onto the much larger ephemeral /mnt disk (~70GB) so loading the
+          # OpenRAG images (OpenSearch + backend + langflow + frontend) has
+          # room to unpack without "no space left on device".
+          sudo systemctl stop docker docker.socket || true
+          sudo mkdir -p /mnt/docker
+          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
+          sudo rm -rf /var/lib/docker
+          sudo systemctl start docker
+          echo "Disk after cleanup:"; df -h
+          docker info 2>/dev/null | grep -i "docker root dir" || true
 
       - run: df -h
 
@@ -353,11 +377,23 @@ jobs:
     steps:
       - name: Free up disk space
         run: |
-          echo "Disk before cleanup:"; df -h /
-          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
-          # them so loading the OpenRAG images does not exhaust disk.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:"; df -h /
+          echo "Disk before cleanup:"; df -h
+          # Trim large preinstalled toolchains these jobs never use.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift /usr/local/share/powershell || true
+          sudo apt-get clean || true
+          # The root filesystem is small (~30GB); relocate Docker's data-root
+          # onto the much larger ephemeral /mnt disk (~70GB) so loading the
+          # OpenRAG images (OpenSearch + backend + langflow + frontend) has
+          # room to unpack without "no space left on device".
+          sudo systemctl stop docker docker.socket || true
+          sudo mkdir -p /mnt/docker
+          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
+          sudo rm -rf /var/lib/docker
+          sudo systemctl start docker
+          echo "Disk after cleanup:"; df -h
+          docker info 2>/dev/null | grep -i "docker root dir" || true
 
       - name: Cleanup Docker cache
         run: |
