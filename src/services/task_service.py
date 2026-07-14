@@ -386,26 +386,35 @@ class TaskService:
             for item in items
         }
 
+        connector_type = getattr(processor, "connector_type", "local") or "local"
+
         if (
             existing_task_id
             and store_user_id in self.task_store
             and existing_task_id in self.task_store[store_user_id]
         ):
             upload_task = self.task_store[store_user_id][existing_task_id]
+
+            if upload_task.connector_type != connector_type:
+                raise ValueError("Cannot append files from a different connector")
+
             upload_task.file_tasks.update(file_tasks)
             upload_task.total_files += len(items)
             upload_task.status = TaskStatus.RUNNING
+            store_task_id = existing_task_id
         else:
             upload_task = UploadTask(
                 task_id=task_id,
                 total_files=len(items),
-                connector_type=getattr(processor, "connector_type", "local") or "local",
+                connector_type=connector_type,
                 file_tasks=file_tasks,
             )
-            upload_task.processor = processor
-            if store_user_id not in self.task_store:
-                self.task_store[store_user_id] = {}
-            self.task_store[store_user_id][task_id] = upload_task
+            store_task_id = task_id
+
+        upload_task.processor = processor
+        if store_user_id not in self.task_store:
+            self.task_store[store_user_id] = {}
+        self.task_store[store_user_id][store_task_id] = upload_task
 
         # Store temp file paths for cleanup after processing
         if temp_file_paths:
