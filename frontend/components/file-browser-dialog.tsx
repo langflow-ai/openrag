@@ -9,6 +9,8 @@ import {
   useBrowseConnectionFiles,
 } from "@/app/api/queries/useBrowseConnectionFiles";
 import type { IngestSettings } from "@/components/cloud-picker/types";
+import { useDuplicateDialogFlow } from "@/hooks/useDuplicateDialogFlow";
+import { checkConnectorDuplicates } from "@/lib/connectors/check-duplicates";
 import { formatFileSize } from "@/lib/file-format";
 import { DuplicateHandlingDialog } from "./duplicate-handling-dialog";
 import { Badge } from "./ui/badge";
@@ -29,12 +31,6 @@ interface SyncFilePayload {
   name: string;
   mimeType: string;
   size?: number;
-}
-
-interface FileBrowserDuplicateCheckResponse {
-  duplicate_names?: string[];
-  duplicate_count?: number;
-  non_duplicate_files?: SyncFilePayload[];
 }
 
 interface FileBrowserDialogProps {
@@ -138,13 +134,6 @@ export function FileBrowserDialog({
   );
 
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
-  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
-  const [pendingSync, setPendingSync] = useState<{
-    allFiles: SyncFilePayload[];
-    nonDuplicateFiles: SyncFilePayload[];
-    duplicateNames: string[];
-    duplicateCount: number;
-  } | null>(null);
 
   const submitSync = useCallback(
     async (syncFiles: SyncFilePayload[], replaceDuplicates: boolean) => {
@@ -174,6 +163,19 @@ export function FileBrowserDialog({
     [connectorType, syncMutation, onOpenChange, showShared, ingestSettings],
   );
 
+  const {
+    dialogOpen: duplicateDialogOpen,
+    duplicateNames,
+    duplicateCount,
+    openDialog: openDuplicateDialog,
+    handleOverwrite: handleOverwriteDuplicates,
+    handleSkip: handleSkipDuplicates,
+    handleOpenChange: handleDuplicateDialogOpenChange,
+  } = useDuplicateDialogFlow<SyncFilePayload>({
+    onSubmit: (files, replaceDuplicates) =>
+      submitSync(files, replaceDuplicates),
+  });
+
   const handleIngest = useCallback(async () => {
     if (selectedFiles.length === 0) return;
 
@@ -186,42 +188,22 @@ export function FileBrowserDialog({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connectorType}/check-duplicates`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connectionId,
-            selected_files: filesPayload,
-          }),
-        },
+      const result = await checkConnectorDuplicates<SyncFilePayload>(
+        connectorType,
+        { connection_id: connectionId, selected_files: filesPayload },
       );
 
-      if (!checkResponse.ok) {
-        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
-      }
-
-      const checkData =
-        (await checkResponse.json()) as FileBrowserDuplicateCheckResponse;
-      const duplicateNames = checkData.duplicate_names || [];
-      const duplicateCount =
-        typeof checkData.duplicate_count === "number"
-          ? checkData.duplicate_count
-          : duplicateNames.length;
-
-      if (duplicateCount === 0) {
+      if (result.duplicateCount === 0) {
         await submitSync(filesPayload, false);
         return;
       }
 
-      setPendingSync({
+      openDuplicateDialog({
         allFiles: filesPayload,
-        nonDuplicateFiles: checkData.non_duplicate_files || [],
-        duplicateNames,
-        duplicateCount,
+        nonDuplicateFiles: result.nonDuplicateFiles,
+        duplicateNames: result.duplicateNames,
+        duplicateCount: result.duplicateCount,
       });
-      setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[File Browser] Duplicate check failed:", err);
       // Fallback: proceed without overwrite (backend will still skip
@@ -230,34 +212,13 @@ export function FileBrowserDialog({
     } finally {
       setIsCheckingDuplicates(false);
     }
-  }, [selectedFiles, connectorType, connectionId, submitSync]);
-
-  const handleOverwriteDuplicates = () => {
-    if (!pendingSync) return;
-    submitSync(pendingSync.allFiles, true);
-  };
-
-  // Only fires from the explicit "Skip duplicates & continue" button —
-  // dismissing the dialog via the X button, outside click, or Escape should
-  // be a true no-op cancel and must not trigger a sync.
-  const handleSkipDuplicates = () => {
-    if (!pendingSync) return;
-    const { nonDuplicateFiles, duplicateCount } = pendingSync;
-    if (nonDuplicateFiles.length > 0) {
-      submitSync(nonDuplicateFiles, false);
-    } else {
-      toast.info(
-        `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
-      );
-    }
-  };
-
-  const handleDuplicateDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      setPendingSync(null);
-    }
-    setDuplicateDialogOpen(open);
-  };
+  }, [
+    selectedFiles,
+    connectorType,
+    connectionId,
+    submitSync,
+    openDuplicateDialog,
+  ]);
 
   return (
     <>
@@ -395,8 +356,8 @@ export function FileBrowserDialog({
         onOverwrite={handleOverwriteDuplicates}
         onSkip={handleSkipDuplicates}
         isLoading={syncMutation.isPending}
-        duplicateNames={pendingSync?.duplicateNames}
-        duplicateCount={pendingSync?.duplicateCount}
+        duplicateNames={duplicateNames}
+        duplicateCount={duplicateCount}
       />
     </>
   );

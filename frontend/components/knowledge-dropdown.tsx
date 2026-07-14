@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useDuplicateDialogFlow } from "@/hooks/useDuplicateDialogFlow";
 import {
   trackButton,
   trackProcessFailure,
@@ -131,7 +132,6 @@ export function KnowledgeDropdown() {
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
-  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
@@ -145,12 +145,6 @@ export function KnowledgeDropdown() {
   >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
-  const [pendingFolderUpload, setPendingFolderUpload] = useState<{
-    allFiles: File[];
-    nonDuplicateFiles: File[];
-    duplicateNames: string[];
-    unsupportedCount: number;
-  } | null>(null);
   const [cloudConnectors, setCloudConnectors] = useState<{
     [key: string]: {
       name: string;
@@ -161,12 +155,6 @@ export function KnowledgeDropdown() {
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-
-  const resetDuplicateDialogState = () => {
-    setPendingFolderUpload(null);
-    setPendingFile(null);
-    setDuplicateFilename("");
-  };
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -327,10 +315,8 @@ export function KnowledgeDropdown() {
 
         if (exists) {
           console.log("[Duplicate Check] Duplicate detected, showing dialog");
-          resetDuplicateDialogState();
           setPendingFile(file);
           setDuplicateFilename(file.name);
-          setShowDuplicateDialog(true);
           resetFileInput();
           return;
         }
@@ -430,16 +416,49 @@ export function KnowledgeDropdown() {
     refetchTasks();
   };
 
-  const handleOverwriteFile = async () => {
-    if (pendingFolderUpload) {
-      const { allFiles, duplicateNames, unsupportedCount } =
-        pendingFolderUpload;
-      await uploadFolderBatches(allFiles, true);
+  const {
+    dialogOpen: folderDuplicateDialogOpen,
+    duplicateNames: folderDuplicateNames,
+    duplicateCount: folderDuplicateCount,
+    openDialog: openFolderDuplicateDialog,
+    handleOverwrite: handleOverwriteFolderDuplicates,
+    handleSkip: handleSkipFolderDuplicates,
+    handleOpenChange: handleFolderDuplicateDialogOpenChange,
+  } = useDuplicateDialogFlow<File, number>({
+    onSubmit: async (files, replaceDuplicates, pending) => {
+      const unsupportedCount = pending.meta ?? 0;
+      await uploadFolderBatches(files, replaceDuplicates);
       const unsupportedMessage =
         unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
-      );
+      if (replaceDuplicates) {
+        toast.success(
+          `Processed ${files.length} file(s), including ${pending.duplicateNames.length} overwrite(s)${unsupportedMessage}`,
+        );
+      } else {
+        const extraParts: string[] = [];
+        if (pending.duplicateNames.length > 0) {
+          extraParts.push(
+            `skipped ${pending.duplicateNames.length} duplicate(s)`,
+          );
+        }
+        if (unsupportedCount > 0) {
+          extraParts.push(`skipped ${unsupportedCount} unsupported`);
+        }
+        const suffix =
+          extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
+        toast.success(`Processed ${files.length} file(s)${suffix}`);
+      }
+    },
+    allSkippedMessage: () =>
+      "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
+  });
+
+  // Single physical dialog shared between the single-file duplicate prompt
+  // (pendingFile) and the folder-upload duplicate prompt (driven by the hook
+  // above) — only one is ever active at a time.
+  const handleOverwriteFile = async () => {
+    if (folderDuplicateDialogOpen) {
+      handleOverwriteFolderDuplicates();
       return;
     }
 
@@ -472,34 +491,20 @@ export function KnowledgeDropdown() {
   // Only fires from the explicit "Skip duplicates & continue" button —
   // dismissing the dialog via the X button, outside click, or Escape should
   // be a true no-op cancel and must not trigger an upload. No-op when the
-  // dialog is showing a single-file duplicate instead of a folder upload.
-  const handleSkipFolderDuplicates = async () => {
-    if (!pendingFolderUpload) return;
-    const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
-      pendingFolderUpload;
-    if (nonDuplicateFiles.length > 0) {
-      await uploadFolderBatches(nonDuplicateFiles, false);
-      const extraParts: string[] = [];
-      if (duplicateNames.length > 0) {
-        extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
-      }
-      if (unsupportedCount > 0) {
-        extraParts.push(`skipped ${unsupportedCount} unsupported`);
-      }
-      const suffix = extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-      toast.success(`Processed ${nonDuplicateFiles.length} file(s)${suffix}`);
-    } else {
-      toast.info(
-        "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
-      );
+  // dialog is showing a single-file duplicate instead of a folder upload
+  // (single-file mode has no "skip" semantics — "Cancel" just closes).
+  const handleSkip = () => {
+    if (folderDuplicateDialogOpen) {
+      handleSkipFolderDuplicates();
     }
   };
 
   const handleDuplicateDialogOpenChange = (open: boolean) => {
+    handleFolderDuplicateDialogOpenChange(open);
     if (!open) {
-      resetDuplicateDialogState();
+      setPendingFile(null);
+      setDuplicateFilename("");
     }
-    setShowDuplicateDialog(open);
   };
 
   const handleFolderSelect = async (
@@ -579,14 +584,13 @@ export function KnowledgeDropdown() {
         console.log(
           `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
         );
-        resetDuplicateDialogState();
-        setPendingFolderUpload({
+        openFolderDuplicateDialog({
           allFiles: cleanFiles,
           nonDuplicateFiles,
           duplicateNames,
-          unsupportedCount,
+          duplicateCount,
+          meta: unsupportedCount,
         });
-        setShowDuplicateDialog(true);
         return;
       }
 
@@ -909,15 +913,17 @@ export function KnowledgeDropdown() {
         </DialogContent>
       </Dialog>
 
-      {/* Duplicate Handling Dialog */}
+      {/* Duplicate Handling Dialog — shared between the single-file and
+          folder-upload duplicate prompts; only one is ever active. */}
       <DuplicateHandlingDialog
-        open={showDuplicateDialog}
+        open={folderDuplicateDialogOpen || pendingFile !== null}
         onOpenChange={handleDuplicateDialogOpenChange}
         onOverwrite={handleOverwriteFile}
-        onSkip={handleSkipFolderDuplicates}
+        onSkip={handleSkip}
         isLoading={fileUploading || folderLoading}
         duplicateLabel={duplicateFilename}
-        duplicateNames={pendingFolderUpload?.duplicateNames}
+        duplicateNames={folderDuplicateNames}
+        duplicateCount={folderDuplicateCount}
       />
     </>
   );

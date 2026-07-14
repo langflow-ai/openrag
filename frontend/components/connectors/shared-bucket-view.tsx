@@ -12,8 +12,10 @@ import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog"
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
+import { useDuplicateDialogFlow } from "@/hooks/useDuplicateDialogFlow";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { checkConnectorDuplicates } from "@/lib/connectors/check-duplicates";
 
 interface BucketDuplicateFile {
   id: string;
@@ -21,13 +23,6 @@ interface BucketDuplicateFile {
   mimeType: string;
   downloadUrl?: string;
   size?: number;
-}
-
-interface BucketDuplicateCheckResponse {
-  duplicate_names?: string[];
-  duplicate_count?: number;
-  duplicate_files?: BucketDuplicateFile[];
-  non_duplicate_files?: BucketDuplicateFile[];
 }
 
 export interface SharedBucketViewProps {
@@ -87,13 +82,6 @@ export function SharedBucketView({
     null,
   );
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
-  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
-  const [pendingDuplicates, setPendingDuplicates] = useState<{
-    duplicateNames: string[];
-    duplicateCount: number;
-    duplicateFiles: BucketDuplicateFile[];
-    nonDuplicateFiles: BucketDuplicateFile[];
-  } | null>(null);
 
   useEffect(() => {
     if (
@@ -209,6 +197,21 @@ export function SharedBucketView({
     );
   };
 
+  const {
+    dialogOpen: duplicateDialogOpen,
+    duplicateNames,
+    duplicateCount,
+    openDialog: openDuplicateDialog,
+    handleOverwrite: handleOverwriteDuplicates,
+    handleSkip: handleSkipDuplicates,
+    handleOpenChange: handleDuplicateDialogOpenChange,
+  } = useDuplicateDialogFlow<BucketDuplicateFile>({
+    onSubmit: (files, replaceDuplicates) =>
+      runSelectedFilesSync(files, replaceDuplicates),
+    allSkippedMessage: (pending) =>
+      `All ${pending.duplicateCount} file(s) already exist and were skipped. Nothing was synced.`,
+  });
+
   const ingestSelected = async () => {
     const chunkErr = getIngestChunkSettingsError(ingestSettings);
     if (chunkErr) {
@@ -226,42 +229,25 @@ export function SharedBucketView({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connector.type}/check-duplicates`,
+      const result = await checkConnectorDuplicates<BucketDuplicateFile>(
+        connector.type,
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connector.connectionId,
-            bucket_filter: Array.from(selectedBuckets),
-          }),
+          connection_id: connector.connectionId,
+          bucket_filter: Array.from(selectedBuckets),
         },
       );
 
-      if (!checkResponse.ok) {
-        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
-      }
-
-      const checkData =
-        (await checkResponse.json()) as BucketDuplicateCheckResponse;
-      const duplicateNames = checkData.duplicate_names || [];
-      const duplicateCount =
-        typeof checkData.duplicate_count === "number"
-          ? checkData.duplicate_count
-          : duplicateNames.length;
-
-      if (duplicateCount === 0) {
+      if (result.duplicateCount === 0) {
         runBucketSync();
         return;
       }
 
-      setPendingDuplicates({
-        duplicateNames,
-        duplicateCount,
-        duplicateFiles: checkData.duplicate_files || [],
-        nonDuplicateFiles: checkData.non_duplicate_files || [],
+      openDuplicateDialog({
+        allFiles: [...result.duplicateFiles, ...result.nonDuplicateFiles],
+        nonDuplicateFiles: result.nonDuplicateFiles,
+        duplicateNames: result.duplicateNames,
+        duplicateCount: result.duplicateCount,
       });
-      setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Bucket Sync] Duplicate check failed:", err);
       // Fallback: proceed with the normal full sync (backend still handles
@@ -270,34 +256,6 @@ export function SharedBucketView({
     } finally {
       setIsCheckingDuplicates(false);
     }
-  };
-
-  const handleOverwriteDuplicates = () => {
-    if (!pendingDuplicates) return;
-    const { duplicateFiles, nonDuplicateFiles } = pendingDuplicates;
-    runSelectedFilesSync([...duplicateFiles, ...nonDuplicateFiles], true);
-  };
-
-  // Only fires from the explicit "Skip duplicates & continue" button —
-  // dismissing the dialog via the X button, outside click, or Escape should
-  // be a true no-op cancel and must not trigger a sync.
-  const handleSkipDuplicates = () => {
-    if (!pendingDuplicates) return;
-    const { nonDuplicateFiles, duplicateCount } = pendingDuplicates;
-    if (nonDuplicateFiles.length > 0) {
-      runSelectedFilesSync(nonDuplicateFiles);
-    } else {
-      toast.info(
-        `All ${duplicateCount} file(s) already exist and were skipped. Nothing was synced.`,
-      );
-    }
-  };
-
-  const handleDuplicateDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      setPendingDuplicates(null);
-    }
-    setDuplicateDialogOpen(open);
   };
 
   return (
@@ -501,8 +459,8 @@ export function SharedBucketView({
         onOverwrite={handleOverwriteDuplicates}
         onSkip={handleSkipDuplicates}
         isLoading={syncMutation.isPending}
-        duplicateNames={pendingDuplicates?.duplicateNames}
-        duplicateCount={pendingDuplicates?.duplicateCount}
+        duplicateNames={duplicateNames}
+        duplicateCount={duplicateCount}
       />
     </>
   );

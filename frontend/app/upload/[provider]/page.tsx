@@ -17,15 +17,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
+import { useDuplicateDialogFlow } from "@/hooks/useDuplicateDialogFlow";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { checkConnectorDuplicates } from "@/lib/connectors/check-duplicates";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-
-interface ConnectorDuplicateCheckResponse {
-  duplicate_names?: string[];
-  duplicate_count?: number;
-  non_duplicate_files?: CloudFile[];
-}
 
 // CloudFile interface is now imported from the unified cloud picker
 
@@ -68,14 +64,6 @@ export default function UploadProviderPage() {
   const [selectedFiles, setSelectedFiles] = useState<CloudFile[]>([]);
   const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
-  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
-  const [pendingSync, setPendingSync] = useState<{
-    connector: { connectionId?: string; type: string };
-    allFiles: CloudFile[];
-    nonDuplicateFiles: CloudFile[];
-    duplicateNames: string[];
-    duplicateCount: number;
-  } | null>(null);
 
   const accessToken = tokenData?.access_token || null;
   const isLoading =
@@ -151,6 +139,26 @@ export default function UploadProviderPage() {
 
   const getProviderDisplayName = () => descriptor?.name ?? provider;
 
+  const {
+    dialogOpen: duplicateDialogOpen,
+    duplicateNames,
+    duplicateCount,
+    openDialog: openDuplicateDialog,
+    handleOverwrite: handleOverwriteDuplicates,
+    handleSkip: handleSkipDuplicates,
+    handleOpenChange: handleDuplicateDialogOpenChange,
+  } = useDuplicateDialogFlow<
+    CloudFile,
+    { connectionId?: string; type: string }
+  >({
+    onSubmit: (files, replaceDuplicates, pending) => {
+      if (!pending.meta) return;
+      submitSync(pending.meta, files, replaceDuplicates);
+    },
+    allSkippedMessage: (pending) =>
+      `All ${pending.duplicateCount} selected file(s) already exist. Nothing was synced.`,
+  });
+
   const handleSync = async (connector: {
     connectionId?: string;
     type: string;
@@ -165,54 +173,30 @@ export default function UploadProviderPage() {
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connector.type}/check-duplicates`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            connection_id: connector.connectionId,
-            selected_files: selectedFiles.map((file) => ({
-              id: file.id,
-              name: file.name,
-              mimeType: file.mimeType,
-              downloadUrl: file.downloadUrl,
-              size: file.size,
-              isFolder: file.isFolder,
-            })),
-          }),
-        },
-      );
+      const result = await checkConnectorDuplicates<CloudFile>(connector.type, {
+        connection_id: connector.connectionId,
+        selected_files: selectedFiles.map((file) => ({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          downloadUrl: file.downloadUrl,
+          size: file.size,
+          isFolder: file.isFolder,
+        })),
+      });
 
-      if (!checkResponse.ok) {
-        throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
-      }
-
-      const checkData =
-        (await checkResponse.json()) as ConnectorDuplicateCheckResponse;
-      const duplicateNames = checkData.duplicate_names || [];
-      const duplicateCount =
-        typeof checkData.duplicate_count === "number"
-          ? checkData.duplicate_count
-          : duplicateNames.length;
-
-      if (duplicateCount === 0) {
+      if (result.duplicateCount === 0) {
         submitSync(connector, selectedFiles, false);
         return;
       }
 
-      const nonDuplicateFiles = checkData.non_duplicate_files || [];
-
-      setPendingSync({
-        connector,
+      openDuplicateDialog({
         allFiles: selectedFiles,
-        nonDuplicateFiles,
-        duplicateNames,
-        duplicateCount,
+        nonDuplicateFiles: result.nonDuplicateFiles,
+        duplicateNames: result.duplicateNames,
+        duplicateCount: result.duplicateCount,
+        meta: connector,
       });
-      setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Connector Sync] Duplicate check failed:", err);
       // Fallback: proceed without overwrite
@@ -220,34 +204,6 @@ export default function UploadProviderPage() {
     } finally {
       setIsCheckingDuplicates(false);
     }
-  };
-
-  const handleOverwriteDuplicates = () => {
-    if (!pendingSync) return;
-    const { connector, allFiles } = pendingSync;
-    submitSync(connector, allFiles, true);
-  };
-
-  // Only fires from the explicit "Skip duplicates & continue" button —
-  // dismissing the dialog via the X button, outside click, or Escape should
-  // be a true no-op cancel and must not trigger a sync.
-  const handleSkipDuplicates = () => {
-    if (!pendingSync) return;
-    const { connector, nonDuplicateFiles, duplicateCount } = pendingSync;
-    if (nonDuplicateFiles.length > 0) {
-      submitSync(connector, nonDuplicateFiles, false);
-    } else {
-      toast.info(
-        `All ${duplicateCount} selected file(s) already exist. Nothing was synced.`,
-      );
-    }
-  };
-
-  const handleDuplicateDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      setPendingSync(null);
-    }
-    setDuplicateDialogOpen(open);
   };
 
   if (isLoading) {
@@ -450,8 +406,8 @@ export default function UploadProviderPage() {
         onOverwrite={handleOverwriteDuplicates}
         onSkip={handleSkipDuplicates}
         isLoading={isIngesting}
-        duplicateNames={pendingSync?.duplicateNames}
-        duplicateCount={pendingSync?.duplicateCount}
+        duplicateNames={duplicateNames}
+        duplicateCount={duplicateCount}
       />
     </>
   );
