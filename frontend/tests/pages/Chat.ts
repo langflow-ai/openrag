@@ -177,18 +177,19 @@ export class Chat {
     // Collect ALL /api/langflow POST responses until we find tool call data or the
     // streaming response is complete. A single waitForResponse resolves on the first
     // matching call (often a background/init call), so we use a route listener instead.
-    const collectedResponses: string[] = [];
-    const responseHandler = async (response: any) => {
+    const collectedPromises: Promise<string>[] = [];
+    const responseHandler = (response: any) => {
       if (
         !response.url().includes("/api/langflow") ||
         response.request().method() !== "POST"
       )
         return;
-      try {
-        collectedResponses.push(await response.text());
-      } catch {
-        /* ignore */
-      }
+      const promise = response
+        .body()
+        .then((buf: any) => buf.toString("utf-8"))
+        .catch(() => response.text())
+        .catch(() => "");
+      collectedPromises.push(promise);
     };
     this.page.on("response", responseHandler);
 
@@ -203,31 +204,42 @@ export class Chat {
       this.page.off("response", responseHandler);
     }
 
+    const collectedResponses = await Promise.all(collectedPromises);
+
     // Parse all collected API responses for tool call data and response text
     for (const raw of collectedResponses) {
       const lines = raw.split("\n").filter((line) => line.trim());
       for (const line of lines) {
         try {
           const chunk = JSON.parse(line);
-          // Capture tool call data (first occurrence wins)
-          if (!capturedToolData) {
+          // Capture tool call data (prefer complete done events, accumulate delta arguments)
+          if (
+            (chunk.type === "response.output_item.done" ||
+              chunk.type === "response.output_item.added") &&
+            (chunk.item?.type === "tool_call" ||
+              chunk.item?.type === "function_call")
+          ) {
             if (
-              (chunk.type === "response.output_item.done" ||
-                chunk.type === "response.output_item.added") &&
-              (chunk.item?.type === "tool_call" ||
-                chunk.item?.type === "function_call")
+              !capturedToolData ||
+              chunk.item.arguments ||
+              chunk.item.inputs ||
+              chunk.type === "response.output_item.done"
             ) {
-              capturedToolData = chunk.item;
-            } else if (chunk.delta?.tool_calls) {
-              for (const tc of chunk.delta.tool_calls) {
-                if (tc.function?.name) {
+              capturedToolData = { ...chunk.item };
+            }
+          } else if (chunk.delta?.tool_calls) {
+            for (const tc of chunk.delta.tool_calls) {
+              if (tc.function?.name) {
+                if (!capturedToolData) {
                   capturedToolData = {
                     type: tc.type || "function_call",
                     id: tc.id,
                     name: tc.function.name,
-                    arguments: tc.function.arguments,
+                    arguments: tc.function.arguments || "",
                   };
-                  break;
+                } else if (tc.function.arguments) {
+                  capturedToolData.arguments =
+                    (capturedToolData.arguments || "") + tc.function.arguments;
                 }
               }
             }
