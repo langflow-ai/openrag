@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path  # noqa: TC003
 from typing import Any
@@ -10,12 +11,21 @@ from typing import Any
 import httpx
 from docling_core.types.doc import DoclingDocument
 from pydantic import ValidationError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from lfx.base.data import BaseFileComponent
 from lfx.inputs import IntInput, NestedDictInput, StrInput, TableInput
 from lfx.inputs.inputs import FloatInput
 from lfx.schema import Data, dotdict
 from lfx.utils.util import transform_localhost_url
+
+def is_sync_transient_error(exception: Exception) -> bool:
+    if isinstance(exception, httpx.RequestError):
+        return True
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == 429 or exception.response.status_code >= 500
+    return False
+
 
 
 class DoclingRemoteComponent(BaseFileComponent):
@@ -29,6 +39,45 @@ class DoclingRemoteComponent(BaseFileComponent):
     name = "DoclingRemote"
 
     MAX_500_RETRIES = 5
+
+    _global_semaphore = None
+    _semaphore_lock = threading.Lock()
+
+    @classmethod
+    def _acquire_semaphore(cls, max_concurrency: int | None):
+        val = max_concurrency if max_concurrency is not None else 2
+        with cls._semaphore_lock:
+            if cls._global_semaphore is None:
+                cls._global_semaphore = threading.Semaphore(val)
+        cls._global_semaphore.acquire()
+
+    @classmethod
+    def _release_semaphore(cls):
+        if cls._global_semaphore is not None:
+            cls._global_semaphore.release()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception(is_sync_transient_error),
+        reraise=True,
+    )
+    def _get_with_retry(self, client: httpx.Client, url: str, **kwargs) -> httpx.Response:
+        response = client.get(url, **kwargs)
+        response.raise_for_status()
+        return response
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception(is_sync_transient_error),
+        reraise=True,
+    )
+    def _post_with_retry(self, client: httpx.Client, url: str, **kwargs) -> httpx.Response:
+        response = client.post(url, **kwargs)
+        response.raise_for_status()
+        return response
+
 
     # https://docling-project.github.io/docling/usage/supported_formats/
     VALID_EXTENSIONS = [
@@ -224,13 +273,9 @@ class DoclingRemoteComponent(BaseFileComponent):
         Returns:
             Data object with the DoclingDocument, or None if processing failed.
         """
-        http_failures = 0
-        retry_status_start = 500
-        retry_status_end = 600
         start_wait_time = time.monotonic()
 
-        response = client.get(f"{base_url}/status/poll/{task_id}")
-        response.raise_for_status()
+        response = self._get_with_retry(client, f"{base_url}/status/poll/{task_id}")
         task = response.json()
 
         while task["task_status"] not in ("success", "failure"):
@@ -245,21 +290,10 @@ class DoclingRemoteComponent(BaseFileComponent):
                 raise RuntimeError(msg)
 
             time.sleep(2)
-            response = client.get(f"{base_url}/status/poll/{task_id}")
-
-            if retry_status_start <= response.status_code < retry_status_end:
-                http_failures += 1
-                if http_failures > self.MAX_500_RETRIES:
-                    self.log(
-                        f"The status requests got a http response {response.status_code} too many times."
-                    )
-                    return None
-                continue
-
+            response = self._get_with_retry(client, f"{base_url}/status/poll/{task_id}")
             task = response.json()
 
-        result_resp = client.get(f"{base_url}/result/{task_id}")
-        result_resp.raise_for_status()
+        result_resp = self._get_with_retry(client, f"{base_url}/result/{task_id}")
         result = result_resp.json()
 
         if result.get("status") == "failure" or result.get("errors"):
@@ -313,8 +347,12 @@ class DoclingRemoteComponent(BaseFileComponent):
         base_url = f"{transformed_url}/v1"
 
         with httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client:
-            result = self._poll_and_fetch_result(client, base_url, self.task_id)
-            return [result] if result else []
+            self._acquire_semaphore(self.max_concurrency)
+            try:
+                result = self._poll_and_fetch_result(client, base_url, self.task_id)
+                return [result] if result else []
+            finally:
+                self._release_semaphore()
 
     def load_files_base(self) -> list[Data]:
         """Load and process files, or poll an existing task if task_id is provided.
@@ -335,19 +373,22 @@ class DoclingRemoteComponent(BaseFileComponent):
         def _convert_document(
             client: httpx.Client, file_path: Path, options: dict[str, Any]
         ) -> Data | None:
-            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()
-            payload = {
-                "options": options,
-                "sources": [
-                    {"kind": "file", "base64_string": encoded_doc, "filename": file_path.name}
-                ],
-            }
+            self._acquire_semaphore(self.max_concurrency)
+            try:
+                encoded_doc = base64.b64encode(file_path.read_bytes()).decode()
+                payload = {
+                    "options": options,
+                    "sources": [
+                        {"kind": "file", "base64_string": encoded_doc, "filename": file_path.name}
+                    ],
+                }
 
-            response = client.post(f"{base_url}/convert/source/async", json=payload)
-            response.raise_for_status()
-            task = response.json()
+                response = self._post_with_retry(client, f"{base_url}/convert/source/async", json=payload)
+                task = response.json()
 
-            return self._poll_and_fetch_result(client, base_url, task["task_id"], str(file_path))
+                return self._poll_and_fetch_result(client, base_url, task["task_id"], str(file_path))
+            finally:
+                self._release_semaphore()
 
         docling_options = {
             "to_formats": ["json"],

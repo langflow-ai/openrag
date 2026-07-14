@@ -8,15 +8,29 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
+    DOCLING_MAX_CONCURRENCY,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
+    ENABLE_BACKEND_DOCLING_POLLING,
     IBM_AUTH_ENABLED,
     get_openrag_config,
 )
 from utils.logging_config import get_logger
+
+
+def is_transient_error(exception: Exception) -> bool:
+    if isinstance(exception, httpx.RequestError):
+        return True
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == 429 or exception.response.status_code >= 500
+    if isinstance(exception, DoclingTransientError):
+        return True
+    return False
+
 
 logger = get_logger(__name__)
 
@@ -120,6 +134,8 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
 
 class DoclingService:
     _default_client: httpx.AsyncClient | None = None
+    _semaphore: asyncio.Semaphore | None = None
+    _active_tasks: dict[str, bool] = {}
 
     def __init__(
         self, docling_url: str | None = None, httpx_client: httpx.AsyncClient | None = None
@@ -137,6 +153,17 @@ class DoclingService:
             self.docling_url = DOCLING_SERVE_URL
 
         self.httpx_client = httpx_client
+
+        if DoclingService._semaphore is None:
+            DoclingService._semaphore = asyncio.Semaphore(DOCLING_MAX_CONCURRENCY)
+
+    def release_task_slot(self, task_id: str) -> None:
+        """Release a concurrency slot associated with task_id."""
+        if task_id and task_id in DoclingService._active_tasks:
+            del DoclingService._active_tasks[task_id]
+            if DoclingService._semaphore:
+                DoclingService._semaphore.release()
+                logger.debug("Released Docling concurrency slot", task_id=task_id)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self.httpx_client:
@@ -195,23 +222,31 @@ class DoclingService:
         *,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        hold_semaphore: bool | None = None,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
+        if hold_semaphore is None:
+            hold_semaphore = ENABLE_BACKEND_DOCLING_POLLING
+
+        if DoclingService._semaphore is None:
+            DoclingService._semaphore = asyncio.Semaphore(DOCLING_MAX_CONCURRENCY)
+
+        logger.debug("Acquiring Docling concurrency slot", filename=filename)
+        await DoclingService._semaphore.acquire()
+
         options = self._build_docling_options(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
         )
         headers = self._get_auth_headers(user_id, auth_header)
 
-        # Docling serve async multipart endpoint /v1/convert/file/async
-        # Options are passed as form data
         data = {
             k: str(v).lower() if isinstance(v, bool) else v
             for k, v in options.items()
             if not isinstance(v, dict)
-        }  # picture_description_local needs to be JSON if it's a dict
+        }
 
         if "picture_description_local" in options:
             data["picture_description_local"] = json.dumps(options["picture_description_local"])
@@ -221,27 +256,44 @@ class DoclingService:
         client = self._get_client()
         should_close = client != self.httpx_client
 
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception(is_transient_error),
+            reraise=True,
+        )
+        async def _post_with_retry():
+            response = await client.post(
+                f"{self.docling_url}/v1/convert/file/async",
+                files=files,
+                data=data,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response
+
         try:
             if should_close:
                 async with client:
-                    response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async",
-                        files=files,
-                        data=data,
-                        headers=headers,
-                    )
+                    response = await _post_with_retry()
             else:
-                response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
-                    files=files,
-                    data=data,
-                    headers=headers,
-                )
+                response = await _post_with_retry()
 
-            response.raise_for_status()
             task = response.json()
-            return task["task_id"]
+            task_id = task["task_id"]
+            if hold_semaphore:
+                DoclingService._active_tasks[task_id] = True
+                logger.debug("Holding Docling concurrency slot", task_id=task_id, filename=filename)
+            else:
+                DoclingService._semaphore.release()
+                logger.debug(
+                    "Released Docling concurrency slot immediately after upload",
+                    task_id=task_id,
+                    filename=filename,
+                )
+            return task_id
         except Exception as e:
+            DoclingService._semaphore.release()
             logger.error("Docling upload failed", filename=filename, error=str(e))
             raise
 
@@ -272,6 +324,8 @@ class DoclingService:
         except Exception as e:
             logger.error("Docling result retrieval failed", task_id=task_id, error=str(e))
             raise
+        finally:
+            self.release_task_slot(task_id)
 
     async def check_task_status(
         self,
@@ -289,31 +343,48 @@ class DoclingService:
         client = self._get_client()
         url = f"{self.docling_url}/v1/status/poll/{task_id}"
         headers = self._get_auth_headers(user_id, auth_header)
-        try:
-            response = await client.get(url, headers=headers)
-        except httpx.RequestError as e:
-            # Transient network error — surface as PROCESSING so caller can
-            # retry without prematurely failing the file.
-            logger.debug("Transient error checking docling status", task_id=task_id, error=str(e))
-            return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, detail=str(e))
 
-        if response.status_code == 404:
-            return DoclingStatusSnapshot(state=DoclingTaskState.NOT_FOUND, detail="Task not found")
-        if response.status_code >= 500:
-            logger.debug(
-                "Transient HTTP error from docling status endpoint",
-                task_id=task_id,
-                status_code=response.status_code,
-            )
-            return DoclingStatusSnapshot(
-                state=DoclingTaskState.PROCESSING,
-                detail=f"HTTP {response.status_code}",
-            )
-        if response.status_code >= 400:
-            return DoclingStatusSnapshot(
-                state=DoclingTaskState.FAILED,
-                detail=f"HTTP {response.status_code}: {response.text[:300]}",
-            )
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception(is_transient_error),
+            reraise=True,
+        )
+        async def _get_with_retry():
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response
+
+        try:
+            response = await _get_with_retry()
+        except Exception as e:
+            if isinstance(e, httpx.HTTPStatusError):
+                response = e.response
+                if response.status_code == 404:
+                    return DoclingStatusSnapshot(
+                        state=DoclingTaskState.NOT_FOUND, detail="Task not found"
+                    )
+                if response.status_code >= 500:
+                    logger.debug(
+                        "Transient HTTP error from docling status endpoint",
+                        task_id=task_id,
+                        status_code=response.status_code,
+                    )
+                    return DoclingStatusSnapshot(
+                        state=DoclingTaskState.PROCESSING,
+                        detail=f"HTTP {response.status_code}",
+                    )
+                if response.status_code >= 400:
+                    return DoclingStatusSnapshot(
+                        state=DoclingTaskState.FAILED,
+                        detail=f"HTTP {response.status_code}: {response.text[:300]}",
+                    )
+            elif isinstance(e, httpx.RequestError):
+                logger.debug(
+                    "Transient error checking docling status", task_id=task_id, error=str(e)
+                )
+                return DoclingStatusSnapshot(state=DoclingTaskState.PROCESSING, detail=str(e))
+            raise
 
         try:
             payload = response.json()
@@ -354,23 +425,35 @@ class DoclingService:
         client = self._get_client()
         url = f"{self.docling_url}/v1/result/{task_id}"
         headers = self._get_auth_headers(user_id, auth_header)
-        try:
+
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception(is_transient_error),
+            reraise=True,
+        )
+        async def _get_with_retry():
             response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response
+
+        try:
+            response = await _get_with_retry()
         except httpx.RequestError as e:
             raise DoclingTransientError(f"Network error fetching docling result: {str(e)}") from e
-
-        if response.status_code >= 500:
-            raise DoclingTransientError(
-                f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
-            )
-        if response.status_code == 404:
+        except httpx.HTTPStatusError as e:
+            response = e.response
+            if response.status_code >= 500:
+                raise DoclingTransientError(
+                    f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
+                ) from e
+            if response.status_code == 404:
+                raise DoclingServeError(
+                    f"Docling result not found for task {task_id} (task expired or unknown)"
+                ) from e
             raise DoclingServeError(
-                f"Docling result not found for task {task_id} (task expired or unknown)"
-            )
-        if response.status_code >= 400:
-            raise DoclingServeError(
                 f"Docling result fetch failed with HTTP {response.status_code}: {response.text[:300]}"
-            )
+            ) from e
 
         try:
             payload = response.json()
@@ -396,36 +479,14 @@ class DoclingService:
     ) -> dict[str, Any]:
         """Internal polling logic."""
         elapsed = 0.0
-        headers = self._get_auth_headers(user_id, auth_header)
         while elapsed < timeout:
-            try:
-                response = await client.get(
-                    f"{self.docling_url}/v1/status/poll/{task_id}", headers=headers
-                )
-                response.raise_for_status()
-                status_data = response.json()
-            except Exception as e:
-                logger.error("Error polling docling status", task_id=task_id, error=str(e))
-                raise DoclingServeError(f"Error polling docling status: {str(e)}") from e
+            snapshot = await self.check_task_status(task_id, user_id, auth_header)
 
-            status = status_data.get("task_status")
-
-            if status == "success":
-                result_response = await client.get(
-                    f"{self.docling_url}/v1/result/{task_id}", headers=headers
-                )
-                result_response.raise_for_status()
-                result_json = result_response.json()
-
-                # Extract the json_content which matches the old convert_file/bytes return
-                doc_content = result_json.get("document", {}).get("json_content")
-                if doc_content is None:
-                    raise DoclingServeError("docling-serve response missing document.json_content")
-
-                return doc_content
-            elif status == "failure" or status_data.get("errors"):
+            if snapshot.state == DoclingTaskState.SUCCESS:
+                return await self.fetch_task_result(task_id, user_id, auth_header)
+            elif snapshot.state == DoclingTaskState.FAILED:
                 raise DoclingServeError(
-                    f"Docling processing failed: {_format_docling_error(status_data)}"
+                    f"Docling processing failed: {snapshot.detail or 'Unknown error'}"
                 )
 
             await asyncio.sleep(poll_interval)

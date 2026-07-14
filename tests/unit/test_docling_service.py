@@ -48,7 +48,7 @@ def docling_service(mock_httpx_client):
 @pytest.fixture(autouse=True)
 def no_sleep():
     """Patch asyncio.sleep so tests run instantly."""
-    with patch("services.docling_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         yield mock_sleep
 
 
@@ -212,3 +212,53 @@ def test_init_default_url():
     with patch("services.docling_service.DOCLING_SERVE_URL", "http://default:5001"):
         service = DoclingService()
         assert service.docling_url == "http://default:5001"
+
+
+@pytest.mark.asyncio
+async def test_upload_retry_on_transient_error(docling_service, mock_httpx_client):
+    """Retries upload on transient errors (like 503) and succeeds on a later attempt."""
+    mock_httpx_client.post.side_effect = [
+        _make_response(503),
+        _make_response(503),
+        _make_response(200, {"task_id": "success-task"}),
+    ]
+
+    with patch("services.docling_service.get_openrag_config"):
+        task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+    assert task_id == "success-task"
+    assert mock_httpx_client.post.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_concurrency_limit_semaphore():
+    """Verifies that the concurrency limit semaphore blocks requests when full."""
+    from services.docling_service import DoclingService
+
+    # Reset semaphore and set max concurrency to 1
+    DoclingService._semaphore = None
+    DoclingService._active_tasks.clear()
+
+    with patch("services.docling_service.DOCLING_MAX_CONCURRENCY", 1):
+        # Create service instance
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post.return_value = _make_response(200, {"task_id": "task-1"})
+
+        svc = DoclingService(docling_url="http://docling:8000", httpx_client=mock_client)
+
+        with patch("services.docling_service.get_openrag_config"):
+            # First task
+            task_id1 = await svc.upload_to_docling_direct_async(
+                "test1.pdf", b"data", hold_semaphore=True
+            )
+            assert task_id1 == "task-1"
+            assert "task-1" in DoclingService._active_tasks
+
+            # Second task should block since concurrency is 1.
+            assert DoclingService._semaphore.locked()
+
+            # Now release the slot for task-1
+            svc.release_task_slot("task-1")
+            assert not DoclingService._semaphore.locked()
+            assert "task-1" not in DoclingService._active_tasks
