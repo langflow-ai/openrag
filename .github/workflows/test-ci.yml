@@ -74,7 +74,7 @@ jobs:
         continue-on-error: true
         with:
           root-reserve-mb: 30720
-          temp-reserve-mb: 20480
+          temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -276,7 +276,7 @@ jobs:
         continue-on-error: true
         with:
           root-reserve-mb: 30720
-          temp-reserve-mb: 20480
+          temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -390,7 +390,7 @@ jobs:
         continue-on-error: true
         with:
           root-reserve-mb: 30720
-          temp-reserve-mb: 20480
+          temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
