@@ -73,8 +73,8 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 20480
-          temp-reserve-mb: 10240
+          root-reserve-mb: 30720
+          temp-reserve-mb: 20480
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -127,25 +127,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/opensearch.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
+          key: ${{ runner.os }}-${{ runner.arch }}-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/backend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-backend-${{ steps.cache-keys.outputs.backend }}
+          key: ${{ runner.os }}-${{ runner.arch }}-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/frontend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
+          key: ${{ runner.os }}-${{ runner.arch }}-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/langflow.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
+          key: ${{ runner.os }}-${{ runner.arch }}-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
@@ -275,8 +275,8 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 20480
-          temp-reserve-mb: 10240
+          root-reserve-mb: 30720
+          temp-reserve-mb: 20480
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -389,8 +389,8 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 20480
-          temp-reserve-mb: 10240
+          root-reserve-mb: 30720
+          temp-reserve-mb: 20480
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
