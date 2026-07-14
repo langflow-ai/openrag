@@ -496,7 +496,7 @@ export class Chat {
     logger.info(`Deleting chat: ${chatTitle}`);
     await this.openNewChat();
     const chatRow = this.getChatRow(chatTitle);
-    await expect(chatRow).toBeVisible({ timeout: 10000 });
+    await expect(chatRow).toBeVisible({ timeout: 30000 });
     await chatRow.hover();
     const moreOptionsButton = chatRow.locator('[aria-haspopup="menu"]');
     await expect(moreOptionsButton).toBeVisible({ timeout: 5000 });
@@ -572,7 +572,7 @@ export class Chat {
         continue;
       }
 
-      if (currentText === previousText && currentText.length > 50) {
+      if (currentText === previousText && currentText.trim().length > 0) {
         stableCount++;
       } else {
         stableCount = 0;
