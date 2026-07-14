@@ -35,6 +35,11 @@ def test_extract_hit_total_prefers_total_value():
     assert _extract_hit_total({"hits": []}, 3) == 3
 
 
+def test_extract_hit_total_falls_back_when_value_is_null():
+    # OpenSearch may return {"total": {"value": null}}; must not raise TypeError.
+    assert _extract_hit_total({"total": {"value": None}, "hits": []}, 5) == 5
+
+
 @pytest.mark.asyncio
 async def test_get_index_proof_selects_file_by_path():
     service = IngestPreviewService()
@@ -203,3 +208,66 @@ async def test_get_index_proof_returns_file_not_found_for_unknown_path():
 
     assert proof["ready"] is False
     assert proof["error"] == "file_not_found"
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_opensearch_unavailable():
+    service = IngestPreviewService()
+    file_task = FileTask(
+        file_path="/tmp/sample.pdf",
+        filename="sample.pdf",
+        document_id="hash-abc",
+    )
+    file_task.phase = IngestionPhase.COMPLETE
+    file_task.status = TaskStatus.COMPLETED
+    upload_task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"/tmp/sample.pdf": file_task},
+        preview_mode=True,
+    )
+
+    proof = await service.get_index_proof(
+        upload_task=upload_task,
+        task_id="task-1",
+        opensearch_client=None,
+    )
+
+    assert proof["ready"] is False
+    assert proof["error"] == "opensearch_unavailable"
+    assert proof["phase"] == "complete"
+    assert proof["chunk_count"] == 0
+    assert proof["document_id"] == "hash-abc"
+
+
+@pytest.mark.asyncio
+async def test_get_index_proof_search_failure():
+    service = IngestPreviewService()
+    file_task = FileTask(
+        file_path="/tmp/sample.pdf",
+        filename="sample.pdf",
+        document_id="hash-abc",
+    )
+    file_task.phase = IngestionPhase.COMPLETE
+    file_task.status = TaskStatus.COMPLETED
+    upload_task = UploadTask(
+        task_id="task-1",
+        total_files=1,
+        file_tasks={"/tmp/sample.pdf": file_task},
+        preview_mode=True,
+    )
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search.side_effect = RuntimeError("opensearch down")
+
+    proof = await service.get_index_proof(
+        upload_task=upload_task,
+        task_id="task-1",
+        opensearch_client=opensearch_client,
+    )
+
+    assert proof["ready"] is False
+    assert proof["error"] == "search_failed"
+    assert proof["phase"] == "complete"
+    assert proof["chunk_count"] == 0
+    assert proof["document_id"] == "hash-abc"

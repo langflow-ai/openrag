@@ -38,7 +38,8 @@ def _sort_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _extract_hit_total(hits_section: dict[str, Any], fallback: int) -> int:
     total = hits_section.get("total")
     if isinstance(total, dict):
-        return int(total.get("value", fallback))
+        value = total.get("value")
+        return int(value) if value is not None else fallback
     if isinstance(total, int):
         return total
     return fallback

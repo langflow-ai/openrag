@@ -12,7 +12,7 @@ from dependencies import (
     require_permission,
 )
 from session_manager import User
-from utils.run_mode_utils import is_ingest_preview_enabled
+from utils.ingest_preview_flag import is_ingest_preview_enabled
 
 
 def _preview_unavailable_response() -> JSONResponse:

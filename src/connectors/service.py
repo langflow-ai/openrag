@@ -648,7 +648,6 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
-            preview_mode=preview_mode,
             shared=shared,
         )
 

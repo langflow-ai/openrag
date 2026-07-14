@@ -316,7 +316,6 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
-            preview_mode=preview_mode,
         )
         return await self.create_custom_task(
             user_id,

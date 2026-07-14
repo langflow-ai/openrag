@@ -821,7 +821,6 @@ class ConnectorFileProcessor(TaskProcessor):
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         connector_type: str | None = None,
-        preview_mode: bool = False,
         shared: bool = False,
     ):
         super().__init__(
@@ -839,7 +838,6 @@ class ConnectorFileProcessor(TaskProcessor):
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
-        self.preview_mode = preview_mode
         self.shared = shared
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
@@ -1339,7 +1337,6 @@ class LangflowFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str = "local",
         docling_polling_service=None,
-        preview_mode: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1354,7 +1351,6 @@ class LangflowFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
-        self.preview_mode = preview_mode
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""

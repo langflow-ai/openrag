@@ -1,8 +1,8 @@
-"""Tests for the ingest-preview feature flag gating in run_mode_utils."""
+"""Tests for the ingest-preview feature flag gating."""
 
 import pytest
 
-from utils.run_mode_utils import is_ingest_preview_enabled
+from utils.ingest_preview_flag import is_ingest_preview_enabled
 
 
 @pytest.mark.parametrize("run_mode", ["oss", "saas", "on_prem", ""])
