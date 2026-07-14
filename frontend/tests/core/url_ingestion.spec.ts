@@ -175,6 +175,7 @@ test("URL ingestion persists after conversation deletion @34581222", async ({
   settings,
   chat,
   cleanupDocuments,
+  knowledge,
 }) => {
   test.setTimeout(180000);
 
