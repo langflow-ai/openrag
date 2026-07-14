@@ -73,13 +73,18 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 30720
+          root-reserve-mb: 40960
           temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
 
       - run: df -h
 
@@ -275,13 +280,18 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 30720
+          root-reserve-mb: 40960
           temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
 
       - run: df -h
 
@@ -389,13 +399,18 @@ jobs:
         uses: easimon/maximize-build-space@v10
         continue-on-error: true
         with:
-          root-reserve-mb: 30720
+          root-reserve-mb: 40960
           temp-reserve-mb: 30720
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
 
       - name: Cleanup Docker cache
         run: |
