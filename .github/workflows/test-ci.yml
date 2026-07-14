@@ -69,6 +69,14 @@ jobs:
     runs-on:
       labels: "ubuntu-latest"
     steps:
+      - name: Free up disk space
+        run: |
+          echo "Disk before cleanup:"; df -h /
+          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
+          # them so building/loading the OpenRAG images does not exhaust disk.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:"; df -h /
+
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -233,6 +241,14 @@ jobs:
         suite: [core, sdk-python, sdk-typescript]
     name: tests (${{ matrix.suite }})
     steps:
+      - name: Free up disk space
+        run: |
+          echo "Disk before cleanup:"; df -h /
+          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
+          # them so loading the OpenRAG images does not exhaust disk.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:"; df -h /
+
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -335,6 +351,14 @@ jobs:
         total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
+      - name: Free up disk space
+        run: |
+          echo "Disk before cleanup:"; df -h /
+          # ubuntu-latest ships ~25GB of toolchains these jobs never use; drop
+          # them so loading the OpenRAG images does not exhaust disk.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:"; df -h /
+
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true
