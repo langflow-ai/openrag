@@ -69,26 +69,6 @@ jobs:
     runs-on:
       labels: "ubuntu-latest"
     steps:
-      - name: Free up disk space
-        run: |
-          echo "Disk before cleanup:"; df -h
-          # Trim large preinstalled toolchains these jobs never use.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
-            /usr/share/swift /usr/local/share/powershell || true
-          sudo apt-get clean || true
-          # The root filesystem is small (~30GB); relocate Docker's data-root
-          # onto the much larger ephemeral /mnt disk (~70GB) so building/loading
-          # the OpenRAG images (OpenSearch + backend + langflow + frontend) has
-          # room to unpack without "no space left on device".
-          sudo systemctl stop docker docker.socket || true
-          sudo mkdir -p /mnt/docker
-          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
-          sudo rm -rf /var/lib/docker
-          sudo systemctl start docker
-          echo "Disk after cleanup:"; df -h
-          docker info 2>/dev/null | grep -i "docker root dir" || true
-
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -135,25 +115,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/opensearch.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
+          key: ${{ runner.os }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/backend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-backend-${{ steps.cache-keys.outputs.backend }}
+          key: ${{ runner.os }}-image-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/frontend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
+          key: ${{ runner.os }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/langflow.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
+          key: ${{ runner.os }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
@@ -253,26 +233,6 @@ jobs:
         suite: [core, sdk-python, sdk-typescript]
     name: tests (${{ matrix.suite }})
     steps:
-      - name: Free up disk space
-        run: |
-          echo "Disk before cleanup:"; df -h
-          # Trim large preinstalled toolchains these jobs never use.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
-            /usr/share/swift /usr/local/share/powershell || true
-          sudo apt-get clean || true
-          # The root filesystem is small (~30GB); relocate Docker's data-root
-          # onto the much larger ephemeral /mnt disk (~70GB) so loading the
-          # OpenRAG images (OpenSearch + backend + langflow + frontend) has
-          # room to unpack without "no space left on device".
-          sudo systemctl stop docker docker.socket || true
-          sudo mkdir -p /mnt/docker
-          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
-          sudo rm -rf /var/lib/docker
-          sudo systemctl start docker
-          echo "Disk after cleanup:"; df -h
-          docker info 2>/dev/null | grep -i "docker root dir" || true
-
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -375,26 +335,6 @@ jobs:
         total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
-      - name: Free up disk space
-        run: |
-          echo "Disk before cleanup:"; df -h
-          # Trim large preinstalled toolchains these jobs never use.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
-            /usr/share/swift /usr/local/share/powershell || true
-          sudo apt-get clean || true
-          # The root filesystem is small (~30GB); relocate Docker's data-root
-          # onto the much larger ephemeral /mnt disk (~70GB) so loading the
-          # OpenRAG images (OpenSearch + backend + langflow + frontend) has
-          # room to unpack without "no space left on device".
-          sudo systemctl stop docker docker.socket || true
-          sudo mkdir -p /mnt/docker
-          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
-          sudo rm -rf /var/lib/docker
-          sudo systemctl start docker
-          echo "Disk after cleanup:"; df -h
-          docker info 2>/dev/null | grep -i "docker root dir" || true
-
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true

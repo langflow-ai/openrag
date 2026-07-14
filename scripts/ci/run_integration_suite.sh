@@ -53,41 +53,6 @@ wait_for_url() {
   return 1
 }
 
-normalize_arch() {
-  # Map the many arch spellings (uname vs docker) onto amd64/arm64.
-  case "$1" in
-    x86_64 | amd64) echo "amd64" ;;
-    aarch64 | arm64) echo "arm64" ;;
-    *) echo "$1" ;;
-  esac
-}
-
-assert_image_arch_matches_host() {
-  # The build-images CI job produces single-arch images (arm64 on the ARM64
-  # runners). If the test job lands on a mismatched runner (e.g. an amd64 host
-  # mislabeled as ARM64), the containers only run under slow/broken QEMU
-  # emulation and the backend never binds :8000 in time — surfacing as an
-  # opaque "OIDC endpoint not reachable" timeout 2 minutes later. Fail fast with
-  # an actionable message instead.
-  local image_ref="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
-  local host_arch image_arch
-  host_arch="$(normalize_arch "$(uname -m)")"
-  image_arch="$("$container_runtime" image inspect "$image_ref" --format '{{.Architecture}}' 2>/dev/null || true)"
-
-  if [[ -z "$image_arch" ]]; then
-    # Image not present locally (e.g. compose will build/pull) — nothing to check.
-    return 0
-  fi
-
-  image_arch="$(normalize_arch "$image_arch")"
-  if [[ "$host_arch" != "$image_arch" ]]; then
-    echo "${red}Runner/image architecture mismatch: host is ${host_arch} but ${image_ref} is ${image_arch}.${nc}"
-    echo "${red}The backend image can only run here under emulation, which is too slow to pass the readiness gate.${nc}"
-    echo "${red}This is a mismatched CI runner — re-run the job (to land on a ${image_arch} runner) or fix the self-hosted runner pool labels.${nc}"
-    exit 1
-  fi
-}
-
 test_jwt_opensearch() {
   echo "${cyan}=== JWT OpenSearch Authentication Test ===${nc}"
   echo "${yellow}Generating test JWT token...${nc}"
@@ -178,8 +143,6 @@ uv sync --quiet --group dev
 echo "::group::Start Infrastructure"
 echo "${yellow}Cleaning up old containers and volumes...${nc}"
 "${compose_cmd[@]}" down -v 2>/dev/null || true
-
-assert_image_arch_matches_host
 
 echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENRAG_VERSION:-latest}'${nc}"
 OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend
