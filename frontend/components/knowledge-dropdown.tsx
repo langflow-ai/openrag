@@ -243,51 +243,53 @@ export function KnowledgeDropdown() {
             };
           } = {};
 
-          for (const type of cloudConnectorTypes) {
-            if (connectorsResult.connectors[type]) {
-              connectorInfo[type] = {
-                name: connectorsResult.connectors[type].name,
-                available: connectorsResult.connectors[type].available,
-                connected: false,
-                hasToken: false,
-              };
+          const availableTypes = cloudConnectorTypes.filter(
+            (type) => connectorsResult.connectors[type],
+          );
 
-              // Check connection status
+          for (const type of availableTypes) {
+            connectorInfo[type] = {
+              name: connectorsResult.connectors[type].name,
+              available: connectorsResult.connectors[type].available,
+              connected: false,
+              hasToken: false,
+            };
+          }
+
+          await Promise.all(
+            availableTypes.map(async (type) => {
               try {
                 const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (statusRes.ok) {
-                  const statusData = await statusRes.json();
-                  const connections = statusData.connections || [];
-                  const activeConnection = connections.find(
-                    (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
+                if (!statusRes.ok) return;
+
+                const statusData = await statusRes.json();
+                const connections = statusData.connections || [];
+                const activeConnection = connections.find(
+                  (conn: { is_active: boolean; connection_id: string }) =>
+                    conn.is_active,
+                );
+                if (!activeConnection) return;
+
+                connectorInfo[type].connected = true;
+
+                try {
+                  const tokenRes = await fetch(
+                    `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                   );
-                  const isConnected = activeConnection !== undefined;
-
-                  if (isConnected && activeConnection) {
-                    connectorInfo[type].connected = true;
-
-                    // Check token availability
-                    try {
-                      const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
-                      );
-                      if (tokenRes.ok) {
-                        const tokenData = await tokenRes.json();
-                        if (tokenData.access_token) {
-                          connectorInfo[type].hasToken = true;
-                        }
-                      }
-                    } catch {
-                      // Token check failed
+                  if (tokenRes.ok) {
+                    const tokenData = await tokenRes.json();
+                    if (tokenData.access_token) {
+                      connectorInfo[type].hasToken = true;
                     }
                   }
+                } catch {
+                  // Token check failed
                 }
               } catch {
                 // Status check failed
               }
-            }
-          }
+            }),
+          );
 
           setCloudConnectors(connectorInfo);
         }

@@ -20,6 +20,59 @@ class KnowledgeFilterService:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
         return clients.opensearch
 
+    async def _attach_active_source_counts(self, filters: list[dict[str, Any]]) -> None:
+        """Annotate each filter with active_source_count (mutates filters in place).
+
+        Counts how many of each filter's configured data sources still have indexed
+        documents, via a single batched terms aggregation against the documents index
+        using the admin client (so the count is the same for every viewer of a shared
+        filter, not DLS-scoped per user). Filters scoped to "*" are skipped.
+        """
+        try:
+            import json
+
+            from config.settings import clients, get_index_name
+            from utils.logging_config import get_logger
+            from utils.opensearch_queries import build_existing_filenames_agg_body
+
+            data_sources_by_filter: list[list[str] | None] = []
+            all_filenames = set()
+            for knowledge_filter in filters:
+                try:
+                    data_sources = (
+                        json.loads(knowledge_filter.get("query_data") or "{}")
+                        .get("filters", {})
+                        .get("data_sources")
+                    )
+                except Exception:
+                    data_sources_by_filter.append(None)
+                    continue
+
+                if not data_sources or data_sources == ["*"]:
+                    data_sources_by_filter.append(None)
+                    continue
+                data_sources_by_filter.append(data_sources)
+                all_filenames.update(data_sources)
+
+            if not all_filenames or clients.opensearch is None:
+                return
+
+            existence_result = await clients.opensearch.search(
+                index=get_index_name(),
+                body=build_existing_filenames_agg_body(list(all_filenames)),
+            )
+            existing_filenames = {
+                bucket["key"] for bucket in existence_result["aggregations"]["filenames"]["buckets"]
+            }
+
+            for knowledge_filter, data_sources in zip(filters, data_sources_by_filter, strict=True):
+                if data_sources:
+                    knowledge_filter["active_source_count"] = sum(
+                        1 for source in data_sources if source in existing_filenames
+                    )
+        except Exception:
+            get_logger(__name__).warning("active_source_count computation failed", exc_info=True)
+
     async def create_knowledge_filter(
         self, filter_doc: dict[str, Any], user_id: str = None, jwt_token: str = None
     ) -> dict[str, Any]:
@@ -108,6 +161,8 @@ class KnowledgeFilterService:
                 knowledge_filter = hit["_source"]
                 knowledge_filter["score"] = hit.get("_score")
                 filters.append(knowledge_filter)
+
+            await self._attach_active_source_counts(filters)
 
             return {"success": True, "filters": filters}
 
