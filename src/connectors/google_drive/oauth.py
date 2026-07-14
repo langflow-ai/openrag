@@ -152,10 +152,6 @@ class GoogleDriveOAuth:
             self.creds.expiry = expiry_dt.replace(tzinfo=None)
             logger.debug("[GoogleDrive] load_credentials: token expiry=%s", self.creds.expiry)
 
-        # Verify ID token if present — raises JWTVerificationError on failure
-        if self.creds and self.creds.id_token:
-            _verify_id_token(self.creds.id_token)
-
         if needs_upgrade and self.creds:
             await self.save_credentials()
 
