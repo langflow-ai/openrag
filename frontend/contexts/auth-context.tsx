@@ -3,8 +3,8 @@
 import React, {
   createContext,
   ReactNode,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useState,
 } from "react";
@@ -61,7 +61,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const context = use(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
