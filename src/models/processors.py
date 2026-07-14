@@ -1120,6 +1120,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_groups=allowed_groups,
                         allowed_principals=allowed_principals,
                         allowed_principal_labels=allowed_principal_labels,
+                        original_filename=file_task.filename,
+                        original_mimetype=document.mimetype,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
@@ -1399,13 +1401,13 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Create file tuple for upload using ORIGINAL filename
             # This ensures the document is indexed with the original name
-            content_type, _ = mimetypes.guess_type(original_filename)
-            if not content_type:
-                content_type = "application/octet-stream"
+            original_mimetype, _ = mimetypes.guess_type(original_filename)
+            if not original_mimetype:
+                original_mimetype = "application/octet-stream"
 
             # Langflow's docling chokes on text/plain — rename .txt -> .md.
             langflow_filename, content_type = langflow_safe_filename_and_mimetype(
-                original_filename, content_type
+                original_filename, original_mimetype
             )
             file_tuple = (langflow_filename, content, content_type)
 
@@ -1442,6 +1444,8 @@ class LangflowFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
+                original_filename=original_filename,
+                original_mimetype=original_mimetype,
             )
 
             # Langflow returns "success" even when no text was extracted

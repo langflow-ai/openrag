@@ -82,7 +82,7 @@ export function SharedBucketView({
         }
       }
     }
-  }, [buckets, initialSelectedBuckets]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [buckets, initialSelectedBuckets, selectedBuckets.size]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });

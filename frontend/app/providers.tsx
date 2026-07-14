@@ -32,7 +32,7 @@ if (typeof window !== "undefined") {
                     // Same-origin absolute URL - safe to use
                     validatedUrl = redirectUrl;
                   }
-                } catch (e) {
+                } catch (_e) {
                   // Invalid URL, use default
                 }
               }

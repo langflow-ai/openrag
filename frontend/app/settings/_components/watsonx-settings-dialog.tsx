@@ -68,7 +68,7 @@ const WatsonxSettingsDialog = ({
   useEffect(() => {
     // Reset form state on dialog open
     if (open) methods.reset();
-  }, [open]);
+  }, [open, methods.reset]);
 
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
