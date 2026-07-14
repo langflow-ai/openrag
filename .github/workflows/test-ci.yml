@@ -38,7 +38,7 @@ env:
   LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
   # Single-node test cluster never reaches the multi-node readiness counts
   OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
-  HF_HOME: ${{ github.workspace }}/.cache/huggingface
+  HF_HOME: /home/runner/work/huggingface
 
 jobs:
   changes:
@@ -81,14 +81,15 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/home/runner/work'
 
       - name: Move Docker to Maximized Space
         continue-on-error: true
         run: |
           sudo systemctl stop docker.service || true
           sudo systemctl stop docker.socket || true
-          sudo mkdir -p ${{ github.workspace }}/docker
-          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /home/runner/work/docker
+          echo '{"data-root": "/home/runner/work/docker"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl start docker.service || sudo service docker start || true
           docker info | grep "Docker Root Dir" || true
 
@@ -137,37 +138,37 @@ jobs:
       - name: Cache OpenSearch Image
         uses: actions/cache@v4
         with:
-          path: image-cache/opensearch.tar
+          path: /home/runner/work/image-cache/opensearch.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
-          path: image-cache/backend.tar
+          path: /home/runner/work/image-cache/backend.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
-          path: image-cache/frontend.tar
+          path: /home/runner/work/image-cache/frontend.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
-          path: image-cache/langflow.tar
+          path: /home/runner/work/image-cache/langflow.tar
           key: ${{ runner.os }}-${{ runner.arch }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
           
-          mkdir -p image-cache
+          mkdir -p /home/runner/work/image-cache
           
           build_or_load_image() {
             local name=$1
             local dockerfile=$2
-            local tar_path="image-cache/${name}.tar"
+            local tar_path="/home/runner/work/image-cache/${name}.tar"
             local use_cache=false
             
             if [ -f "$tar_path" ]; then
@@ -293,14 +294,15 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/home/runner/work'
 
       - name: Move Docker to Maximized Space
         continue-on-error: true
         run: |
           sudo systemctl stop docker.service || true
           sudo systemctl stop docker.socket || true
-          sudo mkdir -p ${{ github.workspace }}/docker
-          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /home/runner/work/docker
+          echo '{"data-root": "/home/runner/work/docker"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl start docker.service || sudo service docker start || true
           docker info | grep "Docker Root Dir" || true
 
@@ -417,14 +419,15 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          build-mount-path: '/home/runner/work'
 
       - name: Move Docker to Maximized Space
         continue-on-error: true
         run: |
           sudo systemctl stop docker.service || true
           sudo systemctl stop docker.socket || true
-          sudo mkdir -p ${{ github.workspace }}/docker
-          echo '{"data-root": "${{ github.workspace }}/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /home/runner/work/docker
+          echo '{"data-root": "/home/runner/work/docker"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl start docker.service || sudo service docker start || true
           docker info | grep "Docker Root Dir" || true
 
