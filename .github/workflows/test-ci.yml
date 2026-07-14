@@ -69,6 +69,23 @@ jobs:
     runs-on:
       labels: "ubuntu-latest"
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        continue-on-error: true
+        with:
+          root-reserve-mb: 40960
+          temp-reserve-mb: 30720
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
+
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -115,25 +132,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/opensearch.tar
-          key: ${{ runner.os }}-image-opensearch-${{ steps.cache-keys.outputs.opensearch }}
+          key: ${{ runner.os }}-${{ runner.arch }}-opensearch-${{ steps.cache-keys.outputs.opensearch }}
 
       - name: Cache Backend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/backend.tar
-          key: ${{ runner.os }}-image-backend-${{ steps.cache-keys.outputs.backend }}
+          key: ${{ runner.os }}-${{ runner.arch }}-backend-${{ steps.cache-keys.outputs.backend }}
 
       - name: Cache Frontend Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/frontend.tar
-          key: ${{ runner.os }}-image-frontend-${{ steps.cache-keys.outputs.frontend }}
+          key: ${{ runner.os }}-${{ runner.arch }}-frontend-${{ steps.cache-keys.outputs.frontend }}
 
       - name: Cache Langflow Image
         uses: actions/cache@v4
         with:
           path: /tmp/image-cache/langflow.tar
-          key: ${{ runner.os }}-image-langflow-${{ steps.cache-keys.outputs.langflow }}
+          key: ${{ runner.os }}-${{ runner.arch }}-langflow-${{ steps.cache-keys.outputs.langflow }}
 
       - name: Build OpenRAG images
         run: |
@@ -145,14 +162,40 @@ jobs:
             local name=$1
             local dockerfile=$2
             local tar_path="/tmp/image-cache/${name}.tar"
+            local use_cache=false
             
             if [ -f "$tar_path" ]; then
-              echo "Cache hit for ${name}. Loading image from ${tar_path}..."
+              echo "Found cache file for ${name}. Inspecting architecture..."
               docker load -i "$tar_path"
-              echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
-              docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
-            else
-              echo "Cache miss for ${name}. Building..."
+              
+              # Get host normalized architecture
+              local host_arch="$(uname -m)"
+              local host_arch_norm=""
+              if [[ "$host_arch" == "x86_64" ]]; then
+                host_arch_norm="amd64"
+              elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
+                host_arch_norm="arm64"
+              else
+                host_arch_norm="$host_arch"
+              fi
+              
+              local loaded_arch=""
+              loaded_arch=$(docker inspect --format '{{.Architecture}}' "langflowai/openrag-${name}:cached" 2>/dev/null || echo "unknown")
+              
+              if [ "$loaded_arch" = "$host_arch_norm" ]; then
+                echo "Cache hit for ${name}. Loaded image matches host architecture ($host_arch_norm)."
+                use_cache=true
+                echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
+                docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
+              else
+                echo "Cache image architecture ($loaded_arch) does not match host architecture ($host_arch_norm). Discarding cache."
+                docker rmi "langflowai/openrag-${name}:cached" 2>/dev/null || true
+                rm -f "$tar_path"
+              fi
+            fi
+            
+            if [ "$use_cache" = "false" ]; then
+              echo "Cache miss/incompatible for ${name}. Building..."
               if docker buildx build \
                 --load \
                 -t "langflowai/openrag-${name}:cached" \
@@ -233,6 +276,23 @@ jobs:
         suite: [core, sdk-python, sdk-typescript]
     name: tests (${{ matrix.suite }})
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        continue-on-error: true
+        with:
+          root-reserve-mb: 40960
+          temp-reserve-mb: 30720
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
+
       - run: df -h
 
       - name: Cleanup Docker cache
@@ -335,6 +395,23 @@ jobs:
         total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        continue-on-error: true
+        with:
+          root-reserve-mb: 40960
+          temp-reserve-mb: 30720
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          build-mount-path: '/var/lib/docker'
+
+      - name: Restart Docker
+        continue-on-error: true
+        run: sudo service docker restart || sudo systemctl restart docker || true
+
       - name: Cleanup Docker cache
         run: |
           docker compose -f docker-compose.yml down -v --remove-orphans || true

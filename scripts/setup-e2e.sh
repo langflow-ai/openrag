@@ -69,6 +69,27 @@ BACKEND_PROXY_NAME="${COMPOSE_PROJECT_NAME}-backend-proxy"
 echo "Using container runtime: $CONTAINER_RUNTIME"
 echo "Starting E2E Setup..."
 
+# Normalize host architecture
+host_arch="$(uname -m)"
+host_arch_norm=""
+if [[ "$host_arch" == "x86_64" ]]; then
+    host_arch_norm="amd64"
+elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
+    host_arch_norm="arm64"
+else
+    host_arch_norm="$host_arch"
+fi
+
+# Get image architecture
+image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
+image_arch=$(${CONTAINER_RUNTIME} inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
+
+if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
+    echo "WARNING: Architecture mismatch detected!"
+    echo "Host architecture is '${host_arch}' (${host_arch_norm}), but container image architecture is '${image_arch}'."
+    echo "The backend will run under QEMU emulation, which is extremely slow and may cause timeouts."
+fi
+
 # Pre-create langflow-data as world-writable so the Langflow container (UID 1000)
 # and the runner (UID 1001) can both access it, regardless of Docker's :U flag behavior.
 mkdir -p langflow-data
