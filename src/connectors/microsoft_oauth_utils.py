@@ -9,9 +9,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def verify_ms_access_token(
-    access_token: str | None, tenant_id: str | None = None
-) -> dict | None:
+def verify_ms_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
     """Verify a Microsoft access token obtained via MSAL.
 
     Returns the verified claims dict on success.
