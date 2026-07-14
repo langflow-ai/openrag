@@ -30,8 +30,17 @@ export function isTaskFileFailed(fileInfo: TaskFileEntry): boolean {
   return fileInfo.status === "failed" || fileInfo.status === "error";
 }
 
+function hasTaskFileResultWarning(fileInfo: TaskFileEntry): boolean {
+  const result = fileInfo.result;
+  if (!result || typeof result !== "object" || !("warning" in result)) {
+    return false;
+  }
+  const warning = result.warning;
+  return typeof warning === "string" && warning.trim().length > 0;
+}
+
 export function isTaskFileWarning(fileInfo: TaskFileEntry): boolean {
-  return fileInfo.status === "skipped";
+  return fileInfo.status === "skipped" || hasTaskFileResultWarning(fileInfo);
 }
 
 export function getTaskFileDialogStatusLabel(
@@ -288,7 +297,11 @@ export function isCompletedTotalFailure(task: Task): boolean {
 }
 
 export function isFailureLikeTask(task: Task): boolean {
-  return isTerminalFailedTask(task) || isCompletedWithFailures(task);
+  return (
+    isTerminalFailedTask(task) ||
+    isCompletedWithFailures(task) ||
+    getWarningFileEntries(task).length > 0
+  );
 }
 
 export function isTaskInProgressStatus(status: Task["status"]): boolean {
@@ -332,7 +345,8 @@ export function didTaskReachCompleted(
 
 /**
  * File paths present on the previous enhanced-list payload but omitted now.
- * The enhanced list drops completed files from `files` while a task is still running.
+ * The enhanced list drops completed files from `files` while a task is still running,
+ * except completed files that still need a warning surfaced.
  */
 /** Stable overlay key before the backend temp path is known. */
 function pendingTaskFileSourceUrl(taskId: string, filename: string): string {
@@ -419,7 +433,7 @@ export function finalizeProcessingOverlaysForEnhancedTask<
       return { ...file, status: "failed" as const, error };
     }
 
-    // Left the enhanced list (completed files are omitted) or task finished.
+    // Left the enhanced list (completed files without warnings are omitted) or task finished.
     changed = true;
     return { ...file, status: "active" as const, error: undefined };
   });

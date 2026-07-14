@@ -16,8 +16,10 @@ from config.settings import (
     OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
+    get_openrag_config,
 )
 from services.document_index_writer import DocumentIndexContext
+from utils.document_processing import EMBEDDED_IMAGES_OCR_DISABLED_WARNING, has_embedded_images
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
 
@@ -930,6 +932,12 @@ class LangflowFileService:
         filename, content, _ = file_tuple
 
         ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        config = get_openrag_config()
+        effective_ocr = (
+            bool(getattr(config.knowledge, "ocr", False))
+            if ocr_override is None
+            else bool(ocr_override)
+        )
         pic_desc_override = (
             settings.get("pictureDescriptions") if isinstance(settings, dict) else None
         )
@@ -1005,6 +1013,8 @@ class LangflowFileService:
                     "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                 },
             )
+        else:
+            poll_result = None
 
         # ── Phase 2: trigger Langflow ingestion ─────────────────────────
         final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(tweaks, settings)
@@ -1064,9 +1074,16 @@ class LangflowFileService:
             # fields coherent. Idempotent for the polling path.
             file_task.docling_status = DoclingPhaseStatus.SUCCESS
 
-        return {
+        result = {
             "status": "success",
             "docling_task_id": task_id,
             "ingestion": ingest_result,
             "message": f"File '{filename}' processed via Docling and ingested successfully",
         }
+        if (
+            not effective_ocr
+            and poll_result is not None
+            and has_embedded_images(poll_result.document_json_content)
+        ):
+            result["warning"] = EMBEDDED_IMAGES_OCR_DISABLED_WARNING
+        return result

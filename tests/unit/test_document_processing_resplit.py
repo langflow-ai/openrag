@@ -119,6 +119,44 @@ def test_extract_relevant_safeguard_none_table_data():
     )  # should handle None data and produce empty string or no cells
 
 
+def test_extract_relevant_marks_embedded_images():
+    from src.utils.document_processing import extract_relevant
+
+    doc_dict = {
+        "origin": {
+            "binary_hash": "hash789",
+            "filename": "report.pdf",
+            "mimetype": "application/pdf",
+        },
+        "texts": [{"text": "Selectable text", "prov": [{"page_no": 1}]}],
+        "tables": [],
+        "pictures": [{"self_ref": "#/pictures/0", "prov": [{"page_no": 1}]}],
+    }
+
+    result = extract_relevant(doc_dict)
+
+    assert result["has_embedded_images"] is True
+
+
+def test_extract_relevant_marks_no_embedded_images():
+    from src.utils.document_processing import extract_relevant
+
+    doc_dict = {
+        "origin": {
+            "binary_hash": "hash790",
+            "filename": "report.pdf",
+            "mimetype": "application/pdf",
+        },
+        "texts": [{"text": "Selectable text", "prov": [{"page_no": 1}]}],
+        "tables": [],
+        "pictures": [],
+    }
+
+    result = extract_relevant(doc_dict)
+
+    assert result["has_embedded_images"] is False
+
+
 def test_split_chunks_by_max_tokens_emoji_token_override():
     from src.utils.document_processing import split_chunks_by_max_tokens
 

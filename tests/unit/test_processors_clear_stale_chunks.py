@@ -314,7 +314,7 @@ async def test_connector_file_id_absent_when_not_provided(monkeypatch):
         Path(tmp_path).unlink(missing_ok=True)
 
     assert len(index_calls) == 1
-    assert index_calls[0]["chunks"][0].metadata == {}
+    assert "connector_file_id" not in index_calls[0]["chunks"][0].metadata
 
 
 def test_document_index_writer_outputs_connector_file_id_when_present():

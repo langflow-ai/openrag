@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
+    EMBEDDED_IMAGES_OCR_DISABLED_WARNING,
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
@@ -29,6 +30,7 @@ logger = get_logger(__name__)
 
 DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
+IMAGE_EXTENSIONS = {"bmp", "jpeg", "jpg", "png", "tiff", "tif", "webp"}
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -62,6 +64,17 @@ def resolve_shared_owner_fields(
         _anon = AnonymousUser()
         return None, _anon.name, _anon.email
     return user_id, owner_name, owner_email
+
+
+def is_image_file(filename: str) -> bool:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return ext in IMAGE_EXTENSIONS
+
+
+def get_ocr_disabled_image_error(filename: str) -> str | None:
+    if bool(getattr(get_openrag_config().knowledge, "ocr", False)) or not is_image_file(filename):
+        return None
+    return f"The file '{filename}' is an image file and cannot be ingested because OCR is disabled."
 
 
 class TaskProcessor:
@@ -411,8 +424,10 @@ class TaskProcessor:
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
         # but OpenRAG processors still need a concrete embedding model.
-        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        config = get_openrag_config()
+        configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
+        effective_ocr = bool(getattr(config.knowledge, "ocr", False)) if ocr is None else bool(ocr)
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -446,7 +461,7 @@ class TaskProcessor:
                 file_path,
                 user_id=owner_user_id,
                 auth_header=jwt_token,
-                ocr=ocr,
+                ocr=effective_ocr,
                 picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
@@ -455,6 +470,17 @@ class TaskProcessor:
         # Override filename with original_filename if provided
         if original_filename:
             slim_doc["filename"] = original_filename
+
+        warning = None
+        warning_filename = (
+            original_filename or slim_doc.get("filename") or os.path.basename(file_path)
+        )
+        if (
+            not effective_ocr
+            and slim_doc.get("has_embedded_images")
+            and not is_image_file(warning_filename)
+        ):
+            warning = EMBEDDED_IMAGES_OCR_DISABLED_WARNING
 
         if chunk_size is not None:
             try:
@@ -619,7 +645,10 @@ class TaskProcessor:
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
         await document_index_writer.index_chunks(index_context, index_chunks, final=True)
-        return {"status": "indexed", "id": file_hash}
+        result = {"status": "indexed", "id": file_hash}
+        if warning:
+            result["warning"] = warning
+        return result
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """
@@ -687,6 +716,12 @@ class DocumentFileProcessor(TaskProcessor):
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
             original_filename = file_task.filename or os.path.basename(item)
+            if image_error := get_ocr_disabled_image_error(original_filename):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = image_error
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
 
             # Check if document with same filename already exists
             if self.session_manager is None:
@@ -883,6 +918,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 "xls",
                 "xlsx",
                 "xhtml",
+                "tif",
                 "webp",
             }
             # Only pre-validate when we have a real filename. When the filename
@@ -895,6 +931,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 if ext not in VALID_EXTENSIONS:
                     file_task.status = TaskStatus.FAILED
                     file_task.error = f"The file '{file_task.filename}' has an incompatible type."
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                if image_error := get_ocr_disabled_image_error(file_task.filename):
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = image_error
                     file_task.updated_at = time.time()
                     upload_task.failed_files += 1
                     return
@@ -951,6 +993,12 @@ class ConnectorFileProcessor(TaskProcessor):
             if ext not in VALID_EXTENSIONS:
                 file_task.status = TaskStatus.FAILED
                 file_task.error = f"The file '{name}' has an incompatible type."
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+            if image_error := get_ocr_disabled_image_error(name):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = image_error
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
                 return
@@ -1361,6 +1409,12 @@ class LangflowFileProcessor(TaskProcessor):
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
             original_filename = file_task.filename or os.path.basename(item)
+            if image_error := get_ocr_disabled_image_error(original_filename):
+                file_task.status = TaskStatus.FAILED
+                file_task.error = image_error
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
 
             # Check if document with same filename already exists
             opensearch_client = self.session_manager.get_user_opensearch_client(
