@@ -68,11 +68,6 @@ export const useOnboardingMutation = (
         updateOnboardingMutation.mutateAsync({
           openrag_docs_filter_id: data.openrag_docs_filter_id,
         });
-
-        console.log(
-          "Saved OpenRAG docs filter ID:",
-          data.openrag_docs_filter_id,
-        );
       }
     },
     onSettled: () => {

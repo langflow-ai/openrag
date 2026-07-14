@@ -1,0 +1,414 @@
+Customer ID,State,Customer Lifetime Value,Coverage,Education,Expiry Date,Employment Status,Gender,Income,Location Type,Marital Status,Monthly Premium Auto,Months Since Last Claim,Months Since Policy Inception,Number of Open Complaints,Number of Policies,Policy Type,Policy Level,Renew Offer  Type,Sales Channel,Total Claim Amount,Vehicle Class,Vehicle Size,Year
+BU79786,Washington,2764,Basic,Bachelor,5/28/2016,Employed,F,56274,Suburban,Married,69,32,5,0,1,Corporate Auto,Corporate L3,Offer 1,Agent,384.81,Two-Door Car,Medium,2007
+QZ44356,Arizona,6980,Extended,Bachelor,10/31/2016,Unemployed,F,2322,Suburban,Single,94,13,42,0,8,Personal Auto,Personal L3,Offer 3,Agent,1131.46,Four-Door Car,Medium,2007
+AI49188,Nevada,12887,Premium,Bachelor,9/14/2016,Employed,F,48767,Suburban,Married,108,18,38,0,2,Personal Auto,Personal L3,Offer 1,Agent,566.47,Two-Door Car,Medium,2007
+WW63253,California,7646,Basic,Bachelor,1/4/2016,Unemployed,M,2322,Suburban,Married,106,18,65,0,7,Corporate Auto,Corporate L2,Offer 1,Call Center,529.88,SUV,Medium,2007
+HB64268,Washington,2814,Basic,Bachelor,7/26/2016,Employed,M,43836,Rural,Single,73,12,44,0,1,Personal Auto,Personal L1,Offer 1,Agent,138.13,Four-Door Car,Medium,2007
+OC83172,Oregon,8256,Basic,Bachelor,8/9/2016,Employed,F,62902,Rural,Married,69,14,94,0,2,Personal Auto,Personal L3,Offer 2,Web,159.38,Two-Door Car,Medium,2007
+XZ87318,Oregon,5381,Basic,College,10/9/2016,Employed,F,55350,Suburban,Married,67,0,13,0,9,Corporate Auto,Corporate L3,Offer 1,Agent,321.6,Four-Door Car,Medium,2007
+CF85061,Arizona,7216,Premium,Master,6/28/2016,Unemployed,M,2322,Urban,Single,101,0,68,0,4,Corporate Auto,Corporate L3,Offer 1,Agent,363.03,Four-Door Car,Medium,2007
+DY87989,Oregon,24128,Basic,Bachelor,12/28/2015,Medical Leave,M,14072,Suburban,Divorced,71,13,3,0,2,Corporate Auto,Corporate L3,Offer 1,Agent,511.2,Four-Door Car,Medium,2007
+BQ94931,Oregon,7388,Extended,College,8/20/2016,Employed,F,28812,Urban,Married,93,17,7,0,8,Special Auto,Special L2,Offer 2,Branch,425.53,Four-Door Car,Medium,2007
+SX51350,California,4739,Basic,College,4/22/2016,Unemployed,M,2322,Suburban,Single,67,23,5,0,3,Personal Auto,Personal L3,Offer 1,Agent,482.4,Four-Door Car,Small,2007
+VQ65197,California,8197,Basic,College,9/16/2016,Unemployed,F,2322,Suburban,Married,110,27,87,0,3,Personal Auto,Personal L3,Offer 2,Agent,528,SUV,Medium,2007
+DP39365,California,8799,Premium,Master,3/3/2016,Employed,M,77026,Urban,Married,110,9,82,2,3,Corporate Auto,Corporate L1,Offer 2,Agent,472.03,Four-Door Car,Medium,2007
+SJ95423,Arizona,8819,Basic,High School or Below,12/6/2016,Employed,M,99845,Suburban,Married,110,23,25,1,8,Corporate Auto,Corporate L3,Offer 2,Branch,528,SUV,Medium,2007
+IL66569,California,5384,Basic,College,8/31/2016,Employed,M,83689,Urban,Single,70,21,10,2,8,Corporate Auto,Corporate L3,Offer 4,Call Center,307.14,Four-Door Car,Medium,2007
+BW63560,Oregon,7463,Basic,Bachelor,1/1/2016,Employed,F,24599,Rural,Married,64,12,50,1,2,Corporate Auto,Corporate L2,Offer 2,Branch,42.92,Four-Door Car,Medium,2007
+FV94802,Nevada,2567,Basic,High School or Below,1/8/2016,Medical Leave,M,25049,Suburban,Married,67,14,7,0,1,Personal Auto,Personal L3,Offer 2,Call Center,454.25,Two-Door Car,Medium,2007
+OE15005,California,3945,Basic,College,12/25/2015,Medical Leave,M,28855,Suburban,Married,101,12,59,0,1,Personal Auto,Personal L2,Offer 3,Call Center,647.44,SUV,Medium,2007
+WC83389,Oregon,5710,Basic,College,11/5/2016,Employed,M,51148,Urban,Married,72,9,1,0,7,Personal Auto,Personal L2,Offer 2,Branch,308.98,Four-Door Car,Medium,2007
+FL50705,California,8163,Premium,High School or Below,8/15/2016,Employed,F,66140,Suburban,Married,101,11,21,0,3,Corporate Auto,Corporate L2,Offer 1,Call Center,484.8,Four-Door Car,Small,2007
+ZK25313,Oregon,2872,Basic,High School or Below,8/2/2016,Employed,M,57749,Suburban,Single,74,31,21,0,1,Personal Auto,Personal L2,Offer 1,Branch,355.2,Two-Door Car,Medium,2007
+SV62436,Washington,3042,Extended,Bachelor,7/25/2016,LTD,F,13789,Suburban,Divorced,79,8,49,0,1,Personal Auto,Personal L3,Offer 4,Call Center,379.2,Four-Door Car,Medium,2007
+YH23384,Arizona,24128,Basic,Bachelor,2/25/2016,Medical Leave,M,14072,Suburban,Divorced,71,13,3,0,2,Personal Auto,Personal L3,Offer 1,Agent,511.2,Four-Door Car,Medium,2007
+TZ98966,Nevada,2450,Basic,Bachelor,12/17/2015,Unemployed,F,2322,Suburban,Single,73,4,44,3,1,Corporate Auto,Corporate L3,Offer 1,Branch,554.38,SUV,Medium,2007
+HM55802,California,2392,Basic,Bachelor,7/6/2016,LTD,F,17870,Suburban,Married,61,30,91,0,1,Corporate Auto,Corporate L2,Offer 2,Branch,439.2,Four-Door Car,Medium,2007
+FS42516,Oregon,5802,Basic,College,11/19/2016,Employed,M,97541,Suburban,Married,72,22,1,0,3,Personal Auto,Personal L3,Offer 2,Call Center,389.19,Four-Door Car,Large,2007
+US89481,California,3946,Premium,Bachelor,3/23/2016,Unemployed,F,2322,Suburban,Single,111,15,47,0,1,Personal Auto,Personal L3,Offer 1,Agent,799.2,Four-Door Car,Small,2007
+HO30839,Washington,5347,Extended,Master,11/4/2016,LTD,F,10511,Urban,Married,139,33,64,0,1,Corporate Auto,Corporate L1,Offer 1,Branch,516.24,SUV,Medium,2007
+GE62437,Arizona,12903,Premium,College,2/16/2016,Employed,F,86584,Suburban,Single,111,33,54,2,2,Personal Auto,Personal L3,Offer 1,Call Center,532.8,Four-Door Car,Large,2007
+EJ77678,Oregon,3235,Extended,Master,4/9/2016,Employed,F,75690,Suburban,Married,80,17,44,1,1,Personal Auto,Personal L3,Offer 2,Branch,384,Four-Door Car,Small,2007
+SV85652,Arizona,2455,Basic,College,4/11/2016,Employed,M,23158,Suburban,Married,63,4,6,1,1,Personal Auto,Personal L2,Offer 4,Call Center,322.29,Four-Door Car,Small,2007
+UL64533,Nevada,18975,Extended,High School or Below,7/16/2016,Employed,M,65999,Urban,Married,237,1,24,0,6,Corporate Auto,Corporate L2,Offer 2,Agent,615.93,SUV,Medium,2007
+PF41800,California,4715,Basic,Bachelor,7/30/2016,Unemployed,M,2322,Urban,Married,65,19,56,0,3,Personal Auto,Personal L3,Offer 1,Call Center,308.15,Four-Door Car,Medium,2007
+AO98601,Washington,5019,Basic,Bachelor,11/11/2016,Employed,M,54500,Suburban,Married,63,28,17,0,6,Corporate Auto,Corporate L2,Offer 1,Agent,302.4,Two-Door Car,Small,2007
+SK67821,Oregon,4933,Basic,Bachelor,9/16/2016,Employed,F,37260,Rural,Married,62,19,42,0,8,Corporate Auto,Corporate L1,Offer 3,Web,15.44,Four-Door Car,Medium,2007
+YV55495,Arizona,5744,Basic,High School or Below,11/2/2016,Employed,F,68987,Urban,Married,71,11,40,0,6,Personal Auto,Personal L1,Offer 1,Branch,204.48,Four-Door Car,Medium,2007
+KY38074,California,13892,Premium,Bachelor,3/22/2016,Employed,M,42305,Suburban,Married,117,10,62,0,2,Personal Auto,Personal L3,Offer 1,Agent,561.6,Four-Door Car,Small,2007
+DM79012,Oregon,7381,Extended,Master,12/8/2016,Employed,F,65706,Suburban,Married,91,19,86,0,8,Personal Auto,Personal L3,Offer 2,Web,436.8,Four-Door Car,Small,2007
+CM61827,Oregon,3090,Extended,Bachelor,9/26/2016,Unemployed,M,2322,Suburban,Single,90,7,79,0,1,Personal Auto,Personal L2,Offer 3,Agent,648,Two-Door Car,Small,2007
+WC35801,Arizona,2522,Basic,High School or Below,6/30/2016,Employed,M,53243,Rural,Divorced,66,4,15,2,1,Personal Auto,Personal L3,Offer 1,Call Center,157.4,Four-Door Car,Medium,2007
+QG25316,Nevada,2652,Basic,High School or Below,12/22/2015,Unemployed,F,2322,Suburban,Married,70,7,1,1,1,Corporate Auto,Corporate L3,Offer 3,Call Center,484.32,Two-Door Car,Medium,2007
+MB98372,Oregon,2771,Basic,College,8/31/2016,Employed,F,50071,Rural,Single,71,3,32,0,1,Corporate Auto,Corporate L3,Offer 2,Agent,18.92,Two-Door Car,Medium,2007
+IL19217,California,3939,Extended,Bachelor,8/16/2016,Employed,F,60021,Suburban,Married,99,12,28,0,1,Personal Auto,Personal L2,Offer 2,Agent,882.87,Four-Door Car,Small,2007
+SR38658,Arizona,12232,Basic,High School or Below,2/14/2016,Employed,M,43244,Suburban,Married,103,15,16,0,2,Personal Auto,Personal L2,Offer 4,Agent,494.4,Sports Car,Medium,2007
+DH41343,Washington,2444,Basic,College,10/1/2016,Employed,M,92834,Suburban,Married,61,15,56,0,1,Special Auto,Special L2,Offer 2,Call Center,292.8,Four-Door Car,Large,2007
+HG65722,Oregon,12819,Premium,Doctorate,3/18/2016,LTD,F,10105,Rural,Married,172,5,4,3,3,Personal Auto,Personal L2,Offer 1,Branch,0.52,SUV,Medium,2007
+BU27331,Arizona,4469,Basic,Bachelor,3/5/2016,Unemployed,M,2322,Suburban,Single,73,7,57,3,5,Personal Auto,Personal L3,Offer 3,Call Center,579.17,Four-Door Car,Medium,2007
+XM45289,Oregon,5514,Basic,High School or Below,8/7/2016,Employed,F,23218,Suburban,Single,71,7,10,0,4,Personal Auto,Personal L2,Offer 4,Agent,447.79,Two-Door Car,Medium,2007
+KP34198,California,3344,Extended,Bachelor,3/13/2016,Unemployed,F,2322,Suburban,Married,92,11,77,0,1,Corporate Auto,Corporate L2,Offer 2,Call Center,529.62,Four-Door Car,Medium,2007
+SH90947,Arizona,2294,Basic,High School or Below,10/25/2016,Unemployed,F,2322,Suburban,Married,62,11,56,0,1,Personal Auto,Personal L2,Offer 4,Branch,313.02,Four-Door Car,Medium,2007
+WE95729,Oregon,36707,Basic,College,1/17/2016,Employed,M,24804,Suburban,Married,104,1,28,0,2,Personal Auto,Personal L2,Offer 1,Agent,593.83,SUV,Small,2007
+PY51963,California,33473,Basic,Bachelor,2/14/2016,Employed,F,33190,Suburban,Divorced,106,18,95,0,2,Corporate Auto,Corporate L1,Offer 1,Web,508.8,SUV,Medium,2007
+RB69909,Nevada,7983,Basic,High School or Below,2/16/2016,Employed,F,36014,Rural,Married,69,4,40,3,2,Special Auto,Special L1,Offer 4,Branch,173.96,Four-Door Car,Medium,2007
+XR95069,Washington,4855,Basic,Bachelor,8/5/2016,Employed,M,29834,Suburban,Single,64,19,44,0,3,Personal Auto,Personal L3,Offer 4,Agent,307.2,Four-Door Car,Medium,2007
+FR46645,California,4294,Premium,Bachelor,2/28/2016,LTD,M,16701,Suburban,Married,113,20,26,0,1,Personal Auto,Personal L2,Offer 1,Branch,831.63,Four-Door Car,Small,2007
+SY17488,Arizona,7164,Extended,College,12/3/2016,Employed,F,46623,Suburban,Divorced,91,1,53,0,3,Corporate Auto,Corporate L3,Offer 3,Call Center,436.8,Four-Door Car,Small,2007
+AP67935,California,7620,Basic,College,10/25/2016,Employed,M,64749,Urban,Married,64,24,59,0,2,Special Auto,Special L2,Offer 2,Branch,302.57,Four-Door Car,Medium,2007
+FS37417,Arizona,3958,Basic,High School or Below,3/28/2016,Unemployed,F,2322,Suburban,Married,101,29,12,0,1,Personal Auto,Personal L2,Offer 1,Call Center,484.8,SUV,Small,2007
+ML29312,Oregon,4499,Extended,High School or Below,7/27/2016,LTD,F,16969,Suburban,Divorced,124,34,47,2,1,Personal Auto,Personal L3,Offer 1,Call Center,704.77,SUV,Medium,2007
+UB61619,Oregon,4060,Premium,Master,12/4/2016,LTD,F,11621,Suburban,Divorced,108,4,98,0,1,Personal Auto,Personal L1,Offer 1,Agent,518.4,Four-Door Car,Medium,2007
+CD86811,Arizona,4458,Basic,Bachelor,11/8/2016,Retired,M,17622,Suburban,Divorced,65,1,36,1,3,Personal Auto,Personal L1,Offer 1,Agent,312,Four-Door Car,Medium,2007
+RU83859,California,8110,Premium,Bachelor,5/4/2016,Medical Leave,F,11489,Suburban,Married,105,4,50,0,6,Personal Auto,Personal L3,Offer 1,Call Center,504,Two-Door Car,Small,2007
+FG63582,Oregon,3340,Extended,Bachelor,9/15/2016,Unemployed,M,2322,Suburban,Single,94,20,53,0,1,Personal Auto,Personal L3,Offer 1,Agent,863.33,Two-Door Car,Small,2007
+NN71951,California,24261,Basic,High School or Below,2/9/2016,Employed,F,66525,Rural,Married,100,0,86,0,2,Personal Auto,Personal L3,Offer 1,Agent,104.33,SUV,Medium,2007
+WB37082,Arizona,6614,Basic,Bachelor,6/15/2016,Unemployed,F,2322,Suburban,Single,63,21,28,0,2,Personal Auto,Personal L3,Offer 3,Branch,676.39,Four-Door Car,Large,2007
+SM52139,Washington,2931,Basic,College,12/10/2016,Employed,M,33663,Suburban,Married,73,29,71,0,1,Personal Auto,Personal L3,Offer 3,Web,350.4,Four-Door Car,Medium,2007
+FL82372,Oregon,8672,Basic,College,2/19/2016,Employed,F,22547,Suburban,Divorced,112,7,60,0,3,Corporate Auto,Corporate L3,Offer 1,Agent,537.6,SUV,Medium,2007
+DP45816,Arizona,11639,Extended,High School or Below,2/25/2016,Employed,F,61486,Urban,Married,97,5,65,0,2,Personal Auto,Personal L3,Offer 4,Branch,465.26,Two-Door Car,Small,2007
+GW33762,Oregon,6846,Extended,Bachelor,3/20/2016,Unemployed,F,2322,Suburban,Divorced,95,13,20,0,5,Personal Auto,Personal L3,Offer 1,Call Center,456,Two-Door Car,Large,2007
+RZ33670,California,11728,Premium,College,11/8/2016,LTD,F,29879,Suburban,Married,102,17,0,0,2,Personal Auto,Personal L3,Offer 3,Web,500.25,Four-Door Car,Medium,2007
+PY70169,Oregon,22644,Basic,High School or Below,7/18/2016,Employed,M,93011,Rural,Divorced,113,17,12,0,2,Personal Auto,Personal L3,Offer 4,Agent,281.45,SUV,Medium,2007
+MO91628,Oregon,2614,Basic,Master,8/4/2016,Employed,M,65186,Rural,Married,65,29,27,0,1,Personal Auto,Personal L2,Offer 2,Web,5.43,Two-Door Car,Large,2007
+HW87852,Oregon,2452,Basic,Master,11/9/2016,Medical Leave,M,26840,Suburban,Married,64,1,47,2,1,Personal Auto,Personal L1,Offer 1,Agent,307.2,Four-Door Car,Medium,2007
+HB20453,Oregon,6781,Basic,Bachelor,9/10/2016,Unemployed,M,2322,Suburban,Single,104,30,3,1,5,Personal Auto,Personal L3,Offer 1,Agent,982.4,Sports Car,Medium,2007
+BN87372,Oregon,4975,Basic,Bachelor,12/29/2015,Employed,M,75644,Suburban,Divorced,65,5,68,3,9,Personal Auto,Personal L3,Offer 2,Branch,467.8,Two-Door Car,Medium,2007
+YX23800,Oregon,8592,Basic,Bachelor,11/6/2016,Employed,M,38984,Suburban,Married,73,27,38,0,2,Personal Auto,Personal L3,Offer 2,Branch,350.4,Four-Door Car,Small,2008
+DZ87709,Oregon,5592,Basic,High School or Below,9/16/2016,Employed,F,71811,Rural,Single,71,17,48,0,6,Personal Auto,Personal L1,Offer 2,Call Center,29.03,Four-Door Car,Medium,2008
+XW13033,Nevada,8009,Basic,College,4/25/2016,Employed,M,20961,Suburban,Married,67,20,33,0,2,Personal Auto,Personal L1,Offer 2,Agent,321.6,Four-Door Car,Medium,2008
+LN31673,Washington,11318,Extended,College,10/28/2016,Employed,M,38923,Rural,Married,99,6,83,2,2,Personal Auto,Personal L3,Offer 1,Agent,115.73,Four-Door Car,Medium,2008
+OM82309,California,58167,Basic,Bachelor,4/4/2016,Employed,M,61321,Rural,Single,186,0,40,1,2,Personal Auto,Personal L3,Offer 2,Branch,427.63,Luxury Car,Small,2008
+ZU35962,California,8025,Extended,College,5/7/2016,Unemployed,F,2322,Rural,Single,77,20,26,0,2,Personal Auto,Personal L3,Offer 3,Branch,25.81,Two-Door Car,Large,2008
+VH85817,California,5780,Basic,High School or Below,6/23/2016,Employed,M,51066,Suburban,Single,74,23,0,0,8,Personal Auto,Personal L3,Offer 2,Call Center,787.99,Four-Door Car,Medium,2008
+DT85712,California,4119,Basic,Doctorate,4/21/2016,Employed,M,34378,Suburban,Married,102,12,54,0,1,Personal Auto,Personal L1,Offer 3,Branch,489.6,SUV,Medium,2008
+YJ88573,Nevada,2523,Basic,Master,10/30/2016,Employed,M,43072,Suburban,Married,63,35,15,0,1,Personal Auto,Personal L3,Offer 2,Call Center,302.4,SUV,Large,2008
+SQ19467,Oregon,6554,Extended,College,6/28/2016,LTD,F,25222,Suburban,Single,90,28,69,0,3,Personal Auto,Personal L3,Offer 2,Agent,475.62,Four-Door Car,Small,2008
+HF88410,Washington,7703,Basic,High School or Below,4/8/2016,Employed,M,36765,Suburban,Married,66,15,32,1,2,Personal Auto,Personal L2,Offer 1,Call Center,320.85,Four-Door Car,Medium,2008
+ET79815,California,5927,Extended,College,3/29/2016,Retired,M,23091,Suburban,Married,96,28,90,5,5,Personal Auto,Personal L1,Offer 1,Agent,460.8,Four-Door Car,Medium,2008
+QC35222,California,2683,Basic,Bachelor,10/27/2016,Employed,F,48269,Urban,Married,69,3,79,3,1,Corporate Auto,Corporate L2,Offer 3,Web,282.15,Four-Door Car,Medium,2008
+CJ15590,Oregon,2695,Basic,Bachelor,2/25/2016,Employed,F,32720,Suburban,Divorced,67,13,12,0,1,Personal Auto,Personal L2,Offer 3,Branch,321.6,Four-Door Car,Medium,2008
+OI48267,California,6047,Extended,College,3/20/2016,Employed,M,20396,Suburban,Married,76,15,60,1,4,Personal Auto,Personal L3,Offer 1,Branch,364.8,Four-Door Car,Medium,2008
+JY67916,Oregon,13171,Premium,College,4/9/2016,Medical Leave,M,21513,Suburban,Married,119,21,81,1,2,Personal Auto,Personal L3,Offer 2,Branch,679.83,Two-Door Car,Small,2008
+OE75231,Washington,10657,Extended,Bachelor,2/3/2016,Employed,F,72540,Suburban,Married,88,7,3,0,2,Corporate Auto,Corporate L3,Offer 2,Call Center,631.74,Two-Door Car,Medium,2008
+CZ33664,Oregon,2528,Basic,Bachelor,9/14/2016,Employed,F,80744,Rural,Married,63,24,84,0,1,Corporate Auto,Corporate L3,Offer 1,Agent,11.88,Four-Door Car,Medium,2008
+WK30175,Oregon,2672,Basic,Bachelor,7/16/2016,Employed,M,52822,Suburban,Married,67,23,88,0,1,Corporate Auto,Corporate L1,Offer 1,Branch,350.53,Two-Door Car,Small,2008
+ON44465,California,5313,Extended,High School or Below,9/3/2016,Unemployed,F,2322,Suburban,Single,77,8,10,1,9,Personal Auto,Personal L2,Offer 1,Agent,863.39,Four-Door Car,Medium,2008
+TV87155,Oregon,20946,Basic,Bachelor,4/10/2016,Employed,F,69738,Suburban,Married,74,2,26,1,2,Personal Auto,Personal L3,Offer 1,Branch,492.13,Four-Door Car,Large,2008
+KH48895,Arizona,8375,Basic,Master,11/2/2016,Medical Leave,F,17780,Rural,Married,109,12,18,0,9,Personal Auto,Personal L3,Offer 1,Branch,132.59,SUV,Medium,2008
+NZ30757,California,4802,Basic,Bachelor,1/9/2016,Medical Leave,M,18107,Suburban,Married,62,29,11,0,8,Personal Auto,Personal L2,Offer 1,Agent,297.6,Four-Door Car,Medium,2008
+RI22468,Arizona,5746,Basic,Bachelor,3/17/2016,Employed,F,57740,Urban,Married,74,30,87,3,9,Personal Auto,Personal L1,Offer 3,Web,269.91,Four-Door Car,Medium,2008
+FZ30935,Oregon,6066,Extended,College,10/22/2016,Employed,M,32627,Suburban,Married,76,11,60,0,7,Personal Auto,Personal L2,Offer 1,Agent,380.04,Two-Door Car,Small,2008
+UG93476,California,8002,Basic,College,3/5/2016,Unemployed,F,2322,Suburban,Married,107,3,65,0,3,Personal Auto,Personal L3,Offer 1,Agent,513.6,SUV,Medium,2008
+AB96670,California,2394,Basic,College,5/21/2016,Unemployed,M,2322,Suburban,Single,70,24,10,0,1,Personal Auto,Personal L1,Offer 1,Branch,425.27,Four-Door Car,Medium,2008
+XK64261,Oregon,4763,Basic,Bachelor,3/7/2016,Employed,M,65795,Rural,Single,62,2,85,1,3,Corporate Auto,Corporate L3,Offer 3,Call Center,49.01,Two-Door Car,Medium,2008
+EV68375,California,4330,Premium,College,8/17/2016,Employed,M,60475,Suburban,Married,107,9,18,0,1,Personal Auto,Personal L3,Offer 2,Branch,513.6,Four-Door Car,Medium,2008
+UN51653,California,9403,Extended,High School or Below,7/17/2016,Unemployed,F,2322,Suburban,Single,130,28,88,0,4,Personal Auto,Personal L3,Offer 1,Web,936,SUV,Medium,2008
+TO96662,Oregon,6967,Extended,Bachelor,8/26/2016,Employed,F,41837,Rural,Married,88,29,93,0,9,Personal Auto,Personal L3,Offer 1,Call Center,142.06,Four-Door Car,Small,2008
+MR52087,California,7694,Basic,Bachelor,8/16/2016,Employed,F,32303,Rural,Married,65,13,34,0,2,Personal Auto,Personal L1,Offer 3,Branch,45.15,Four-Door Car,Medium,2008
+DE75225,Oregon,8718,Basic,High School or Below,5/22/2016,Unemployed,M,2322,Suburban,Married,117,5,89,1,3,Personal Auto,Personal L1,Offer 1,Agent,561.6,SUV,Medium,2008
+EP80820,California,5929,Basic,Bachelor,2/6/2016,Employed,F,40531,Rural,Married,74,17,32,0,9,Personal Auto,Personal L3,Offer 1,Agent,30.57,Two-Door Car,Medium,2008
+GU99037,Oregon,2453,Basic,College,10/28/2016,Employed,M,79898,Urban,Married,62,5,86,1,1,Corporate Auto,Corporate L1,Offer 4,Agent,271.61,Four-Door Car,Medium,2008
+WI57118,California,6702,Extended,College,4/11/2016,Employed,M,56398,Suburban,Married,85,4,18,0,7,Personal Auto,Personal L3,Offer 4,Agent,408,Four-Door Car,Small,2008
+YQ74870,Washington,7556,Extended,High School or Below,12/1/2016,Employed,M,35257,Suburban,Divorced,98,16,2,1,8,Corporate Auto,Corporate L2,Offer 2,Web,470.4,Four-Door Car,Small,2008
+MQ14219,Arizona,8493,Basic,College,10/30/2016,Employed,M,27804,Suburban,Married,109,19,54,0,7,Personal Auto,Personal L3,Offer 2,Branch,784.8,SUV,Medium,2008
+KN20603,Oregon,7713,Basic,Bachelor,6/25/2016,Employed,M,45506,Suburban,Single,66,16,32,2,2,Personal Auto,Personal L3,Offer 1,Agent,316.8,Four-Door Car,Medium,2008
+CR48975,Washington,24085,Basic,High School or Below,1/11/2016,Employed,M,65196,Suburban,Married,67,0,54,0,2,Personal Auto,Personal L2,Offer 4,Branch,396.08,Four-Door Car,Medium,2008
+JI70886,California,7290,Basic,High School or Below,9/30/2016,Unemployed,M,2322,Suburban,Married,102,11,70,1,3,Corporate Auto,Corporate L2,Offer 1,Agent,489.6,SUV,Medium,2008
+VF72557,Oregon,4773,Extended,High School or Below,2/16/2016,Retired,M,20993,Suburban,Divorced,133,35,90,0,1,Personal Auto,Personal L3,Offer 2,Agent,638.4,SUV,Medium,2008
+OX28638,Arizona,6806,Extended,High School or Below,11/13/2016,Employed,M,37839,Suburban,Married,86,35,77,0,9,Personal Auto,Personal L3,Offer 2,Branch,465.63,Two-Door Car,Medium,2008
+SK55033,California,2470,Basic,Bachelor,1/14/2016,Employed,F,92711,Suburban,Single,62,24,10,0,1,Personal Auto,Personal L2,Offer 3,Agent,368.4,Two-Door Car,Medium,2008
+OO88645,California,3104,Extended,College,12/23/2015,Employed,F,74665,Urban,Married,78,10,90,2,1,Corporate Auto,Corporate L2,Offer 2,Call Center,236.9,Four-Door Car,Medium,2008
+YT36855,Washington,2982,Extended,College,6/25/2016,Unemployed,M,2322,Suburban,Married,83,26,89,0,1,Personal Auto,Personal L2,Offer 3,Web,582.68,Two-Door Car,Medium,2008
+CW82151,California,8903,Basic,Bachelor,8/3/2016,Employed,M,46833,Rural,Married,112,6,3,0,9,Personal Auto,Personal L3,Offer 1,Call Center,64.11,Sports Car,Medium,2008
+DY22043,Oregon,5499,Basic,High School or Below,1/1/2016,Employed,F,88768,Suburban,Married,68,17,77,0,7,Personal Auto,Personal L3,Offer 3,Branch,326.4,Two-Door Car,Small,2008
+SH36774,California,15024,Basic,High School or Below,10/10/2016,Employed,M,28262,Suburban,Single,192,9,87,0,3,Personal Auto,Personal L3,Offer 3,Web,921.6,Luxury SUV,Medium,2008
+EM43724,Nevada,2509,Basic,Bachelor,9/18/2016,Employed,F,33555,Rural,Married,63,17,11,0,1,Personal Auto,Personal L3,Offer 1,Agent,101.9,Four-Door Car,Medium,2008
+FH85960,Oregon,31222,Premium,College,5/25/2016,Employed,M,42780,Suburban,Divorced,113,10,27,1,2,Personal Auto,Personal L2,Offer 1,Call Center,542.4,Four-Door Car,Medium,2008
+XA55993,Oregon,3134,Extended,Master,11/6/2016,Employed,F,58850,Rural,Single,78,20,26,0,1,Personal Auto,Personal L3,Offer 2,Branch,143.75,Four-Door Car,Medium,2008
+GO36627,Arizona,3837,Extended,College,12/25/2015,Employed,M,21880,Urban,Married,97,29,37,0,1,Special Auto,Special L2,Offer 1,Branch,424.08,Four-Door Car,Medium,2008
+QH48047,Oregon,11791,Basic,College,6/6/2016,Retired,M,25251,Suburban,Divorced,66,13,43,0,2,Personal Auto,Personal L2,Offer 2,Web,316.8,Four-Door Car,Medium,2008
+RB50392,Washington,7838,Basic,Master,8/13/2016,Unemployed,F,2322,Rural,Married,69,9,12,0,2,Personal Auto,Personal L1,Offer 2,Agent,2.7,Four-Door Car,Medium,2008
+UH65059,Arizona,4306,Basic,High School or Below,3/9/2016,Employed,M,24188,Suburban,Married,109,14,82,0,1,Personal Auto,Personal L3,Offer 1,Agent,523.2,Sports Car,Medium,2008
+FV21968,Nevada,5974,Basic,Bachelor,10/1/2016,Employed,F,41611,Rural,Married,74,14,8,0,8,Special Auto,Special L2,Offer 1,Branch,113.8,Four-Door Car,Medium,2008
+QA87025,Oregon,5670,Basic,Bachelor,3/27/2016,Employed,F,28406,Urban,Married,72,16,35,1,4,Personal Auto,Personal L3,Offer 1,Call Center,192.88,Four-Door Car,Medium,2008
+TQ13499,Arizona,4732,Premium,College,2/29/2016,Employed,M,69833,Suburban,Married,118,32,99,0,1,Personal Auto,Personal L3,Offer 1,Agent,828.66,Four-Door Car,Small,2008
+BU44523,Arizona,8026,Basic,High School or Below,9/19/2016,Unemployed,F,2322,Suburban,Single,74,15,91,0,2,Corporate Auto,Corporate L2,Offer 1,Web,532.8,Four-Door Car,Small,2008
+MS41162,Arizona,4023,Basic,High School or Below,5/21/2016,Unemployed,M,2322,Suburban,Single,117,6,1,0,1,Personal Auto,Personal L3,Offer 1,Agent,975.11,SUV,Medium,2008
+PU25891,Oregon,9618,Basic,High School or Below,8/4/2016,Employed,F,80536,Rural,Married,119,5,83,0,3,Special Auto,Special L2,Offer 1,Branch,53.8,Sports Car,Medium,2008
+RB81636,Washington,2275,Basic,College,10/30/2016,Unemployed,F,2322,Suburban,Single,63,2,5,0,1,Personal Auto,Personal L2,Offer 2,Agent,606.64,Four-Door Car,Small,2008
+SX26335,Oregon,9553,Extended,College,12/30/2015,Employed,F,97732,Urban,Married,79,0,70,0,2,Personal Auto,Personal L3,Offer 4,Branch,289.91,Four-Door Car,Medium,2008
+AZ95587,Arizona,10389,Extended,Bachelor,3/17/2016,Employed,F,61222,Urban,Single,89,20,55,0,2,Special Auto,Special L3,Offer 3,Branch,392.6,Four-Door Car,Small,2008
+DS81757,Oregon,2470,Basic,College,5/24/2016,Unemployed,M,2322,Suburban,Single,74,7,20,0,1,Personal Auto,Personal L1,Offer 4,Web,721.24,Two-Door Car,Large,2008
+OJ94107,Arizona,5619,Premium,Master,11/6/2016,Employed,M,50335,Urban,Married,140,9,54,0,1,Personal Auto,Personal L2,Offer 1,Call Center,456.52,SUV,Medium,2008
+LP84436,California,9047,Extended,High School or Below,6/27/2016,Unemployed,F,2322,Suburban,Single,127,30,11,0,6,Personal Auto,Personal L2,Offer 3,Branch,1088,Sports Car,Medium,2008
+YV64727,Washington,6692,Premium,High School or Below,8/1/2016,Employed,M,63221,Suburban,Married,168,28,49,0,1,Corporate Auto,Corporate L3,Offer 3,Agent,806.4,SUV,Medium,2008
+LM19287,Oregon,3732,Extended,High School or Below,12/8/2016,Unemployed,F,2322,Suburban,Married,96,31,34,0,1,Personal Auto,Personal L1,Offer 1,Agent,460.8,Four-Door Car,Large,2008
+ZU18643,Nevada,3661,Extended,Bachelor,10/19/2016,Employed,M,64495,Urban,Married,92,34,30,0,1,Corporate Auto,Corporate L2,Offer 4,Web,251.99,Four-Door Car,Medium,2008
+AZ82578,California,7929,Basic,College,6/29/2016,Unemployed,F,2322,Suburban,Married,72,7,75,0,2,Corporate Auto,Corporate L3,Offer 1,Call Center,345.6,Four-Door Car,Medium,2008
+XC67861,Arizona,5012,Basic,Bachelor,4/1/2016,Employed,F,28859,Suburban,Divorced,67,24,51,3,4,Corporate Auto,Corporate L2,Offer 1,Call Center,321.6,Two-Door Car,Medium,2008
+YC43143,Arizona,7988,Extended,High School or Below,4/1/2016,Employed,F,77330,Rural,Married,99,0,21,0,3,Personal Auto,Personal L3,Offer 2,Web,99.26,Four-Door Car,Medium,2008
+EK59571,Oregon,3885,Premium,College,9/27/2016,Unemployed,M,2322,Suburban,Married,105,3,92,0,1,Corporate Auto,Corporate L2,Offer 1,Branch,504,Four-Door Car,Large,2008
+GD83998,Washington,2659,Basic,Bachelor,3/30/2016,Employed,M,24495,Suburban,Single,70,29,65,0,1,Personal Auto,Personal L2,Offer 4,Branch,336,Four-Door Car,Small,2008
+WA25797,Washington,8565,Basic,High School or Below,5/14/2016,Employed,M,95697,Rural,Married,107,29,29,0,9,Personal Auto,Personal L3,Offer 2,Agent,178.01,Sports Car,Medium,2008
+PD27940,Arizona,4885,Extended,High School or Below,4/30/2016,LTD,M,26372,Suburban,Married,126,11,7,0,1,Personal Auto,Personal L3,Offer 4,Agent,604.8,SUV,Medium,2008
+BS77946,Arizona,9753,Extended,Bachelor,7/17/2016,Medical Leave,F,17514,Rural,Married,127,2,5,0,3,Personal Auto,Personal L1,Offer 1,Branch,8.31,SUV,Medium,2008
+YM50253,California,2946,Basic,Bachelor,10/30/2016,Employed,F,89270,Urban,Single,74,17,90,0,1,Personal Auto,Personal L3,Offer 2,Branch,316.6,Four-Door Car,Medium,2008
+NR15332,California,2581,Basic,High School or Below,11/6/2016,Employed,M,29757,Suburban,Married,65,13,55,0,1,Personal Auto,Personal L2,Offer 2,Web,312,Four-Door Car,Small,2008
+RC62865,Oregon,3517,Extended,College,2/7/2016,Employed,M,51814,Rural,Single,92,28,89,0,1,Personal Auto,Personal L2,Offer 3,Agent,56.3,Four-Door Car,Medium,2008
+CC15295,Oregon,9743,Extended,Bachelor,6/19/2016,Employed,F,24028,Suburban,Married,82,14,27,0,2,Personal Auto,Personal L2,Offer 2,Agent,393.6,Four-Door Car,Small,2008
+KA61892,Arizona,3874,Basic,College,3/8/2016,Retired,M,28142,Suburban,Married,105,18,50,0,1,Personal Auto,Personal L3,Offer 2,Agent,701.71,Sports Car,Medium,2008
+OS94884,Arizona,7649,Basic,Bachelor,10/7/2016,Employed,F,52705,Rural,Married,64,14,8,1,2,Personal Auto,Personal L2,Offer 1,Web,128.71,Two-Door Car,Large,2008
+ND87334,California,2288,Basic,High School or Below,1/3/2016,Unemployed,M,2322,Suburban,Married,63,1,5,0,1,Corporate Auto,Corporate L3,Offer 2,Agent,679.37,Two-Door Car,Medium,2008
+ML93326,Washington,4475,Basic,College,5/11/2016,Employed,F,84903,Urban,Married,111,7,63,0,1,Personal Auto,Personal L1,Offer 1,Agent,497.13,SUV,Medium,2008
+YL74911,California,8715,Basic,College,2/22/2016,Unemployed,F,2322,Suburban,Divorced,118,14,64,0,4,Personal Auto,Personal L3,Offer 1,Agent,566.4,SUV,Medium,2008
+JP69864,Washington,2248,Basic,Bachelor,5/29/2016,Retired,F,24910,Suburban,Single,63,7,63,1,1,Personal Auto,Personal L1,Offer 1,Branch,347.86,Four-Door Car,Medium,2008
+HL53154,California,7416,Extended,Bachelor,9/24/2016,Unemployed,M,2322,Suburban,Single,77,15,12,2,2,Personal Auto,Personal L3,Offer 1,Agent,554.4,Four-Door Car,Medium,2008
+RI78966,Oregon,7771,Basic,Master,2/6/2016,Medical Leave,M,21876,Suburban,Married,68,12,28,0,2,Personal Auto,Personal L3,Offer 1,Agent,465.41,Four-Door Car,Small,2008
+IC13702,California,6968,Basic,Bachelor,12/27/2015,Unemployed,F,2322,Suburban,Single,69,33,61,1,2,Personal Auto,Personal L3,Offer 1,Agent,496.8,Four-Door Car,Small,2008
+BE10809,California,4250,Basic,High School or Below,12/14/2015,Unemployed,F,2322,Suburban,Single,61,17,1,1,7,Personal Auto,Personal L1,Offer 1,Agent,292.8,Four-Door Car,Small,2008
+HT87217,Oregon,19777,Extended,High School or Below,6/1/2016,Employed,F,70699,Urban,Divorced,82,1,57,0,2,Personal Auto,Personal L2,Offer 3,Agent,256.81,Four-Door Car,Medium,2008
+TH95618,California,21343,Basic,High School or Below,5/4/2016,Unemployed,F,2322,Suburban,Married,74,11,85,1,2,Personal Auto,Personal L2,Offer 1,Agent,355.2,Four-Door Car,Medium,2008
+TS19868,California,2413,Basic,College,12/31/2015,Medical Leave,M,27501,Suburban,Married,63,20,0,0,1,Personal Auto,Personal L1,Offer 4,Branch,542.32,Four-Door Car,Medium,2008
+LP45550,Oregon,15364,Premium,Doctorate,5/11/2016,LTD,F,15897,Urban,Divorced,101,30,99,0,2,Personal Auto,Personal L3,Offer 2,Agent,303.15,Four-Door Car,Medium,2008
+QR87004,Nevada,8457,Basic,College,8/30/2016,Employed,F,25141,Rural,Divorced,73,12,4,1,2,Personal Auto,Personal L3,Offer 3,Agent,25.44,Four-Door Car,Medium,2008
+OE75747,Nevada,2190,Basic,College,3/29/2016,Unemployed,F,2322,Suburban,Married,61,5,46,3,1,Personal Auto,Personal L2,Offer 3,Agent,292.8,Four-Door Car,Small,2008
+DX91392,California,5780,Basic,High School or Below,10/31/2016,Employed,M,51066,Suburban,Single,74,23,0,0,8,Personal Auto,Personal L2,Offer 2,Call Center,787.99,Four-Door Car,Medium,2008
+AB72731,California,4640,Basic,Bachelor,9/30/2016,Employed,F,28358,Rural,Married,117,24,37,0,1,Personal Auto,Personal L2,Offer 2,Call Center,84.02,Sports Car,Medium,2008
+RU49126,Washington,4465,Basic,College,5/30/2016,Employed,F,61846,Rural,Married,112,1,48,0,1,Personal Auto,Personal L2,Offer 2,Agent,215.82,SUV,Medium,2008
+IS12901,Arizona,5968,Basic,Bachelor,3/6/2016,Employed,F,90972,Urban,Married,74,3,47,0,8,Personal Auto,Personal L3,Offer 2,Call Center,232.93,Two-Door Car,Medium,2008
+IX37561,Washington,5098,Basic,College,5/21/2016,Unemployed,F,2322,Suburban,Single,74,3,95,0,7,Personal Auto,Personal L3,Offer 3,Web,532.8,Two-Door Car,Medium,2008
+HH90090,California,4077,Basic,Bachelor,3/3/2016,Employed,F,29549,Suburban,Divorced,104,17,51,0,1,Personal Auto,Personal L2,Offer 2,Call Center,710.43,Sports Car,Small,2008
+IU25463,California,12253,Premium,Bachelor,5/31/2016,Unemployed,F,2322,Suburban,Married,115,12,17,1,2,Personal Auto,Personal L2,Offer 1,Agent,552,Four-Door Car,Medium,2008
+KC11055,Nevada,16936,Extended,Bachelor,12/23/2015,Employed,F,39411,Suburban,Married,217,4,39,2,4,Personal Auto,Personal L3,Offer 3,Branch,1122.66,Luxury Car,Medium,2008
+PD33979,Oregon,4892,Basic,High School or Below,10/19/2016,Employed,M,21709,Suburban,Married,62,28,17,0,3,Personal Auto,Personal L2,Offer 2,Branch,408.37,Four-Door Car,Large,2008
+NK71023,Nevada,9942,Extended,Bachelor,1/9/2016,Employed,M,67890,Suburban,Single,85,23,57,0,2,Personal Auto,Personal L2,Offer 4,Agent,408,Four-Door Car,Small,2008
+AB13432,California,3736,Basic,Bachelor,11/28/2016,Unemployed,M,2322,Suburban,Single,110,3,16,0,1,Personal Auto,Personal L3,Offer 1,Agent,792,SUV,Medium,2008
+OZ97704,California,13118,Basic,High School or Below,3/12/2016,Employed,F,84311,Suburban,Single,111,11,98,4,2,Personal Auto,Personal L3,Offer 3,Call Center,532.8,SUV,Small,2008
+UF46533,California,4575,Basic,College,11/20/2016,Employed,F,99316,Suburban,Single,114,26,53,0,1,Corporate Auto,Corporate L3,Offer 2,Branch,754.36,SUV,Medium,2008
+XP47431,Arizona,5470,Extended,Bachelor,3/19/2016,Employed,F,54507,Suburban,Married,138,20,11,0,1,Personal Auto,Personal L1,Offer 2,Agent,702.99,SUV,Medium,2008
+GK73582,California,2979,Extended,Bachelor,10/24/2016,Employed,F,64586,Urban,Single,76,3,17,0,1,Personal Auto,Personal L1,Offer 3,Branch,206.84,Four-Door Car,Medium,2008
+RV98763,Oregon,6411,Extended,College,7/11/2016,Employed,M,61709,Urban,Married,82,5,41,2,7,Personal Auto,Personal L3,Offer 3,Branch,275.4,Four-Door Car,Medium,2008
+II62831,California,4479,Basic,Master,9/24/2016,Employed,M,94656,Urban,Married,111,12,79,1,1,Special Auto,Special L2,Offer 4,Web,459.74,SUV,Medium,2008
+XK33449,California,2384,Basic,High School or Below,8/25/2016,Unemployed,F,2322,Suburban,Single,69,5,40,0,1,Special Auto,Special L3,Offer 4,Branch,496.8,Two-Door Car,Small,2008
+TR85083,California,2764,Basic,Bachelor,12/27/2015,Employed,M,61085,Suburban,Married,70,27,34,1,1,Personal Auto,Personal L3,Offer 2,Branch,336,Two-Door Car,Medium,2008
+EO95328,Oregon,7920,Basic,Bachelor,7/19/2016,Employed,F,89284,Suburban,Married,67,7,31,3,2,Personal Auto,Personal L2,Offer 4,Agent,321.6,Two-Door Car,Small,2008
+EN21086,Arizona,6889,Basic,High School or Below,10/14/2016,Unemployed,F,2322,Suburban,Divorced,63,6,12,0,2,Personal Auto,Personal L2,Offer 1,Branch,302.4,Four-Door Car,Small,2008
+YL83902,Washington,3274,Extended,Bachelor,9/11/2016,Employed,F,31686,Suburban,Married,81,11,33,0,1,Personal Auto,Personal L3,Offer 1,Agent,430.99,Four-Door Car,Small,2008
+AZ62651,Oregon,9952,Premium,High School or Below,6/15/2016,Employed,M,56855,Suburban,Single,255,12,10,0,1,Corporate Auto,Corporate L3,Offer 4,Web,1836,Luxury SUV,Medium,2008
+ZW25874,Oregon,2522,Basic,Bachelor,6/27/2016,Employed,M,53703,Rural,Single,67,3,45,2,1,Special Auto,Special L3,Offer 1,Branch,67.63,Four-Door Car,Medium,2008
+EH41854,Washington,23706,Extended,High School or Below,6/27/2016,Unemployed,F,2322,Suburban,Single,96,12,35,1,2,Personal Auto,Personal L1,Offer 3,Branch,844.48,Two-Door Car,Medium,2008
+MW70227,California,6047,Extended,College,12/15/2015,Employed,M,20396,Suburban,Married,76,15,60,1,4,Personal Auto,Personal L1,Offer 1,Branch,364.8,Four-Door Car,Medium,2008
+SL22297,California,11140,Premium,Master,9/10/2016,LTD,F,27679,Suburban,Single,150,30,28,0,3,Personal Auto,Personal L1,Offer 1,Call Center,722.49,SUV,Medium,2008
+RV14138,Nevada,4334,Extended,Bachelor,2/15/2016,Retired,F,23904,Suburban,Single,123,1,67,3,1,Personal Auto,Personal L3,Offer 1,Agent,590.4,SUV,Medium,2008
+UO62808,Arizona,2800,Basic,High School or Below,5/5/2016,Employed,F,65351,Suburban,Married,69,4,54,0,1,Corporate Auto,Corporate L1,Offer 2,Call Center,481.03,Four-Door Car,Medium,2008
+ZX64745,California,7923,Basic,College,4/8/2016,Unemployed,M,2322,Suburban,Single,113,20,1,0,7,Personal Auto,Personal L2,Offer 1,Agent,1124.43,SUV,Medium,2008
+FL34139,California,3688,Basic,High School or Below,6/21/2016,Unemployed,M,2322,Suburban,Single,63,0,54,3,7,Personal Auto,Personal L2,Offer 1,Call Center,669.68,Four-Door Car,Medium,2008
+TS11219,California,12067,Basic,College,2/1/2016,Unemployed,M,2322,Suburban,Single,116,14,35,0,2,Personal Auto,Personal L2,Offer 1,Agent,1284.09,SUV,Medium,2008
+XX12304,California,2925,Basic,College,12/6/2016,Employed,F,64459,Urban,Married,72,16,64,0,1,Personal Auto,Personal L1,Offer 2,Branch,240.26,Four-Door Car,Medium,2008
+SD64087,California,15014,Premium,College,10/16/2016,Employed,M,32961,Suburban,Married,190,13,53,0,3,Corporate Auto,Corporate L2,Offer 1,Branch,912,SUV,Small,2008
+OY38576,Oregon,9277,Basic,High School or Below,3/3/2016,Employed,F,71416,Suburban,Divorced,116,10,0,0,3,Corporate Auto,Corporate L3,Offer 2,Agent,556.8,SUV,Medium,2008
+BG76355,Washington,6274,Extended,Bachelor,9/15/2016,Employed,F,68964,Rural,Married,78,15,6,0,3,Personal Auto,Personal L3,Offer 3,Web,115.09,Four-Door Car,Medium,2008
+IP66913,California,3887,Extended,High School or Below,10/30/2016,Employed,M,78108,Suburban,Single,98,12,34,0,1,Personal Auto,Personal L3,Offer 2,Agent,470.4,Two-Door Car,Small,2008
+LE95702,California,4386,Basic,College,12/21/2015,Retired,M,10621,Suburban,Single,67,28,22,0,5,Special Auto,Special L3,Offer 1,Agent,321.6,Four-Door Car,Medium,2008
+KX54357,Washington,11365,Extended,College,5/20/2016,Employed,M,84910,Urban,Married,95,4,69,0,2,Corporate Auto,Corporate L3,Offer 2,Web,383.17,Two-Door Car,Small,2008
+EZ78112,California,5611,Basic,High School or Below,6/4/2016,Employed,F,77493,Urban,Single,70,2,35,0,3,Special Auto,Special L3,Offer 1,Agent,307.96,Four-Door Car,Medium,2008
+XN16891,Arizona,2913,Basic,College,7/9/2016,Employed,M,81097,Suburban,Divorced,74,7,67,0,1,Personal Auto,Personal L1,Offer 4,Agent,355.2,Four-Door Car,Small,2008
+XK31350,Oregon,6916,Extended,College,2/18/2016,Employed,F,96610,Suburban,Married,85,6,23,0,3,Corporate Auto,Corporate L1,Offer 4,Call Center,520.36,Four-Door Car,Large,2008
+CC30924,Oregon,6263,Premium,College,9/4/2016,Employed,M,30110,Urban,Married,159,20,71,0,1,Corporate Auto,Corporate L3,Offer 4,Agent,466.44,Sports Car,Small,2008
+IT78748,Oregon,6503,Extended,High School or Below,5/30/2016,LTD,F,22081,Suburban,Married,84,1,9,0,6,Special Auto,Special L3,Offer 1,Agent,451.67,Two-Door Car,Small,2008
+KY33386,Washington,8007,Basic,High School or Below,4/12/2016,Unemployed,F,2322,Suburban,Divorced,112,12,93,0,3,Personal Auto,Personal L3,Offer 1,Web,537.6,Sports Car,Medium,2008
+CO44221,California,2930,Basic,College,6/1/2016,Employed,M,98473,Suburban,Married,72,19,69,0,1,Personal Auto,Personal L1,Offer 2,Branch,345.6,Four-Door Car,Medium,2008
+LK60013,Oregon,5970,Basic,Bachelor,10/7/2016,Employed,F,97431,Suburban,Married,74,1,72,0,3,Personal Auto,Personal L2,Offer 3,Branch,355.2,Four-Door Car,Medium,2008
+DE21533,California,5473,Basic,Bachelor,3/29/2016,Employed,M,93870,Suburban,Divorced,69,1,96,0,8,Personal Auto,Personal L2,Offer 1,Call Center,331.2,Four-Door Car,Medium,2008
+YS94121,Nevada,5645,Basic,High School or Below,11/21/2016,Employed,M,50366,Suburban,Divorced,72,9,5,0,9,Personal Auto,Personal L1,Offer 1,Call Center,428.73,Four-Door Car,Small,2008
+UK68427,Washington,6369,Extended,High School or Below,11/1/2016,Employed,M,34498,Suburban,Single,83,30,72,0,7,Personal Auto,Personal L3,Offer 2,Branch,398.4,Two-Door Car,Small,2008
+TE49565,Oregon,11834,Basic,College,11/30/2016,LTD,F,16552,Suburban,Married,103,23,53,0,2,Personal Auto,Personal L3,Offer 2,Call Center,494.4,SUV,Small,2008
+RA88421,Oregon,6121,Extended,College,2/5/2016,Employed,F,26787,Suburban,Married,77,7,50,0,5,Personal Auto,Personal L3,Offer 3,Branch,369.6,Four-Door Car,Medium,2008
+KQ51983,Nevada,5159,Basic,College,3/11/2016,Unemployed,M,2322,Suburban,Single,74,2,42,0,9,Personal Auto,Personal L1,Offer 1,Branch,831.75,Two-Door Car,Medium,2008
+CD88896,Nevada,2515,Basic,High School or Below,11/16/2016,Employed,F,43860,Rural,Single,65,15,58,0,1,Corporate Auto,Corporate L3,Offer 2,Agent,156.12,Four-Door Car,Medium,2008
+YV22553,Arizona,8669,Basic,High School or Below,6/2/2016,Employed,M,21474,Urban,Married,114,13,72,2,9,Corporate Auto,Corporate L3,Offer 1,Agent,373.43,SUV,Small,2008
+WU14435,California,4961,Basic,Bachelor,8/30/2016,LTD,M,18174,Suburban,Married,66,8,16,0,9,Corporate Auto,Corporate L1,Offer 1,Agent,395.93,Four-Door Car,Small,2008
+XV84099,Arizona,5504,Basic,Bachelor,11/3/2016,Unemployed,F,2322,Suburban,Married,73,18,45,0,5,Corporate Auto,Corporate L1,Offer 1,Call Center,350.4,Four-Door Car,Medium,2008
+RI24911,Arizona,7507,Basic,College,5/10/2016,Employed,M,60920,Urban,Single,64,10,61,0,2,Personal Auto,Personal L3,Offer 2,Agent,231.2,Two-Door Car,Medium,2008
+KO26461,Arizona,32270,Extended,High School or Below,10/9/2016,Employed,M,41520,Urban,Married,90,18,70,0,2,Personal Auto,Personal L2,Offer 1,Agent,289.9,Four-Door Car,Medium,2008
+HI14283,Oregon,5657,Premium,Bachelor,1/23/2016,Unemployed,F,2322,Suburban,Married,152,12,89,0,1,Personal Auto,Personal L3,Offer 1,Web,729.6,SUV,Small,2008
+PT50227,Arizona,5062,Basic,High School or Below,2/25/2016,Unemployed,M,2322,Suburban,Married,68,19,16,0,8,Personal Auto,Personal L3,Offer 3,Call Center,326.4,Two-Door Car,Medium,2008
+BH36570,California,5913,Basic,Bachelor,4/3/2016,Employed,M,72208,Suburban,Married,73,3,84,0,8,Personal Auto,Personal L3,Offer 1,Branch,350.4,Two-Door Car,Small,2008
+TX17484,California,15182,Basic,Bachelor,5/31/2016,Employed,F,53863,Rural,Married,63,12,30,0,2,Personal Auto,Personal L2,Offer 1,Web,105.77,Four-Door Car,Large,2008
+CT41158,Washington,10747,Extended,College,1/11/2016,Employed,M,66446,Urban,Divorced,136,8,77,0,3,Corporate Auto,Corporate L1,Offer 2,Branch,639.46,SUV,Large,2008
+AO87348,Washington,2051,Basic,College,7/15/2016,Unemployed,M,2322,Suburban,Single,61,18,26,0,1,Personal Auto,Personal L3,Offer 2,Agent,292.8,Four-Door Car,Small,2008
+DE55857,Washington,2465,Basic,Bachelor,3/8/2016,Employed,F,64997,Suburban,Single,63,7,99,1,1,Personal Auto,Personal L3,Offer 2,Agent,383.44,Four-Door Car,Small,2008
+LF66923,Nevada,5343,Basic,High School or Below,9/15/2016,Employed,F,64460,Suburban,Married,66,18,42,0,3,Corporate Auto,Corporate L3,Offer 2,Agent,316.8,Two-Door Car,Small,2008
+CN24514,Arizona,8120,Basic,College,9/20/2016,Employed,F,46618,Rural,Married,67,22,77,0,2,Personal Auto,Personal L1,Offer 3,Agent,99.09,Four-Door Car,Large,2008
+UW32074,Oregon,4605,Basic,College,4/30/2016,Unemployed,F,2322,Suburban,Divorced,64,13,64,0,4,Corporate Auto,Corporate L3,Offer 1,Branch,307.2,Four-Door Car,Small,2008
+HP36979,California,6409,Extended,College,10/8/2016,Employed,M,49988,Suburban,Married,84,6,37,5,5,Personal Auto,Personal L2,Offer 2,Web,566.94,Two-Door Car,Large,2008
+PP40919,California,2377,Extended,College,6/29/2016,Unemployed,F,2322,Suburban,Single,91,2,8,5,1,Personal Auto,Personal L1,Offer 1,Agent,436.8,Two-Door Car,Medium,2008
+RO73268,California,3211,Extended,Bachelor,4/16/2016,LTD,M,16269,Suburban,Divorced,86,6,84,0,1,Corporate Auto,Corporate L2,Offer 3,Agent,412.8,Two-Door Car,Medium,2008
+HO61691,Arizona,5095,Basic,Bachelor,9/22/2016,Employed,F,72006,Suburban,Divorced,64,4,38,0,3,Personal Auto,Personal L1,Offer 4,Agent,307.2,Four-Door Car,Medium,2008
+BS13062,Arizona,25755,Extended,High School or Below,7/12/2016,Unemployed,F,2322,Suburban,Married,81,3,60,2,2,Personal Auto,Personal L2,Offer 4,Call Center,388.8,Four-Door Car,Small,2008
+FO35655,Oregon,8672,Extended,Bachelor,7/30/2016,Unemployed,M,2322,Suburban,Single,245,34,93,0,1,Corporate Auto,Corporate L3,Offer 1,Branch,2345.41,Luxury SUV,Medium,2008
+HR10526,California,8045,Basic,Master,1/19/2016,Employed,M,44320,Suburban,Married,67,13,79,0,2,Personal Auto,Personal L2,Offer 1,Call Center,321.6,Four-Door Car,Medium,2008
+IA63417,Arizona,4002,Premium,High School or Below,6/12/2016,Retired,F,19782,Suburban,Divorced,108,13,66,0,1,Personal Auto,Personal L3,Offer 3,Web,773.47,Two-Door Car,Medium,2008
+BH35016,Nevada,16706,Basic,Bachelor,3/16/2016,Employed,F,63933,Suburban,Divorced,70,35,98,0,2,Personal Auto,Personal L3,Offer 1,Call Center,424.88,Two-Door Car,Medium,2008
+PK52952,Arizona,8544,Basic,Doctorate,11/29/2016,Employed,M,28224,Suburban,Single,109,13,13,0,8,Personal Auto,Personal L3,Offer 1,Call Center,523.2,SUV,Medium,2008
+OD76309,Washington,7805,Basic,College,2/24/2016,Retired,F,21073,Suburban,Divorced,106,25,54,1,3,Personal Auto,Personal L3,Offer 1,Agent,508.8,SUV,Small,2008
+IL28481,Oregon,6113,Extended,Bachelor,1/13/2016,Employed,M,63243,Urban,Married,77,21,73,0,3,Personal Auto,Personal L3,Offer 4,Call Center,364.24,Four-Door Car,Large,2008
+GY55092,Nevada,4773,Extended,High School or Below,10/27/2016,Retired,M,20993,Suburban,Divorced,133,35,90,0,1,Personal Auto,Personal L3,Offer 2,Agent,638.4,SUV,Medium,2008
+UF33451,Oregon,10979,Extended,Bachelor,1/6/2016,Employed,F,94827,Urban,Married,135,5,64,0,4,Personal Auto,Personal L3,Offer 1,Agent,354.73,SUV,Medium,2008
+CF15558,California,5004,Basic,Master,12/2/2016,Employed,F,39161,Urban,Married,63,18,83,1,4,Personal Auto,Personal L3,Offer 2,Call Center,284,Two-Door Car,Small,2008
+JM62924,Washington,13223,Extended,Bachelor,7/8/2016,Employed,M,37534,Suburban,Married,84,2,0,2,2,Personal Auto,Personal L3,Offer 3,Branch,403.2,Four-Door Car,Medium,2008
+EM66435,Oregon,2623,Basic,Bachelor,7/24/2016,Employed,F,80210,Rural,Divorced,65,30,28,0,1,Corporate Auto,Corporate L3,Offer 1,Agent,20.54,Four-Door Car,Medium,2008
+QX45933,California,17840,Basic,Bachelor,10/2/2016,Unemployed,M,2322,Suburban,Married,62,32,59,0,2,Personal Auto,Personal L1,Offer 1,Agent,385.12,Four-Door Car,Small,2008
+JI71369,California,5106,Basic,College,7/13/2016,Employed,F,30110,Rural,Married,64,2,4,0,5,Personal Auto,Personal L1,Offer 1,Web,140.17,Four-Door Car,Medium,2008
+JU93290,Arizona,17931,Basic,College,6/11/2016,Medical Leave,F,21708,Suburban,Divorced,68,28,77,0,2,Personal Auto,Personal L2,Offer 1,Web,326.4,Four-Door Car,Medium,2008
+GU66096,Arizona,5457,Basic,High School or Below,9/29/2016,Employed,M,94731,Suburban,Married,67,23,65,0,4,Personal Auto,Personal L2,Offer 2,Agent,321.6,Four-Door Car,Medium,2008
+UC33108,California,6564,Extended,Bachelor,8/21/2016,Employed,M,32375,Suburban,Married,83,17,83,0,6,Personal Auto,Personal L1,Offer 1,Agent,398.4,Four-Door Car,Small,2008
+LW93867,Oregon,4813,Basic,College,9/13/2016,Medical Leave,M,16531,Rural,Married,63,0,40,0,4,Corporate Auto,Corporate L1,Offer 1,Web,102.88,Four-Door Car,Medium,2008
+OU78470,Arizona,29328,Extended,Master,6/9/2016,Employed,F,32006,Rural,Single,94,28,7,0,2,Corporate Auto,Corporate L3,Offer 2,Call Center,56.87,Four-Door Car,Medium,2008
+XW90265,Arizona,5774,Basic,Bachelor,7/31/2016,Employed,F,81676,Suburban,Married,72,21,86,0,8,Personal Auto,Personal L2,Offer 1,Agent,463.16,Two-Door Car,Small,2008
+HS67749,California,6847,Extended,College,10/3/2016,Employed,M,71038,Rural,Married,86,15,56,0,3,Corporate Auto,Corporate L1,Offer 4,Agent,205.44,Four-Door Car,Medium,2008
+VZ51506,Arizona,3595,Basic,High School or Below,10/29/2016,Unemployed,F,2322,Suburban,Single,103,20,43,0,1,Corporate Auto,Corporate L3,Offer 2,Call Center,741.6,Sports Car,Medium,2008
+UI64281,Nevada,22856,Basic,Master,5/10/2016,Medical Leave,F,20832,Rural,Married,65,8,32,0,2,Personal Auto,Personal L3,Offer 1,Call Center,56.37,Two-Door Car,Medium,2008
+AE98193,Washington,7859,Basic,High School or Below,3/22/2016,Unemployed,M,2322,Suburban,Single,113,19,10,0,7,Personal Auto,Personal L1,Offer 1,Branch,813.6,SUV,Medium,2008
+AZ74055,Oregon,4116,Premium,High School or Below,2/23/2016,Employed,M,52405,Suburban,Married,103,2,27,0,1,Personal Auto,Personal L3,Offer 4,Call Center,494.4,Four-Door Car,Medium,2008
+XS76911,Arizona,5030,Extended,High School or Below,8/8/2016,Unemployed,F,2322,Suburban,Married,133,3,89,0,1,Personal Auto,Personal L3,Offer 1,Agent,795.86,Sports Car,Small,2008
+AY40674,Washington,4821,Extended,Bachelor,11/14/2016,Employed,F,26583,Suburban,Married,128,6,46,4,1,Personal Auto,Personal L2,Offer 2,Agent,614.4,SUV,Medium,2008
+NA12740,Oregon,5004,Basic,Master,10/6/2016,LTD,M,25486,Rural,Married,65,15,53,0,3,Special Auto,Special L3,Offer 1,Web,72.44,Two-Door Car,Medium,2008
+UA84837,Arizona,8630,Premium,College,5/28/2016,Employed,M,24065,Suburban,Divorced,111,30,1,0,5,Corporate Auto,Corporate L2,Offer 1,Branch,532.8,Four-Door Car,Medium,2008
+DJ51510,Arizona,9322,Premium,High School or Below,7/8/2016,Employed,F,70435,Rural,Married,116,0,50,0,4,Personal Auto,Personal L3,Offer 3,Agent,67.88,Four-Door Car,Medium,2008
+VM58985,California,16728,Extended,College,7/9/2016,Unemployed,M,2322,Suburban,Single,76,33,36,2,2,Personal Auto,Personal L3,Offer 3,Branch,402.64,Two-Door Car,Medium,2008
+OH60605,Oregon,3653,Extended,High School or Below,7/20/2016,Employed,F,39679,Suburban,Married,92,2,85,0,1,Personal Auto,Personal L3,Offer 2,Branch,641.39,Two-Door Car,Medium,2008
+UO98052,Nevada,6159,Extended,College,7/7/2016,Unemployed,M,2322,Urban,Single,89,13,45,0,5,Personal Auto,Personal L2,Offer 1,Web,342.48,Four-Door Car,Medium,2008
+NC53424,California,4376,Basic,Bachelor,3/24/2016,Unemployed,M,2322,Suburban,Married,69,21,70,4,3,Personal Auto,Personal L2,Offer 4,Web,331.2,Two-Door Car,Medium,2008
+LQ13873,Nevada,5569,Basic,High School or Below,4/18/2016,Employed,M,53565,Suburban,Married,71,27,34,1,6,Personal Auto,Personal L3,Offer 1,Agent,340.8,Four-Door Car,Small,2009
+LA97014,Washington,2577,Basic,Bachelor,10/20/2016,Employed,M,37574,Suburban,Married,66,19,14,1,1,Personal Auto,Personal L1,Offer 1,Agent,412.1,Two-Door Car,Medium,2009
+NB79936,Washington,8347,Premium,Bachelor,7/26/2016,Employed,M,48259,Rural,Single,108,14,79,0,3,Personal Auto,Personal L2,Offer 1,Branch,73.7,Two-Door Car,Medium,2009
+NT89061,Arizona,6324,Extended,High School or Below,2/5/2016,Employed,F,78532,Suburban,Married,78,25,87,0,3,Personal Auto,Personal L3,Offer 2,Call Center,374.4,Four-Door Car,Medium,2009
+AF10970,Arizona,5973,Basic,Bachelor,9/28/2016,Employed,F,96163,Suburban,Married,73,23,90,0,3,Corporate Auto,Corporate L3,Offer 1,Call Center,350.4,Four-Door Car,Medium,2009
+ZG48513,California,4707,Basic,Bachelor,9/25/2016,Unemployed,M,2322,Suburban,Single,72,0,86,0,7,Personal Auto,Personal L2,Offer 1,Agent,345.6,Four-Door Car,Medium,2009
+JQ59145,California,8093,Basic,High School or Below,12/16/2015,Unemployed,M,2322,Suburban,Married,114,9,72,1,5,Personal Auto,Personal L1,Offer 1,Agent,722.02,Sports Car,Medium,2009
+FE84989,Washington,5036,Basic,College,6/8/2016,Employed,M,72672,Urban,Married,63,7,39,0,5,Personal Auto,Personal L2,Offer 2,Call Center,259.36,Four-Door Car,Large,2009
+JT52858,Oregon,9028,Premium,Bachelor,5/31/2016,Employed,F,99002,Suburban,Married,112,33,75,1,8,Personal Auto,Personal L1,Offer 3,Branch,537.6,Four-Door Car,Medium,2009
+MC62068,California,7289,Extended,High School or Below,5/26/2016,Employed,M,79494,Urban,Married,91,19,30,0,3,Personal Auto,Personal L2,Offer 4,Agent,396.3,Four-Door Car,Large,2009
+EU27538,Oregon,18042,Extended,Master,4/9/2016,Employed,M,35704,Rural,Married,225,21,45,0,8,Personal Auto,Personal L3,Offer 1,Branch,358.28,Luxury Car,Medium,2009
+RH42306,Arizona,4992,Basic,Bachelor,10/22/2016,Unemployed,F,2322,Suburban,Single,71,6,5,0,3,Corporate Auto,Corporate L2,Offer 3,Web,653.39,Four-Door Car,Small,2009
+US23612,Oregon,9102,Premium,High School or Below,9/10/2016,LTD,F,26049,Rural,Married,118,17,6,0,6,Personal Auto,Personal L2,Offer 1,Call Center,121.03,Two-Door Car,Large,2009
+WV76014,Arizona,2540,Basic,Doctorate,6/20/2016,Employed,M,70125,Rural,Single,64,21,77,0,1,Special Auto,Special L2,Offer 2,Branch,92.81,Four-Door Car,Medium,2009
+RK96223,California,12942,Basic,College,1/17/2016,Employed,M,52369,Suburban,Married,110,34,49,1,2,Personal Auto,Personal L3,Offer 1,Agent,528,SUV,Medium,2009
+MF82000,Washington,2365,Basic,Bachelor,4/20/2016,Unemployed,F,2322,Rural,Married,66,25,51,2,1,Special Auto,Special L2,Offer 2,Branch,159.64,Four-Door Car,Medium,2009
+FM46980,Arizona,5721,Basic,College,6/13/2016,Employed,M,41770,Suburban,Married,72,0,60,0,9,Personal Auto,Personal L1,Offer 2,Branch,476.16,Four-Door Car,Small,2009
+SY56792,Oregon,7036,Premium,High School or Below,2/11/2016,Unemployed,M,2322,Suburban,Divorced,101,16,88,0,8,Corporate Auto,Corporate L3,Offer 3,Web,727.2,Four-Door Car,Medium,2009
+RF61565,California,2637,Basic,College,7/28/2016,Employed,M,31911,Suburban,Married,67,33,27,0,1,Personal Auto,Personal L3,Offer 2,Agent,321.6,Four-Door Car,Medium,2009
+IM94808,Nevada,5396,Basic,Bachelor,4/18/2016,Employed,M,70051,Rural,Married,68,15,69,0,8,Corporate Auto,Corporate L3,Offer 4,Web,42.08,Four-Door Car,Medium,2009
+VI14730,Oregon,8383,Basic,High School or Below,3/23/2016,Retired,M,19683,Suburban,Married,117,17,41,1,9,Personal Auto,Personal L2,Offer 1,Web,561.6,Sports Car,Medium,2009
+YR34119,Washington,31162,Basic,College,1/21/2016,Employed,F,30916,Rural,Married,112,7,65,0,2,Personal Auto,Personal L1,Offer 1,Agent,200.12,SUV,Small,2009
+RR77985,Oregon,2888,Extended,Bachelor,10/10/2016,Unemployed,F,2322,Suburban,Single,80,24,95,0,1,Personal Auto,Personal L1,Offer 1,Call Center,676.94,Four-Door Car,Medium,2009
+VC22097,Washington,8715,Basic,College,8/5/2016,Unemployed,F,2322,Suburban,Divorced,118,14,64,0,4,Corporate Auto,Corporate L3,Offer 1,Agent,566.4,SUV,Medium,2009
+WV17090,California,25586,Basic,Bachelor,3/11/2016,Unemployed,M,2322,Suburban,Married,116,0,45,0,2,Corporate Auto,Corporate L1,Offer 2,Call Center,830.62,SUV,Medium,2009
+TM23514,Oregon,10273,Extended,College,4/8/2016,Employed,M,60145,Urban,Single,132,8,28,0,3,Personal Auto,Personal L3,Offer 3,Web,580.47,SUV,Medium,2009
+MQ68407,Oregon,4376,Premium,Bachelor,4/18/2016,Employed,F,63774,Rural,Divorced,111,18,63,0,1,Personal Auto,Personal L3,Offer 2,Agent,60.04,Four-Door Car,Medium,2009
+GJ59592,California,5319,Basic,Bachelor,4/10/2016,Employed,F,25134,Suburban,Married,67,3,0,0,6,Corporate Auto,Corporate L2,Offer 2,Call Center,321.6,Four-Door Car,Small,2009
+FY56083,Oregon,4720,Basic,Bachelor,4/23/2016,Employed,M,37057,Rural,Married,61,5,48,1,6,Personal Auto,Personal L2,Offer 1,Agent,47.53,Four-Door Car,Small,2009
+UA94723,Oregon,4428,Basic,High School or Below,8/10/2016,Employed,F,58577,Urban,Married,110,6,62,0,1,Personal Auto,Personal L3,Offer 1,Agent,303.87,SUV,Medium,2009
+FW91032,California,5879,Basic,High School or Below,3/25/2016,Employed,M,85857,Rural,Married,73,3,19,0,6,Corporate Auto,Corporate L2,Offer 4,Agent,100.62,Four-Door Car,Medium,2009
+DE34457,Oregon,9417,Basic,Doctorate,8/14/2016,Employed,F,70602,Urban,Married,116,8,47,0,3,Personal Auto,Personal L3,Offer 3,Call Center,481.34,SUV,Small,2009
+HD32044,Oregon,8288,Premium,Master,12/22/2015,Employed,F,33816,Suburban,Divorced,106,10,97,2,3,Corporate Auto,Corporate L3,Offer 1,Branch,508.8,Four-Door Car,Medium,2009
+HH30454,Oregon,32655,Premium,Bachelor,1/16/2016,Unemployed,M,2322,Suburban,Single,153,7,75,0,2,Personal Auto,Personal L3,Offer 3,Branch,1101.6,SUV,Medium,2010
+AH84063,Oregon,4719,Extended,College,1/6/2016,Employed,F,89642,Rural,Married,121,11,20,4,1,Corporate Auto,Corporate L3,Offer 3,Call Center,86.32,SUV,Medium,2010
+QA17596,California,3903,Extended,Bachelor,5/31/2016,Employed,F,60068,Suburban,Married,98,17,75,0,1,Personal Auto,Personal L3,Offer 2,Agent,470.4,Two-Door Car,Small,2010
+XI41052,California,5457,Extended,Bachelor,11/8/2016,Employed,F,50044,Suburban,Single,139,16,14,0,1,Personal Auto,Personal L2,Offer 3,Call Center,667.2,SUV,Medium,2010
+DI30528,California,2725,Basic,Master,2/24/2016,Employed,F,36650,Rural,Married,69,2,70,1,1,Personal Auto,Personal L3,Offer 2,Web,56.6,Four-Door Car,Large,2010
+SC66359,Arizona,4434,Basic,College,12/14/2015,Employed,F,50653,Rural,Married,110,29,42,0,1,Corporate Auto,Corporate L3,Offer 4,Agent,262.87,SUV,Small,2010
+EN61670,Arizona,5332,Basic,Doctorate,2/9/2016,Employed,F,68931,Urban,Married,66,32,30,0,7,Personal Auto,Personal L1,Offer 2,Branch,309.58,Four-Door Car,Medium,2010
+DQ10761,Oregon,2315,Basic,Bachelor,8/18/2016,Unemployed,M,2322,Suburban,Single,73,14,39,1,1,Corporate Auto,Corporate L3,Offer 1,Branch,350.4,Four-Door Car,Medium,2010
+BQ51587,California,5412,Basic,College,5/4/2016,Unemployed,F,2322,Suburban,Single,73,1,22,0,5,Personal Auto,Personal L2,Offer 2,Call Center,365.36,Four-Door Car,Medium,2010
+JE21522,California,9587,Extended,Bachelor,1/22/2016,Employed,M,39266,Suburban,Married,80,33,31,0,2,Personal Auto,Personal L2,Offer 4,Branch,384,Four-Door Car,Medium,2010
+WS47147,California,22104,Basic,College,7/28/2016,Unemployed,M,2322,Suburban,Married,102,35,48,0,2,Personal Auto,Personal L3,Offer 1,Branch,489.6,SUV,Medium,2010
+ZA64638,Nevada,9765,Extended,High School or Below,8/5/2016,Unemployed,F,2322,Suburban,Single,98,24,11,1,2,Personal Auto,Personal L2,Offer 2,Web,705.6,Four-Door Car,Small,2010
+EW38459,Nevada,2567,Basic,Bachelor,12/21/2015,Employed,F,40864,Rural,Married,65,2,75,0,1,Corporate Auto,Corporate L1,Offer 2,Web,9.52,Four-Door Car,Medium,2010
+QW87316,Oregon,2651,Basic,College,10/31/2016,Employed,F,39035,Urban,Divorced,68,15,65,0,1,Personal Auto,Personal L2,Offer 2,Agent,244.56,Four-Door Car,Medium,2010
+IC43478,California,11264,Extended,Bachelor,6/1/2016,Employed,M,34923,Suburban,Single,98,23,82,0,2,Personal Auto,Personal L1,Offer 1,Call Center,639.11,Two-Door Car,Medium,2010
+TE34064,California,2169,Basic,High School or Below,1/4/2016,Unemployed,M,2322,Suburban,Single,63,1,56,0,1,Personal Auto,Personal L3,Offer 2,Agent,453.6,Four-Door Car,Medium,2010
+WU60905,California,8611,Basic,High School or Below,1/12/2016,Unemployed,F,2322,Suburban,Married,111,27,36,0,9,Corporate Auto,Corporate L1,Offer 3,Web,532.8,SUV,Medium,2010
+YM18992,California,2835,Basic,College,10/10/2016,Employed,F,24506,Suburban,Divorced,71,7,47,0,1,Personal Auto,Personal L1,Offer 1,Agent,511.2,Two-Door Car,Medium,2010
+PD55753,Oregon,8930,Extended,High School or Below,4/4/2016,Unemployed,M,2322,Suburban,Married,82,25,63,0,2,Personal Auto,Personal L1,Offer 4,Call Center,554.52,Four-Door Car,Medium,2010
+KU56006,Arizona,5536,Basic,College,5/2/2016,Employed,F,52220,Suburban,Married,70,17,42,1,5,Personal Auto,Personal L2,Offer 1,Call Center,336,Four-Door Car,Small,2011
+MJ69973,Arizona,2841,Basic,High School or Below,11/22/2016,Unemployed,M,2322,Suburban,Married,74,17,73,0,1,Personal Auto,Personal L3,Offer 1,Call Center,402.45,Two-Door Car,Medium,2011
+TW43626,California,8083,Basic,College,6/27/2016,Employed,M,53554,Suburban,Married,67,6,5,0,2,Personal Auto,Personal L2,Offer 1,Agent,327.02,Four-Door Car,Large,2011
+XX84133,California,5255,Basic,Bachelor,1/9/2016,Employed,M,34476,Rural,Married,67,23,49,1,3,Corporate Auto,Corporate L2,Offer 4,Call Center,5.4,Four-Door Car,Medium,2011
+ZW84453,Arizona,5116,Basic,Bachelor,12/24/2015,Unemployed,F,2322,Rural,Married,70,1,11,0,5,Personal Auto,Personal L2,Offer 1,Web,131.4,Four-Door Car,Medium,2011
+HO29524,California,3035,Extended,College,5/28/2016,Employed,M,68205,Rural,Married,76,35,14,0,1,Personal Auto,Personal L1,Offer 4,Branch,99.38,Two-Door Car,Medium,2011
+VE89726,California,8025,Basic,High School or Below,8/8/2016,Unemployed,F,2322,Suburban,Single,119,6,48,1,8,Personal Auto,Personal L1,Offer 3,Branch,856.8,SUV,Medium,2011
+GE87503,California,18211,Premium,High School or Below,2/5/2016,Employed,M,53690,Suburban,Married,154,20,97,0,2,Personal Auto,Personal L3,Offer 4,Call Center,739.2,SUV,Small,2011
+PX90263,Oregon,5122,Basic,High School or Below,12/27/2015,Unemployed,M,2322,Suburban,Single,72,2,22,0,5,Personal Auto,Personal L3,Offer 1,Branch,518.4,Four-Door Car,Medium,2011
+NI17718,California,2150,Basic,High School or Below,11/5/2016,Unemployed,F,2322,Suburban,Single,61,28,31,0,1,Personal Auto,Personal L3,Offer 2,Web,292.8,Four-Door Car,Medium,2011
+FY32213,California,5595,Basic,High School or Below,3/5/2016,Employed,F,74454,Suburban,Single,71,25,29,0,3,Personal Auto,Personal L3,Offer 2,Call Center,340.8,Four-Door Car,Medium,2011
+RZ13254,Nevada,7563,Basic,Bachelor,2/25/2016,Unemployed,F,2322,Suburban,Single,73,23,91,0,2,Personal Auto,Personal L1,Offer 2,Branch,350.4,SUV,Large,2011
+GN45013,Oregon,5386,Basic,High School or Below,8/17/2016,Medical Leave,M,29664,Suburban,Married,71,1,69,0,3,Personal Auto,Personal L1,Offer 1,Agent,340.8,Four-Door Car,Medium,2011
+UB16654,Washington,4719,Basic,Master,6/3/2016,LTD,M,15680,Urban,Divorced,64,20,29,0,8,Personal Auto,Personal L3,Offer 4,Web,260.88,Four-Door Car,Medium,2011
+KU84464,Nevada,9423,Extended,Bachelor,4/19/2016,Employed,F,47272,Rural,Married,79,17,17,3,2,Personal Auto,Personal L3,Offer 1,Call Center,64.55,Four-Door Car,Medium,2011
+YH43527,Oregon,3606,Extended,College,8/5/2016,Employed,F,21585,Suburban,Married,92,35,61,0,1,Corporate Auto,Corporate L2,Offer 4,Agent,441.6,Four-Door Car,Medium,2011
+RO30676,California,7763,Premium,College,5/6/2016,LTD,F,23827,Rural,Married,106,18,77,2,3,Personal Auto,Personal L3,Offer 1,Agent,37.91,Four-Door Car,Medium,2011
+QL59704,Arizona,23445,Basic,College,12/6/2016,Employed,F,69906,Urban,Married,74,34,32,2,2,Corporate Auto,Corporate L3,Offer 2,Branch,202.86,Four-Door Car,Medium,2011
+QH19450,California,2558,Basic,High School or Below,7/5/2016,Unemployed,F,2322,Suburban,Single,72,7,77,0,1,Corporate Auto,Corporate L3,Offer 1,Call Center,345.6,Four-Door Car,Small,2011
+HR85211,Washington,5123,Basic,Master,7/27/2016,Employed,F,89879,Rural,Married,63,17,20,0,3,Personal Auto,Personal L3,Offer 2,Web,94.03,Two-Door Car,Medium,2011
+UV54502,Washington,2538,Basic,High School or Below,9/11/2016,Unemployed,F,2322,Suburban,Married,69,9,89,0,1,Personal Auto,Personal L3,Offer 4,Branch,331.2,Four-Door Car,Large,2011
+WB38524,California,2970,Basic,High School or Below,2/14/2016,Employed,M,46131,Suburban,Married,74,27,28,0,1,Personal Auto,Personal L3,Offer 2,Branch,355.2,Two-Door Car,Small,2011
+CE56187,Oregon,4363,Basic,Master,3/9/2016,Employed,F,54514,Urban,Divorced,109,5,36,3,1,Personal Auto,Personal L2,Offer 2,Branch,286.23,SUV,Medium,2011
+JL19416,California,5884,Premium,High School or Below,7/19/2016,Unemployed,F,2322,Suburban,Single,161,29,1,0,1,Personal Auto,Personal L3,Offer 1,Agent,1159.2,SUV,Medium,2011
+JZ61422,Nevada,5272,Basic,College,2/6/2016,Employed,F,96668,Suburban,Single,66,2,95,0,3,Personal Auto,Personal L2,Offer 1,Agent,316.8,Four-Door Car,Medium,2011
+LA13377,California,5510,Basic,Doctorate,5/25/2016,Employed,M,78879,Suburban,Married,69,9,67,1,4,Personal Auto,Personal L3,Offer 4,Call Center,466.57,Four-Door Car,Small,2011
+NC99948,Nevada,16314,Basic,College,8/26/2016,Unemployed,M,2322,Suburban,Single,69,21,86,0,2,Personal Auto,Personal L1,Offer 3,Call Center,331.2,Four-Door Car,Medium,2011
+QD34785,Arizona,5678,Extended,Bachelor,7/20/2016,Unemployed,F,2322,Suburban,Married,76,8,44,0,3,Personal Auto,Personal L1,Offer 2,Agent,364.8,Four-Door Car,Small,2011
+RO26085,California,12101,Basic,Bachelor,4/30/2016,Unemployed,F,2322,Suburban,Single,112,28,30,0,2,Personal Auto,Personal L2,Offer 2,Agent,1252.41,Sports Car,Large,2011
+ES57969,Oregon,2454,Basic,Bachelor,11/1/2016,Medical Leave,M,29735,Suburban,Single,69,3,92,0,1,Personal Auto,Personal L2,Offer 1,Agent,331.2,Four-Door Car,Medium,2011
+JK55587,California,5076,Basic,High School or Below,5/31/2016,Medical Leave,M,23082,Suburban,Married,65,18,90,0,7,Special Auto,Special L3,Offer 1,Branch,312,Four-Door Car,Large,2011
+RN97635,Arizona,3215,Extended,Bachelor,11/7/2016,Employed,M,53984,Suburban,Divorced,80,15,62,0,1,Corporate Auto,Corporate L2,Offer 1,Call Center,421.48,Four-Door Car,Small,2011
+BI76326,California,12275,Premium,College,5/1/2016,Employed,F,52135,Urban,Single,156,6,86,0,9,Personal Auto,Personal L3,Offer 2,Call Center,430.51,SUV,Small,2011
+JA34909,California,2722,Basic,College,5/12/2016,Medical Leave,F,17576,Suburban,Married,71,29,70,0,1,Corporate Auto,Corporate L3,Offer 2,Call Center,398.5,Four-Door Car,Medium,2011
+OJ90342,Oregon,2457,Basic,Bachelor,9/1/2016,Employed,F,29486,Rural,Married,62,19,73,0,1,Personal Auto,Personal L3,Offer 2,Web,7.65,Four-Door Car,Medium,2011
+CM88932,Oregon,3555,Extended,Master,6/13/2016,Employed,F,58557,Rural,Married,88,4,83,0,1,Corporate Auto,Corporate L2,Offer 1,Branch,55.51,Four-Door Car,Large,2011
+JJ97525,California,4930,Basic,Bachelor,5/22/2016,Employed,M,25632,Suburban,Married,63,27,52,0,7,Personal Auto,Personal L1,Offer 2,Call Center,351.27,Two-Door Car,Medium,2011
+XV21647,California,8036,Basic,High School or Below,6/4/2016,Unemployed,F,2322,Suburban,Single,112,7,42,0,9,Personal Auto,Personal L1,Offer 1,Branch,806.4,Sports Car,Medium,2011
+MC83487,Arizona,4277,Basic,Bachelor,7/16/2016,LTD,M,18768,Suburban,Single,68,19,53,3,3,Corporate Auto,Corporate L3,Offer 1,Agent,647.45,Four-Door Car,Medium,2011
+BL90769,California,33473,Basic,Bachelor,2/29/2016,Employed,F,33190,Suburban,Divorced,106,18,95,0,2,Personal Auto,Personal L3,Offer 1,Web,508.8,SUV,Medium,2011
+CR57148,Oregon,5961,Basic,Master,11/3/2016,Employed,F,47945,Rural,Married,74,32,39,0,3,Personal Auto,Personal L3,Offer 2,Branch,128.44,Two-Door Car,Medium,2011
+CP85232,Arizona,44795,Extended,College,10/2/2016,Employed,M,58778,Rural,Married,126,6,62,0,2,Special Auto,Special L3,Offer 1,Agent,302.03,SUV,Small,2011
+YL74732,California,3832,Basic,High School or Below,10/19/2016,LTD,F,15192,Suburban,Married,100,1,7,0,1,Personal Auto,Personal L2,Offer 4,Web,480,SUV,Medium,2011
+FG16766,California,6838,Premium,Bachelor,1/20/2016,Employed,F,51859,Suburban,Married,171,0,21,0,1,Personal Auto,Personal L2,Offer 4,Branch,1003.16,SUV,Medium,2011
+NV55438,Nevada,5285,Basic,High School or Below,12/7/2016,Retired,F,23422,Suburban,Single,72,25,76,0,3,Personal Auto,Personal L3,Offer 2,Agent,518.4,Two-Door Car,Medium,2011
+RM10880,California,3097,Extended,College,3/19/2016,Employed,F,21604,Suburban,Divorced,79,14,28,0,1,Corporate Auto,Corporate L3,Offer 1,Branch,379.2,Four-Door Car,Medium,2011
+GL56175,Arizona,3590,Extended,College,8/7/2016,Employed,M,79298,Urban,Married,90,22,2,0,1,Personal Auto,Personal L1,Offer 2,Call Center,244.36,Four-Door Car,Medium,2011
+UK52289,Arizona,2582,Basic,Bachelor,6/3/2016,Employed,F,76731,Urban,Married,64,2,68,0,1,Special Auto,Special L3,Offer 2,Agent,201.46,Four-Door Car,Medium,2011
+LL45497,Washington,2488,Basic,College,12/27/2015,Employed,F,67282,Suburban,Married,62,29,27,0,1,Personal Auto,Personal L2,Offer 2,Web,297.6,Two-Door Car,Medium,2011
+BC62782,Arizona,13576,Basic,College,10/13/2016,Employed,F,48534,Suburban,Married,115,29,79,1,2,Personal Auto,Personal L3,Offer 4,Call Center,552,SUV,Small,2011
+YM57893,Washington,4686,Premium,Doctorate,1/24/2016,Employed,M,77678,Suburban,Married,116,32,81,0,1,Personal Auto,Personal L2,Offer 1,Call Center,741.42,Two-Door Car,Small,2011
+JP30654,Oregon,28686,Basic,College,3/20/2016,Employed,F,48412,Suburban,Single,104,15,23,0,2,Personal Auto,Personal L3,Offer 3,Agent,707.43,SUV,Medium,2011
+RA66180,Washington,2764,Basic,High School or Below,6/19/2016,Employed,F,33837,Urban,Married,72,29,54,4,1,Corporate Auto,Corporate L2,Offer 1,Branch,305.58,Two-Door Car,Medium,2011
+EN60878,Oregon,6183,Extended,Bachelor,9/14/2016,LTD,M,23712,Urban,Single,85,2,20,0,3,Personal Auto,Personal L2,Offer 1,Branch,376.13,Four-Door Car,Medium,2011
+JF36291,California,3874,Basic,College,9/20/2016,Retired,M,28142,Suburban,Married,105,18,50,0,1,Personal Auto,Personal L3,Offer 2,Agent,701.71,Sports Car,Medium,2011
+BK59444,California,18929,Basic,Master,5/7/2016,Employed,F,72196,Rural,Single,68,8,61,0,2,Personal Auto,Personal L2,Offer 2,Branch,152.18,Four-Door Car,Medium,2011
+MK70700,California,5553,Basic,Master,10/9/2016,Employed,M,68197,Urban,Married,69,1,81,0,3,Personal Auto,Personal L1,Offer 2,Branch,176.82,Four-Door Car,Medium,2011
+IW71076,California,5011,Basic,Bachelor,2/11/2016,Employed,M,75248,Rural,Married,63,13,71,0,5,Corporate Auto,Corporate L3,Offer 2,Agent,104.45,Four-Door Car,Large,2011
+AP98768,California,10442,Extended,College,12/13/2015,Unemployed,F,2322,Suburban,Single,98,9,50,0,2,Personal Auto,Personal L1,Offer 1,Agent,941.72,Four-Door Car,Small,2011
+OM24164,Nevada,2200,Basic,Bachelor,7/19/2016,Unemployed,M,2322,Suburban,Single,65,5,19,1,1,Personal Auto,Personal L2,Offer 1,Agent,468,Two-Door Car,Medium,2011
+QP84605,Washington,8710,Premium,Bachelor,2/22/2016,Employed,F,41546,Rural,Divorced,111,4,47,0,3,Corporate Auto,Corporate L1,Offer 1,Call Center,121.31,Four-Door Car,Medium,2011
+VC87846,Oregon,7484,Extended,High School or Below,9/29/2016,Employed,M,46998,Suburban,Divorced,96,13,98,0,6,Corporate Auto,Corporate L3,Offer 3,Agent,460.8,Four-Door Car,Medium,2011
+ZM92052,Oregon,2613,Basic,Bachelor,5/19/2016,Employed,M,57099,Rural,Single,67,20,37,0,1,Personal Auto,Personal L2,Offer 3,Agent,67.86,Two-Door Car,Small,2011
+ON73702,Arizona,9081,Basic,Bachelor,8/16/2016,Employed,F,33897,Urban,Married,114,15,67,0,8,Corporate Auto,Corporate L3,Offer 1,Agent,539.84,SUV,Small,2011
+QQ90441,Nevada,13771,Premium,High School or Below,4/2/2016,Employed,F,59207,Suburban,Single,116,23,21,0,2,Personal Auto,Personal L1,Offer 1,Agent,556.8,Four-Door Car,Medium,2011
+HU35721,Oregon,2877,Basic,High School or Below,6/1/2016,Employed,M,40171,Suburban,Divorced,73,8,78,0,1,Personal Auto,Personal L3,Offer 4,Agent,350.4,Four-Door Car,Medium,2011
+XH85336,Washington,5548,Basic,Bachelor,11/27/2016,Employed,M,67798,Suburban,Divorced,69,1,78,0,9,Personal Auto,Personal L3,Offer 1,Agent,331.2,Four-Door Car,Medium,2011
+ZH17561,Washington,5098,Extended,Bachelor,9/10/2016,Medical Leave,F,21665,Suburban,Divorced,136,0,25,0,1,Corporate Auto,Corporate L2,Offer 1,Branch,765.71,SUV,Medium,2011
+AG85615,Oregon,24144,Extended,College,11/4/2016,Unemployed,M,2322,Suburban,Single,87,9,75,0,2,Special Auto,Special L1,Offer 1,Web,626.4,Four-Door Car,Medium,2011
+OY74069,Arizona,3538,Basic,College,5/29/2016,Unemployed,F,2322,Suburban,Single,67,12,67,5,7,Personal Auto,Personal L2,Offer 4,Call Center,321.6,Four-Door Car,Medium,2011
+DJ91267,Nevada,29091,Extended,Bachelor,11/2/2016,Employed,F,34226,Rural,Married,244,29,32,0,2,Personal Auto,Personal L3,Offer 1,Agent,494.4,SUV,Small,2011
+KB72438,California,19834,Extended,High School or Below,10/23/2016,Employed,F,65989,Rural,Married,123,4,43,1,2,Personal Auto,Personal L3,Offer 3,Call Center,115.55,SUV,Medium,2011
+TR67616,Oregon,4731,Basic,High School or Below,8/27/2016,Employed,M,30686,Rural,Single,61,22,45,0,3,Corporate Auto,Corporate L3,Offer 2,Web,19.94,Four-Door Car,Medium,2011
+GF65731,California,35538,Basic,Master,12/16/2015,Unemployed,F,2322,Suburban,Married,113,15,6,0,2,Personal Auto,Personal L3,Offer 1,Call Center,799.93,Sports Car,Large,2011
+HB67642,Arizona,34611,Basic,High School or Below,7/24/2016,Employed,F,20090,Suburban,Married,109,10,59,0,2,Personal Auto,Personal L1,Offer 2,Agent,523.2,Sports Car,Medium,2011
+DP84567,California,20216,Basic,High School or Below,8/27/2016,Unemployed,M,2322,Suburban,Married,183,6,26,0,2,Personal Auto,Personal L1,Offer 3,Agent,878.4,Luxury SUV,Large,2011
+VV77534,Oregon,13977,Premium,College,7/23/2016,Employed,M,77094,Urban,Married,176,25,29,0,5,Personal Auto,Personal L3,Offer 3,Call Center,444.47,SUV,Medium,2011
+GL67540,California,5904,Basic,College,10/5/2016,Employed,F,97413,Urban,Married,73,21,80,0,6,Personal Auto,Personal L3,Offer 1,Agent,268.82,Four-Door Car,Medium,2011
+SV50502,Oregon,5596,Basic,Master,5/6/2016,Employed,F,79189,Suburban,Married,69,6,97,0,4,Corporate Auto,Corporate L2,Offer 4,Branch,331.2,Four-Door Car,Medium,2011

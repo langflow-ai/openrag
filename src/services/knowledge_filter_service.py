@@ -1,3 +1,4 @@
+from datetime import UTC
 from typing import Any
 
 KNOWLEDGE_FILTERS_INDEX_NAME = "knowledge_filters"
@@ -355,7 +356,7 @@ class KnowledgeFilterService:
             update_body = {
                 "doc": {
                     "subscriptions": updated_subscriptions,
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                 }
             }
 

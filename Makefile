@@ -426,7 +426,7 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
-	$(COMPOSE_CMD) up -d
+	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
@@ -912,8 +912,8 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
-	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
@@ -1041,9 +1041,9 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
-	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
 	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
