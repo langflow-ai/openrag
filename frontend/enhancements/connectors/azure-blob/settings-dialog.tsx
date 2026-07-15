@@ -72,13 +72,16 @@ export default function AzureBlobSettingsDialog({
   // can be cancelled if the user closes the dialog or starts a new test.
   const testAbortRef = useRef<AbortController | null>(null);
 
-  // Abort any in-flight test request when the component unmounts (i.e. when
-  // the dialog is closed, since connector-cards renders it only while open).
+  // Abort any in-flight test request when the dialog closes. The dialog
+  // component itself stays mounted (connector-cards renders it unconditionally
+  // and just toggles `open`), so an unmount-only cleanup would never fire here
+  // — without this, a canceled test could still resolve and repopulate the
+  // container list after the user closed the dialog.
   useEffect(() => {
-    return () => {
+    if (!open) {
       testAbortRef.current?.abort();
-    };
-  }, []);
+    }
+  }, [open]);
 
   const handleTestConnection = handleSubmit(async (data) => {
     // Cancel any previous in-flight test before starting a new one.
