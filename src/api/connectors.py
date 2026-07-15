@@ -1165,6 +1165,7 @@ async def connector_sync(
                             jwt_token=jwt_token,
                             ingest_settings=body.settings,
                             preview_mode=preview_mode,
+                            shared=body.shared,
                         )
                     )
                 if changed_ids:
@@ -1177,6 +1178,7 @@ async def connector_sync(
                             ingest_settings=body.settings,
                             replace_duplicates=True,
                             preview_mode=preview_mode,
+                            shared=body.shared,
                         )
                     )
             else:
