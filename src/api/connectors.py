@@ -21,7 +21,6 @@ from services.connector_access_service import (
     CONNECTOR_TYPES,
     filter_connectors_for_user,
     get_access_map,
-    is_bucket_connector_type,
     is_connector_access_policy_enforced,
     is_connector_allowed_for_request,
     list_access_for_admin,
@@ -71,8 +70,33 @@ async def _allowed_connector_types_for_request(
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
-    """Return True for connector types where sync should replace existing indexed files."""
-    return connector_type in ["google_drive", "sharepoint", "onedrive"]
+    """Return True when sync should replace existing indexed files for this
+    connector type, so content changes propagate on re-sync.
+
+    Declared per connector via ``BaseConnector.SYNC_REPLACES_DUPLICATES``
+    (default True) instead of a hardcoded type list, so new connectors get
+    change-propagating sync without touching this module. Unknown types (e.g.
+    stale index docs from a removed enhancement connector) stay conservative
+    and skip duplicates.
+    """
+    from connectors.registry import get_connector_class
+
+    cls = get_connector_class(connector_type)
+    return cls.SYNC_REPLACES_DUPLICATES if cls is not None else False
+
+
+def _connector_uses_timestamp_change_detection(connector_type: str) -> bool:
+    """True when sync should re-ingest only files whose remote modified_time is
+    newer than the stored one (see bucket_changed_file_ids), instead of
+    replacing every indexed file.
+
+    Declared per connector via ``BaseConnector.CHANGE_DETECTION`` — the bucket
+    connectors set ``"timestamp"``; the default is ``"replace_always"``.
+    """
+    from connectors.registry import get_connector_class
+
+    cls = get_connector_class(connector_type)
+    return cls is not None and cls.CHANGE_DETECTION == "timestamp"
 
 
 async def get_synced_file_ids_for_connector(
@@ -1236,12 +1260,12 @@ async def connector_sync(
                         },
                         status_code=200,
                     )
-                if is_bucket_connector_type(connector_type):
-                    # Bucket Sync is updates-only: re-ingest just the blobs whose
+                if _connector_uses_timestamp_change_detection(connector_type):
+                    # Timestamp Sync is updates-only: re-ingest just the files whose
                     # remote copy is newer than what's indexed (deleting the stale
                     # chunks via replace_duplicates). Unlike replace_duplicates=False
                     # this actually propagates content changes; unlike replacing every
-                    # id it skips unchanged blobs instead of re-fetching the container.
+                    # id it skips unchanged files instead of re-fetching the source.
                     connector = await connector_service.get_connector(
                         working_connection.connection_id
                     )
@@ -1827,9 +1851,9 @@ async def sync_all_connectors(
                     if not existing_file_ids:
                         deleted_only_connectors.append(connector_type)
                         continue
-                    if is_bucket_connector_type(connector_type):
+                    if _connector_uses_timestamp_change_detection(connector_type):
                         # Updates-only change detection (see connector_sync): re-ingest
-                        # only blobs that changed at source, replacing stale chunks.
+                        # only files that changed at source, replacing stale chunks.
                         connector = await connector_service.get_connector(
                             working_connection.connection_id
                         )

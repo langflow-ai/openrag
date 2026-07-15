@@ -68,6 +68,7 @@ class AzureBlobConnector(BaseConnector):
 
     CONNECTOR_TYPE = "azure_blob"
     CONNECTOR_KIND = "bucket"
+    CHANGE_DETECTION = "timestamp"
     CONNECTOR_NAME = "Azure Blob Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from Azure Blob Storage"
     CONNECTOR_ICON = "azure-blob"

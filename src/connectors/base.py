@@ -57,6 +57,23 @@ class BaseConnector(ABC):
     # "oauth" connectors authenticate per-user via OAuth env-var credentials.
     # "bucket" connectors authenticate via per-connection config dict (HMAC, API key, etc).
     CONNECTOR_KIND: str = "oauth"
+    # When a sync re-processes files that are already indexed, pass
+    # replace_duplicates so the indexed copy is replaced and content changes
+    # propagate, instead of being skipped by the duplicate-filename gate.
+    # Default True so a new connector gets change-propagating sync out of the
+    # box (the content-hash "unchanged" short-circuit still avoids re-indexing
+    # identical bytes on the non-Langflow path). Bucket connectors normally
+    # never consult this: their sync paths divert to modified_time change
+    # detection and replace only the blobs that actually changed.
+    SYNC_REPLACES_DUPLICATES: bool = True
+    # How sync decides whether an already-indexed file needs re-ingesting:
+    #   "replace_always" — re-process every indexed file on sync, replacing the
+    #                      indexed copy (the content-hash short-circuit still
+    #                      skips identical bytes on the non-Langflow path).
+    #   "timestamp"      — list the source once and re-ingest only files whose
+    #                      remote modified_time is strictly newer than the
+    #                      stored one (see bucket_changed_file_ids).
+    CHANGE_DETECTION: str = "replace_always"
     # Connector-specific keys in the config dict that must be encrypted at rest.
     SECRET_CONFIG_KEYS: tuple = ()
 
