@@ -337,7 +337,8 @@ class TaskProcessor:
 
             if not owner_user_id:
                 if shared:
-                    build_query = lambda fname, _owner: build_anonymous_filename_query(fname)
+                    def build_query(fname, _owner):
+                        return build_anonymous_filename_query(fname)
                 else:
                     logger.warning(
                         "Skipped delete_by_filename because owner_user_id is missing",
