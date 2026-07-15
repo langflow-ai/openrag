@@ -151,9 +151,15 @@ def configure_logging(
     _shared_processors = list(base_processors)
 
     if use_json:
-        # Production: structured tracebacks (queryable in ELK/Datadog/Splunk)
+        # Production: structured tracebacks (queryable in ELK/Datadog/Splunk).
+        # show_locals=False: local variables routinely hold API keys, JWTs, and
+        # other request headers (see extra_headers/request_params in agent.py) —
+        # they must never be serialized into logs. dict_tracebacks defaults to
+        # show_locals=True, which leaked exactly that into production logs.
         render_processors = [
-            structlog.processors.dict_tracebacks,
+            structlog.processors.ExceptionRenderer(
+                structlog.tracebacks.ExceptionDictTransformer(show_locals=False)
+            ),
             structlog.processors.JSONRenderer(),
         ]
     else:
