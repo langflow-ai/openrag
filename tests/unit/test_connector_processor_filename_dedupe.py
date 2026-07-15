@@ -231,9 +231,9 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     search_call = opensearch_client.search.await_args
     query = search_call.kwargs["body"]["query"]
     shoulds = query["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])): next(iter(c["term"].values())) for c in shoulds}
-    assert fields["connector_file_id"] == "file-id-1"
-    assert fields["document_id"] == "file-id-1"
+    fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
+    assert fields["connector_file_id"] == ["file-id-1"]
+    assert fields["document_id"] == ["file-id-1"]
 
 
 @pytest.mark.asyncio
@@ -596,7 +596,7 @@ async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_
         )
 
     shoulds = captured["query"]["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])) for c in shoulds}
+    fields = {next(iter(c["terms"])) for c in shoulds}
     assert fields == {"document_id", "connector_file_id"}
     excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
     assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))

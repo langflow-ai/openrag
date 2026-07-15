@@ -357,56 +357,22 @@ class TaskProcessor:
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
-        Matches both ``connector_file_id`` (standard path, where ``document_id``
-        holds the content hash) and ``document_id`` (Langflow path, where it
-        holds the connector id). When ``keep_filenames`` is given, chunks whose
-        filename is one of those names are preserved — used to drop only the
-        stale OLD-name chunks left behind by a rename, since a connector file
-        keeps the same id across renames. Best-effort: logs and returns 0 on
-        failure so a cleanup miss never fails the task.
+        Deletion semantics (dual-field id match, owner/shared scoping, rename
+        ``keep_filenames``) live in ``connectors.chunk_cleanup``. This wrapper
+        is best-effort: logs and returns 0 on failure so a cleanup miss never
+        fails the task.
         """
-        from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+        from connectors.chunk_cleanup import delete_connector_file_chunks
 
         if not file_id:
             return 0
         try:
-            write_client = clients.opensearch
-            if write_client is None:
-                raise RuntimeError("Backend OpenSearch write client is unavailable")
-
-            owner_filter = (
-                {"bool": {"must_not": {"exists": {"field": "owner"}}}}
-                if shared
-                else {"term": {"owner": owner_user_id}}
-            )
-            query: dict[str, Any] = {
-                "bool": {
-                    "filter": [
-                        {
-                            "bool": {
-                                "should": [
-                                    {"term": {"document_id": file_id}},
-                                    {"term": {"connector_file_id": file_id}},
-                                ],
-                                "minimum_should_match": 1,
-                            }
-                        },
-                        owner_filter,
-                    ]
-                }
-            }
-            if keep_filenames:
-                query["bool"]["must_not"] = [{"terms": {"filename": keep_filenames}}]
-
-            chunk_ids = await collect_visible_document_ids(
+            return await delete_connector_file_chunks(
+                [file_id],
                 opensearch_client,
-                index=get_index_name(),
-                query=query,
-            )
-            return await delete_document_ids(
-                write_client,
-                index=get_index_name(),
-                document_ids=chunk_ids,
+                owner_user_id=owner_user_id,
+                shared=shared,
+                keep_filenames=keep_filenames,
             )
         except Exception as e:
             logger.error(

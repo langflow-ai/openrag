@@ -117,8 +117,8 @@ async def get_synced_file_ids_for_connector(
       source ID.
     - ``filenames``: unique filenames as a fallback when ``file_ids`` is empty.
     - ``id_field``: the OpenSearch field name that ``file_ids`` came from
-      (``"connector_file_id"`` or ``"document_id"``). Callers must pass this to
-      ``delete_orphan_documents`` so deletions target the correct field.
+      (``"connector_file_id"`` or ``"document_id"``). Informational (logging);
+      chunk deletion matches both fields via ``connectors.chunk_cleanup``.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -522,31 +522,28 @@ async def delete_orphan_documents(
     user_id: str,
     session_manager,
     jwt_token: str | None,
-    id_field: str = "document_id",
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
 
-    ``id_field`` must match the OpenSearch field that ``orphan_ids`` came from —
-    either ``"connector_file_id"`` (ConnectorFileProcessor / non-Langflow path)
-    or ``"document_id"`` (Langflow path, where document_id holds the connector
-    source ID). Pass the value returned as the third element of
-    ``get_synced_file_ids_for_connector()``.
+    Deletion matches both id layouts (``connector_file_id`` for the standard
+    ingest path, ``document_id`` for the Langflow path) via
+    ``connectors.chunk_cleanup``, so callers no longer need to track which
+    field the ids came from.
     """
     if not orphan_ids:
         return 0
-    from .documents import delete_chunks_by_document_ids
+    from connectors.chunk_cleanup import delete_connector_file_chunks
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_chunks_by_document_ids(
-            orphan_ids, opensearch_client, get_index_name(), field=id_field
+        return await delete_connector_file_chunks(
+            orphan_ids, opensearch_client, refresh=True
         )
     except Exception as e:
         logger.error(
             "Orphan delete failed",
             orphan_count=len(orphan_ids),
-            id_field=id_field,
             error=str(e),
         )
         return 0
@@ -559,15 +556,10 @@ async def reconcile_orphans_for_connector_type(
     session_manager,
     jwt_token: str | None,
     existing_file_ids: list[str],
-    id_field: str = "document_id",
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
     callers that perform sync immediately after reconcile.
-
-    ``id_field`` must match the OpenSearch field that ``existing_file_ids`` came
-    from. Pass the value returned as the third element of
-    ``get_synced_file_ids_for_connector()``.
 
     Returns the list of orphan file IDs that were deleted (or []).
     """
@@ -588,14 +580,12 @@ async def reconcile_orphans_for_connector_type(
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
-        id_field=id_field,
     )
     logger.info(
         "Orphan reconcile complete",
         connector_type=connector_type,
         orphan_count=len(orphan_ids),
         deleted_chunks=deleted,
-        id_field=id_field,
     )
     if deleted <= 0:
         return []
@@ -652,7 +642,6 @@ async def _sync_existing_connector_files(
                 session_manager=session_manager,
                 jwt_token=jwt_token,
                 existing_file_ids=existing_file_ids,
-                id_field=id_field,
             )
             if orphan_ids:
                 orphan_id_set = set(orphan_ids)
