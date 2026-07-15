@@ -30,6 +30,8 @@ logger = get_logger(__name__)
 DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
+DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
@@ -238,6 +240,65 @@ class TaskProcessor:
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
         return False
+
+    async def resolve_duplicate_filename(
+        self,
+        filename: str,
+        opensearch_client,
+        *,
+        replace: bool,
+        owner_user_id: str | None,
+        shared: bool = False,
+    ) -> Literal["proceed", "skip", "replaced"]:
+        """Single duplicate-filename policy shared by every processor.
+
+        Checks whether a document with this filename (or one of its aliases)
+        is already indexed and applies the caller's replace decision:
+
+          * ``"proceed"``  — no duplicate; continue ingestion.
+          * ``"skip"``     — duplicate and ``replace`` is False; the caller
+                             should finish via ``mark_duplicate_skipped``.
+          * ``"replaced"`` — duplicate and ``replace`` is True; the existing
+                             chunks were deleted and the index refreshed, so
+                             ingestion can continue.
+        """
+        if not await self.check_filename_exists(filename, opensearch_client):
+            return "proceed"
+        if not replace:
+            return "skip"
+
+        logger.info(f"Replacing existing document: {filename}")
+        await self.delete_document_by_filename(
+            filename,
+            opensearch_client,
+            owner_user_id=owner_user_id,
+            shared=shared,
+        )
+        # Refresh so the delete is visible before re-ingest. refresh is
+        # index-wide (indices:admin/refresh) and cannot be DLS-scoped, so it
+        # must run under the admin/service client, not the user client.
+        try:
+            await clients.opensearch.indices.refresh(index=get_index_name())
+        except Exception as refresh_error:
+            logger.warning(
+                "Failed to refresh index after delete",
+                error=str(refresh_error),
+            )
+        return "replaced"
+
+    def mark_duplicate_skipped(self, upload_task: UploadTask, file_task: FileTask) -> None:
+        """Uniform terminal state for a duplicate that was not replaced:
+        SKIPPED, counted toward successful files, with a warning the task view
+        surfaces. A declined replacement is a chosen outcome, not an error."""
+        file_task.status = TaskStatus.SKIPPED
+        file_task.error = None
+        file_task.result = {
+            "status": "skipped",
+            "reason": "duplicate_filename",
+            "warning": DUPLICATE_FILENAME_WARNING,
+        }
+        file_task.updated_at = time.time()
+        upload_task.successful_files += 1
 
     async def delete_document_by_filename(
         self,
@@ -695,31 +756,15 @@ class DocumentFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
-
-            if filename_exists and not self.replace_duplicates:
-                # Duplicate exists and user hasn't confirmed replacement
-                file_task.status = TaskStatus.FAILED
-                file_task.error = f"File with name '{original_filename}' already exists"
-                file_task.updated_at = time.time()
-                upload_task.failed_files += 1
+            duplicate_action = await self.resolve_duplicate_filename(
+                original_filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.owner_user_id,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
                 return
-            elif filename_exists and self.replace_duplicates:
-                # Delete existing document before uploading new one
-                logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
-                # Refresh index to make deletion visible before processing.
-                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
-                # so it must run under the admin/service client, not the user client.
-                from config.settings import get_index_name
-
-                try:
-                    await clients.opensearch.indices.refresh(index=get_index_name())
-                except Exception as refresh_error:
-                    logger.warning(
-                        "Failed to refresh index after delete",
-                        error=str(refresh_error),
-                    )
 
             # Compute hash
             file_hash = hash_id(item)
@@ -982,24 +1027,16 @@ class ConnectorFileProcessor(TaskProcessor):
                 > 0
             )
 
-            if await self.check_filename_exists(file_task.filename, opensearch_client):
-                if not self.replace_duplicates:
-                    file_task.status = TaskStatus.SKIPPED
-                    file_task.error = None
-                    file_task.result = {
-                        "status": "skipped",
-                        "reason": "duplicate_filename",
-                        "warning": "A file with this name already exists.",
-                    }
-                    file_task.updated_at = time.time()
-                    upload_task.successful_files += 1
-                    return
-                await self.delete_document_by_filename(
-                    file_task.filename,
-                    opensearch_client,
-                    owner_user_id=self.user_id,
-                    shared=self.shared,
-                )
+            duplicate_action = await self.resolve_duplicate_filename(
+                file_task.filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.user_id,
+                shared=self.shared,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
+                return
 
             # Create temporary file from document content
             suffix = os.path.splitext(file_task.filename)[1]
@@ -1243,6 +1280,7 @@ class S3FileProcessor(TaskProcessor):
         owner_email: str = None,
         models_service=None,
         docling_service=None,
+        replace_duplicates: bool = False,
     ):
         import boto3
 
@@ -1257,6 +1295,7 @@ class S3FileProcessor(TaskProcessor):
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
@@ -1268,6 +1307,21 @@ class S3FileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
+            # The S3 key doubles as the indexed filename, so the duplicate
+            # gate can run before downloading the object.
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                self.owner_user_id, self.jwt_token
+            )
+            duplicate_action = await self.resolve_duplicate_filename(
+                item,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.owner_user_id,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
+                return
+
             suffix = os.path.splitext(item)[1]
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Download object to temporary file
@@ -1367,33 +1421,15 @@ class LangflowFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
-
-            if filename_exists and not self.replace_duplicates:
-                # Duplicate exists and user hasn't confirmed replacement
-                file_task.status = TaskStatus.FAILED
-                file_task.error = f"File with name '{original_filename}' already exists"
-                file_task.updated_at = time.time()
-                upload_task.failed_files += 1
+            duplicate_action = await self.resolve_duplicate_filename(
+                original_filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.owner_user_id,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
                 return
-            elif filename_exists and self.replace_duplicates:
-                # Delete existing document before uploading new one
-                logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(
-                    original_filename,
-                    opensearch_client,
-                    owner_user_id=self.owner_user_id,
-                )
-                # Refresh index to make deletion visible before processing.
-                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
-                # so it must run under the admin/service client, not the user client.
-                try:
-                    await clients.opensearch.indices.refresh(index=get_index_name())
-                except Exception as refresh_error:
-                    logger.warning(
-                        "Failed to refresh index after delete",
-                        error=str(refresh_error),
-                    )
 
             # Read file content for processing
             with open(item, "rb") as f:
