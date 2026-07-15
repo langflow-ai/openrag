@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -768,7 +768,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useTask() {
-  const context = useContext(TaskContext);
+  const context = use(TaskContext);
   if (context === undefined) {
     throw new Error("useTask must be used within a TaskProvider");
   }

@@ -16,7 +16,7 @@ from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
-from utils.env_utils import get_env_float, get_env_int
+from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
 
 # Import configuration manager
@@ -186,7 +186,13 @@ SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-produ
 # os.environ directly.
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_ID = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+# Optional comma-separated list of Azure AD tenant UUIDs. When set, tokens from
+# tenants not in this list are rejected (business policy, not a standards requirement).
+# When unset, any tenant whose token passes signature/audience/expiry checks is accepted.
+MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -531,6 +537,14 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
 # Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
 OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
+
+# Show the "Make documents available to all users" (shared) toggle for COS bucket
+# ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
+# hide the general per-upload ingest tuning knobs (e.g. SaaS) can still opt back into
+# just this toggle by setting this flag on its own.
+OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
+    "OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", "false"
 ).lower() in ("true", "1", "yes")
 
 # Ingest sample data configuration

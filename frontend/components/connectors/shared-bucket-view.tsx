@@ -55,6 +55,11 @@ export function SharedBucketView({
   });
   const showIngestSettings =
     apiSettings?.show_provider_ingest_settings ?? false;
+  // The shared toggle can be exposed on its own (e.g. for SaaS deployments that
+  // hide the general per-upload ingest tuning knobs) via a dedicated flag.
+  const showSharedToggle =
+    showShared &&
+    (showIngestSettings || (apiSettings?.show_shared_upload_toggle ?? false));
 
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
@@ -128,7 +133,9 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
-          shared: showShared ? (ingestSettings.shared ?? false) : undefined,
+          shared: showSharedToggle
+            ? (ingestSettings.shared ?? false)
+            : undefined,
         },
       },
       {
@@ -299,13 +306,14 @@ export function SharedBucketView({
           </div>
         )}
 
-        {showIngestSettings && (
+        {(showIngestSettings || showSharedToggle) && (
           <IngestSettings
             isOpen={isSettingsOpen}
             onOpenChange={setIsSettingsOpen}
             settings={ingestSettings}
             onSettingsChange={setIngestSettings}
-            showShared={showShared}
+            showShared={showSharedToggle}
+            showAdvancedSettings={showIngestSettings}
           />
         )}
       </div>

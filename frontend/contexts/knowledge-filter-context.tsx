@@ -3,8 +3,8 @@
 import React, {
   createContext,
   type ReactNode,
+  use,
   useCallback,
-  useContext,
   useState,
 } from "react";
 import { FilterColor, IconKey } from "@/components/filter-icon-popover";
@@ -59,7 +59,7 @@ const KnowledgeFilterContext = createContext<
 >(undefined);
 
 export function useKnowledgeFilter() {
-  const context = useContext(KnowledgeFilterContext);
+  const context = use(KnowledgeFilterContext);
   if (context === undefined) {
     throw new Error(
       "useKnowledgeFilter must be used within a KnowledgeFilterProvider",
