@@ -126,7 +126,11 @@ async def test_connector_check_duplicates():
 
     # Mock search return value: existing.pdf exists, new_file.docx does not
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_source": {"filename": "existing.pdf"}}]}}
+        return_value={
+            "aggregations": {
+                "filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}
+            }
+        }
     )
 
     user = MagicMock()
@@ -214,11 +218,13 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     opensearch_client.search = AsyncMock(
         return_value={
-            "hits": {
-                "hits": [
-                    {"_source": {"filename": "existing.pdf"}},
-                    {"_source": {"filename": "existing.docx"}},
-                ]
+            "aggregations": {
+                "filenames": {
+                    "buckets": [
+                        {"key": "existing.pdf", "doc_count": 1},
+                        {"key": "existing.docx", "doc_count": 1},
+                    ]
+                }
             }
         }
     )
@@ -283,7 +289,11 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
     opensearch_client = AsyncMock()
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_source": {"filename": "existing.pdf"}}]}}
+        return_value={
+            "aggregations": {
+                "filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}
+            }
+        }
     )
 
     response = await connectors_api.connector_sync(

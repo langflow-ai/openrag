@@ -721,21 +721,14 @@ async def _classify_connector_duplicates(
             "total_files": len(cleaned_files),
         }
 
-    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-    query_body = {
-        "size": 10000,
-        "query": {"terms": {"filename": list(all_candidates)}},
-        "_source": ["filename"],
-    }
+    from utils.opensearch_filenames import find_existing_filenames
 
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
     existing_filenames = set()
     try:
-        response = await opensearch_client.search(index=get_index_name(), body=query_body)
-        hits = response.get("hits", {}).get("hits", [])
-        for hit in hits:
-            fn = hit.get("_source", {}).get("filename")
-            if fn:
-                existing_filenames.add(fn)
+        existing_filenames = await find_existing_filenames(
+            all_candidates, opensearch_client, get_index_name()
+        )
     except Exception as search_err:
         if "index_not_found_exception" not in str(search_err):
             raise

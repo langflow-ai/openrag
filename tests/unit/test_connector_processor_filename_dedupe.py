@@ -49,6 +49,13 @@ def _make_search_response(has_hit: bool) -> dict:
     return {"hits": {"hits": [{"_id": "x"}] if has_hit else []}}
 
 
+def _make_filename_agg_response(has_hit: bool, filename: str = "My Report.pdf") -> dict:
+    """The filename duplicate check runs a terms aggregation (see
+    utils/opensearch_filenames), not a hits query."""
+    buckets = [{"key": filename, "doc_count": 1}] if has_hit else []
+    return {"aggregations": {"filenames": {"buckets": buckets}}}
+
+
 def _make_upload_task() -> UploadTask:
     return UploadTask(task_id="task-1", total_files=1)
 
@@ -94,6 +101,10 @@ def _wire_connector_processor(
             return _make_search_response(rename_stale_exists)
         if "document_id" in query_str:
             return _make_search_response(hash_exists)
+        if isinstance(body, dict) and "aggs" in body:
+            # Bulk duplicate check (terms aggregation over filename aliases).
+            return _make_filename_agg_response(filename_exists)
+        # Hits-based filename scroll (delete_document_by_filename id collection).
         return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
@@ -321,6 +332,10 @@ def _wire_langflow_processor(
             return _make_search_response(connector_id_exists)
         if document_id:
             return _make_search_response(hash_exists)
+        if isinstance(body, dict) and "aggs" in body:
+            # Bulk duplicate check (terms aggregation over filename aliases).
+            return _make_filename_agg_response(filename_exists)
+        # Hits-based filename scroll (delete_document_by_filename id collection).
         return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search

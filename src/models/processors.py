@@ -21,8 +21,6 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_filename_search_body
-
 from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
@@ -175,41 +173,27 @@ class TaskProcessor:
         (default ~1s), and the user-scoped client cannot force an
         ``indices:admin/refresh`` (it lacks the privilege).
         """
+        from utils.opensearch_filenames import find_existing_filenames
+
         max_retries = 3
         retry_delay = 1.0
 
         candidate_filenames = get_filename_aliases(filename)
         if not candidate_filenames:
             return False
-        # Keep track of aliases that still need checking across retries.
-        # If one alias was already checked successfully with no hits, we avoid
-        # re-querying it when another alias fails transiently.
-        pending_candidates = list(candidate_filenames)
-        # Retry strategy: only retry aliases that have not completed successfully.
-        # This avoids re-querying aliases already checked with no hits when a later
-        # alias fails transiently (e.g., timeout).
 
         for attempt in range(max_retries):
             try:
-                i = 0
-                while i < len(pending_candidates):
-                    candidate = pending_candidates[i]
-                    search_body = build_filename_search_body(candidate, size=1, source=False)
-                    response = await opensearch_client.search(
-                        index=get_index_name(), body=search_body
-                    )
-                    hits = response.get("hits", {}).get("hits", [])
-                    if hits:
-                        return True
-                    # Successfully checked this alias with no hits; don't
-                    # re-query it on future retries.
-                    pending_candidates.pop(i)
-                    continue
-                # All aliases checked with no hits. For post-ingest verification,
-                # the document may not be visible yet within the near-real-time
-                # refresh window — re-check every alias after a short delay.
+                # One bulk existence check covering every alias — the shared
+                # query semantic used by all duplicate-detection altitudes.
+                if await find_existing_filenames(
+                    candidate_filenames, opensearch_client, get_index_name()
+                ):
+                    return True
+                # No alias exists. For post-ingest verification, the document
+                # may not be visible yet within the near-real-time refresh
+                # window — re-check after a short delay.
                 if wait_for_visibility and attempt < max_retries - 1:
-                    pending_candidates = list(candidate_filenames)
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2
                     continue

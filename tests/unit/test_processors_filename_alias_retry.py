@@ -1,3 +1,6 @@
+"""check_filename_exists issues ONE bulk aliases query (shared semantics) and
+retries it on transient failures."""
+
 import asyncio
 from unittest.mock import AsyncMock
 
@@ -7,31 +10,39 @@ from models.processors import TaskProcessor
 
 
 @pytest.mark.asyncio
-async def test_check_filename_exists_does_not_requery_successfully_checked_aliases_on_retry():
-    """Once an alias is checked successfully, retries should continue from pending aliases."""
+async def test_check_filename_exists_bulk_queries_all_aliases_and_retries():
+    """All filename aliases go into a single terms-aggregation query; a
+    transient failure retries the same bulk query."""
     processor = TaskProcessor()
     opensearch_client = AsyncMock()
 
-    async def _search_side_effect(*, index, body):
-        candidate = body["query"]["term"]["filename"]
-        if candidate == "report.md" and _search_side_effect.md_calls == 0:
-            _search_side_effect.md_calls += 1
-            raise asyncio.TimeoutError("transient timeout")
-        return {"hits": {"hits": []}}
+    calls = []
 
-    _search_side_effect.md_calls = 0
+    async def _search_side_effect(*, index, body):
+        calls.append(body)
+        if len(calls) == 1:
+            raise asyncio.TimeoutError("transient timeout")
+        return {"aggregations": {"filenames": {"buckets": []}}}
+
     opensearch_client.search.side_effect = _search_side_effect
 
     exists = await processor.check_filename_exists("report.txt", opensearch_client)
 
     assert exists is False
+    assert len(calls) == 2  # first attempt timed out, retry succeeded
+    for body in calls:
+        queried = set(body["query"]["terms"]["filename"])
+        # Both the .txt name and its .md ingestion alias are covered in one query.
+        assert {"report.txt", "report.md"}.issubset(queried)
 
-    queried_candidates = [
-        call.kwargs["body"]["query"]["term"]["filename"]
-        for call in opensearch_client.search.await_args_list
-    ]
-    # Expected sequence:
-    # 1) report.txt succeeds (no hits)
-    # 2) report.md times out
-    # 3) retry continues from pending alias only -> report.md
-    assert queried_candidates == ["report.txt", "report.md", "report.md"]
+
+@pytest.mark.asyncio
+async def test_check_filename_exists_true_when_any_alias_has_chunks():
+    processor = TaskProcessor()
+    opensearch_client = AsyncMock()
+    opensearch_client.search.return_value = {
+        "aggregations": {"filenames": {"buckets": [{"key": "report.md", "doc_count": 3}]}}
+    }
+
+    assert await processor.check_filename_exists("report.txt", opensearch_client) is True
+    opensearch_client.search.assert_awaited_once()
