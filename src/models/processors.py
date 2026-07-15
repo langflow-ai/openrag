@@ -337,6 +337,7 @@ class TaskProcessor:
 
             if not owner_user_id:
                 if shared:
+
                     def build_query(fname, _owner):
                         return build_anonymous_filename_query(fname)
                 else:

@@ -83,9 +83,7 @@ def test_query_connector_type_with_private_owner():
 
 
 def test_query_connector_type_with_shared_scope():
-    query = build_connector_file_chunks_query(
-        ["f"], connector_type="ibm_cos", shared=True
-    )
+    query = build_connector_file_chunks_query(["f"], connector_type="ibm_cos", shared=True)
     filters = query["bool"]["filter"]
     assert {"term": {"connector_type": "ibm_cos"}} in filters
     assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
