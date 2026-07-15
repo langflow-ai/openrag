@@ -464,28 +464,25 @@ async def compute_orphans_for_connector_type(
                 )
                 return None
 
-            # Drive the per-id existence check via cfg.file_ids when the
-            # connector supports it (SharePoint / OneDrive / Google Drive).
+            # Drive the per-id existence check via list_selected_files when
+            # the connector supports it (SharePoint / OneDrive / Google Drive).
             # The flat default of list_files() only returns the *root* listing
             # (e.g. /drive/root/children for SharePoint, files-only, no folder
             # traversal), so any folder-internal file in OpenSearch would be
             # absent from remote_ids and wrongly flagged as an orphan.
-            # _list_selected_files iterates each id via _get_file_metadata_by_id
+            # list_selected_files iterates each id via _get_file_metadata_by_id
             # and silently drops missing ids, so the resulting `remote_ids` is
             # exactly "the subset of existing_file_ids that still exists at
             # source" — which is what orphan detection actually needs.
-            cfg = getattr(connector, "cfg", None)
-            scoped_listing = cfg is not None and bool(existing_file_ids)
+            scoped_listing = hasattr(connector, "cfg") and bool(existing_file_ids)
 
-            original_file_ids = None
-            original_folder_ids = None
             if scoped_listing:
-                original_file_ids = getattr(cfg, "file_ids", None)
-                original_folder_ids = getattr(cfg, "folder_ids", None)
-                cfg.file_ids = list(existing_file_ids)
-                cfg.folder_ids = None
-
-            try:
+                page = await connector.list_selected_files(list(existing_file_ids))
+                for f in page.get("files", []):
+                    fid = f.get("id")
+                    if fid:
+                        remote_ids.add(fid)
+            else:
                 page_token = None
                 while True:
                     page = await connector.list_files(page_token=page_token)
@@ -496,10 +493,6 @@ async def compute_orphans_for_connector_type(
                     page_token = page.get("nextPageToken") or page.get("next_page_token")
                     if not page_token:
                         break
-            finally:
-                if scoped_listing:
-                    cfg.file_ids = original_file_ids
-                    cfg.folder_ids = original_folder_ids
         except Exception as e:
             logger.warning(
                 "Skipping orphan compute — listing failed",
@@ -762,20 +755,12 @@ async def _expand_selected_connector_files(
     expanded_files_info: list[dict[str, Any]] = []
 
     if file_ids and hasattr(connector, "cfg"):
-        original_file_ids = getattr(connector.cfg, "file_ids", None)
-        original_folder_ids = getattr(connector.cfg, "folder_ids", None)
         try:
-            connector.cfg.file_ids = file_ids
-            connector.cfg.folder_ids = None
-
-            result = await connector.list_files()
+            result = await connector.list_selected_files(file_ids)
             for f in result.get("files", []):
                 expanded_files_info.append(_connector_file_response(f))
         except Exception as e:
             logger.error("Failed to expand files in duplicate check", error=str(e))
-        finally:
-            connector.cfg.file_ids = original_file_ids
-            connector.cfg.folder_ids = original_folder_ids
 
     if not expanded_files_info:
         for f in selected_files_raw:

@@ -31,12 +31,13 @@ def _make_connection(connection_id: str, is_active: bool = True):
 def _make_connector(remote_file_ids, *, authenticated=True, raise_on_list=False):
     connector = MagicMock()
     connector.is_authenticated = authenticated
+    response = {"files": [{"id": fid} for fid in remote_file_ids]}
     if raise_on_list:
         connector.list_files = AsyncMock(side_effect=RuntimeError("graph 503"))
+        connector.list_selected_files = AsyncMock(side_effect=RuntimeError("graph 503"))
     else:
-        connector.list_files = AsyncMock(
-            return_value={"files": [{"id": fid} for fid in remote_file_ids]}
-        )
+        connector.list_files = AsyncMock(return_value=response)
+        connector.list_selected_files = AsyncMock(return_value=response)
     return connector
 
 
@@ -313,6 +314,8 @@ async def test_multi_connection_one_offline_aborts_even_if_other_succeeds():
 
 @pytest.mark.asyncio
 async def test_paginated_listing_aggregates_all_pages():
+    """Connectors without cfg (e.g. bucket connectors) use the paginated
+    list_files() path.  Verify that all pages are consumed."""
     from api.connectors import reconcile_orphans_for_connector_type
 
     conn = _make_connection("c1")
@@ -323,6 +326,7 @@ async def test_paginated_listing_aggregates_all_pages():
         {"files": [{"id": "b"}, {"id": "c"}]},
     ]
     connector.list_files = AsyncMock(side_effect=pages)
+    del connector.cfg
 
     service = _make_service([conn], connector_lookup={"c1": connector})
     opensearch_client = _make_opensearch_client()

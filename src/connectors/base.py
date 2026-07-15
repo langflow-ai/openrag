@@ -152,6 +152,32 @@ class BaseConnector(ABC):
         """List all files. Returns files and next_page_token if any."""
         pass
 
+    async def list_selected_files(
+        self,
+        file_ids: list[str],
+        folder_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """List specific files/folders by temporarily scoping cfg.
+
+        Callers that need list_files() to operate on a specific set of ids
+        previously had to manually save cfg.file_ids / cfg.folder_ids, overwrite
+        them, call list_files(), then restore in a finally block.  This method
+        owns that save/restore so the caller never has to.
+        """
+        cfg = getattr(self, "cfg", None)
+        if cfg is None:
+            return await self.list_files(**kwargs)
+        orig_file_ids = getattr(cfg, "file_ids", None)
+        orig_folder_ids = getattr(cfg, "folder_ids", None)
+        try:
+            cfg.file_ids = file_ids
+            cfg.folder_ids = folder_ids
+            return await self.list_files(**kwargs)
+        finally:
+            cfg.file_ids = orig_file_ids
+            cfg.folder_ids = orig_folder_ids
+
     @abstractmethod
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
         """Get file content and metadata"""
