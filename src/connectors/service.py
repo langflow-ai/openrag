@@ -471,7 +471,10 @@ class ConnectorService:
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor, original_filenames=original_filenames
+            user_id,
+            file_ids,
+            processor,
+            original_filenames=original_filenames,
         )
 
         return task_id
@@ -485,6 +488,7 @@ class ConnectorService:
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        preview_mode: bool = False,
         shared: bool = False,
     ) -> str:
         """
@@ -662,7 +666,11 @@ class ConnectorService:
             }
 
         task_id = await self.task_service.create_custom_task(
-            user_id, expanded_file_ids, processor, original_filenames=original_filenames
+            user_id,
+            expanded_file_ids,
+            processor,
+            original_filenames=original_filenames,
+            preview_mode=preview_mode,
         )
 
         return task_id

@@ -44,6 +44,13 @@ interface IngestSettingsProps {
   onSettingsChange?: (settings: IngestSettingsType) => void;
   /** When true, show the "Make documents available to all users" toggle. COS ingestion only. */
   showShared?: boolean;
+  /**
+   * When false, hide the embedding model, chunking, OCR, and picture description
+   * controls, leaving only the shared toggle (if `showShared` is also true). Lets
+   * deployments that disable per-upload ingest tuning (e.g. SaaS) still expose the
+   * shared toggle on its own. Defaults to true.
+   */
+  showAdvancedSettings?: boolean;
 }
 
 export const IngestSettings = ({
@@ -52,6 +59,7 @@ export const IngestSettings = ({
   settings,
   onSettingsChange,
   showShared = false,
+  showAdvancedSettings = true,
 }: IngestSettingsProps) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
@@ -158,118 +166,127 @@ export const IngestSettings = ({
       </CollapsibleTrigger>
 
       <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-up-2 data-[state=open]:slide-down-2">
-        <div className="mt-6">
-          {/* Embedding model selection */}
-          <LabelWrapper
-            helperText="Model used for knowledge ingest and retrieval"
-            id="embedding-model-select"
-            label="Embedding model"
-          >
-            <Select
-              disabled={false}
-              value={selectEmbeddingValue}
-              onValueChange={(value) =>
-                handleSettingsChange({ embeddingModel: value })
+        {showAdvancedSettings && (
+          <div className="mt-6">
+            {/* Embedding model selection */}
+            <LabelWrapper
+              helperText="Model used for knowledge ingest and retrieval"
+              id="embedding-model-select"
+              label="Embedding model"
+            >
+              <Select
+                disabled={false}
+                value={selectEmbeddingValue}
+                onValueChange={(value) =>
+                  handleSettingsChange({ embeddingModel: value })
+                }
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <SelectTrigger id="embedding-model-select">
+                      <SelectValue placeholder="Select an embedding model" />
+                    </SelectTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Choose the embedding model for this upload
+                  </TooltipContent>
+                </Tooltip>
+                <SelectContent>
+                  <ModelSelectItems
+                    models={embeddingSelectOptions}
+                    fallbackModels={[]}
+                    provider={currentProvider}
+                  />
+                </SelectContent>
+              </Select>
+            </LabelWrapper>
+          </div>
+        )}
+        {showAdvancedSettings && (
+          <div className="mt-6">
+            <div className="flex items-center gap-4 w-full mb-6">
+              <div className="w-full">
+                <NumberInput
+                  id="chunk-size"
+                  label="Chunk size"
+                  value={currentSettings.chunkSize}
+                  onChange={(value) =>
+                    handleSettingsChange({ chunkSize: value })
+                  }
+                  unit="characters"
+                />
+              </div>
+              <div className="w-full">
+                <NumberInput
+                  id="chunk-overlap"
+                  label="Chunk overlap"
+                  value={currentSettings.chunkOverlap}
+                  onChange={(value) =>
+                    handleSettingsChange({ chunkOverlap: value })
+                  }
+                  unit="characters"
+                />
+              </div>
+            </div>
+
+            {/* <div className="flex gap-2 items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold pb-2">Table Structure</div>
+                <div className="text-sm text-muted-foreground">
+                  Capture table structure during ingest.
+                </div>
+              </div>
+              <Switch
+                id="table-structure"
+                checked={currentSettings.tableStructure}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ tableStructure: checked })
+                }
+              />
+            </div> */}
+
+            <div className="flex items-center justify-between border-b pb-3 mb-3">
+              <div>
+                <div className="text-sm font-semibold pb-2">OCR</div>
+                <div className="text-sm text-muted-foreground">
+                  Extracts text from images/PDFs. Ingest is slower when enabled.
+                </div>
+              </div>
+              <Switch
+                checked={currentSettings.ocr}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ ocr: checked })
+                }
+              />
+            </div>
+
+            <div
+              className={
+                showShared
+                  ? "flex items-center justify-between border-b pb-3 mb-3"
+                  : "flex items-center justify-between"
               }
             >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <SelectTrigger id="embedding-model-select">
-                    <SelectValue placeholder="Select an embedding model" />
-                  </SelectTrigger>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Choose the embedding model for this upload
-                </TooltipContent>
-              </Tooltip>
-              <SelectContent>
-                <ModelSelectItems
-                  models={embeddingSelectOptions}
-                  fallbackModels={[]}
-                  provider={currentProvider}
-                />
-              </SelectContent>
-            </Select>
-          </LabelWrapper>
-        </div>
-        <div className="mt-6">
-          <div className="flex items-center gap-4 w-full mb-6">
-            <div className="w-full">
-              <NumberInput
-                id="chunk-size"
-                label="Chunk size"
-                value={currentSettings.chunkSize}
-                onChange={(value) => handleSettingsChange({ chunkSize: value })}
-                unit="characters"
-              />
-            </div>
-            <div className="w-full">
-              <NumberInput
-                id="chunk-overlap"
-                label="Chunk overlap"
-                value={currentSettings.chunkOverlap}
-                onChange={(value) =>
-                  handleSettingsChange({ chunkOverlap: value })
+              <div>
+                <div className="text-sm pb-2 font-semibold">
+                  Picture descriptions
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Adds captions for images. Ingest is more expensive when
+                  enabled.
+                </div>
+              </div>
+              <Switch
+                checked={currentSettings.pictureDescriptions}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ pictureDescriptions: checked })
                 }
-                unit="characters"
               />
             </div>
           </div>
+        )}
 
-          {/* <div className="flex gap-2 items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold pb-2">Table Structure</div>
-              <div className="text-sm text-muted-foreground">
-                Capture table structure during ingest.
-              </div>
-            </div>
-            <Switch
-              id="table-structure"
-              checked={currentSettings.tableStructure}
-              onCheckedChange={(checked) =>
-                handleSettingsChange({ tableStructure: checked })
-              }
-            />
-          </div> */}
-
-          <div className="flex items-center justify-between border-b pb-3 mb-3">
-            <div>
-              <div className="text-sm font-semibold pb-2">OCR</div>
-              <div className="text-sm text-muted-foreground">
-                Extracts text from images/PDFs. Ingest is slower when enabled.
-              </div>
-            </div>
-            <Switch
-              checked={currentSettings.ocr}
-              onCheckedChange={(checked) =>
-                handleSettingsChange({ ocr: checked })
-              }
-            />
-          </div>
-
-          <div
-            className={
-              showShared
-                ? "flex items-center justify-between border-b pb-3 mb-3"
-                : "flex items-center justify-between"
-            }
-          >
-            <div>
-              <div className="text-sm pb-2 font-semibold">
-                Picture descriptions
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Adds captions for images. Ingest is more expensive when enabled.
-              </div>
-            </div>
-            <Switch
-              checked={currentSettings.pictureDescriptions}
-              onCheckedChange={(checked) =>
-                handleSettingsChange({ pictureDescriptions: checked })
-              }
-            />
-          </div>
-
+        <div className={showAdvancedSettings ? "" : "mt-6"}>
           {showShared && (
             <div className="flex items-center justify-between">
               <div>

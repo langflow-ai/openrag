@@ -198,9 +198,12 @@ async def test_non_cos_connector_rejects_shared_true():
     response = await connector_sync(
         connector_type="google_drive",
         body=body,
+        request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
         user=user,
+        session=AsyncMock(),
+        rbac=MagicMock(),
     )
     assert response.status_code == 400
     import json
@@ -229,9 +232,12 @@ async def test_ibm_cos_shared_true_does_not_hit_guard():
     response = await connector_sync(
         connector_type="ibm_cos",
         body=body,
+        request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
         user=user,
+        session=AsyncMock(),
+        rbac=MagicMock(),
     )
     # 404 = "no active connections" error, not 400 = guard rejection
     assert response.status_code == 404

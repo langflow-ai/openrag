@@ -25,6 +25,7 @@ from services.document_index_writer import DocumentIndexWriter
 from services.document_service import DocumentService
 from services.flows_service import FlowsService
 from services.group_acl_service import GroupACLService
+from services.ingest_preview_service import IngestPreviewService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.langflow_ingest_token_service import LangflowIngestTokenService
@@ -82,6 +83,7 @@ async def initialize_services():
     models_service = ModelsService()
     document_index_writer = DocumentIndexWriter()
     langflow_ingest_token_service = LangflowIngestTokenService()
+    ingest_preview_service = IngestPreviewService()
     document_service = DocumentService(
         session_manager=session_manager,
         models_service=models_service,
@@ -232,6 +234,7 @@ async def initialize_services():
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
         "docling_polling_service": docling_polling_service,
+        "ingest_preview_service": ingest_preview_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
     }
