@@ -43,7 +43,7 @@ wait_for_url() {
 
   echo "${yellow}Waiting for ${label}...${nc}"
   for _ in $(seq 1 "$attempts"); do
-    if curl -s "$url" >/dev/null 2>&1; then
+    if curl -sf "$url" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -112,25 +112,213 @@ generate_report() {
   fi
 }
 
-teardown() {
-  local status=$?
-  if [[ "$status" -ne 0 && "$test_result" -eq 0 ]]; then
-    test_result="$status"
-  fi
-
-  generate_report || true
-
-  if [[ "$test_result" -ne 0 ]]; then
-    dump_logs || true
-  fi
-
-  echo "${yellow}Tearing down infra${nc}"
+clean_infra() {
+  echo "${yellow}Tearing down infra and cleaning up files...${nc}"
   uv run python scripts/docling_ctl.py stop || true
-  "${compose_cmd[@]}" down -v 2>/dev/null || true
-
-  exit "$test_result"
+  
+  local exit_status=0
+  if ! "${compose_cmd[@]}" down -v 2>/dev/null; then
+    echo "${red}ERROR: docker compose down failed${nc}"
+    exit_status=1
+  fi
+  
+  if command -v sudo >/dev/null 2>&1; then
+    if ! sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows; then
+      echo "${red}ERROR: sudo rm -rf failed${nc}"
+      exit_status=1
+    fi
+  else
+    if ! rm -rf langflow-data config data keys opensearch-data openrag-documents flows 2>/dev/null; then
+      local docker_rm_success=false
+      for i in 1 2 3; do
+        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents"; then
+          docker_rm_success=true
+          break
+        fi
+        echo "Attempt $i failed, retrying in 5s..."
+        sleep 5
+      done
+      if [ "$docker_rm_success" = "false" ]; then
+        echo "${red}ERROR: alpine rm -rf failed${nc}"
+        exit_status=1
+      fi
+    fi
+  fi
+  
+  return "$exit_status"
 }
-trap teardown EXIT
+
+trap_cleanup() {
+  echo "${red}Interrupted! Cleaning up...${nc}"
+  clean_infra || true
+  exit 1
+}
+trap trap_cleanup SIGINT SIGTERM
+
+run_attempt() {
+  local exit_code=0
+
+  echo "::group::Start Infrastructure"
+  echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENRAG_VERSION:-latest}'${nc}"
+  if ! OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend; then
+    echo "${red}ERROR: docker compose up failed${nc}"
+    return 1
+  fi
+
+  echo "${cyan}Architecture: $(uname -m), Platform: $(uname -s)${nc}"
+
+  # Normalize host architecture
+  host_arch="$(uname -m)"
+  host_arch_norm=""
+  if [[ "$host_arch" == "x86_64" ]]; then
+    host_arch_norm="amd64"
+  elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
+    host_arch_norm="arm64"
+  else
+    host_arch_norm="$host_arch"
+  fi
+
+  # Get image architecture
+  image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
+  image_arch=$("$container_runtime" inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
+
+  if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
+    echo "${red}WARNING: Architecture mismatch detected!${nc}"
+    echo "${red}Host architecture is '${host_arch}' (${host_arch_norm}), but container image architecture is '${image_arch}'.${nc}"
+    echo "${red}The backend will run under QEMU emulation, which is extremely slow and may cause timeouts.${nc}"
+  fi
+
+  echo "${yellow}Starting docling-serve...${nc}"
+  docling_start_failed=0
+  docling_start_output="$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1)" || docling_start_failed=1
+  echo "$docling_start_output"
+  if [[ "$docling_start_failed" = "1" ]]; then
+    echo "${red}ERROR: docling_ctl.py start failed. Output above.${nc}"
+    uv run python scripts/docling_ctl.py status 2>&1 || true
+    return 1
+  fi
+
+  docling_endpoint="$(echo "$docling_start_output" | grep "Endpoint:" | awk '{print $2}')"
+  if [[ -z "$docling_endpoint" ]]; then
+    echo "${red}WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001${nc}"
+    docling_endpoint="http://localhost:5001"
+  fi
+
+  echo "${purple}Docling-serve started at ${docling_endpoint}${nc}"
+  echo "${yellow}Docling-serve status check:${nc}"
+  uv run python scripts/docling_ctl.py status 2>&1 || true
+
+  echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
+  for i in $(seq 1 60); do
+    if "${compose_cmd[@]}" exec -T openrag-backend curl -sf http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+      break
+    fi
+    if [[ "$i" -eq 60 ]]; then
+      echo "${red}Backend OIDC endpoint was not reachable in time${nc}"
+      echo "${yellow}--- Last 50 lines of backend logs ---${nc}"
+      "$container_runtime" logs --tail 50 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 || true
+      echo "${yellow}------------------------------------${nc}"
+      return 1
+    fi
+    sleep 2
+  done
+
+  echo "${yellow}Fixing JWT key ownership for test runner (host UID $(id -u))...${nc}"
+  "$container_runtime" run --rm -v "$(pwd)/keys:/keys" alpine sh -c "chown $(id -u):$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true
+
+  echo "${yellow}Waiting for OpenSearch security config to be fully applied...${nc}"
+  for i in $(seq 1 60); do
+    if "${compose_cmd[@]}" logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then
+      echo "${purple}Security configuration applied${nc}"
+      break
+    fi
+    if [[ "$i" -eq 60 ]]; then
+      echo "${red}OpenSearch security config was not applied in time${nc}"
+      return 1
+    fi
+    sleep 2
+  done
+
+  echo "${yellow}Verifying OIDC authenticator is active in OpenSearch...${nc}"
+  for i in $(seq 1 30); do
+    authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:${OPENSEARCH_PORT}/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
+    if echo "$authc_config" | grep -q "openid_auth_domain"; then
+      echo "${purple}OIDC authenticator configured${nc}"
+      echo "$authc_config" | grep -A 5 "openid_auth_domain" || true
+      break
+    fi
+    if [[ "$i" -eq 30 ]]; then
+      echo "${red}OIDC authenticator NOT found or unreachable in time!${nc}"
+      echo "Security config output: $authc_config"
+      return 1
+    fi
+    sleep 2
+  done
+
+  if ! wait_for_url "Langflow" "http://localhost:${LANGFLOW_PORT}/" 60; then
+    return 1
+  fi
+  if ! wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60; then
+    return 1
+  fi
+  echo "::endgroup::"
+
+  # Clear and recreate service logs directory to isolate diagnostic artifacts per attempt
+  rm -rf service-logs
+  mkdir -p service-logs
+
+  case "$suite" in
+    core)
+      echo "::group::Core Integration Tests"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      echo "${purple} Core Integration Tests${nc}"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
+        GOOGLE_OAUTH_CLIENT_ID="" \
+        GOOGLE_OAUTH_CLIENT_SECRET="" \
+        OPENSEARCH_HOST=localhost OPENSEARCH_PORT=${OPENSEARCH_PORT} \
+        OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
+        DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
+        uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || exit_code=1
+      echo "::endgroup::"
+      test_jwt_opensearch || exit_code=1
+      ;;
+    sdk-python)
+      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+        return 1
+      fi
+      echo "::group::SDK Integration Tests (Python)"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      echo "${purple} SDK Integration Tests (Python)${nc}"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      if ! uv pip install --quiet -e sdks/python; then
+        echo "${red}ERROR: uv pip install failed${nc}"
+        return 1
+      fi
+      SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
+      echo "::endgroup::"
+      ;;
+    sdk-typescript)
+      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+        return 1
+      fi
+      echo "::group::SDK Integration Tests (TypeScript)"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      echo "${purple} SDK Integration Tests (TypeScript)${nc}"
+      echo "${cyan}════════════════════════════════════════${nc}"
+      cd sdks/typescript
+      npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || exit_code=1
+      cd ../..
+      echo "::endgroup::"
+      ;;
+    *)
+      echo "${red}Unknown integration suite: ${suite}${nc}"
+      exit_code=1
+      ;;
+  esac
+
+  return "$exit_code"
+}
 
 if [[ -z "${OPENSEARCH_PASSWORD:-}" ]]; then
   echo "${red}OPENSEARCH_PASSWORD is required${nc}"
@@ -140,149 +328,32 @@ fi
 echo "${yellow}Installing test dependencies...${nc}"
 uv sync --quiet --group dev
 
-echo "::group::Start Infrastructure"
-echo "${yellow}Cleaning up old containers and volumes...${nc}"
-"${compose_cmd[@]}" down -v 2>/dev/null || true
+max_attempts=2
+test_result=0
 
-echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENRAG_VERSION:-latest}'${nc}"
-OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend
-
-echo "${cyan}Architecture: $(uname -m), Platform: $(uname -s)${nc}"
-
-# Normalize host architecture
-host_arch="$(uname -m)"
-host_arch_norm=""
-if [[ "$host_arch" == "x86_64" ]]; then
-  host_arch_norm="amd64"
-elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
-  host_arch_norm="arm64"
-else
-  host_arch_norm="$host_arch"
-fi
-
-# Get image architecture
-image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
-image_arch=$("$container_runtime" inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
-
-if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
-  echo "${red}WARNING: Architecture mismatch detected!${nc}"
-  echo "${red}Host architecture is '${host_arch}' (${host_arch_norm}), but container image architecture is '${image_arch}'.${nc}"
-  echo "${red}The backend will run under QEMU emulation, which is extremely slow and may cause timeouts.${nc}"
-fi
-
-echo "${yellow}Starting docling-serve...${nc}"
-docling_start_failed=0
-docling_start_output="$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1)" || docling_start_failed=1
-echo "$docling_start_output"
-if [[ "$docling_start_failed" = "1" ]]; then
-  echo "${red}ERROR: docling_ctl.py start failed. Output above.${nc}"
-  uv run python scripts/docling_ctl.py status 2>&1 || true
-  exit 1
-fi
-
-docling_endpoint="$(echo "$docling_start_output" | grep "Endpoint:" | awk '{print $2}')"
-if [[ -z "$docling_endpoint" ]]; then
-  echo "${red}WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001${nc}"
-  docling_endpoint="http://localhost:5001"
-fi
-
-echo "${purple}Docling-serve started at ${docling_endpoint}${nc}"
-echo "${yellow}Docling-serve status check:${nc}"
-uv run python scripts/docling_ctl.py status 2>&1 || true
-
-echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
-for i in $(seq 1 60); do
-  if "${compose_cmd[@]}" exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+for attempt in $(seq 1 "$max_attempts"); do
+  echo "${yellow}=== Starting Integration Suite '${suite}' - Attempt $attempt of $max_attempts ===${nc}"
+  
+  if run_attempt; then
+    echo "${green}Attempt $attempt succeeded!${nc}"
+    test_result=0
     break
-  fi
-  if [[ "$i" -eq 60 ]]; then
-    echo "${red}Backend OIDC endpoint was not reachable in time${nc}"
-    echo "${yellow}--- Last 50 lines of backend logs ---${nc}"
-    "$container_runtime" logs --tail 50 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 || true
-    echo "${yellow}------------------------------------${nc}"
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "${yellow}Fixing JWT key ownership for test runner (host UID $(id -u))...${nc}"
-"$container_runtime" run --rm -v "$(pwd)/keys:/keys" alpine sh -c "chown $(id -u):$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true
-
-echo "${yellow}Waiting for OpenSearch security config to be fully applied...${nc}"
-for i in $(seq 1 60); do
-  if "${compose_cmd[@]}" logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then
-    echo "${purple}Security configuration applied${nc}"
-    break
-  fi
-  if [[ "$i" -eq 60 ]]; then
-    echo "${red}OpenSearch security config was not applied in time${nc}"
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "${yellow}Verifying OIDC authenticator is active in OpenSearch...${nc}"
-for i in $(seq 1 30); do
-  authc_config="$(curl -k -s -u "admin:${OPENSEARCH_PASSWORD}" https://localhost:${OPENSEARCH_PORT}/_opendistro/_security/api/securityconfig 2>/dev/null || true)"
-  if echo "$authc_config" | grep -q "openid_auth_domain"; then
-    echo "${purple}OIDC authenticator configured${nc}"
-    echo "$authc_config" | grep -A 5 "openid_auth_domain" || true
-    break
-  fi
-  if [[ "$i" -eq 30 ]]; then
-    echo "${red}OIDC authenticator NOT found or unreachable in time!${nc}"
-    echo "Security config output: $authc_config"
-    exit 1
-  fi
-  sleep 2
-done
-
-wait_for_url "Langflow" "http://localhost:${LANGFLOW_PORT}/" 60
-wait_for_url "docling-serve at ${docling_endpoint}" "${docling_endpoint}/health" 60
-echo "::endgroup::"
-
-mkdir -p service-logs
-
-case "$suite" in
-  core)
-    echo "::group::Core Integration Tests"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    echo "${purple} Core Integration Tests${nc}"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    mkdir -p service-logs
-    LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
-      GOOGLE_OAUTH_CLIENT_ID="" \
-      GOOGLE_OAUTH_CLIENT_SECRET="" \
-      OPENSEARCH_HOST=localhost OPENSEARCH_PORT=${OPENSEARCH_PORT} \
-      OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD}" \
-      DISABLE_STARTUP_INGEST="${DISABLE_STARTUP_INGEST:-true}" \
-      uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || test_result=1
-    echo "::endgroup::"
-    test_jwt_opensearch || test_result=1
-    ;;
-  sdk-python)
-    wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60
-    echo "::group::SDK Integration Tests (Python)"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    echo "${purple} SDK Integration Tests (Python)${nc}"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    uv pip install --quiet -e sdks/python
-    SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || test_result=1
-    echo "::endgroup::"
-    ;;
-  sdk-typescript)
-    wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60
-    echo "::group::SDK Integration Tests (TypeScript)"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    echo "${purple} SDK Integration Tests (TypeScript)${nc}"
-    echo "${cyan}════════════════════════════════════════${nc}"
-    cd sdks/typescript
-    npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || test_result=1
-    cd ../..
-    echo "::endgroup::"
-    ;;
-  *)
-    echo "${red}Unknown integration suite: ${suite}${nc}"
+  else
+    echo "${red}Attempt $attempt failed!${nc}"
     test_result=1
-    ;;
-esac
+    dump_logs || true
+    
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      if ! clean_infra; then
+        echo "${red}ERROR: Cleanup failed. Aborting further attempts.${nc}"
+        test_result=1
+        break
+      fi
+      echo "${yellow}Retrying in 5 seconds...${nc}"
+      sleep 5
+    fi
+  fi
+done
+
+generate_report || true
+exit "$test_result"
