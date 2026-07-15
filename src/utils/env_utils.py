@@ -34,3 +34,15 @@ def get_env_int(key: str, default: int | None = None) -> int | None:
 def get_env_float(key: str, default: float | None = None) -> float | None:
     """Get an environment variable as a float."""
     return safe_float(os.getenv(key), default)
+
+
+def get_env_set(key: str) -> set[str] | None:
+    """Return a set of non-empty strings from a comma-separated env var.
+
+    Returns None (not an empty set) when the variable is absent or blank,
+    so callers can distinguish 'unset = skip check' from 'set-but-empty = block all'.
+    """
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return None
+    return {v.strip() for v in raw.split(",") if v.strip()}
