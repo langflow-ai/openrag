@@ -14,10 +14,6 @@ concurrency:
   group: test-ci-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: write
-
 env:
   NODE_VERSION: "22"
   PYTHON_VERSION: "3.13"
@@ -25,6 +21,7 @@ env:
   PLAYWRIGHT_VERSION: "1.57.0"
   # Total number of parallel E2E test shards
   TOTAL_SHARDS: 8
+  IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
@@ -50,6 +47,8 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       e2e: ${{ steps.filter.outputs.e2e }}
       integration: ${{ steps.filter.outputs.integration }}
@@ -77,6 +76,9 @@ jobs:
     if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +92,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -124,7 +127,13 @@ jobs:
       - name: Build and Push OpenRAG image
         run: |
           USE_LOCAL="${{ inputs.use_local_images }}"
-          REGISTRY_IMAGE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}"
+          IS_FORK="${{ env.IS_FORK }}"
+          
+          if [ "$IS_FORK" = "true" ]; then
+            REGISTRY_IMAGE="langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}"
+          else
+            REGISTRY_IMAGE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}"
+          fi
           
           mkdir -p /tmp/image-cache
           
@@ -201,14 +210,16 @@ jobs:
             echo "Build/pull attempt $i..."
             if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
               if build_or_load_image "${{ matrix.image }}" "$DOCKERFILE"; then
-                # Push the image to GHCR
-                docker push "${REGISTRY_IMAGE}"
+                if [ "$IS_FORK" != "true" ]; then
+                  docker push "${REGISTRY_IMAGE}"
+                fi
                 break
               fi
             else
               if pull_image "${{ matrix.image }}"; then
-                # Push the image to GHCR
-                docker push "${REGISTRY_IMAGE}"
+                if [ "$IS_FORK" != "true" ]; then
+                  docker push "${REGISTRY_IMAGE}"
+                fi
                 break
               fi
             fi
@@ -219,6 +230,21 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Save OpenRAG image (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          mkdir -p .ci-artifacts
+          docker save -o .ci-artifacts/${{ matrix.image }}.tar langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}
+
+      - name: Upload OpenRAG image artifact (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrag-ci-image-${{ matrix.image }}-${{ github.sha }}
+          path: .ci-artifacts/${{ matrix.image }}.tar
+          retention-days: 1
+          compression-level: 0
 
       - name: Cleanup workspace and Docker images
         if: always()
@@ -237,6 +263,9 @@ jobs:
     if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -263,7 +292,24 @@ jobs:
       - name: Python version
         run: uv python install 3.13
 
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openrag-ci-image-*-${{ github.sha }}
+          path: .ci-artifacts
+          merge-multiple: true
+
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
+          rm -rf .ci-artifacts
+
       - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -272,10 +318,12 @@ jobs:
 
       - name: Set lower case repository name
         id: repo
+        if: env.IS_FORK != 'true'
         run: |
           echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
         run: |
           REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
           for image in opensearch backend frontend langflow; do
@@ -325,6 +373,9 @@ jobs:
     if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -385,7 +436,24 @@ jobs:
             fi
           done
 
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openrag-ci-image-*-${{ github.sha }}
+          path: .ci-artifacts
+          merge-multiple: true
+
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
+          rm -rf .ci-artifacts
+
       - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -394,10 +462,12 @@ jobs:
 
       - name: Set lower case repository name
         id: repo
+        if: env.IS_FORK != 'true'
         run: |
           echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
         run: |
           REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
           for image in opensearch backend frontend langflow; do
@@ -514,6 +584,8 @@ jobs:
     if: always()
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
     steps:
       - name: Check split integration result
         run: |
@@ -534,6 +606,8 @@ jobs:
     if: always()
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
     steps:
       - name: Check E2E result
         run: |
@@ -551,7 +625,7 @@ jobs:
 
   cleanup-packages:
     needs: [tests, e2e]
-    if: always()
+    if: always() && env.IS_FORK != 'true'
     runs-on:
       labels: "ubuntu-latest"
     permissions:

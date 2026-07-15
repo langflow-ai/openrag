@@ -43,7 +43,7 @@ wait_for_url() {
 
   echo "${yellow}Waiting for ${label}...${nc}"
   for _ in $(seq 1 "$attempts"); do
-    if curl -s "$url" >/dev/null 2>&1; then
+    if curl -sf "$url" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -115,23 +115,42 @@ generate_report() {
 clean_infra() {
   echo "${yellow}Tearing down infra and cleaning up files...${nc}"
   uv run python scripts/docling_ctl.py stop || true
-  "${compose_cmd[@]}" down -v 2>/dev/null || true
+  
+  local exit_status=0
+  if ! "${compose_cmd[@]}" down -v 2>/dev/null; then
+    echo "${red}ERROR: docker compose down failed${nc}"
+    exit_status=1
+  fi
   
   if command -v sudo >/dev/null 2>&1; then
-    sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows
+    if ! sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows; then
+      echo "${red}ERROR: sudo rm -rf failed${nc}"
+      exit_status=1
+    fi
   else
-    rm -rf langflow-data config data keys opensearch-data openrag-documents flows 2>/dev/null || \
-    for i in 1 2 3; do
-      docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-      echo "Attempt $i failed, retrying in 5s..."
-      sleep 5
-    done || true
+    if ! rm -rf langflow-data config data keys opensearch-data openrag-documents flows 2>/dev/null; then
+      local docker_rm_success=false
+      for i in 1 2 3; do
+        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents"; then
+          docker_rm_success=true
+          break
+        fi
+        echo "Attempt $i failed, retrying in 5s..."
+        sleep 5
+      done
+      if [ "$docker_rm_success" = "false" ]; then
+        echo "${red}ERROR: alpine rm -rf failed${nc}"
+        exit_status=1
+      fi
+    fi
   fi
+  
+  return "$exit_status"
 }
 
 trap_cleanup() {
   echo "${red}Interrupted! Cleaning up...${nc}"
-  clean_infra
+  clean_infra || true
   exit 1
 }
 trap trap_cleanup SIGINT SIGTERM
@@ -191,7 +210,7 @@ run_attempt() {
 
   echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
   for i in $(seq 1 60); do
-    if "${compose_cmd[@]}" exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+    if "${compose_cmd[@]}" exec -T openrag-backend curl -sf http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
       break
     fi
     if [[ "$i" -eq 60 ]]; then
@@ -244,6 +263,8 @@ run_attempt() {
   fi
   echo "::endgroup::"
 
+  # Clear and recreate service logs directory to isolate diagnostic artifacts per attempt
+  rm -rf service-logs
   mkdir -p service-logs
 
   case "$suite" in
@@ -263,17 +284,24 @@ run_attempt() {
       test_jwt_opensearch || exit_code=1
       ;;
     sdk-python)
-      wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60
+      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+        return 1
+      fi
       echo "::group::SDK Integration Tests (Python)"
       echo "${cyan}════════════════════════════════════════${nc}"
       echo "${purple} SDK Integration Tests (Python)${nc}"
       echo "${cyan}════════════════════════════════════════${nc}"
-      uv pip install --quiet -e sdks/python
+      if ! uv pip install --quiet -e sdks/python; then
+        echo "${red}ERROR: uv pip install failed${nc}"
+        return 1
+      fi
       SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
       echo "::endgroup::"
       ;;
     sdk-typescript)
-      wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60
+      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+        return 1
+      fi
       echo "::group::SDK Integration Tests (TypeScript)"
       echo "${cyan}════════════════════════════════════════${nc}"
       echo "${purple} SDK Integration Tests (TypeScript)${nc}"
@@ -316,7 +344,11 @@ for attempt in $(seq 1 "$max_attempts"); do
     dump_logs || true
     
     if [ "$attempt" -lt "$max_attempts" ]; then
-      clean_infra
+      if ! clean_infra; then
+        echo "${red}ERROR: Cleanup failed. Aborting further attempts.${nc}"
+        test_result=1
+        break
+      fi
       echo "${yellow}Retrying in 5 seconds...${nc}"
       sleep 5
     fi
