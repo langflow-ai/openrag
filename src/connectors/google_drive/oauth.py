@@ -12,6 +12,33 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+def _verify_id_token(id_token: str | None) -> dict | None:
+    """
+    Verify Google ID token signature, expiry, audience, and issuer.
+
+    Returns the verified claims dict on success.
+    Raises JWTVerificationError (or a subclass) if verification fails — callers
+    must NOT proceed with credentials that carry an invalid ID token.
+    Returns None only when no id_token is present or verification is not configured.
+    """
+    if not id_token:
+        return None
+
+    from config.settings import GOOGLE_OAUTH_CLIENT_ID
+    from utils.jwt_verification import verify_google_id_token
+
+    if not GOOGLE_OAUTH_CLIENT_ID:
+        logger.warning("GOOGLE_OAUTH_CLIENT_ID not configured - skipping ID token verification")
+        return None
+
+    # Raises JWTVerificationError on any failure — intentionally not caught here
+    # so that callers propagate the error and refuse to use invalid credentials.
+    claims = verify_google_id_token(id_token, GOOGLE_OAUTH_CLIENT_ID)
+    logger.debug("Google ID token verified, sub=%s", claims.get("sub"))
+    return claims
+
+
 _REFRESH_TIMEOUT_SECONDS = 30
 
 
@@ -215,6 +242,11 @@ class GoogleDriveOAuth:
         await asyncio.to_thread(self._flow.fetch_token, code=authorization_code)
         self.creds = self._flow.credentials
         logger.debug("[GoogleDrive] handle_authorization_callback: token exchange complete")
+
+        # Verify the ID token immediately after code exchange. Raises JWTVerificationError
+        # on failure — the connection is rejected before credentials are persisted.
+        if self.creds and self.creds.id_token:
+            _verify_id_token(self.creds.id_token)
 
         await self.save_credentials()
         return True
