@@ -735,11 +735,11 @@ frontend: ## Run frontend locally
 		echo "$(YELLOW)Detected Power architecture ($$ARCH) — using Webpack fallback$(NC)"; \
 		npx next dev --webpack \
 			--port $$PORT \
-			--hostname $(hostname); \
+			--hostname $$(hostname); \
 	else \
 		npx next dev \
 			--port $$PORT \
-			--hostname $(hostname); \
+			--hostname $$(hostname); \
 	fi
 
 docling: ## Start docling-serve for document processing
