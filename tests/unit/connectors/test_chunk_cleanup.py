@@ -68,6 +68,37 @@ def test_query_unscoped_when_no_owner():
     assert "must_not" not in query["bool"]
 
 
+def test_query_connector_type_filter():
+    query = build_connector_file_chunks_query(["f"], connector_type="ibm_cos")
+    assert {"term": {"connector_type": "ibm_cos"}} in query["bool"]["filter"]
+
+
+def test_query_connector_type_with_private_owner():
+    query = build_connector_file_chunks_query(
+        ["f"], connector_type="google_drive", owner_user_id="alice"
+    )
+    filters = query["bool"]["filter"]
+    assert {"term": {"connector_type": "google_drive"}} in filters
+    assert {"term": {"owner": "alice"}} in filters
+
+
+def test_query_connector_type_with_shared_scope():
+    query = build_connector_file_chunks_query(
+        ["f"], connector_type="ibm_cos", shared=True
+    )
+    filters = query["bool"]["filter"]
+    assert {"term": {"connector_type": "ibm_cos"}} in filters
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+    assert {"term": {"owner": "alice"}} not in filters
+
+
+def test_query_no_connector_type_when_none():
+    query = build_connector_file_chunks_query(["f"])
+    for f in query["bool"]["filter"]:
+        if "term" in f:
+            assert "connector_type" not in f["term"]
+
+
 @pytest.mark.asyncio
 async def test_empty_ids_short_circuit_without_calling_opensearch(write_client):
     opensearch_client = AsyncMock()

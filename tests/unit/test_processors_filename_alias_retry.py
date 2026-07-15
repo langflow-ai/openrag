@@ -30,6 +30,7 @@ async def test_check_filename_exists_bulk_queries_all_aliases_and_retries():
 
     assert exists is False
     assert len(calls) == 2  # first attempt timed out, retry succeeded
+    assert calls[0] == calls[1]  # retry sends the identical query
     for body in calls:
         queried = set(body["query"]["terms"]["filename"])
         # Both the .txt name and its .md ingestion alias are covered in one query.

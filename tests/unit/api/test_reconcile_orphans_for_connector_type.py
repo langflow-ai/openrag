@@ -234,6 +234,62 @@ async def test_happy_path_deletes_orphans(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_happy_path_private_scopes_to_owner(monkeypatch):
+    """Private orphan cleanup must filter by connector_type and owner."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="google_drive",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+    )
+
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"term": {"connector_type": "google_drive"}} in filters
+    assert {"term": {"owner": "alice"}} in filters
+
+
+@pytest.mark.asyncio
+async def test_happy_path_shared_scopes_to_ownerless(monkeypatch):
+    """Shared orphan cleanup must filter by connector_type and ownerless chunks."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        shared=True,
+    )
+
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"term": {"connector_type": "ibm_cos"}} in filters
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+    assert {"term": {"owner": "alice"}} not in filters
+
+
+@pytest.mark.asyncio
 async def test_delete_failure_does_not_raise(monkeypatch):
     from api.connectors import reconcile_orphans_for_connector_type
 

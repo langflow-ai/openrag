@@ -92,7 +92,7 @@ async def test_traditional_processor_duplicate_exists_with_replace():
 
     # Mock base class methods directly on the instance to ensure perfect isolation
     processor.check_filename_exists = AsyncMock(return_value=True)
-    processor.delete_document_by_filename = AsyncMock()
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
     processor.process_document_standard = AsyncMock(return_value={"status": "indexed"})
 
     upload_task = UploadTask(task_id="task-123", total_files=1)
@@ -147,6 +147,65 @@ async def test_langflow_processor_duplicate_exists_no_replace():
     langflow_file_service.upload_and_ingest_file.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_resolve_duplicate_skips_when_delete_removes_nothing():
+    """If replace is requested but deletion removes 0 chunks (e.g. owner_user_id
+    missing on a private sync), resolve_duplicate_filename must return 'skip'
+    instead of falsely reporting 'replaced'."""
+    from models.processors import TaskProcessor
+
+    processor = TaskProcessor()
+    opensearch_client = AsyncMock()
+
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+
+    result = await processor.resolve_duplicate_filename(
+        "report.pdf",
+        opensearch_client,
+        replace=True,
+        owner_user_id=None,
+    )
+
+    assert result == "skip"
+    processor.delete_document_by_filename.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
+    """shared=True with no owner_user_id must use the anonymous filename query
+    instead of silently skipping deletion."""
+    from types import SimpleNamespace
+
+    from models.processors import TaskProcessor
+
+    admin_client = AsyncMock()
+    admin_client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "test-index")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "chunk-1"}]}}
+    )
+
+    processor = TaskProcessor()
+    deleted = await processor.delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id=None,
+        shared=True,
+    )
+
+    assert deleted == 1
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+
+
 def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
     document_service = MagicMock()
     document_service.session_manager = MagicMock()
@@ -187,7 +246,7 @@ async def test_s3_processor_duplicate_exists_with_replace(tmp_path):
     is downloaded and processed."""
     processor = _build_s3_processor(replace_duplicates=True)
     processor.check_filename_exists = AsyncMock(return_value=True)
-    processor.delete_document_by_filename = AsyncMock()
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
     processor.process_document_standard = AsyncMock(
         return_value={"status": "indexed", "id": "hash-1"}
     )

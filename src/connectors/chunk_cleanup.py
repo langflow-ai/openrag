@@ -22,11 +22,15 @@ from typing import Any
 def build_connector_file_chunks_query(
     file_ids: Iterable[str],
     *,
+    connector_type: str | None = None,
     owner_user_id: str | None = None,
     shared: bool = False,
     keep_filenames: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Query matching every chunk of the given connector file ids.
+
+    ``connector_type`` narrows the match to a single connector type so IDs
+    that happen to collide across connectors are not affected.
 
     ``keep_filenames`` excludes chunks indexed under those names — used by
     rename cleanup to drop only the stale old-name chunks of a file id.
@@ -47,6 +51,8 @@ def build_connector_file_chunks_query(
             }
         }
     ]
+    if connector_type:
+        filters.append({"term": {"connector_type": connector_type}})
     if shared:
         filters.append({"bool": {"must_not": {"exists": {"field": "owner"}}}})
     elif owner_user_id:
@@ -62,6 +68,7 @@ async def delete_connector_file_chunks(
     file_ids: Iterable[str],
     opensearch_client,
     *,
+    connector_type: str | None = None,
     owner_user_id: str | None = None,
     shared: bool = False,
     keep_filenames: Iterable[str] | None = None,
@@ -89,6 +96,7 @@ async def delete_connector_file_chunks(
         index=get_index_name(),
         query=build_connector_file_chunks_query(
             ids,
+            connector_type=connector_type,
             owner_user_id=owner_user_id,
             shared=shared,
             keep_filenames=keep_filenames,

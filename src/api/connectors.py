@@ -516,6 +516,9 @@ async def delete_orphan_documents(
     user_id: str,
     session_manager,
     jwt_token: str | None,
+    *,
+    connector_type: str | None = None,
+    shared: bool = False,
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
@@ -531,7 +534,14 @@ async def delete_orphan_documents(
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_connector_file_chunks(orphan_ids, opensearch_client, refresh=True)
+        return await delete_connector_file_chunks(
+            orphan_ids,
+            opensearch_client,
+            connector_type=connector_type,
+            owner_user_id=None if shared else user_id,
+            shared=shared,
+            refresh=True,
+        )
     except Exception as e:
         logger.error(
             "Orphan delete failed",
@@ -548,6 +558,8 @@ async def reconcile_orphans_for_connector_type(
     session_manager,
     jwt_token: str | None,
     existing_file_ids: list[str],
+    *,
+    shared: bool = False,
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
@@ -572,6 +584,8 @@ async def reconcile_orphans_for_connector_type(
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
+        connector_type=connector_type,
+        shared=shared,
     )
     logger.info(
         "Orphan reconcile complete",
@@ -598,6 +612,7 @@ async def _sync_existing_connector_files(
     ingest_settings: dict[str, Any] | None = None,
     shared: bool = False,
     reconcile: bool = True,
+    max_files: int | None = None,
 ) -> dict[str, Any]:
     """Re-sync the files already indexed for a connector type — the shared
     no-selection Sync flow used by both ``connector_sync`` and
@@ -634,6 +649,7 @@ async def _sync_existing_connector_files(
                 session_manager=session_manager,
                 jwt_token=jwt_token,
                 existing_file_ids=existing_file_ids,
+                shared=shared,
             )
             if orphan_ids:
                 orphan_id_set = set(orphan_ids)
@@ -657,6 +673,8 @@ async def _sync_existing_connector_files(
             )
             if not changed_ids:
                 return {"outcome": "up_to_date"}
+            if max_files is not None:
+                changed_ids = changed_ids[:max_files]
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
                 user_id,
@@ -667,6 +685,8 @@ async def _sync_existing_connector_files(
                 shared=shared,
             )
         else:
+            if max_files is not None:
+                ids_to_sync = ids_to_sync[:max_files]
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
                 user_id,
@@ -686,7 +706,7 @@ async def _sync_existing_connector_files(
         task_id = await connector_service.sync_connector_files(
             working_connection.connection_id,
             user_id,
-            max_files=None,
+            max_files=max_files,
             jwt_token=jwt_token,
             filename_filter=set(existing_filenames),
             ingest_settings=ingest_settings,
@@ -1051,6 +1071,14 @@ async def connector_sync(
                 status_code=400,
             )
 
+        if body.shared and not await has_effective_permission(
+            request, user, rbac, "knowledge:delete:anonymous"
+        ):
+            return JSONResponse(
+                {"error": "Shared sync requires the knowledge:delete:anonymous permission"},
+                status_code=403,
+            )
+
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
             user_id=user.user_id, connector_type=connector_type
@@ -1112,17 +1140,6 @@ async def connector_sync(
         if selected_files:
             # Explicit files selected (e.g., from file picker) - sync those specific files
             from .documents import _ensure_index_exists
-
-            if body.shared and body.replace_duplicates:
-                if not await has_effective_permission(
-                    request, user, rbac, "knowledge:delete:anonymous"
-                ):
-                    return JSONResponse(
-                        {
-                            "error": "Replacing shared documents requires the knowledge:delete:anonymous permission"
-                        },
-                        status_code=403,
-                    )
 
             if not body.replace_duplicates and file_infos:
                 duplicate_check = await _classify_connector_duplicates(
@@ -1331,6 +1348,7 @@ async def connector_sync(
                 # Strict gating: skip orphan reconcile when sync is capped — we'd
                 # see a partial remote listing and delete legitimate files.
                 reconcile=body.max_files is None,
+                max_files=body.max_files,
             )
             if sync_result["outcome"] == "deleted_only":
                 return JSONResponse(

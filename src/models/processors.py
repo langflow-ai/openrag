@@ -275,12 +275,18 @@ class TaskProcessor:
             return "skip"
 
         logger.info(f"Replacing existing document: {filename}")
-        await self.delete_document_by_filename(
+        deleted = await self.delete_document_by_filename(
             filename,
             opensearch_client,
             owner_user_id=owner_user_id,
             shared=shared,
         )
+        if deleted == 0:
+            logger.warning(
+                "Replacement requested but deletion removed no chunks",
+                filename=filename,
+            )
+            return "skip"
         # Refresh so the delete is visible before re-ingest. refresh is
         # index-wide (indices:admin/refresh) and cannot be DLS-scoped, so it
         # must run under the admin/service client, not the user client.
@@ -313,13 +319,13 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str | None = None,
         shared: bool = False,
-    ) -> None:
-        """
-        Delete all chunks of a document with the given filename from OpenSearch.
-        """
+    ) -> int:
+        """Delete all chunks of a document with the given filename from
+        OpenSearch.  Returns the number of chunks deleted."""
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
         from utils.opensearch_queries import (
+            build_anonymous_filename_query,
             build_owned_filename_query,
             build_replace_filename_query,
         )
@@ -329,13 +335,18 @@ class TaskProcessor:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch write client is unavailable")
 
-            deleted_count = 0
             if not owner_user_id:
-                logger.warning(
-                    "Skipped delete_by_filename because owner_user_id is missing",
-                    filename=filename,
-                )
-                return
+                if shared:
+                    build_query = lambda fname, _owner: build_anonymous_filename_query(fname)
+                else:
+                    logger.warning(
+                        "Skipped delete_by_filename because owner_user_id is missing",
+                        filename=filename,
+                    )
+                    return 0
+
+            else:
+                build_query = build_replace_filename_query if shared else build_owned_filename_query
 
             candidate_filenames = get_filename_aliases(filename)
             if not candidate_filenames:
@@ -343,14 +354,9 @@ class TaskProcessor:
                     "Skipped delete_by_filename because filename input is empty",
                     filename=filename,
                 )
-                return
+                return 0
 
-            # When shared=True the document being replaced may have previously
-            # been ingested without an owner field (also shared), so the normal
-            # owner-scoped query would miss those chunks.  Use a broader query
-            # that covers both owned and ownerless chunks for this filename.
-            build_query = build_replace_filename_query if shared else build_owned_filename_query
-
+            deleted_count = 0
             for candidate in candidate_filenames:
                 document_ids = await collect_visible_document_ids(
                     opensearch_client,
@@ -365,6 +371,7 @@ class TaskProcessor:
             logger.info(
                 "Deleted existing document chunks", filename=filename, deleted_count=deleted_count
             )
+            return deleted_count
 
         except Exception as e:
             logger.error("Failed to delete existing document", filename=filename, error=str(e))
@@ -1036,6 +1043,18 @@ class ConnectorFileProcessor(TaskProcessor):
                 self.user_id, self.jwt_token
             )
 
+            duplicate_action = await self.resolve_duplicate_filename(
+                file_task.filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.user_id,
+                shared=self.shared,
+            )
+            if duplicate_action == "skip":
+                await self._reconcile_shared_owner(file_task.filename)
+                self.mark_duplicate_skipped(upload_task, file_task)
+                return
+
             # Rename cleanup: a connector file keeps a stable id across renames,
             # but chunks are keyed by filename/content-hash, so a renamed file
             # leaves its OLD-name chunks orphaned. Drop chunks for this id whose
@@ -1055,18 +1074,6 @@ class ConnectorFileProcessor(TaskProcessor):
                 )
                 > 0
             )
-
-            duplicate_action = await self.resolve_duplicate_filename(
-                file_task.filename,
-                opensearch_client,
-                replace=self.replace_duplicates,
-                owner_user_id=self.user_id,
-                shared=self.shared,
-            )
-            if duplicate_action == "skip":
-                await self._reconcile_shared_owner(file_task.filename)
-                self.mark_duplicate_skipped(upload_task, file_task)
-                return
 
             # Create temporary file from document content
             suffix = os.path.splitext(file_task.filename)[1]
