@@ -17,6 +17,7 @@ from dependencies import (
     get_task_service,
 )
 from session_manager import User
+from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +30,7 @@ async def upload_ingest_router(
     tweaks_json: str | None = Form(None, alias="tweaks"),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
+    preview: str = Form("false"),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
@@ -42,9 +44,14 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
     disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
+    requested_preview = preview.lower() == "true"
+    preview_mode = requested_preview and is_ingest_preview_enabled()
+    if requested_preview and not preview_mode:
+        logger.debug("Ingest preview ignored — not available in this run mode")
     logger.debug(
         "Router upload_ingest endpoint called",
         disable_langflow_ingest=disable_ingest_with_langflow,
+        preview_mode=preview_mode,
     )
 
     if disable_ingest_with_langflow:
@@ -53,6 +60,7 @@ async def upload_ingest_router(
             upload_files=file,
             replace_duplicates=replace_duplicates.lower() == "true",
             create_filter=create_filter.lower() == "true",
+            preview_mode=preview_mode,
             session_manager=session_manager,
             task_service=task_service,
             user=user,
@@ -67,6 +75,7 @@ async def upload_ingest_router(
         tweaks_json=tweaks_json,
         replace_duplicates=replace_duplicates.lower() == "true",
         create_filter=create_filter.lower() == "true",
+        preview_mode=preview_mode,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
         task_service=task_service,
@@ -78,6 +87,7 @@ async def _traditional_upload_ingest_task(
     upload_files: list[UploadFile],
     replace_duplicates: bool,
     create_filter: bool,
+    preview_mode: bool,
     session_manager,
     task_service,
     user: User,
@@ -142,6 +152,7 @@ async def _traditional_upload_ingest_task(
                 original_filenames=file_path_to_original_filename,
                 replace_duplicates=replace_duplicates,
                 settings=settings,
+                preview_mode=preview_mode,
             )
 
             return JSONResponse(
@@ -151,6 +162,7 @@ async def _traditional_upload_ingest_task(
                     "file_count": len(upload_files),
                     "create_filter": create_filter,
                     "filename": original_filenames[0] if len(original_filenames) == 1 else None,
+                    "preview_mode": preview_mode,
                 },
                 status_code=202,
             )
@@ -180,6 +192,7 @@ async def _langflow_upload_ingest_task(
     tweaks_json,
     replace_duplicates: bool,
     create_filter: bool,
+    preview_mode: bool,
     langflow_file_service,
     session_manager,
     task_service,
@@ -251,6 +264,7 @@ async def _langflow_upload_ingest_task(
                 tweaks=tweaks,
                 settings=settings,
                 replace_duplicates=replace_duplicates,
+                preview_mode=preview_mode,
             )
 
             return JSONResponse(
@@ -260,6 +274,7 @@ async def _langflow_upload_ingest_task(
                     "file_count": len(upload_files),
                     "create_filter": create_filter,
                     "filename": original_filenames[0] if len(original_filenames) == 1 else None,
+                    "preview_mode": preview_mode,
                 },
                 status_code=202,
             )

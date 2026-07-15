@@ -362,6 +362,8 @@ export function SharedBucketView({
               );
             }
           }}
+          showShared={showSharedToggle}
+          ingestSettings={ingestSettings}
         />
       )}
     </>

@@ -28,6 +28,7 @@ from services.connector_access_service import (
     set_connector_access_bulk,
 )
 from session_manager import User
+from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
@@ -592,6 +593,8 @@ class ConnectorSyncBody(BaseModel):
     # rather than failing. Set by the provider upload UI after the user confirms
     # overwrite in the duplicate dialog.
     replace_duplicates: bool = False
+    # When True (OSS/SaaS), run the ingest in preview mode (same as direct upload).
+    preview: bool = False
     # When True (COS only), index chunks without an owner field so OpenSearch DLS
     # makes them visible to all users in the instance. Temporary CIO mechanism;
     # not a full ACL feature. Defaults to False (private).
@@ -925,6 +928,10 @@ async def connector_sync(
             selected_files = [f.get("id") for f in selected_files_raw if f.get("id")]
             file_infos = selected_files_raw
 
+    # Preview mode is opt-in from the connector upload UI (OSS/SaaS). It applies
+    # to user-initiated ingests (explicit file selection), not automated re-sync.
+    preview_mode = body.preview and is_ingest_preview_enabled()
+
     try:
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
@@ -1052,6 +1059,7 @@ async def connector_sync(
                 file_infos=file_infos,
                 ingest_settings=body.settings,
                 replace_duplicates=body.replace_duplicates,
+                preview_mode=preview_mode,
                 shared=body.shared,
             )
         elif body.sync_all or body.bucket_filter:
@@ -1156,6 +1164,7 @@ async def connector_sync(
                             new_ids,
                             jwt_token=jwt_token,
                             ingest_settings=body.settings,
+                            preview_mode=preview_mode,
                             shared=body.shared,
                         )
                     )
@@ -1168,6 +1177,7 @@ async def connector_sync(
                             jwt_token=jwt_token,
                             ingest_settings=body.settings,
                             replace_duplicates=True,
+                            preview_mode=preview_mode,
                             shared=body.shared,
                         )
                     )

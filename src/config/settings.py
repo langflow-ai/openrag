@@ -290,6 +290,18 @@ def is_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_ingest_preview_flag_enabled() -> bool:
+    """Raw opt-in flag for the preview-mode ingest backend.
+
+    Read per-call (like the other feature-flag accessors in this module) so
+    runtime/test overrides of ``OPENRAG_INGEST_PREVIEW_ENABLED`` take effect
+    without a restart. This is only the flag itself; run-mode gating is applied
+    by ``utils.ingest_preview_flag.is_ingest_preview_enabled()``.
+    """
+    raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas

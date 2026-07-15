@@ -8,6 +8,7 @@ import {
   type RemoteFile,
   useBrowseConnectionFiles,
 } from "@/app/api/queries/useBrowseConnectionFiles";
+import type { IngestSettings } from "@/components/cloud-picker/types";
 import { formatFileSize } from "@/lib/file-format";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -29,6 +30,10 @@ interface FileBrowserDialogProps {
   connectionId: string;
   buckets?: string[];
   onIngestSuccess?: (result: { task_ids?: string[]; message?: string }) => void;
+  /** When true, apply the "Make documents available to all users" setting from `ingestSettings`. */
+  showShared?: boolean;
+  /** Ingest settings (embedding model, chunking, OCR, shared toggle) configured on the parent screen. */
+  ingestSettings?: IngestSettings;
 }
 
 export function FileBrowserDialog({
@@ -38,6 +43,8 @@ export function FileBrowserDialog({
   connectionId,
   buckets,
   onIngestSuccess,
+  showShared,
+  ingestSettings,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -138,6 +145,8 @@ export function FileBrowserDialog({
             mimeType: "",
             size: f.size,
           })),
+          settings: ingestSettings,
+          shared: showShared ? (ingestSettings?.shared ?? false) : undefined,
           ...(hasStale ? { replace_duplicates: true } : {}),
         },
       });
@@ -160,6 +169,8 @@ export function FileBrowserDialog({
     syncMutation,
     onOpenChange,
     onIngestSuccess,
+    showShared,
+    ingestSettings,
   ]);
 
   return (
