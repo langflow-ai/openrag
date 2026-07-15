@@ -226,7 +226,7 @@ async def test_happy_path_deletes_orphans(monkeypatch):
     search_body = opensearch_client.search.await_args.kwargs["body"]
     shoulds = search_body["query"]["bool"]["filter"][0]["bool"]["should"]
     fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
-    assert fields == {"document_id": ["b"], "connector_file_id": ["b"]}
+    assert fields == {"document_id": ["b"], "connector_file_id": ["b"], "connector_file_id.keyword": ["b"]}
     assert [call.kwargs["id"] for call in write_client.delete.await_args_list] == [
         "chunk-b-1",
         "chunk-b-2",
@@ -377,6 +377,7 @@ async def test_orphan_delete_matches_both_id_layouts(monkeypatch):
     assert fields == {
         "document_id": ["sp-guid-b"],
         "connector_file_id": ["sp-guid-b"],
+        "connector_file_id.keyword": ["sp-guid-b"],
     }
     assert write_client.delete.await_count == 2
     opensearch_client.delete.assert_not_awaited()

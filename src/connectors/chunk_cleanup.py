@@ -38,6 +38,10 @@ def build_connector_file_chunks_query(
                 "should": [
                     {"terms": {"document_id": ids}},
                     {"terms": {"connector_file_id": ids}},
+                    # Some indices predate the explicit keyword mapping for
+                    # connector_file_id, so it was dynamically mapped as
+                    # analyzed text with a .keyword multi-field.
+                    {"terms": {"connector_file_id.keyword": ids}},
                 ],
                 "minimum_should_match": 1,
             }

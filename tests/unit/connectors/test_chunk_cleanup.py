@@ -41,6 +41,7 @@ def test_query_matches_both_id_fields():
     assert fields == {
         "document_id": ["file-1", "file-2"],
         "connector_file_id": ["file-1", "file-2"],
+        "connector_file_id.keyword": ["file-1", "file-2"],
     }
     assert query["bool"]["filter"][0]["bool"]["minimum_should_match"] == 1
 
@@ -105,6 +106,7 @@ async def test_deletes_each_visible_chunk_id_by_primary_id(write_client, monkeyp
     fields = _id_terms(search_call.kwargs["body"]["query"])
     assert fields["document_id"] == ["doc-a", "doc-b"]
     assert fields["connector_file_id"] == ["doc-a", "doc-b"]
+    assert fields["connector_file_id.keyword"] == ["doc-a", "doc-b"]
 
     opensearch_client.delete.assert_not_awaited()
     delete_calls = write_client.delete.await_args_list
