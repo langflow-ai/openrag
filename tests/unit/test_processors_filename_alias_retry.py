@@ -21,7 +21,7 @@ async def test_check_filename_exists_bulk_queries_all_aliases_and_retries():
     async def _search_side_effect(*, index, body):
         calls.append(body)
         if len(calls) == 1:
-            raise asyncio.TimeoutError("transient timeout")
+            raise TimeoutError("transient timeout")
         return {"aggregations": {"filenames": {"buckets": []}}}
 
     opensearch_client.search.side_effect = _search_side_effect

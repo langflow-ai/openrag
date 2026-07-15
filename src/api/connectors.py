@@ -531,9 +531,7 @@ async def delete_orphan_documents(
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_connector_file_chunks(
-            orphan_ids, opensearch_client, refresh=True
-        )
+        return await delete_connector_file_chunks(orphan_ids, opensearch_client, refresh=True)
     except Exception as e:
         logger.error(
             "Orphan delete failed",

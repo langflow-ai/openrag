@@ -48,9 +48,7 @@ async def test_oauth_sync_uses_connector_replace_capability(monkeypatch):
     )
     connector_service, working_connection = _make_services()
 
-    result = await _run(
-        connector_service, working_connection, existing_file_ids=["f1", "f2"]
-    )
+    result = await _run(connector_service, working_connection, existing_file_ids=["f1", "f2"])
 
     assert result == {"outcome": "synced", "task_id": "task-1"}
     call = connector_service.sync_specific_files.await_args
@@ -68,9 +66,7 @@ async def test_deleted_only_when_orphan_reconcile_removes_everything(monkeypatch
     )
     connector_service, working_connection = _make_services()
 
-    result = await _run(
-        connector_service, working_connection, existing_file_ids=["f1", "f2"]
-    )
+    result = await _run(connector_service, working_connection, existing_file_ids=["f1", "f2"])
 
     assert result == {"outcome": "deleted_only"}
     connector_service.sync_specific_files.assert_not_awaited()
@@ -117,9 +113,7 @@ async def test_timestamp_connector_syncs_only_changed_ids_with_replace(monkeypat
     monkeypatch.setattr(
         connectors_api, "reconcile_orphans_for_connector_type", AsyncMock(return_value=[])
     )
-    monkeypatch.setattr(
-        connectors_api, "bucket_changed_file_ids", AsyncMock(return_value=["k2"])
-    )
+    monkeypatch.setattr(connectors_api, "bucket_changed_file_ids", AsyncMock(return_value=["k2"]))
     connector_service, working_connection = _make_services()
 
     result = await _run(
