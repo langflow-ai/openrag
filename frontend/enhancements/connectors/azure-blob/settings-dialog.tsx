@@ -123,6 +123,7 @@ export default function AzureBlobSettingsDialog({
         err instanceof Error ? err.message : "Connection failed",
       );
       setShowContainers(false);
+      setContainers(null);
     } finally {
       // Only clear the loading flag if this invocation is still the active one.
       // If the user started a second test while this one was in flight, the
