@@ -1,8 +1,7 @@
 """BaseConnector.list_selected_files() — owns the cfg save/restore so
 callers don't have to manually back up and restore file_ids/folder_ids."""
 
-from dataclasses import dataclass, field
-from unittest.mock import AsyncMock
+from dataclasses import dataclass
 
 import pytest
 

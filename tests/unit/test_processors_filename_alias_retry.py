@@ -1,7 +1,6 @@
 """check_filename_exists issues ONE bulk aliases query (shared semantics) and
 retries it on transient failures."""
 
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
