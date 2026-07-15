@@ -148,6 +148,28 @@ echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENR
 OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend
 
 echo "${cyan}Architecture: $(uname -m), Platform: $(uname -s)${nc}"
+
+# Normalize host architecture
+host_arch="$(uname -m)"
+host_arch_norm=""
+if [[ "$host_arch" == "x86_64" ]]; then
+  host_arch_norm="amd64"
+elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
+  host_arch_norm="arm64"
+else
+  host_arch_norm="$host_arch"
+fi
+
+# Get image architecture
+image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
+image_arch=$("$container_runtime" inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
+
+if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
+  echo "${red}WARNING: Architecture mismatch detected!${nc}"
+  echo "${red}Host architecture is '${host_arch}' (${host_arch_norm}), but container image architecture is '${image_arch}'.${nc}"
+  echo "${red}The backend will run under QEMU emulation, which is extremely slow and may cause timeouts.${nc}"
+fi
+
 echo "${yellow}Starting docling-serve...${nc}"
 docling_start_failed=0
 docling_start_output="$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1)" || docling_start_failed=1
@@ -175,6 +197,9 @@ for i in $(seq 1 60); do
   fi
   if [[ "$i" -eq 60 ]]; then
     echo "${red}Backend OIDC endpoint was not reachable in time${nc}"
+    echo "${yellow}--- Last 50 lines of backend logs ---${nc}"
+    "$container_runtime" logs --tail 50 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 || true
+    echo "${yellow}------------------------------------${nc}"
     exit 1
   fi
   sleep 2

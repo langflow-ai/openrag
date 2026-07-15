@@ -244,13 +244,14 @@ export function KnowledgeDropdown() {
           } = {};
 
           const availableTypes = cloudConnectorTypes.filter(
-            (type) => connectorsResult.connectors[type],
+            (type) => connectorsResult.connectors?.[type],
           );
 
           for (const type of availableTypes) {
             connectorInfo[type] = {
-              name: connectorsResult.connectors[type].name,
-              available: connectorsResult.connectors[type].available,
+              name: connectorsResult.connectors?.[type]?.name ?? type,
+              available:
+                connectorsResult.connectors?.[type]?.available ?? false,
               connected: false,
               hasToken: false,
             };
