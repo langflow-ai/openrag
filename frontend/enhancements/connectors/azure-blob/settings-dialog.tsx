@@ -56,11 +56,10 @@ export default function AzureBlobSettingsDialog({
   const [prevDefaults, setPrevDefaults] = useState(defaults);
   if (defaults !== prevDefaults) {
     setPrevDefaults(defaults);
-    if (defaults?.container_names?.length) {
-      setContainers(defaults.container_names);
-      setSelectedContainers(defaults.container_names);
-      setShowContainers(true);
-    }
+    const names = defaults?.container_names ?? [];
+    setContainers(names.length ? names : null);
+    setSelectedContainers(names);
+    setShowContainers(names.length > 0);
   }
 
   const [isFetchingContainers, setIsFetchingContainers] = useState(false);
