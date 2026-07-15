@@ -15,6 +15,15 @@ const verificationQuestion =
  * Verify user is able to switch model providers
  */
 test.describe("Update model providers to watsonx.ai and openai @33219219, @33219229, @33219231", () => {
+  test.beforeEach(({}) => {
+    test.skip(
+      !process.env.WATSONX_API_KEY ||
+        !process.env.WATSONX_PROJECT_ID ||
+        !process.env.WATSONX_ENDPOINT,
+      "Watsonx credentials not set",
+    );
+  });
+
   test("Verify user is able to switch to watsonx.ai provider", async ({
     page,
     settings,
@@ -25,6 +34,12 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await settings.clickTab("Providers");
     await settings.configureWatsonxai();
     await settings.removeModelProviderSetup("OpenAI");
+    await settings.clickTab("Langflow");
+    await settings.selectModel("Language model", "ibm/granite-3-8b-instruct");
+    await settings.selectModel(
+      "Embedding model",
+      "ibm/slate-125m-english-rtrvr-v2",
+    );
     await knowledge.deleteDocument(testDocumentName);
     await knowledge.ingestFile(testDocumentPath);
     await knowledge.verifyDocumentActive(testDocumentName);
@@ -50,8 +65,12 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await settings.clickTab("Providers");
     await settings.configureOpenAPI();
     await settings.removeModelProviderSetup("IBM watsonx.ai");
+    await settings.clickTab("Langflow");
+    await settings.selectModel("Language model", "gpt-4o-mini");
+    await settings.selectModel("Embedding model", "text-embedding-3-small");
     await knowledge.deleteDocument(testDocumentName);
     await knowledge.ingestFile(testDocumentPath);
+    await knowledge.verifyDocumentActive(testDocumentName);
     await chat.open();
     await chat.openNewChat();
     const responseOpenai = await chat.askQuestion(verificationQuestion, 120000);

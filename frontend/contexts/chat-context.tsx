@@ -3,8 +3,8 @@
 import {
   createContext,
   type ReactNode,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -429,7 +429,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 }
 
 export function useChat(): ChatContextType {
-  const context = useContext(ChatContext);
+  const context = use(ChatContext);
   if (context === undefined) {
     throw new Error("useChat must be used within a ChatProvider");
   }
