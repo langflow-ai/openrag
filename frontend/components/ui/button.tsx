@@ -59,55 +59,49 @@ export interface ButtonProps
   ignoreTitleCase?: boolean;
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  (
-    {
-      className,
-      variant,
-      size,
-      loading,
-      disabled,
-      asChild = false,
-      children,
-      ignoreTitleCase = false,
-      ...props
-    },
-    ref,
-  ) => {
-    const Comp = asChild ? Slot : "button";
-    let newChildren = children;
-    if (typeof children === "string") {
-      newChildren = ignoreTitleCase ? children : toTitleCase(children);
-    }
-    const shouldScale = props["aria-haspopup"] !== "dialog";
+function Button({
+  className,
+  variant,
+  size,
+  loading,
+  disabled,
+  asChild = false,
+  children,
+  ignoreTitleCase = false,
+  ref,
+  ...props
+}: ButtonProps & React.RefAttributes<HTMLButtonElement>) {
+  const Comp = asChild ? Slot : "button";
+  let newChildren = children;
+  if (typeof children === "string") {
+    newChildren = ignoreTitleCase ? children : toTitleCase(children);
+  }
+  const shouldScale = props["aria-haspopup"] !== "dialog";
 
-    return (
-      <Comp
-        className={cn(
-          buttonVariants({ variant, size, className }),
-          shouldScale && "active:scale-[0.97]",
-        )}
-        disabled={loading || disabled}
-        ref={ref}
-        {...props}
-      >
-        {loading ? (
-          <span className="relative flex items-center justify-center">
-            <span className="invisible flex items-center justify-center gap-2">
-              {newChildren}
-            </span>
-            <span className="absolute inset-0 flex items-center justify-center">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            </span>
+  return (
+    <Comp
+      className={cn(
+        buttonVariants({ variant, size, className }),
+        shouldScale && "active:scale-[0.97]",
+      )}
+      disabled={loading || disabled}
+      ref={ref}
+      {...props}
+    >
+      {loading ? (
+        <span className="relative flex items-center justify-center">
+          <span className="invisible flex items-center justify-center gap-2">
+            {newChildren}
           </span>
-        ) : (
-          newChildren
-        )}
-      </Comp>
-    );
-  },
-);
-
-Button.displayName = "Button";
+          <span className="absolute inset-0 flex items-center justify-center">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          </span>
+        </span>
+      ) : (
+        newChildren
+      )}
+    </Comp>
+  );
+}
 
 export { Button, buttonVariants };

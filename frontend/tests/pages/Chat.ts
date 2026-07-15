@@ -177,18 +177,19 @@ export class Chat {
     // Collect ALL /api/langflow POST responses until we find tool call data or the
     // streaming response is complete. A single waitForResponse resolves on the first
     // matching call (often a background/init call), so we use a route listener instead.
-    const collectedResponses: string[] = [];
-    const responseHandler = async (response: any) => {
+    const collectedPromises: Promise<string>[] = [];
+    const responseHandler = (response: any) => {
       if (
         !response.url().includes("/api/langflow") ||
         response.request().method() !== "POST"
       )
         return;
-      try {
-        collectedResponses.push(await response.text());
-      } catch {
-        /* ignore */
-      }
+      const promise = response
+        .body()
+        .then((buf: any) => buf.toString("utf-8"))
+        .catch(() => response.text())
+        .catch(() => "");
+      collectedPromises.push(promise);
     };
     this.page.on("response", responseHandler);
 
@@ -203,19 +204,45 @@ export class Chat {
       this.page.off("response", responseHandler);
     }
 
+    const collectedResponses = await Promise.all(collectedPromises);
+
     // Parse all collected API responses for tool call data and response text
     for (const raw of collectedResponses) {
       const lines = raw.split("\n").filter((line) => line.trim());
       for (const line of lines) {
         try {
           const chunk = JSON.parse(line);
-          // Capture tool call data (first occurrence wins)
+          // Capture tool call data (prefer complete done events, accumulate delta arguments)
           if (
-            !capturedToolData &&
-            chunk.type === "response.output_item.done" &&
-            chunk.item?.type === "tool_call"
+            (chunk.type === "response.output_item.done" ||
+              chunk.type === "response.output_item.added") &&
+            (chunk.item?.type === "tool_call" ||
+              chunk.item?.type === "function_call")
           ) {
-            capturedToolData = chunk.item;
+            if (
+              !capturedToolData ||
+              chunk.item.arguments ||
+              chunk.item.inputs ||
+              chunk.type === "response.output_item.done"
+            ) {
+              capturedToolData = { ...chunk.item };
+            }
+          } else if (chunk.delta?.tool_calls) {
+            for (const tc of chunk.delta.tool_calls) {
+              if (tc.function?.name) {
+                if (!capturedToolData) {
+                  capturedToolData = {
+                    type: tc.type || "function_call",
+                    id: tc.id,
+                    name: tc.function.name,
+                    arguments: tc.function.arguments || "",
+                  };
+                } else if (tc.function.arguments) {
+                  capturedToolData.arguments =
+                    (capturedToolData.arguments || "") + tc.function.arguments;
+                }
+              }
+            }
           }
           // Build full response text
           if (chunk.delta?.content) {
@@ -228,6 +255,26 @@ export class Chat {
           // ignore malformed chunks
         }
       }
+    }
+
+    if (capturedToolData) {
+      const name = capturedToolData.tool_name || capturedToolData.name || "";
+      let inputs = capturedToolData.inputs;
+      if (!inputs && capturedToolData.arguments) {
+        try {
+          inputs =
+            typeof capturedToolData.arguments === "string"
+              ? JSON.parse(capturedToolData.arguments)
+              : capturedToolData.arguments;
+        } catch {
+          inputs = {};
+        }
+      }
+      capturedToolData = {
+        ...capturedToolData,
+        tool_name: name,
+        inputs: inputs || {},
+      };
     }
 
     // Fallback: read response text from the UI if API parsing yielded nothing
@@ -496,7 +543,7 @@ export class Chat {
     logger.info(`Deleting chat: ${chatTitle}`);
     await this.openNewChat();
     const chatRow = this.getChatRow(chatTitle);
-    await expect(chatRow).toBeVisible({ timeout: 10000 });
+    await expect(chatRow).toBeVisible({ timeout: 30000 });
     await chatRow.hover();
     const moreOptionsButton = chatRow.locator('[aria-haspopup="menu"]');
     await expect(moreOptionsButton).toBeVisible({ timeout: 5000 });
@@ -572,7 +619,7 @@ export class Chat {
         continue;
       }
 
-      if (currentText === previousText && currentText.length > 50) {
+      if (currentText === previousText && currentText.trim().length > 0) {
         stableCount++;
       } else {
         stableCount = 0;

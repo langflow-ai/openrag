@@ -380,10 +380,10 @@ class DoclingService:
         if payload.get("status") == "failure" or payload.get("errors"):
             raise DoclingServeError(f"Docling processing failed: {_format_docling_error(payload)}")
 
-        doc_content = payload.get("document", {}).get("json_content")
-        if doc_content is None:
+        document = payload.get("document") or {}
+        if document.get("json_content") is None:
             raise DoclingServeError("docling-serve response missing document.json_content")
-        return doc_content
+        return document["json_content"]
 
     async def _poll_result(
         self,
@@ -418,7 +418,8 @@ class DoclingService:
                 result_json = result_response.json()
 
                 # Extract the json_content which matches the old convert_file/bytes return
-                doc_content = result_json.get("document", {}).get("json_content")
+                document = result_json.get("document") or {}
+                doc_content = document.get("json_content")
                 if doc_content is None:
                     raise DoclingServeError("docling-serve response missing document.json_content")
 
