@@ -10,6 +10,10 @@ on:
         type: boolean
         default: true
 
+concurrency:
+  group: test-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
@@ -245,40 +249,6 @@ jobs:
         suite: [core, sdk-python, sdk-typescript]
     name: tests (${{ matrix.suite }})
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        continue-on-error: true
-        with:
-          root-reserve-mb: 40960
-          temp-reserve-mb: 30720
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
-
-      - name: Restart Docker
-        continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
-
-      - run: df -h
-
-      - name: Cleanup Docker cache
-        run: |
-          docker compose -f docker-compose.yml down -v --remove-orphans || true
-          docker system prune -f || true
-
-      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
-        run: |
-          for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-            echo "Attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || true
-
-      - run: df -h
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -292,6 +262,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: latest
+          enable-cache: true
 
       - name: Set up Node.js
         if: matrix.suite == 'sdk-typescript'
@@ -373,43 +344,8 @@ jobs:
         total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        continue-on-error: true
-        with:
-          root-reserve-mb: 40960
-          temp-reserve-mb: 30720
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
-
-      - name: Restart Docker
-        continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
-
-      - name: Cleanup Docker cache
-        run: |
-          docker compose -f docker-compose.yml down -v --remove-orphans || true
-          docker system prune -f || true
-
-      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
-        run: |
-          for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-            echo "Attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || true
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up UV
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -417,9 +353,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Python
-        run: uv python install 3.13
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -432,6 +365,13 @@ jobs:
             echo "Waiting for other apt/dpkg process to release the lock..."
             sleep 5
           done
+
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
 
       - name: Install Playwright Browsers
         working-directory: frontend
