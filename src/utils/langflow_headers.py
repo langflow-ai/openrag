@@ -65,6 +65,10 @@ async def add_provider_credentials_to_headers(
         jwt_token: Optional credential string (``'Basic <b64>'`` or ``'Bearer <jwt>'``).
                    When IBM_AUTH_ENABLED, injected as Langflow global variables. Basic
                    credentials additionally provide OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD.
+
+    NOTE: `headers` ends up holding raw API keys/JWTs after this call. Never log
+    it directly (e.g. logger.info(..., headers=headers) / extra_headers=...) —
+    use utils.logging_config.sanitize_headers() if a header dict must be logged.
     """
     # Add OpenAI credentials
     if config.providers.openai.api_key:
