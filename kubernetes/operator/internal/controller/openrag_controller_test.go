@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,19 +62,107 @@ func reconciler(s *runtime.Scheme, objs ...client.Object) (*OpenRAGReconciler, c
 
 func reconcileOnce(t *testing.T, r *OpenRAGReconciler, cr *openragv1alpha1.OpenRAG) ctrl.Result {
 	t.Helper()
-	// First reconcile: adds finalizer and returns early
-	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
-	})
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	// First reconcile: adds finalizer and returns early.
+	// Adding the finalizer triggers an Update() which returns early.
+	_, err := r.Reconcile(context.Background(), req)
 	require.NoError(t, err)
 
-	// Second reconcile: actually creates resources
-	// This is needed because adding finalizer triggers an Update() which returns early
-	res, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
-	})
-	require.NoError(t, err)
+	// Components roll out in dependency order (Langflow → Backend → Frontend), and
+	// each step waits for the previous Deployment's current revision to become
+	// available. The fake client does not run the Deployment controller, so mark
+	// created Deployments as rolled out between passes to let the rollout advance
+	// to completion, leaving all resources created for end-state assertions.
+	var res ctrl.Result
+	for range 12 {
+		res, err = r.Reconcile(context.Background(), req)
+		require.NoError(t, err)
+		if res.RequeueAfter != rolloutPollInterval {
+			return res // rollout complete (or not gated) — stop driving
+		}
+		markDeploymentsRolledOut(t, r.Client)
+	}
+	t.Fatalf("ordered rollout did not converge within iteration budget")
 	return res
+}
+
+// markDeploymentsRolledOut simulates the Deployment controller reporting every
+// existing Deployment's current revision as fully available, so the operator's
+// readiness-gated ordered rollout can advance under the fake client.
+func markDeploymentsRolledOut(t *testing.T, c client.Client) {
+	t.Helper()
+	list := &appsv1.DeploymentList{}
+	require.NoError(t, c.List(context.Background(), list))
+	for i := range list.Items {
+		d := &list.Items[i]
+		desired := int32(1)
+		if d.Spec.Replicas != nil {
+			desired = *d.Spec.Replicas
+		}
+		d.Status.ObservedGeneration = d.Generation
+		d.Status.Replicas = desired
+		d.Status.UpdatedReplicas = desired
+		d.Status.AvailableReplicas = desired
+		d.Status.ReadyReplicas = desired
+		require.NoError(t, c.Status().Update(context.Background(), d))
+	}
+}
+
+// setDeploymentRolledOut simulates the Deployment controller reporting a single
+// Deployment's current revision as fully available (ready=true) or still rolling
+// (ready=false), so ordered-update gating can be exercised under the fake client.
+func setDeploymentRolledOut(t *testing.T, c client.Client, name, ns string, ready bool) {
+	t.Helper()
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: name, Namespace: ns}, d))
+	desired := int32(1)
+	if d.Spec.Replicas != nil {
+		desired = *d.Spec.Replicas
+	}
+	d.Status.ObservedGeneration = d.Generation
+	if ready {
+		d.Status.Replicas = desired
+		d.Status.UpdatedReplicas = desired
+		d.Status.AvailableReplicas = desired
+		d.Status.ReadyReplicas = desired
+	} else {
+		// New revision created but not yet available (readiness probe pending).
+		d.Status.Replicas = desired
+		d.Status.UpdatedReplicas = desired
+		d.Status.AvailableReplicas = 0
+		d.Status.ReadyReplicas = 0
+	}
+	require.NoError(t, c.Status().Update(context.Background(), d))
+}
+
+// setDeploymentProgressDeadlineExceeded simulates Kubernetes giving up on a
+// Deployment's rollout: its current revision is observed but no replica is
+// available, and it carries a Progressing=False / reason=ProgressDeadlineExceeded
+// condition (what the Deployment controller sets after progressDeadlineSeconds).
+func setDeploymentProgressDeadlineExceeded(t *testing.T, c client.Client, name, ns string) {
+	t.Helper()
+	d := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: name, Namespace: ns}, d))
+	desired := int32(1)
+	if d.Spec.Replicas != nil {
+		desired = *d.Spec.Replicas
+	}
+
+	d.Status.ObservedGeneration = d.Generation
+	d.Status.Replicas = desired
+	d.Status.UpdatedReplicas = desired
+	d.Status.AvailableReplicas = 0
+	d.Status.ReadyReplicas = 0
+	d.Status.Conditions = []appsv1.DeploymentCondition{
+		{
+			Type:    appsv1.DeploymentProgressing,
+			Status:  corev1.ConditionFalse,
+			Reason:  "ProgressDeadlineExceeded",
+			Message: "ReplicaSet has timed out progressing.",
+		},
+	}
+	require.NoError(t, c.Status().Update(context.Background(), d))
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +219,251 @@ func TestReconcile_CreatesDeployments(t *testing.T) {
 			types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, d),
 			"deployment for role %s should exist", role)
 	}
+}
+
+// TestReconcile_OrderedRollout_InstallCreatesAllAtOnce verifies that the initial
+// install is NOT subject to ordering: all three Deployments are created in a
+// single reconcile pass without waiting on any dependency's readiness.
+func TestReconcile_OrderedRollout_InstallCreatesAllAtOnce(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	// Pass 1 adds the finalizer and returns early.
+	_, err := r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+
+	// Pass 2 creates every Deployment at once — all three must exist because
+	// creation is never gated. Ordering applies only to *upgrades* of existing
+	// components, not to initial creation; pods come up in parallel.
+	// The rollout reports RollingOut (fast poll) until each created component
+	// becomes available, walking the phase LF→BE→FE as each comes up.
+	res, err := r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	for _, role := range []string{"lf", "be", "fe"} {
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, &appsv1.Deployment{}),
+			"deployment %s should be created on install without waiting on ordering", role)
+	}
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter, "install polls until components are available")
+	got := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, got))
+	assert.Equal(t, rolloutPhaseLangflow, got.Status.RolloutPhase)
+}
+
+// TestReconcile_OrderedRollout_RecreatesDeletedDeploymentImmediately verifies that
+// a Deployment deleted out from under the operator is recreated on the next pass,
+// without observing the ordering.
+func TestReconcile_OrderedRollout_RecreatesDeletedDeploymentImmediately(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	reconcileOnce(t, r, cr)
+	markDeploymentsRolledOut(t, c) // all healthy at their initial revision
+
+	// Delete the backend Deployment.
+	be := &appsv1.Deployment{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "my-ns"}, be))
+	require.NoError(t, c.Delete(context.Background(), be))
+
+	// A single reconcile recreates it immediately, regardless of ordering.
+	_, err := r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "be"), Namespace: "my-ns"}, &appsv1.Deployment{}),
+		"deleted backend deployment should be recreated immediately")
+}
+
+// TestReconcile_OrderedRollout_UpdatesGatedByDependencyReadiness verifies that once
+// the components exist, a *revision update* is applied in dependency order: Backend's
+// new revision is withheld until Langflow's new revision is available, and Frontend's
+// until Backend's is.
+func TestReconcile_OrderedRollout_UpdatesGatedByDependencyReadiness(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	reconcileOnce(t, r, cr)
+	markDeploymentsRolledOut(t, c) // baseline: all three healthy at their original image
+
+	origBE := r.backendDeployment(cr, "my-ns", "").Spec.Template.Spec.Containers[0].Image
+	origFE := r.frontendDeployment(cr, "my-ns").Spec.Template.Spec.Containers[0].Image
+
+	imageOf := func(role string) string {
+		d := &appsv1.Deployment{}
+		require.NoError(t, c.Get(context.Background(),
+			types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, d))
+		return d.Spec.Template.Spec.Containers[0].Image
+	}
+	rolloutPhase := func() string {
+		got := &openragv1alpha1.OpenRAG{}
+		require.NoError(t, c.Get(context.Background(), req.NamespacedName, got))
+		return got.Status.RolloutPhase
+	}
+	reconcile := func() ctrl.Result {
+		res, err := r.Reconcile(context.Background(), req)
+		require.NoError(t, err)
+		return res
+	}
+
+	// Bump all three images at once.
+	upd := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, upd))
+	upd.Spec.Langflow.Image = "langflow:v2"
+	upd.Spec.Backend.Image = "backend:v2"
+	upd.Spec.Frontend.Image = "frontend:v2"
+	require.NoError(t, c.Update(context.Background(), upd))
+
+	// Pass 1: only Langflow's new revision rolls; Backend and Frontend are withheld.
+	res := reconcile()
+	assert.Equal(t, "langflow:v2", imageOf("lf"))
+	assert.Equal(t, origBE, imageOf("be"), "Backend update must wait for Langflow")
+	assert.Equal(t, origFE, imageOf("fe"), "Frontend update must wait for Backend")
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter)
+	assert.Equal(t, rolloutPhaseLangflow, rolloutPhase())
+
+	// Langflow's new revision still rolling → Backend stays withheld.
+	setDeploymentRolledOut(t, c, instanceResourceName(cr, "lf"), "my-ns", false)
+	res = reconcile()
+	assert.Equal(t, origBE, imageOf("be"), "Backend must keep waiting while Langflow rolls")
+	assert.Equal(t, rolloutPhaseLangflow, rolloutPhase())
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter)
+
+	// Langflow available → Backend's new revision rolls; Frontend withheld.
+	setDeploymentRolledOut(t, c, instanceResourceName(cr, "lf"), "my-ns", true)
+	res = reconcile()
+	assert.Equal(t, "backend:v2", imageOf("be"))
+	assert.Equal(t, origFE, imageOf("fe"), "Frontend update must wait for Backend")
+	assert.Equal(t, rolloutPhaseBackend, rolloutPhase())
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter)
+
+	// Backend available → Frontend's new revision rolls last.
+	setDeploymentRolledOut(t, c, instanceResourceName(cr, "be"), "my-ns", true)
+	res = reconcile()
+	assert.Equal(t, "frontend:v2", imageOf("fe"))
+	assert.Equal(t, rolloutPhaseFrontend, rolloutPhase())
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter)
+
+	// Frontend update applied (last in the chain) → ordered rollout complete.
+	res = reconcile()
+	assert.Equal(t, rolloutPhaseComplete, rolloutPhase())
+	assert.NotEqual(t, rolloutPollInterval, res.RequeueAfter)
+}
+
+func TestReconcile_OrderedRollout_StuckUpgradeStaysRollingOutThenDegraded(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	reconcileOnce(t, r, cr)
+	markDeploymentsRolledOut(t, c)
+
+	get := func() *openragv1alpha1.OpenRAG {
+		got := &openragv1alpha1.OpenRAG{}
+		require.NoError(t, c.Get(context.Background(), req.NamespacedName, got))
+		return got
+	}
+	reconcile := func() ctrl.Result {
+		res, err := r.Reconcile(context.Background(), req)
+		require.NoError(t, err)
+		return res
+	}
+
+	upd := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, upd))
+	upd.Spec.Langflow.Image = "langflowai/openrag-langflow:does-not-exist"
+	require.NoError(t, c.Update(context.Background(), upd))
+
+	reconcile()
+
+	// contextdeadline not hit so should stay rollingout
+	setDeploymentRolledOut(t, c, instanceResourceName(cr, "lf"), "my-ns", false)
+	res := reconcile()
+	got := get()
+	assert.Equal(t, rolloutPhaseLangflow, got.Status.RolloutPhase, "must keep waiting on Langflow")
+	assert.NotEqual(t, rolloutPhaseComplete, got.Status.RolloutPhase, "must not report Complete while Langflow is unavailable")
+	assert.NotEqual(t, phaseRunning, got.Status.Phase, "must not report Running while Langflow is unavailable")
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter, "must keep requeuing while rolling out")
+
+	// Kubernetes gives up after progressDeadlineSeconds and shows Degraded.
+	setDeploymentProgressDeadlineExceeded(t, c, instanceResourceName(cr, "lf"), "my-ns")
+	reconcile()
+	got = get()
+	assert.Equal(t, "Degraded", got.Status.Phase, "stalled rollout must surface as Degraded")
+	assert.Equal(t, rolloutPhaseLangflow, got.Status.RolloutPhase, "Degraded status must retain the stuck component")
+	assert.Contains(t, got.Status.Message, "ProgressDeadlineExceeded")
+}
+
+// TestReconcile_OrderedRollout_DegradedRecovery verifies that a stalled (Degraded)
+// rollout self-heals once a healthy revision is pushed.
+func TestReconcile_OrderedRollout_DegradedRecovery(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	r, c := reconciler(s, cr)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+
+	reconcileOnce(t, r, cr)
+	markDeploymentsRolledOut(t, c)
+
+	// Drive to Degraded.
+	upd := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, upd))
+	upd.Spec.Langflow.Image = "langflow:bad"
+	require.NoError(t, c.Update(context.Background(), upd))
+	_, err := r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	setDeploymentProgressDeadlineExceeded(t, c, instanceResourceName(cr, "lf"), "my-ns")
+	_, err = r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	got := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, got))
+	require.Equal(t, phaseDegraded, got.Status.Phase, "pre-condition: must be Degraded before recovery")
+
+	// Push fix → must leave Degraded and re-enter RollingOut.
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, upd))
+	upd.Spec.Langflow.Image = "langflow:fixed"
+	require.NoError(t, c.Update(context.Background(), upd))
+	res, err := r.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(context.Background(), req.NamespacedName, got))
+	assert.Equal(t, rolloutPollInterval, res.RequeueAfter)
+	assert.Equal(t, phaseRollingOut, got.Status.Phase)
+}
+
+func TestUpdateStatusRollingOut_RefreshesBackendReadyCondition(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+
+	// Pre-set BackendReady=True as if a prior successful reconcile had run.
+	cr.Status.Conditions = []metav1.Condition{{
+		Type:   conditionBackendReady,
+		Status: metav1.ConditionTrue,
+		Reason: "PodRunning",
+	}}
+
+	// Backend deployment exists but has no ready replicas (pod is rolling out).
+	beDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: instanceResourceName(cr, "be"), Namespace: "my-ns"},
+		Status:     appsv1.DeploymentStatus{Replicas: 1, ReadyReplicas: 0},
+	}
+	r, c := reconciler(s, cr, beDeploy)
+
+	// base is snapshotted before the call so writeStatus sees the BackendReady flip
+	// (True → False) as a change and actually patches.
+	_, err := r.updateStatusRollingOut(context.Background(), cr, cr.DeepCopy(), "my-ns")
+	require.NoError(t, err)
+
+	updated := &openragv1alpha1.OpenRAG{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}, updated))
+	cond := meta.FindStatusCondition(updated.Status.Conditions, conditionBackendReady)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionFalse, metav1.ConditionStatus(cond.Status))
 }
 
 func TestReconcile_CreatesServices(t *testing.T) {
@@ -1760,4 +2094,81 @@ func containsContainer(cs []corev1.Container, name string) bool {
 	}
 
 	return false
+}
+
+func TestDeploymentRolledOut(t *testing.T) {
+	replicas := func(n int32) *int32 { return &n }
+	cases := []struct {
+		name string
+		dep  *appsv1.Deployment
+		want bool
+	}{
+		{
+			name: "new revision fully available",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 3, Replicas: 2, UpdatedReplicas: 2, AvailableReplicas: 2},
+			},
+			want: true,
+		},
+		{
+			name: "spec update not yet observed",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 4},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(1)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 3, Replicas: 1, UpdatedReplicas: 1, AvailableReplicas: 1},
+			},
+			want: false,
+		},
+		{
+			name: "new-revision replicas not all created",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(3)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 3, UpdatedReplicas: 1, AvailableReplicas: 1},
+			},
+			want: false,
+		},
+		{
+			name: "old-revision replicas still terminating",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 3, UpdatedReplicas: 2, AvailableReplicas: 2},
+			},
+			want: false,
+		},
+		{
+			name: "new revision created but not yet available (readiness probe failing)",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 2, AvailableReplicas: 1},
+			},
+			want: false,
+		},
+		{
+			name: "scaled to zero is considered rolled out",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 5},
+				Spec:       appsv1.DeploymentSpec{Replicas: replicas(0)},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 5},
+			},
+			want: true,
+		},
+		{
+			name: "nil replicas defaults to one desired",
+			dep: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
+				Status:     appsv1.DeploymentStatus{ObservedGeneration: 1, Replicas: 1, UpdatedReplicas: 1, AvailableReplicas: 1},
+			},
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, deploymentRolledOut(tc.dep))
+		})
+	}
 }

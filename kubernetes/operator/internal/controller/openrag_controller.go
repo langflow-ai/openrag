@@ -45,8 +45,25 @@ const (
 	phaseReconciled = "Reconciled"
 	phaseScaledDown = "ScaledDown"
 	phaseRunning    = "Running"
+	phaseDegraded   = "Degraded"
 	phaseError      = "Error"
+	phaseRollingOut = "RollingOut"
+
+	// RolloutPhase values track progress of the ordered component rollout
+	// (Langflow → Backend → Frontend). A component is only rolled out once the
+	// previous one's current revision is fully available (readiness probes pass).
+	rolloutPhaseLangflow = "RollingOutLangflow"
+	rolloutPhaseBackend  = "RollingOutBackend"
+	rolloutPhaseFrontend = "RollingOutFrontend"
+	rolloutPhaseComplete = "Complete"
 )
+
+// rolloutPollInterval is the fallback requeue delay while waiting for a
+// component's current revision to become available. The owned-Deployment watch
+// normally re-triggers reconcile as soon as readiness changes; this poll is a
+// safety net, notably for the cross-namespace case where the Deployment is
+// matched by label instead of an owner reference and the watch does not fire.
+const rolloutPollInterval = 10 * time.Second
 
 // OpenRAGReconciler reconciles an OpenRAG object.
 type OpenRAGReconciler struct {
@@ -118,39 +135,56 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("CR already has finalizer", "finalizer", finalizer)
 	}
 
+	// Snapshot status as read from the cluster before any reconcile step mutates it
+	// Every status write this pass diffs against this snapshot (merge patch), so on
+	// unchanged pass skips the write and a concurrent CR edit cannot 409
+	base := instance.DeepCopy()
+
 	// Reconcile all resources
 	if err := r.reconcileNamespace(ctx, instance, targetNS); err != nil {
-		return r.updateStatusError(ctx, instance, "namespace", err)
+		return r.updateStatusError(ctx, instance, base, "namespace", err)
 	}
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
-		return r.updateStatusError(ctx, instance, "service accounts", err)
+		return r.updateStatusError(ctx, instance, base, "service accounts", err)
 	}
 	// Reconcile .env secrets and get their hashes to trigger pod restarts when secrets change
 	backendEnvHash, langflowEnvHash, err := r.reconcileEnvSecrets(ctx, instance, targetNS)
 	if err != nil {
-		return r.updateStatusError(ctx, instance, "env secrets", err)
+		return r.updateStatusError(ctx, instance, base, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
-		return r.updateStatusError(ctx, instance, "pvcs", err)
+		return r.updateStatusError(ctx, instance, base, "pvcs", err)
 	}
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
-		return r.updateStatusError(ctx, instance, "services", err)
+		return r.updateStatusError(ctx, instance, base, "services", err)
 	}
-	if err := r.reconcileDeployments(ctx, instance, targetNS, backendEnvHash, langflowEnvHash); err != nil {
-		return r.updateStatusError(ctx, instance, "deployments", err)
+	// Deployments roll out in dependency order (Langflow → Backend → Frontend).
+	rollout, err := r.reconcileDeployments(ctx, instance, targetNS, backendEnvHash, langflowEnvHash)
+	if err != nil {
+		return r.updateStatusError(ctx, instance, base, "deployments", err)
 	}
+	// Docling and NetworkPolicy are independent of the ordered rollout, so they are
+	// reconciled every pass rather than gated behind the LF→BE→FE sequence.
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
-		return r.updateStatusError(ctx, instance, "docling components", err)
+		return r.updateStatusError(ctx, instance, base, "docling components", err)
 	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
-			return r.updateStatusError(ctx, instance, "network policy", err)
+			return r.updateStatusError(ctx, instance, base, "network policy", err)
 		}
 	}
 
-	// Update status to success
-	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
-	return r.updateStatusSuccess(ctx, instance, targetNS)
+	switch rollout {
+	case rolloutStalled:
+		logger.Info("ordered rollout stalled past progress deadline", "name", instance.Name, "rolloutPhase", instance.Status.RolloutPhase)
+		return r.updateStatusDegraded(ctx, instance, base)
+	case rolloutProgressing:
+		logger.Info("ordered rollout in progress, requeueing", "name", instance.Name, "rolloutPhase", instance.Status.RolloutPhase)
+		return r.updateStatusRollingOut(ctx, instance, base, targetNS)
+	default:
+		logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
+		return r.updateStatusSuccess(ctx, instance, base, targetNS)
+	}
 }
 
 func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
@@ -695,21 +729,175 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string) error {
-	deploys := []client.Object{
-		r.frontendDeployment(o, targetNS),
-		r.backendDeployment(o, targetNS, backendEnvHash),
-		r.langflowDeployment(o, targetNS, langflowEnvHash),
+// rolloutState is the outcome of a single reconcile pass, derived fresh each time
+// from live Deployment state. It is never persisted, so it moves freely across
+// passes in either direction (e.g. Stalled → Progressing once a fix is pushed).
+type rolloutState int
+
+const (
+	rolloutComplete    rolloutState = iota // every component is at its desired available revision
+	rolloutProgressing                     // a component is being created, updated, or coming up
+	rolloutStalled                         // the awaited component exceeded its progress deadline
+)
+
+// reconcileDeployments reconciles the three core Deployments (Langflow → Backend
+// → Frontend) and returns the rollout state plus the component being waited on.
+// Ordering applies only to *revision updates*, never to existence:
+//
+//   - A missing Deployment is always created immediately, regardless of ordering.
+//     The initial install and any self-heal (deleted Deployment) bring all three
+//     up in parallel; RolloutPhase then walks Langflow → Backend → Frontend as
+//     each becomes available, but pods are not started in sequence.
+//   - A *change* to an existing Deployment (new image/config) is only applied once
+//     its upstream dependency's current revision is fully available (readiness
+//     probes passing). While an upstream update is still rolling out, downstream
+//     updates are withheld — the dependents keep serving their existing revision.
+//
+// The gating is derived from live Deployment state every pass, so it is idempotent
+// and self-correcting.
+func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string) (rolloutState, error) {
+	logger := log.FromContext(ctx).WithValues("namespace", o.Namespace, "name", o.Name)
+
+	steps := []struct {
+		phase      string
+		deployment *appsv1.Deployment
+	}{
+		{rolloutPhaseLangflow, r.langflowDeployment(o, targetNS, langflowEnvHash)},
+		{rolloutPhaseBackend, r.backendDeployment(o, targetNS, backendEnvHash)},
+		{rolloutPhaseFrontend, r.frontendDeployment(o, targetNS)},
 	}
-	for _, d := range deploys {
-		if err := r.setOwnerOrLabel(o, d, targetNS); err != nil {
-			return err
+
+	// state is the running outcome for this pass. While it is rolloutComplete the
+	// dependency gate is open — nothing upstream is blocking — and downstream
+	// updates may proceed. It is set once, at the first not-available component,
+	// then frozen for the rest of the loop.
+	state := rolloutComplete
+	o.Status.RolloutPhase = rolloutPhaseComplete
+
+	for _, step := range steps {
+		if err := r.setOwnerOrLabel(o, step.deployment, targetNS); err != nil {
+			return rolloutComplete, err
 		}
-		if err := r.createOrUpdate(ctx, d); err != nil {
-			return err
+
+		live := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKeyFromObject(step.deployment), live)
+		exists := err == nil
+		if err != nil && !errors.IsNotFound(err) {
+			return rolloutComplete, err
+		}
+
+		// available: at its desired revision with all replicas ready.
+		// converging: current revision is applied but not yet available — the only
+		// state where a ProgressDeadlineExceeded condition is meaningful. An update
+		// applied this very pass is pending (not converging), so its stale prior
+		// deadline condition is never checked.
+		available, converging := false, false
+		switch {
+		case !exists:
+			// Creation is never gated: bring it up immediately (initial install
+			// or self-heal of a deleted Deployment).
+			if err := r.createOrUpdate(ctx, step.deployment); err != nil {
+				return rolloutComplete, err
+			}
+		default:
+			pending, err := deploymentUpdatePending(step.deployment, live)
+			if err != nil {
+				return rolloutComplete, err
+			}
+			switch {
+			case pending && state != rolloutComplete:
+				// Upstream still rolling: withhold this update until it is available.
+				logger.Info("withholding component update until upstream is available",
+					"deployment", live.Name, "phase", step.phase)
+			case pending:
+				// Gate open: roll this component's new revision now.
+				if err := r.createOrUpdate(ctx, step.deployment); err != nil {
+					return rolloutComplete, err
+				}
+				logger.Info("rolling out component update", "deployment", step.deployment.Name, "phase", step.phase)
+			default:
+				available = deploymentRolledOut(live)
+				converging = !available
+			}
+		}
+
+		// The first not-available component is the one we report and poll on; it
+		// also closes the gate (state != rolloutComplete) for everything downstream.
+		if !available && state == rolloutComplete {
+			o.Status.RolloutPhase = step.phase
+			if converging && deploymentProgressDeadlineExceeded(live) {
+				state = rolloutStalled
+			} else {
+				state = rolloutProgressing
+			}
 		}
 	}
-	return nil
+
+	return state, nil
+}
+
+// deploymentUpdatePending reports whether createOrUpdate would modify the live
+// Deployment to match desired — i.e. there is a revision change to roll out. It
+// mirrors createOrUpdate's own change detection (image drift or spec-hash drift).
+func deploymentUpdatePending(desired, live *appsv1.Deployment) (bool, error) {
+	if hasDeploymentImageDrift(desired, live) {
+		return true, nil
+	}
+	hash, err := desiredHash(desired)
+	if err != nil {
+		return false, err
+	}
+	return live.GetAnnotations()[specHashAnnotation] != hash, nil
+}
+
+// deploymentProgressDeadlineExceeded reports whether the Deployment controller has
+// given up on the current revision's rollout: its Progressing condition is False
+// with reason ProgressDeadlineExceeded (set after .spec.progressDeadlineSeconds,
+// default 600s, of no progress; e.g. an image that will not pull). The condition is
+// only trusted once the controller has observed the current spec, so a stale
+// condition left over from a previous revision cannot trigger a false positive
+func deploymentProgressDeadlineExceeded(d *appsv1.Deployment) bool {
+	if d.Status.ObservedGeneration < d.Generation {
+		return false
+	}
+	for _, cond := range d.Status.Conditions {
+		if cond.Type == appsv1.DeploymentProgressing {
+			return cond.Status == corev1.ConditionFalse && cond.Reason == "ProgressDeadlineExceeded"
+		}
+	}
+	return false
+}
+
+// deploymentRolledOut reports whether a Deployment's current spec revision is
+// fully rolled out — i.e. the Deployment controller has observed the latest
+// spec, every replica is the new revision, no old-revision replicas remain, and
+// all new replicas are available (their readiness probe passes). This mirrors
+// the completion check used by "kubectl rollout status".
+func deploymentRolledOut(d *appsv1.Deployment) bool {
+	// The Deployment controller must have observed the current spec generation;
+	// otherwise .Status still describes the previous revision.
+	if d.Status.ObservedGeneration < d.Generation {
+		return false
+	}
+
+	desired := int32(1)
+	if d.Spec.Replicas != nil {
+		desired = *d.Spec.Replicas
+	}
+
+	// All desired replicas are the new revision.
+	if d.Status.UpdatedReplicas < desired {
+		return false
+	}
+	// No old-revision replicas remain (relevant during a rolling replacement).
+	if d.Status.Replicas > d.Status.UpdatedReplicas {
+		return false
+	}
+	// Every new-revision replica is available (readiness probe passing).
+	if d.Status.AvailableReplicas < d.Status.UpdatedReplicas {
+		return false
+	}
+	return true
 }
 
 func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
@@ -730,7 +918,13 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: baseLabels},
-			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDeployment{
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+				},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      podLabels,

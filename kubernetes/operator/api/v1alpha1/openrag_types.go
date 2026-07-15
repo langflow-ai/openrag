@@ -117,9 +117,8 @@ type ComponentSpec struct {
 
 	// AutomountServiceAccountToken controls whether the ServiceAccount token is
 	// automatically mounted into this component's pod. When unset, the operator
-	// applies a per-component default: true only for the backend pod (which talks
-	// to the Kubernetes API) and false for every other pod (frontend, Langflow,
-	// docling-serve, docling-worker, valkey), none of which need the token.
+	// applies a per-component default: false for the frontend and Langflow pods
+	// (which do not talk to the Kubernetes API) and true for the backend pod.
 	// Set explicitly to override the default.
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
@@ -805,6 +804,15 @@ type OpenRAGStatus struct {
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
+	// RolloutPhase reflects progress of the ordered component *update* rollout
+	// (Langflow → Backend → Frontend). A component's new revision is applied only
+	// after the previous component's current revision becomes available (its
+	// readiness probe passes). Ordering applies to revision updates only: initial
+	// creation and recreation of a deleted Deployment happen immediately, unordered.
+	// It is "Complete" when no ordered update is in flight.
+	// +optional
+	RolloutPhase string `json:"rolloutPhase,omitempty"`
+
 	// Message provides human-readable detail about the current phase.
 	// +optional
 	Message string `json:"message,omitempty"`
@@ -818,6 +826,7 @@ type OpenRAGStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=or,scope=Namespaced
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Rollout",type="string",JSONPath=".status.rolloutPhase",priority=1
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Frontend",type="string",JSONPath=".spec.frontend.image"
 // +kubebuilder:printcolumn:name="Backend",type="string",JSONPath=".spec.backend.image"

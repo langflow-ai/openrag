@@ -27,6 +27,7 @@ import (
 type OpenRAGStatusApplyConfiguration struct {
 	Conditions         []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	Phase              *string                          `json:"phase,omitempty"`
+	RolloutPhase       *string                          `json:"rolloutPhase,omitempty"`
 	Message            *string                          `json:"message,omitempty"`
 	ObservedGeneration *int64                           `json:"observedGeneration,omitempty"`
 }
@@ -55,6 +56,14 @@ func (b *OpenRAGStatusApplyConfiguration) WithConditions(values ...*v1.Condition
 // If called multiple times, the Phase field is set to the value of the last call.
 func (b *OpenRAGStatusApplyConfiguration) WithPhase(value string) *OpenRAGStatusApplyConfiguration {
 	b.Phase = &value
+	return b
+}
+
+// WithRolloutPhase sets the RolloutPhase field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RolloutPhase field is set to the value of the last call.
+func (b *OpenRAGStatusApplyConfiguration) WithRolloutPhase(value string) *OpenRAGStatusApplyConfiguration {
+	b.RolloutPhase = &value
 	return b
 }
 

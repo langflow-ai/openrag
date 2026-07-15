@@ -20,6 +20,10 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.rolloutPhase
+      name: Rollout
+      priority: 1
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -997,9 +1001,8 @@ spec:
                     description: |-
                       AutomountServiceAccountToken controls whether the ServiceAccount token is
                       automatically mounted into this component's pod. When unset, the operator
-                      applies a per-component default: true only for the backend pod (which talks
-                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                      docling-serve, docling-worker, valkey), none of which need the token.
+                      applies a per-component default: false for the frontend and Langflow pods
+                      (which do not talk to the Kubernetes API) and true for the backend pod.
                       Set explicitly to override the default.
                     type: boolean
                   command:
@@ -6046,9 +6049,8 @@ spec:
                         description: |-
                           AutomountServiceAccountToken controls whether the ServiceAccount token is
                           automatically mounted into this component's pod. When unset, the operator
-                          applies a per-component default: true only for the backend pod (which talks
-                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                          docling-serve, docling-worker, valkey), none of which need the token.
+                          applies a per-component default: false for the frontend and Langflow pods
+                          (which do not talk to the Kubernetes API) and true for the backend pod.
                           Set explicitly to override the default.
                         type: boolean
                       command:
@@ -11668,9 +11670,8 @@ spec:
                         description: |-
                           AutomountServiceAccountToken controls whether the ServiceAccount token is
                           automatically mounted into this component's pod. When unset, the operator
-                          applies a per-component default: true only for the backend pod (which talks
-                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                          docling-serve, docling-worker, valkey), none of which need the token.
+                          applies a per-component default: false for the frontend and Langflow pods
+                          (which do not talk to the Kubernetes API) and true for the backend pod.
                           Set explicitly to override the default.
                         type: boolean
                       command:
@@ -16600,9 +16601,8 @@ spec:
                         description: |-
                           AutomountServiceAccountToken controls whether the ServiceAccount token is
                           automatically mounted into this component's pod. When unset, the operator
-                          applies a per-component default: true only for the backend pod (which talks
-                          to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                          docling-serve, docling-worker, valkey), none of which need the token.
+                          applies a per-component default: false for the frontend and Langflow pods
+                          (which do not talk to the Kubernetes API) and true for the backend pod.
                           Set explicitly to override the default.
                         type: boolean
                       command:
@@ -22257,9 +22257,8 @@ spec:
                     description: |-
                       AutomountServiceAccountToken controls whether the ServiceAccount token is
                       automatically mounted into this component's pod. When unset, the operator
-                      applies a per-component default: true only for the backend pod (which talks
-                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                      docling-serve, docling-worker, valkey), none of which need the token.
+                      applies a per-component default: false for the frontend and Langflow pods
+                      (which do not talk to the Kubernetes API) and true for the backend pod.
                       Set explicitly to override the default.
                     type: boolean
                   command:
@@ -27112,9 +27111,8 @@ spec:
                     description: |-
                       AutomountServiceAccountToken controls whether the ServiceAccount token is
                       automatically mounted into this component's pod. When unset, the operator
-                      applies a per-component default: true only for the backend pod (which talks
-                      to the Kubernetes API) and false for every other pod (frontend, Langflow,
-                      docling-serve, docling-worker, valkey), none of which need the token.
+                      applies a per-component default: false for the frontend and Langflow pods
+                      (which do not talk to the Kubernetes API) and true for the backend pod.
                       Set explicitly to override the default.
                     type: boolean
                   command:
@@ -31252,6 +31250,15 @@ spec:
               phase:
                 description: Phase is a short human-readable summary (Pending, Running,
                   Degraded, Error).
+                type: string
+              rolloutPhase:
+                description: |-
+                  RolloutPhase reflects progress of the ordered component *update* rollout
+                  (Langflow → Backend → Frontend). A component's new revision is applied only
+                  after the previous component's current revision becomes available (its
+                  readiness probe passes). Ordering applies to revision updates only: initial
+                  creation and recreation of a deleted Deployment happen immediately, unordered.
+                  It is "Complete" when no ordered update is in flight.
                 type: string
             type: object
         type: object
