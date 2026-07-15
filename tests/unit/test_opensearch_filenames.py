@@ -14,9 +14,7 @@ from utils.opensearch_filenames import filename_exists, find_existing_filenames
 
 def _agg_response(*filenames: str) -> dict:
     return {
-        "aggregations": {
-            "filenames": {"buckets": [{"key": f, "doc_count": 1} for f in filenames]}
-        }
+        "aggregations": {"filenames": {"buckets": [{"key": f, "doc_count": 1} for f in filenames]}}
     }
 
 

@@ -127,9 +127,7 @@ async def test_connector_check_duplicates():
     # Mock search return value: existing.pdf exists, new_file.docx does not
     opensearch_client.search = AsyncMock(
         return_value={
-            "aggregations": {
-                "filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}
-            }
+            "aggregations": {"filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}}
         }
     )
 
@@ -290,9 +288,7 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     opensearch_client.search = AsyncMock(
         return_value={
-            "aggregations": {
-                "filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}
-            }
+            "aggregations": {"filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}}
         }
     )
 

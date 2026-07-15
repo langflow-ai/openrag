@@ -202,9 +202,7 @@ async def test_s3_processor_duplicate_exists_with_replace(tmp_path):
     assert file_task.status == TaskStatus.COMPLETED
     assert upload_task.successful_files == 1
     processor.delete_document_by_filename.assert_called_once()
-    assert (
-        processor.delete_document_by_filename.call_args.kwargs["owner_user_id"] == "user-123"
-    )
+    assert processor.delete_document_by_filename.call_args.kwargs["owner_user_id"] == "user-123"
     processor.s3_client.download_fileobj.assert_called_once()
     processor.process_document_standard.assert_awaited_once()
 
