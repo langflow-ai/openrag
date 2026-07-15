@@ -113,9 +113,20 @@ generate_report() {
 }
 
 clean_infra() {
-  echo "${yellow}Tearing down infra and performing factory reset...${nc}"
+  echo "${yellow}Tearing down infra and cleaning up files...${nc}"
   uv run python scripts/docling_ctl.py stop || true
-  FORCE=true make factory-reset || true
+  "${compose_cmd[@]}" down -v 2>/dev/null || true
+  
+  if command -v sudo >/dev/null 2>&1; then
+    sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows
+  else
+    rm -rf langflow-data config data keys opensearch-data openrag-documents flows 2>/dev/null || \
+    for i in 1 2 3; do
+      docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+      echo "Attempt $i failed, retrying in 5s..."
+      sleep 5
+    done || true
+  fi
 }
 
 trap_cleanup() {
@@ -298,15 +309,14 @@ for attempt in $(seq 1 "$max_attempts"); do
   if run_attempt; then
     echo "${green}Attempt $attempt succeeded!${nc}"
     test_result=0
-    clean_infra
     break
   else
     echo "${red}Attempt $attempt failed!${nc}"
     test_result=1
     dump_logs || true
-    clean_infra
     
     if [ "$attempt" -lt "$max_attempts" ]; then
+      clean_infra
       echo "${yellow}Retrying in 5 seconds...${nc}"
       sleep 5
     fi
