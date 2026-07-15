@@ -42,6 +42,8 @@ export class Settings {
     this.page.getByRole("button", { name: "Remove Anyway" });
   private readonly watsonxConnectionErrorMessage = () =>
     this.page.getByText("Connection failed. Check your configuration.");
+  private readonly openaiConnectionErrorMessage = () =>
+    this.page.getByText("Invalid OpenAI API key. Verify or replace the key.");
 
   /**
    * Get locator for configure button by provider name
@@ -333,10 +335,17 @@ export class Settings {
       await this.watsonxProjectIDInput().fill(projectId);
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
+      const successToast = this.getToastByText(
+        "IBM watsonx.ai successfully configured",
+      );
+      const errorMsg = this.watsonxConnectionErrorMessage();
+      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
+      if (await errorMsg.isVisible()) {
+        throw new Error(
+          "Watsonx.ai configuration failed: Connection failed. Check your configuration (invalid API Key, Project ID, or Endpoint).",
+        );
+      }
       logger.info("Watsonx.ai configuration completed");
-      await expect(
-        this.getToastByText("IBM watsonx.ai successfully configured"),
-      ).toBeVisible();
       await expect(editBtn).toBeEnabled();
     }
     // Else if already configured -> skip setup
@@ -414,10 +423,17 @@ export class Settings {
       const apiKey = config.openaiApiKey;
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
+      const successToast = this.getToastByText(
+        "OpenAI successfully configured",
+      );
+      const errorMsg = this.openaiConnectionErrorMessage();
+      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
+      if (await errorMsg.isVisible()) {
+        throw new Error(
+          "OpenAI configuration failed: Invalid OpenAI API key. Verify or replace the key.",
+        );
+      }
       logger.info("OpenAI configuration completed");
-      await expect(
-        this.getToastByText("OpenAI successfully configured"),
-      ).toBeVisible();
       await expect(editBtn).toBeEnabled();
     }
     // Else if already configured -> skip setup
