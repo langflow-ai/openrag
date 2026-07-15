@@ -602,6 +602,119 @@ async def reconcile_orphans_for_connector_type(
     return orphan_ids
 
 
+async def _sync_existing_connector_files(
+    connector_type: str,
+    working_connection,
+    user_id: str,
+    connector_service,
+    session_manager,
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+    existing_filenames: list[str],
+    id_field: str,
+    *,
+    ingest_settings: dict[str, Any] | None = None,
+    shared: bool = False,
+    reconcile: bool = True,
+) -> dict[str, Any]:
+    """Re-sync the files already indexed for a connector type — the shared
+    no-selection Sync flow used by both ``connector_sync`` and
+    ``sync_all_connectors``.
+
+    Orphans (deleted at the source) are reconciled first when ``reconcile`` is
+    True, then either timestamp change detection (updates-only re-ingest) or a
+    full re-sync runs depending on the connector's ``CHANGE_DETECTION``
+    capability; connectors with no stored ids fall back to filename filtering.
+
+    Returns an outcome dict the caller maps onto its own response shape:
+      * ``{"outcome": "synced", "task_id": ...}``
+      * ``{"outcome": "deleted_only"}`` — orphan cleanup removed every file;
+        nothing left to sync.
+      * ``{"outcome": "up_to_date"}`` — timestamp change detection found no
+        remote changes.
+    """
+    if existing_file_ids:
+        logger.info(
+            "Syncing specific files by connector file ID",
+            connector_type=connector_type,
+            file_count=len(existing_file_ids),
+            id_field=id_field,
+        )
+        # Reconcile orphans (files deleted at the source) before re-syncing.
+        # Callers gate this: a capped sync sees a partial remote listing and
+        # would delete legitimate files.
+        ids_to_sync = list(existing_file_ids)
+        if reconcile:
+            orphan_ids = await reconcile_orphans_for_connector_type(
+                connector_type=connector_type,
+                user_id=user_id,
+                connector_service=connector_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                existing_file_ids=existing_file_ids,
+                id_field=id_field,
+            )
+            if orphan_ids:
+                orphan_id_set = set(orphan_ids)
+                ids_to_sync = [fid for fid in existing_file_ids if fid not in orphan_id_set]
+        if not ids_to_sync:
+            return {"outcome": "deleted_only"}
+        if _connector_uses_timestamp_change_detection(connector_type):
+            # Timestamp Sync is updates-only: re-ingest just the files whose
+            # remote copy is newer than what's indexed (deleting the stale
+            # chunks via replace_duplicates). Unlike replace_duplicates=False
+            # this actually propagates content changes; unlike replacing every
+            # id it skips unchanged files instead of re-fetching the source.
+            connector = await connector_service.get_connector(working_connection.connection_id)
+            changed_ids = await bucket_changed_file_ids(
+                connector,
+                connector_type,
+                user_id,
+                session_manager,
+                jwt_token,
+                ids_to_sync,
+            )
+            if not changed_ids:
+                return {"outcome": "up_to_date"}
+            task_id = await connector_service.sync_specific_files(
+                working_connection.connection_id,
+                user_id,
+                changed_ids,
+                jwt_token=jwt_token,
+                ingest_settings=ingest_settings,
+                replace_duplicates=True,
+                shared=shared,
+            )
+        else:
+            task_id = await connector_service.sync_specific_files(
+                working_connection.connection_id,
+                user_id,
+                ids_to_sync,
+                jwt_token=jwt_token,
+                ingest_settings=ingest_settings,
+                replace_duplicates=_connector_sync_should_replace(connector_type),
+                shared=shared,
+            )
+    else:
+        # Fallback: use filename filtering (for Langflow-ingested files without document_id)
+        logger.info(
+            "Syncing files by filename filter (document_id not available)",
+            connector_type=connector_type,
+            filename_count=len(existing_filenames),
+        )
+        task_id = await connector_service.sync_connector_files(
+            working_connection.connection_id,
+            user_id,
+            max_files=None,
+            jwt_token=jwt_token,
+            filename_filter=set(existing_filenames),
+            ingest_settings=ingest_settings,
+            replace_duplicates=_connector_sync_should_replace(connector_type),
+            shared=shared,
+        )
+    return {"outcome": "synced", "task_id": task_id}
+
+
 class ConnectorSyncBody(BaseModel):
     max_files: int | None = None
     selected_files: list[Any] | None = None
@@ -1219,101 +1332,39 @@ async def connector_sync(
                     status_code=200,
                 )
 
-            # If we have connector file IDs, use sync_specific_files
-            # Otherwise, use filename filtering with sync_connector_files
-            if existing_file_ids:
-                logger.info(
-                    "Syncing specific files by connector file ID",
-                    connector_type=connector_type,
-                    file_count=len(existing_file_ids),
-                    id_field=id_field,
+            sync_result = await _sync_existing_connector_files(
+                connector_type=connector_type,
+                working_connection=working_connection,
+                user_id=user.user_id,
+                connector_service=connector_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                existing_file_ids=existing_file_ids,
+                existing_filenames=existing_filenames,
+                id_field=id_field,
+                ingest_settings=body.settings,
+                shared=body.shared,
+                # Strict gating: skip orphan reconcile when sync is capped — we'd
+                # see a partial remote listing and delete legitimate files.
+                reconcile=body.max_files is None,
+            )
+            if sync_result["outcome"] == "deleted_only":
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": f"Deleted stale {connector_type} files; no remaining files to sync.",
+                    },
+                    status_code=200,
                 )
-                # Reconcile orphans (files deleted at the source) before re-syncing.
-                # Strict gating: skip when sync is capped — we'd see a partial remote
-                # listing and delete legitimate files.
-                ids_to_sync = list(existing_file_ids)
-                if body.max_files is None:
-                    orphan_ids = await reconcile_orphans_for_connector_type(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        connector_service=connector_service,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                        existing_file_ids=existing_file_ids,
-                        id_field=id_field,
-                    )
-                    if orphan_ids:
-                        orphan_id_set = set(orphan_ids)
-                        ids_to_sync = [fid for fid in existing_file_ids if fid not in orphan_id_set]
-                if not ids_to_sync:
-                    return JSONResponse(
-                        {
-                            "status": "no_files",
-                            "message": f"Deleted stale {connector_type} files; no remaining files to sync.",
-                        },
-                        status_code=200,
-                    )
-                if _connector_uses_timestamp_change_detection(connector_type):
-                    # Timestamp Sync is updates-only: re-ingest just the files whose
-                    # remote copy is newer than what's indexed (deleting the stale
-                    # chunks via replace_duplicates). Unlike replace_duplicates=False
-                    # this actually propagates content changes; unlike replacing every
-                    # id it skips unchanged files instead of re-fetching the source.
-                    connector = await connector_service.get_connector(
-                        working_connection.connection_id
-                    )
-                    changed_ids = await bucket_changed_file_ids(
-                        connector,
-                        connector_type,
-                        user.user_id,
-                        session_manager,
-                        jwt_token,
-                        ids_to_sync,
-                    )
-                    if not changed_ids:
-                        return JSONResponse(
-                            {
-                                "status": "no_files",
-                                "message": f"All {connector_type} files are already up to date.",
-                            },
-                            status_code=200,
-                        )
-                    task_id = await connector_service.sync_specific_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        changed_ids,
-                        jwt_token=jwt_token,
-                        ingest_settings=body.settings,
-                        replace_duplicates=True,
-                        shared=body.shared,
-                    )
-                else:
-                    task_id = await connector_service.sync_specific_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        ids_to_sync,
-                        jwt_token=jwt_token,
-                        ingest_settings=body.settings,
-                        replace_duplicates=_connector_sync_should_replace(connector_type),
-                        shared=body.shared,
-                    )
-            else:
-                # Fallback: use filename filtering (for Langflow-ingested files without document_id)
-                logger.info(
-                    "Syncing files by filename filter (document_id not available)",
-                    connector_type=connector_type,
-                    filename_count=len(existing_filenames),
+            if sync_result["outcome"] == "up_to_date":
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": f"All {connector_type} files are already up to date.",
+                    },
+                    status_code=200,
                 )
-                task_id = await connector_service.sync_connector_files(
-                    working_connection.connection_id,
-                    user.user_id,
-                    max_files=None,
-                    jwt_token=jwt_token,
-                    filename_filter=set(existing_filenames),
-                    ingest_settings=body.settings,
-                    replace_duplicates=_connector_sync_should_replace(connector_type),
-                    shared=body.shared,
-                )
+            task_id = sync_result["task_id"]
         # The bucket_filter path may have already populated task_ids (new + changed
         # batches); every other branch sets a single task_id.
         if not task_ids:
@@ -1816,82 +1867,25 @@ async def sync_all_connectors(
                     )
                     continue
 
-                # Sync using connector file IDs if available, else use filename filter
-                if existing_file_ids:
-                    logger.info(
-                        "Syncing specific files by connector file ID",
-                        connector_type=connector_type,
-                        file_count=len(existing_file_ids),
-                        id_field=id_field,
-                    )
-                    # Reconcile orphans (files deleted at the source) before re-syncing.
-                    # sync_all_connectors has no caps or filters, so gating reduces
-                    # to the strict checks inside the helper.
-                    orphan_ids = await reconcile_orphans_for_connector_type(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        connector_service=connector_service,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                        existing_file_ids=existing_file_ids,
-                        id_field=id_field,
-                    )
-                    if orphan_ids:
-                        orphan_id_set = set(orphan_ids)
-                        existing_file_ids = [
-                            fid for fid in existing_file_ids if fid not in orphan_id_set
-                        ]
-                    if not existing_file_ids:
-                        deleted_only_connectors.append(connector_type)
-                        continue
-                    if _connector_uses_timestamp_change_detection(connector_type):
-                        # Updates-only change detection (see connector_sync): re-ingest
-                        # only files that changed at source, replacing stale chunks.
-                        connector = await connector_service.get_connector(
-                            working_connection.connection_id
-                        )
-                        changed_ids = await bucket_changed_file_ids(
-                            connector,
-                            connector_type,
-                            user.user_id,
-                            session_manager,
-                            jwt_token,
-                            existing_file_ids,
-                        )
-                        if not changed_ids:
-                            # Nothing changed at source — already up to date.
-                            skipped_connectors.append(connector_type)
-                            continue
-                        task_id = await connector_service.sync_specific_files(
-                            working_connection.connection_id,
-                            user.user_id,
-                            changed_ids,
-                            jwt_token=jwt_token,
-                            replace_duplicates=True,
-                        )
-                    else:
-                        task_id = await connector_service.sync_specific_files(
-                            working_connection.connection_id,
-                            user.user_id,
-                            existing_file_ids,
-                            jwt_token=jwt_token,
-                            replace_duplicates=_connector_sync_should_replace(connector_type),
-                        )
-                else:
-                    # Fallback: use filename filtering
-                    logger.info(
-                        "Syncing files by filename filter",
-                        connector_type=connector_type,
-                        filename_count=len(existing_filenames),
-                    )
-                    task_id = await connector_service.sync_connector_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        max_files=None,
-                        jwt_token=jwt_token,
-                        filename_filter=set(existing_filenames),
-                        replace_duplicates=_connector_sync_should_replace(connector_type),
-                    )
+                sync_result = await _sync_existing_connector_files(
+                    connector_type=connector_type,
+                    working_connection=working_connection,
+                    user_id=user.user_id,
+                    connector_service=connector_service,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                    existing_file_ids=existing_file_ids,
+                    existing_filenames=existing_filenames,
+                    id_field=id_field,
+                )
+                if sync_result["outcome"] == "deleted_only":
+                    deleted_only_connectors.append(connector_type)
+                    continue
+                if sync_result["outcome"] == "up_to_date":
+                    # Nothing changed at source — already up to date.
+                    skipped_connectors.append(connector_type)
+                    continue
+                task_id = sync_result["task_id"]
 
                 all_task_ids.append(task_id)
                 synced_connectors.append(connector_type)
