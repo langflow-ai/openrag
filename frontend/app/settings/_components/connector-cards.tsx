@@ -126,11 +126,19 @@ export default function ConnectorCards() {
       </div>
 
       {dialogDescriptors.map((descriptor) => {
+        // Render only while open so the component unmounts on close, which
+        // resets all useState/useForm state automatically and eliminates
+        // stale field values, error messages, and stuck loading indicators
+        // on reopen. The exit animation is foregone — an acceptable tradeoff
+        // for correctness.
+        if (openDialog !== descriptor.connectorType) return null;
         const Dialog = descriptor.SettingsDialog!;
         return (
           <Dialog
             key={descriptor.connectorType}
-            open={openDialog === descriptor.connectorType}
+            // mounted only while open; open is always true here,
+            // unmount handles "close"
+            open={true}
             setOpen={(open: boolean) =>
               setOpenDialog(open ? descriptor.connectorType : null)
             }

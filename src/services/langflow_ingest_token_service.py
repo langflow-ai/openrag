@@ -167,6 +167,7 @@ class LangflowIngestTokenService:
             "parser": context.parser,
             "chunk_size": context.chunk_size,
             "chunk_overlap": context.chunk_overlap,
+            "connector_file_id": context.connector_file_id,
         }
 
     @staticmethod
@@ -198,4 +199,5 @@ class LangflowIngestTokenService:
             parser=payload.get("parser"),
             chunk_size=payload.get("chunk_size"),
             chunk_overlap=payload.get("chunk_overlap"),
+            connector_file_id=payload.get("connector_file_id"),
         )

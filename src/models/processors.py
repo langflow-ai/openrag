@@ -21,6 +21,8 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_replace_filename_query
+
 from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
@@ -79,6 +81,7 @@ class TaskProcessor:
         on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
         *,
         wait_for_visibility: bool = False,
+        field: str = "document_id",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -102,6 +105,26 @@ class TaskProcessor:
         max_retries = 3
         retry_delay = 1.0
 
+        # Some deployments' indices predate connector_file_id's addition to the
+        # explicit mapping (config/settings.py), so OpenSearch dynamically
+        # mapped it as analyzed `text` (with a `.keyword` multi-field) instead
+        # of the intended `keyword` type. A plain term query against such a
+        # field tokenizes the query value and rarely matches the raw id, so
+        # also match its `.keyword` multi-field. document_id has always been
+        # explicitly `keyword` since index creation and never has this issue.
+        query: dict[str, Any]
+        if field == "connector_file_id":
+            query = {
+                "bool": {
+                    "should": [
+                        {"term": {field: file_hash}},
+                        {"term": {f"{field}.keyword": file_hash}},
+                    ]
+                }
+            }
+        else:
+            query = {"term": {field: file_hash}}
+
         for attempt in range(max_retries):
             try:
                 response = await opensearch_client.search(
@@ -109,7 +132,7 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {"document_id": file_hash}},
+                        "query": query,
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
@@ -718,6 +741,10 @@ class DocumentFileProcessor(TaskProcessor):
 
             # Compute hash
             file_hash = hash_id(item)
+            # Chunks are indexed with document_id=file_hash (see
+            # process_document_standard -> DocumentIndexContext), so record it on
+            # the file_task for preview-mode index proof lookups.
+            file_task.document_id = file_hash
 
             # Get file size
             try:
@@ -830,6 +857,58 @@ class ConnectorFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
         self.shared = shared
+
+    async def _reconcile_shared_owner(self, filename: str) -> None:
+        """Update owner fields on already-indexed chunks for `filename` to match
+        the connector's current `shared` setting.
+
+        Called on the duplicate/unchanged skip paths below, where a file's
+        content and name haven't changed since a prior sync but the connector's
+        "Make documents available to all users" setting may have been toggled
+        since then. Without this, those chunks would keep whatever owner they
+        got on their original ingest forever, since a byte-identical re-sync
+        never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
+        this user or already ownerless (matching the same boundary
+        delete_document_by_filename uses), so it can't touch another user's
+        private document that happens to share this filename.
+        """
+        write_client = clients.opensearch
+        if write_client is None:
+            return
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            self.user_id, self.owner_name, self.owner_email, self.shared
+        )
+        for candidate in get_filename_aliases(filename):
+            try:
+                await write_client.update_by_query(
+                    index=get_index_name(),
+                    body={
+                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "script": {
+                            "source": """
+                                if (params.shared) {
+                                    ctx._source.remove('owner');
+                                } else {
+                                    ctx._source.owner = params.owner;
+                                }
+                                ctx._source.owner_name = params.owner_name;
+                                ctx._source.owner_email = params.owner_email;
+                            """,
+                            "params": {
+                                "shared": self.shared,
+                                "owner": owner,
+                                "owner_name": owner_name,
+                                "owner_email": owner_email,
+                            },
+                        },
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to reconcile owner fields for skipped duplicate",
+                    filename=candidate,
+                    error=str(e),
+                )
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -985,6 +1064,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 shared=self.shared,
             )
             if duplicate_action == "skip":
+                await self._reconcile_shared_owner(file_task.filename)
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1001,6 +1081,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
+                    await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
@@ -1020,10 +1101,25 @@ class ConnectorFileProcessor(TaskProcessor):
                             delete_document_ids,
                         )
 
+                        # Match both fields: bucket-connector chunks carry the
+                        # raw connector id in connector_file_id (document_id is
+                        # a hash), while pre-migration chunks only have it in
+                        # document_id.
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),
-                            query={"term": {"document_id": document.id}},
+                            query={
+                                "bool": {
+                                    "should": [
+                                        {"term": {"document_id": document.id}},
+                                        {"term": {"connector_file_id": document.id}},
+                                        # See check_document_exists: some indices
+                                        # predate the explicit keyword mapping for
+                                        # this field.
+                                        {"term": {"connector_file_id.keyword": document.id}},
+                                    ]
+                                }
+                            },
                         )
                         deleted_count = await delete_document_ids(
                             opensearch_client,
@@ -1087,6 +1183,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id, self.owner_name, self.owner_email, self.shared
                         )
                     )
+                    file_task.document_id = document.id
                     result = await self.connector_service.langflow_service.upload_and_ingest_file(
                         file_tuple=file_tuple,
                         session_id=None,
@@ -1101,7 +1198,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         if self.connector_service.task_service
                         else None,
                         file_task=file_task,
-                        document_id=document.id,
+                        connector_file_id=document.id,
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
@@ -1121,6 +1218,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         _verification_client(opensearch_client),
                         on_error="assume_exists",
                         wait_for_visibility=True,
+                        field="connector_file_id",
                     ):
                         result = {
                             "status": "error",
@@ -1137,7 +1235,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="document_id",
                             indexed_filename=file_task.filename,
                         )
                 else:
@@ -1185,7 +1282,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
 
@@ -1349,10 +1445,6 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
-        # Backend-side Docling polling coordinator. Injected by TaskService
-        # from the container; gating by ENABLE_BACKEND_DOCLING_POLLING happens
-        # at construction time in app.container. When None, the legacy
-        # single-call ingestion path is used.
         self.docling_polling_service = docling_polling_service
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
@@ -1407,6 +1499,9 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
+            file_hash = hash_id(item)
+            file_task.document_id = file_hash
+
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
             config = get_openrag_config()
@@ -1430,6 +1525,7 @@ class LangflowFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
+                document_id=file_hash,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
             )
@@ -1439,8 +1535,10 @@ class LangflowFileProcessor(TaskProcessor):
             # landed in OpenSearch before declaring success. We key off the
             # filename — the identifier this path already uses for dedup and
             # delete (see check_filename_exists / delete_document_by_filename
-            # above) — because Langflow assigns its own document_id here, so
-            # hash_id(item) is not stored as document_id.
+            # above). The document_id (hash_id(item) == content hash) is now
+            # threaded through to Langflow so preview-mode index proof can look
+            # chunks up by document_id, but verification stays filename-based to
+            # match this path's existing dedup/delete semantics.
             #
             # wait_for_visibility polls on an empty result so the just-written
             # chunks become visible within OpenSearch's near-real-time refresh

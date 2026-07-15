@@ -92,6 +92,9 @@ async def test_update_includes_filename_in_script_and_params(monkeypatch):
             "should": [
                 {"term": {"document_id": "graph-item-id-stable"}},
                 {"term": {"connector_file_id": "graph-item-id-stable"}},
+                # Some indices predate the explicit keyword mapping for this
+                # field and dynamically mapped it as analyzed text instead.
+                {"term": {"connector_file_id.keyword": "graph-item-id-stable"}},
             ],
             "minimum_should_match": 1,
         }
