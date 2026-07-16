@@ -121,6 +121,11 @@ services:
       - MAX_WORKERS=${MAX_WORKERS:-4}
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
       - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
+      - OPENRAG_DEV_AZURE_BLOB=${OPENRAG_DEV_AZURE_BLOB:-false}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+      - AZURE_STORAGE_ENDPOINT=${AZURE_STORAGE_ENDPOINT}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - PLATFORM_USERNAME=${PLATFORM_USERNAME}
       - PLATFORM_PASSWORD=${PLATFORM_PASSWORD}
@@ -160,7 +165,7 @@ services:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
-      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
+      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"

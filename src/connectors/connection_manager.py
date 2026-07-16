@@ -476,6 +476,7 @@ class ConnectionManager:
                 "description": cls.CONNECTOR_DESCRIPTION,
                 "icon": cls.CONNECTOR_ICON,
                 "available": cls.is_available(self, user_id),
+                "kind": cls.CONNECTOR_KIND,
             }
         return result
 

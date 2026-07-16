@@ -24,6 +24,7 @@ export interface Connector {
   available?: boolean;
   status?: string;
   connectionId?: string;
+  requiresOAuth?: boolean;
 }
 
 interface ConnectorCardProps {
@@ -56,6 +57,7 @@ export default function ConnectorCard({
   const canUpload = can("knowledge:upload");
   const isConnected =
     connector.status === "connected" && connector.connectionId;
+  const isConfigured = connector.status === "configured";
 
   return (
     <Card
@@ -102,9 +104,11 @@ export default function ConnectorCard({
                   isCloudBrand && "!text-layer-contextual-foreground",
                 )}
               >
-                {isConnected || connector?.available
-                  ? `${connector.name} is configured.`
-                  : "Allowed for this workspace — OAuth credentials not configured yet."}
+                {isConnected
+                  ? `${connector.name} is connected.`
+                  : isConfigured || connector?.available
+                    ? `${connector.name} is configured.`
+                    : "Allowed for this workspace — OAuth credentials not configured yet."}
               </CardDescription>
             </div>
           </div>
