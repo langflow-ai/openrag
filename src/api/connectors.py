@@ -1407,9 +1407,7 @@ async def connector_status(
     has_authenticated_connection = len(verified_active_connections) > 0
 
     # Check if OAuth credentials are configured in environment (for OAuth connectors only)
-    has_env_credentials = connector_service.connection_manager.has_env_credentials(
-        connector_type
-    )
+    has_env_credentials = connector_service.connection_manager.has_env_credentials(connector_type)
 
     return JSONResponse(
         {
