@@ -6,7 +6,12 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from fastapi import HTTPException
 
-from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
+from config.settings import (
+    OAUTH_BROKER_URL,
+    WEBHOOK_BASE_URL,
+    is_no_auth_mode,
+    is_workspace_oauth_overrides_enabled,
+)
 from connectors.registry import get_connector_class, get_connector_classes
 from services.langflow_mcp_service import LangflowMCPService
 from session_manager import SessionManager
@@ -69,7 +74,13 @@ class AuthService:
 
         # Validate connector_type based on purpose. "test" (admin Test Connection
         # button, see _handle_test_auth) is validated like "data_source" but does
-        # not persist a connection on success.
+        # not persist a connection on success. Gated behind the workspace OAuth
+        # overrides feature flag — off by default.
+        allowed_purposes = (
+            ("app_auth", "data_source", "test")
+            if is_workspace_oauth_overrides_enabled()
+            else ("app_auth", "data_source")
+        )
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
         elif (
@@ -77,7 +88,7 @@ class AuthService:
             and connector_type not in _data_source_connector_types()
         ):
             raise ValueError(f"Unsupported connector type: {connector_type}")
-        elif purpose not in ["app_auth", "data_source", "test"]:
+        elif purpose not in allowed_purposes:
             raise ValueError(f"Unsupported purpose: {purpose}")
 
         if not redirect_uri:

@@ -20,6 +20,7 @@ import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.settings import is_workspace_oauth_overrides_enabled
 from connectors.registry import get_connector_classes
 from db.repositories import WorkspaceConfigRepo
 from utils.encryption import decrypt_secret, encrypt_secret
@@ -57,6 +58,9 @@ def _representative_connector_class(credential_key: str):
 async def warm_cache(session_factory) -> None:
     """Load and decrypt all stored overrides into the in-process cache. Call once at startup."""
     global _CACHE
+    if not is_workspace_oauth_overrides_enabled():
+        _CACHE = {}
+        return
     try:
         async with session_factory() as session:
             stored = await WorkspaceConfigRepo(session).get_section(OAUTH_CONFIG_SECTION) or {}
@@ -81,13 +85,13 @@ async def warm_cache(session_factory) -> None:
 
 
 def get_cached_client_id(credential_key: str) -> str | None:
-    if _CACHE is None:
+    if _CACHE is None or not is_workspace_oauth_overrides_enabled():
         return None
     return _CACHE.get(credential_key, {}).get("client_id")
 
 
 def get_cached_client_secret(credential_key: str) -> str | None:
-    if _CACHE is None:
+    if _CACHE is None or not is_workspace_oauth_overrides_enabled():
         return None
     return _CACHE.get(credential_key, {}).get("client_secret")
 

@@ -48,9 +48,7 @@ function AuthCallbackContent() {
   const state = searchParams.get("state");
   const finalConnectorId =
     localStorage.getItem("connecting_connector_id") || state;
-  const storedConnectorType = localStorage.getItem(
-    "connecting_connector_type",
-  );
+  const storedConnectorType = localStorage.getItem("connecting_connector_type");
 
   const validationError = errorParam
     ? `OAuth error: ${errorParam}`
@@ -172,6 +170,7 @@ function AuthCallbackContent() {
     code,
     state,
     finalConnectorId,
+    storedConnectorType,
     validationError,
     searchParams,
     isIbmAuthMode,

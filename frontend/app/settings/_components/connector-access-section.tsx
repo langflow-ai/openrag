@@ -15,6 +15,7 @@ import {
   useGetConnectorAccessQuery,
   useUpdateConnectorAccessMutation,
 } from "@/app/api/queries/useGetConnectorsQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { LabelWrapper } from "@/components/label-wrapper";
 import {
   Accordion,
@@ -87,7 +88,12 @@ export function ConnectorAccessSection() {
     refetch,
   } = useGetConnectorAccessQuery();
   const updateAccess = useUpdateConnectorAccessMutation();
-  const { data: oauthConfig = {} } = useConnectorOAuthConfigQuery();
+  const { data: apiSettings } = useGetSettingsQuery();
+  const showOAuthOverrides =
+    apiSettings?.show_workspace_oauth_overrides ?? false;
+  const { data: oauthConfig = {} } = useConnectorOAuthConfigQuery({
+    enabled: showOAuthOverrides,
+  });
   const saveOAuthConfig = useSaveConnectorOAuthConfigMutation();
   const clearOAuthConfig = useClearConnectorOAuthConfigMutation();
   const testConnection = useConnectConnectorMutation();
@@ -148,9 +154,9 @@ export function ConnectorAccessSection() {
     return connectors.some((c) => userDraft[c.type] !== c.enabled);
   }, [connectors, userDraft]);
 
-  const nonOAuthConnectors = connectors.filter(
-    (c) => !OAUTH_MEMBER_TYPES.has(c.type),
-  );
+  const nonOAuthConnectors = showOAuthOverrides
+    ? connectors.filter((c) => !OAUTH_MEMBER_TYPES.has(c.type))
+    : connectors;
 
   const renderSwitchRow = (connector: ConnectorAccessItem) => {
     const enabled = userDraft?.[connector.type] ?? connector.enabled;
@@ -191,9 +197,9 @@ export function ConnectorAccessSection() {
           Connector Settings
         </CardTitle>
         <CardDescription className="text-sm">
-          Control which connectors are available in this workspace, and
-          configure OAuth app credentials for connectors that support it —
-          overriding the environment-configured defaults.
+          {showOAuthOverrides
+            ? "Control which connectors are available in this workspace, and configure OAuth app credentials for connectors that support it — overriding the environment-configured defaults."
+            : "Control which connectors are available in this workspace for everyone, including admins."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -220,207 +226,212 @@ export function ConnectorAccessSection() {
           </div>
         ) : (
           <>
-            <Accordion type="single" collapsible className="space-y-3 mb-4">
-              {OAUTH_CREDENTIAL_GROUPS.map((group) => {
-                const memberConnectors = connectors.filter((c) =>
-                  group.memberConnectorTypes.includes(c.type),
-                );
-                if (memberConnectors.length === 0) return null;
+            {showOAuthOverrides && (
+              <Accordion type="single" collapsible className="space-y-3 mb-4">
+                {OAUTH_CREDENTIAL_GROUPS.map((group) => {
+                  const memberConnectors = connectors.filter((c) =>
+                    group.memberConnectorTypes.includes(c.type),
+                  );
+                  if (memberConnectors.length === 0) return null;
 
-                const status = oauthConfig[group.credentialKey];
-                const draft = credentialDrafts[group.credentialKey] ?? {
-                  client_id: "",
-                  client_secret: "",
-                };
-                const setDraft = (
-                  patch: Partial<{ client_id: string; client_secret: string }>,
-                ) =>
-                  setCredentialDrafts((prev) => ({
-                    ...prev,
-                    [group.credentialKey]: { ...draft, ...patch },
-                  }));
-                const badgeStatus = credentialStatus(status);
+                  const status = oauthConfig[group.credentialKey];
+                  const draft = credentialDrafts[group.credentialKey] ?? {
+                    client_id: "",
+                    client_secret: "",
+                  };
+                  const setDraft = (
+                    patch: Partial<{
+                      client_id: string;
+                      client_secret: string;
+                    }>,
+                  ) =>
+                    setCredentialDrafts((prev) => ({
+                      ...prev,
+                      [group.credentialKey]: { ...draft, ...patch },
+                    }));
+                  const badgeStatus = credentialStatus(status);
 
-                return (
-                  <AccordionItem
-                    key={group.credentialKey}
-                    value={group.credentialKey}
-                  >
-                    <AccordionTrigger>
-                      <div className="flex flex-1 items-center justify-between gap-3 pr-2">
-                        <span className="text-foreground">{group.label}</span>
-                        <StatusBadge status={badgeStatus} />
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-5">
-                      <ul className="space-y-3">
-                        {memberConnectors.map(renderSwitchRow)}
-                      </ul>
+                  return (
+                    <AccordionItem
+                      key={group.credentialKey}
+                      value={group.credentialKey}
+                    >
+                      <AccordionTrigger>
+                        <div className="flex flex-1 items-center justify-between gap-3 pr-2">
+                          <span className="text-foreground">{group.label}</span>
+                          <StatusBadge status={badgeStatus} />
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-5">
+                        <ul className="space-y-3">
+                          {memberConnectors.map(renderSwitchRow)}
+                        </ul>
 
-                      <div className="space-y-4 border-t pt-4">
-                        <LabelWrapper
-                          label="Client ID"
-                          id={`${group.credentialKey}-client-id`}
-                        >
-                          <Input
+                        <div className="space-y-4 border-t pt-4">
+                          <LabelWrapper
+                            label="Client ID"
                             id={`${group.credentialKey}-client-id`}
-                            value={draft.client_id || status?.client_id || ""}
-                            onChange={(e) =>
-                              setDraft({ client_id: e.target.value })
-                            }
-                            placeholder="OAuth client ID"
-                            autoComplete="off"
-                          />
-                        </LabelWrapper>
-                        <LabelWrapper
-                          label="Client Secret"
-                          id={`${group.credentialKey}-client-secret`}
-                        >
-                          <Input
+                          >
+                            <Input
+                              id={`${group.credentialKey}-client-id`}
+                              value={draft.client_id || status?.client_id || ""}
+                              onChange={(e) =>
+                                setDraft({ client_id: e.target.value })
+                              }
+                              placeholder="OAuth client ID"
+                              autoComplete="off"
+                            />
+                          </LabelWrapper>
+                          <LabelWrapper
+                            label="Client Secret"
                             id={`${group.credentialKey}-client-secret`}
-                            type="password"
-                            value={draft.client_secret}
-                            onChange={(e) =>
-                              setDraft({ client_secret: e.target.value })
-                            }
-                            placeholder={
-                              status?.secret_source === "env"
-                                ? "•••••••• (loaded from env)"
-                                : status?.secret_source === "override"
-                                  ? "•••••••• (saved)"
-                                  : "Enter client secret"
-                            }
-                            autoComplete="off"
-                          />
-                        </LabelWrapper>
+                          >
+                            <Input
+                              id={`${group.credentialKey}-client-secret`}
+                              type="password"
+                              value={draft.client_secret}
+                              onChange={(e) =>
+                                setDraft({ client_secret: e.target.value })
+                              }
+                              placeholder={
+                                status?.secret_source === "env"
+                                  ? "•••••••• (loaded from env)"
+                                  : status?.secret_source === "override"
+                                    ? "•••••••• (saved)"
+                                    : "Enter client secret"
+                              }
+                              autoComplete="off"
+                            />
+                          </LabelWrapper>
 
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              saveOAuthConfig.isPending ||
-                              (!draft.client_id.trim() &&
-                                !draft.client_secret.trim())
-                            }
-                            onClick={() => {
-                              saveOAuthConfig.mutate(
-                                {
-                                  credentialKey: group.credentialKey,
-                                  client_id:
-                                    draft.client_id.trim() || undefined,
-                                  client_secret:
-                                    draft.client_secret.trim() || undefined,
-                                },
-                                {
-                                  onSuccess: () => {
-                                    setCredentialDrafts((prev) => ({
-                                      ...prev,
-                                      [group.credentialKey]: {
-                                        client_id: "",
-                                        client_secret: "",
-                                      },
-                                    }));
-                                    toast.success(
-                                      `Saved ${group.label} credentials`,
-                                    );
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                saveOAuthConfig.isPending ||
+                                (!draft.client_id.trim() &&
+                                  !draft.client_secret.trim())
+                              }
+                              onClick={() => {
+                                saveOAuthConfig.mutate(
+                                  {
+                                    credentialKey: group.credentialKey,
+                                    client_id:
+                                      draft.client_id.trim() || undefined,
+                                    client_secret:
+                                      draft.client_secret.trim() || undefined,
                                   },
+                                  {
+                                    onSuccess: () => {
+                                      setCredentialDrafts((prev) => ({
+                                        ...prev,
+                                        [group.credentialKey]: {
+                                          client_id: "",
+                                          client_secret: "",
+                                        },
+                                      }));
+                                      toast.success(
+                                        `Saved ${group.label} credentials`,
+                                      );
+                                    },
+                                    onError: (err) =>
+                                      toast.error(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Failed to save credentials",
+                                      ),
+                                  },
+                                );
+                              }}
+                            >
+                              {saveOAuthConfig.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                "Save"
+                              )}
+                            </Button>
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={
+                                clearOAuthConfig.isPending ||
+                                badgeStatus === "not-configured"
+                              }
+                              onClick={() => {
+                                clearOAuthConfig.mutate(group.credentialKey, {
+                                  onSuccess: () =>
+                                    toast.success(
+                                      `Cleared ${group.label} override`,
+                                    ),
                                   onError: (err) =>
                                     toast.error(
                                       err instanceof Error
                                         ? err.message
-                                        : "Failed to save credentials",
+                                        : "Failed to clear credentials",
                                     ),
-                                },
-                              );
-                            }}
-                          >
-                            {saveOAuthConfig.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              "Save"
-                            )}
-                          </Button>
+                                });
+                              }}
+                            >
+                              Clear override
+                            </Button>
 
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={
-                              clearOAuthConfig.isPending ||
-                              badgeStatus === "not-configured"
-                            }
-                            onClick={() => {
-                              clearOAuthConfig.mutate(group.credentialKey, {
-                                onSuccess: () =>
-                                  toast.success(
-                                    `Cleared ${group.label} override`,
-                                  ),
-                                onError: (err) =>
-                                  toast.error(
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Failed to clear credentials",
-                                  ),
-                              });
-                            }}
-                          >
-                            Clear override
-                          </Button>
-
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="ml-auto"
-                            disabled={
-                              testConnection.isPending ||
-                              badgeStatus === "not-configured"
-                            }
-                            onClick={() => {
-                              trackButton({
-                                CTA: "Test Connector OAuth Connection",
-                                elementId: `test-connection-${group.credentialKey}`,
-                                namespace: "settings",
-                              });
-                              testConnection.mutate({
-                                connector: {
-                                  id: group.testConnectorType,
-                                  name: group.label,
-                                  description: "",
-                                  icon: "",
-                                  status: "not_connected",
-                                  type: group.testConnectorType,
-                                },
-                                redirectUri: `${window.location.origin}/auth/callback`,
-                                purpose: "test",
-                              });
-                            }}
-                          >
-                            {testConnection.isPending ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Testing…
-                              </>
-                            ) : (
-                              "Test Connection"
-                            )}
-                          </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="ml-auto"
+                              disabled={
+                                testConnection.isPending ||
+                                badgeStatus === "not-configured"
+                              }
+                              onClick={() => {
+                                trackButton({
+                                  CTA: "Test Connector OAuth Connection",
+                                  elementId: `test-connection-${group.credentialKey}`,
+                                  namespace: "settings",
+                                });
+                                testConnection.mutate({
+                                  connector: {
+                                    id: group.testConnectorType,
+                                    name: group.label,
+                                    description: "",
+                                    icon: "",
+                                    status: "not_connected",
+                                    type: group.testConnectorType,
+                                  },
+                                  redirectUri: `${window.location.origin}/auth/callback`,
+                                  purpose: "test",
+                                });
+                              }}
+                            >
+                              {testConnection.isPending ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Testing…
+                                </>
+                              ) : (
+                                "Test Connection"
+                              )}
+                            </Button>
+                          </div>
+                          {group.credentialKey === "microsoft_graph" && (
+                            <p className="text-xs text-muted-foreground">
+                              Test Connection runs a Microsoft OAuth consent
+                              check using OneDrive&apos;s app registration — the
+                              same credentials also apply to SharePoint.
+                            </p>
+                          )}
                         </div>
-                        {group.credentialKey === "microsoft_graph" && (
-                          <p className="text-xs text-muted-foreground">
-                            Test Connection runs a Microsoft OAuth consent check
-                            using OneDrive&apos;s app registration — the same
-                            credentials also apply to SharePoint.
-                          </p>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                );
-              })}
-            </Accordion>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            )}
 
             {nonOAuthConnectors.length > 0 && (
               <ul className="space-y-4">
