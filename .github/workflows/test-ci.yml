@@ -625,7 +625,7 @@ jobs:
 
   cleanup-packages:
     needs: [tests, e2e]
-    if: always() && env.IS_FORK != 'true'
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on:
       labels: "ubuntu-latest"
     permissions:
