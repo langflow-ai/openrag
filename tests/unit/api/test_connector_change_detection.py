@@ -147,6 +147,56 @@ async def test_modified_time_map_prefers_connector_file_id_over_document_id(monk
 
 
 @pytest.mark.asyncio
+async def test_modified_time_map_falls_back_to_keyword_subfield_on_text_field_error(
+    monkeypatch,
+):
+    """Indices that predate connector_file_id's addition to the explicit
+    mapping (config/settings.py) have it dynamically mapped as analyzed text,
+    and OpenSearch rejects a terms agg on that field outright. The helper
+    must retry the aggregation against connector_file_id.keyword instead of
+    treating this as a fatal error (which would make every blob look "new")."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    opensearch_client = AsyncMock()
+    called_fields = []
+
+    async def fake_search(*, index, body):
+        called_fields.append(body["aggs"]["by_connector_file_id"]["terms"]["field"])
+        if len(called_fields) == 1:
+            raise Exception(
+                "RequestError(400, 'search_phase_execution_exception', 'Text fields "
+                "are not optimised for operations that require per-document field "
+                "data like aggregations and sorting, so these operations are "
+                "disabled by default. Please use a keyword field instead. "
+                "Alternatively, set fielddata=true on [connector_file_id]...')"
+            )
+        return {
+            "aggregations": {
+                "by_connector_file_id": {
+                    "buckets": [{"key": "c::a", "latest_modified": {"value": 1704067200000.0}}]
+                },
+                "by_document_id": {"buckets": []},
+            }
+        }
+
+    opensearch_client.search = AsyncMock(side_effect=fake_search)
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    result = await connectors_api.get_synced_id_to_modified_time_map(
+        connector_type="azure_blob",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+
+    assert result == {"c::a": 1704067200000.0}
+    assert called_fields == ["connector_file_id", "connector_file_id.keyword"]
+
+
+@pytest.mark.asyncio
 async def test_modified_time_map_returns_empty_on_error(monkeypatch):
     from api import connectors as connectors_api
 
@@ -163,6 +213,57 @@ async def test_modified_time_map_returns_empty_on_error(monkeypatch):
         jwt_token=None,
     )
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# get_synced_file_ids_for_connector
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_synced_file_ids_falls_back_to_keyword_subfield_on_text_field_error(
+    monkeypatch,
+):
+    """Same text-field mapping-drift issue as get_synced_id_to_modified_time_map,
+    but here a fatal (uncaught) error would make orphan detection and bucket
+    reconciliation treat every connector file as never-synced."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    opensearch_client = AsyncMock()
+    called_fields = []
+
+    async def fake_search(*, index, body):
+        called_fields.append(body["aggs"]["unique_connector_file_ids"]["terms"]["field"])
+        if len(called_fields) == 1:
+            raise Exception(
+                "RequestError(400, 'search_phase_execution_exception', 'Text fields "
+                "are not optimised for operations that require per-document field "
+                "data...set fielddata=true on [connector_file_id]...')"
+            )
+        return {
+            "aggregations": {
+                "unique_connector_file_ids": {"buckets": [{"key": "c::a"}]},
+                "unique_document_ids": {"buckets": []},
+                "unique_filenames": {"buckets": []},
+            }
+        }
+
+    opensearch_client.search = AsyncMock(side_effect=fake_search)
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    file_ids, filenames, id_field = await connectors_api.get_synced_file_ids_for_connector(
+        connector_type="azure_blob",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+
+    assert file_ids == ["c::a"]
+    assert id_field == "connector_file_id"
+    assert called_fields == ["connector_file_id", "connector_file_id.keyword"]
 
 
 # ---------------------------------------------------------------------------

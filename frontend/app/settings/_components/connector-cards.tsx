@@ -8,6 +8,7 @@ import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
 import { isSaasPolicyContext } from "@/lib/brand";
@@ -29,6 +30,9 @@ export default function ConnectorCards() {
   });
   const router = useRouter();
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<Connector | null>(
+    null,
+  );
 
   const { data: queryConnectors = [], isLoading: connectorsLoading } =
     useGetConnectorsQuery({
@@ -50,10 +54,17 @@ export default function ConnectorCards() {
     return <Icon />;
   }, []);
 
-  const connectors = queryConnectors.map((c) => ({
-    ...c,
-    icon: getConnectorIcon(c.type),
-  })) as Connector[];
+  const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    // Keep OAuth connectors regardless of availability
+    // Only hide credential-based connectors when unavailable
+    if (c.requiresOAuth || c.available !== false) {
+      acc.push({
+        ...c,
+        icon: getConnectorIcon(c.type),
+      } as Connector);
+    }
+    return acc;
+  }, []);
 
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({
@@ -62,8 +73,19 @@ export default function ConnectorCards() {
     });
   };
 
-  const handleDisconnect = async (connector: Connector) => {
-    disconnectMutation.mutate(connector as unknown as QueryConnector);
+  const handleDisconnect = (connector: Connector) => {
+    setDisconnectTarget(connector);
+  };
+
+  const confirmDisconnect = async () => {
+    if (!disconnectTarget) return;
+    try {
+      await disconnectMutation.mutateAsync(
+        disconnectTarget as unknown as QueryConnector,
+      );
+    } finally {
+      setDisconnectTarget(null);
+    }
   };
 
   const navigateToKnowledgePage = (connector: Connector) => {
@@ -94,36 +116,82 @@ export default function ConnectorCards() {
     (d) => d.SettingsDialog,
   );
 
+  // Split connectors into OAuth and credential-based
+  const oauthConnectors = connectors.filter((c) => c.requiresOAuth);
+  const credentialConnectors = connectors.filter((c) => !c.requiresOAuth);
+
   return (
     <>
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {connectorsLoading ? (
-          <>
-            <ConnectorsSkeleton />
-            <ConnectorsSkeleton />
-            <ConnectorsSkeleton />
-          </>
-        ) : (
-          connectors.map((connector) => (
-            <ConnectorCard
-              key={connector.id}
-              connector={connector}
-              isConnecting={
-                connectMutation.isPending &&
-                connectMutation.variables?.connector.id === connector.id
-              }
-              isDisconnecting={
-                disconnectMutation.isPending &&
-                (disconnectMutation.variables as any)?.type === connector.type
-              }
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-              onNavigateToKnowledge={navigateToKnowledgePage}
-              onConfigure={getConfigureHandler(connector)}
-            />
-          ))
-        )}
-      </div>
+      {/* OAuth Connectors Section */}
+      {(connectorsLoading || oauthConnectors.length > 0) && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">OAuth Connectors</h3>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {connectorsLoading ? (
+              <>
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+              </>
+            ) : (
+              oauthConnectors.map((connector) => (
+                <ConnectorCard
+                  key={connector.id}
+                  connector={connector}
+                  isConnecting={
+                    connectMutation.isPending &&
+                    connectMutation.variables?.connector.id === connector.id
+                  }
+                  isDisconnecting={
+                    disconnectMutation.isPending &&
+                    (disconnectMutation.variables as any)?.type ===
+                      connector.type
+                  }
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onConfigure={getConfigureHandler(connector)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Credential-Based Connectors Section */}
+      {(connectorsLoading || credentialConnectors.length > 0) && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Credential-Based Connectors</h3>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {connectorsLoading ? (
+              <>
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+              </>
+            ) : (
+              credentialConnectors.map((connector) => (
+                <ConnectorCard
+                  key={connector.id}
+                  connector={connector}
+                  isConnecting={
+                    connectMutation.isPending &&
+                    connectMutation.variables?.connector.id === connector.id
+                  }
+                  isDisconnecting={
+                    disconnectMutation.isPending &&
+                    (disconnectMutation.variables as any)?.type ===
+                      connector.type
+                  }
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onConfigure={getConfigureHandler(connector)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {dialogDescriptors.map((descriptor) => {
         // Render only while open so the component unmounts on close, which
@@ -145,6 +213,25 @@ export default function ConnectorCards() {
           />
         );
       })}
+
+      <DeleteConfirmationDialog
+        open={disconnectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectTarget(null);
+        }}
+        title={`Disconnect ${disconnectTarget?.name ?? "connector"}?`}
+        description={`This will remove the ${disconnectTarget?.name ?? "connector"} connection from OpenRAG.`}
+        confirmText="Disconnect"
+        onConfirm={confirmDisconnect}
+        isLoading={disconnectMutation.isPending}
+      >
+        <p>
+          Any documents previously ingested from this connector will remain in
+          your knowledge base, but new syncs will no longer be possible until
+          you reconnect. Re-authenticating later will allow you to resume
+          syncing.
+        </p>
+      </DeleteConfirmationDialog>
     </>
   );
 }
