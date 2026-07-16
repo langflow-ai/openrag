@@ -283,6 +283,14 @@ class AuthService:
 
             token_data = token_response.json()
 
+            # Verify Google ID token immediately after code exchange, before persisting credentials.
+            # Raises JWTVerificationError on any validation failure — connection is rejected.
+            if connector_type == "google_drive":
+                from connectors.google_drive.oauth import _verify_id_token
+
+                _verify_id_token(token_data.get("id_token"))
+                logger.debug("[AUTH] Google ID token verification completed for OAuth callback")
+
             # Store tokens in the token file (without client_secret)
             # Use actual scopes from OAuth response
             granted_scopes = token_data.get("scope")
@@ -299,6 +307,7 @@ class AuthService:
             token_file_data = {
                 "token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
+                "id_token": token_data.get("id_token"),
                 "scopes": scopes,
             }
 

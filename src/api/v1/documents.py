@@ -69,6 +69,10 @@ async def ingest_endpoint(
         tweaks_json=tweaks,
         replace_duplicates=replace_duplicates,
         create_filter=create_filter,
+        # Preview ingest is a frontend-only feature; the v1 SDK does not expose
+        # it. Pass an explicit value so the Form("false") default sentinel is not
+        # forwarded when this function is called directly (not via form parsing).
+        preview="false",
         document_service=document_service,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,

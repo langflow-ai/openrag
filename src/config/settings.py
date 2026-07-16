@@ -16,7 +16,7 @@ from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
-from utils.env_utils import get_env_float, get_env_int
+from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
 
 # Import configuration manager
@@ -186,7 +186,13 @@ SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-produ
 # os.environ directly.
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_ID = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+# Optional comma-separated list of Azure AD tenant UUIDs. When set, tokens from
+# tenants not in this list are rejected (business policy, not a standards requirement).
+# When unset, any tenant whose token passes signature/audience/expiry checks is accepted.
+MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -260,6 +266,17 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_ibm_cos_enabled() -> bool:
+    """Local dev: enable the IBM COS connector without IBM_AUTH_ENABLED.
+
+    Allows testing the IBM COS connector (e.g. against MinIO in HMAC mode) in a
+    local environment where IBM auth is not configured. Never enable in
+    production. Requires ``OPENRAG_DEV_IBM_COS=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_IBM_COS", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_azure_blob_enabled() -> bool:
     """Feature kill switch for the Azure Blob connector (default: enabled).
 
@@ -270,6 +287,18 @@ def is_azure_blob_enabled() -> bool:
     flag is subtractive (AND-ed with that gate), not an override.
     """
     raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_ingest_preview_flag_enabled() -> bool:
+    """Raw opt-in flag for the preview-mode ingest backend.
+
+    Read per-call (like the other feature-flag accessors in this module) so
+    runtime/test overrides of ``OPENRAG_INGEST_PREVIEW_ENABLED`` take effect
+    without a restart. This is only the flag itself; run-mode gating is applied
+    by ``utils.ingest_preview_flag.is_ingest_preview_enabled()``.
+    """
+    raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -519,6 +548,14 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
 # Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
 OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
+
+# Show the "Make documents available to all users" (shared) toggle for COS bucket
+# ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
+# hide the general per-upload ingest tuning knobs (e.g. SaaS) still get just this
+# toggle. On by default; set to "false" to hide it.
+OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
+    "OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", "true"
 ).lower() in ("true", "1", "yes")
 
 # Ingest sample data configuration
