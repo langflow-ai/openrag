@@ -2,6 +2,10 @@ name: CI Tests
 
 on:
   pull_request:
+  # Push to main only warms the shared layer cache (build-images); the test/e2e
+  # jobs are gated off `push` below so a merge doesn't run the full suite.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       use_local_images:
@@ -73,7 +77,7 @@ jobs:
 
   build-images:
     needs: changes
-    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on:
       labels: "ubuntu-latest"
     permissions:
@@ -120,18 +124,35 @@ jobs:
           # Build locally for PRs, local dispatch, and the OpenSearch image
           # (which has no DockerHub publish); otherwise reuse the prebuilt
           # DockerHub image.
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.use_local_images }}" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.use_local_images }}" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
             echo "mode=build" >> "$GITHUB_OUTPUT"
           else
             echo "mode=pull" >> "$GITHUB_OUTPUT"
           fi
+          # Shared, non-branch-scoped registry cache. `main` (push) writes it;
+          # every non-fork PR reads it, so a PR that doesn't touch this image
+          # gets its layers for free on the first run. PRs also keep a per-PR
+          # gha cache so a second commit in the same PR reuses its own layers.
+          REG_CACHE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:buildcache"
+          {
+            echo "cache_from<<EOF"
+            echo "type=registry,ref=${REG_CACHE}"
+            echo "type=gha,scope=${{ matrix.image }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "cache_to=type=registry,ref=${REG_CACHE},mode=max" >> "$GITHUB_OUTPUT"
+          else
+            echo "cache_to=type=gha,mode=max,scope=${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      # Build with BuildKit's GitHub Actions layer cache (scoped per image) so
-      # unchanged layers -- e.g. Langflow's torch/pip-install layer or the
-      # backend uv-sync layer -- are reused across runs instead of rebuilt.
-      # A flows-only change no longer forces a full re-install because that
-      # layer's cache key doesn't depend on flows/. Non-fork builds push
-      # straight to GHCR (no local load / docker save / tar shuttle).
+      # Build with BuildKit layer caching (cache_from/cache_to computed above)
+      # so unchanged layers -- e.g. Langflow's torch/pip-install layer or the
+      # backend uv-sync layer -- are reused instead of rebuilt. Reads the shared
+      # registry cache seeded by main plus this PR's own gha cache; a flows-only
+      # change no longer forces a full re-install because that layer's cache key
+      # doesn't depend on flows/. Non-fork builds push straight to GHCR (no local
+      # load / docker save / tar shuttle).
       - name: Build and push image (GHCR)
         if: steps.params.outputs.mode == 'build' && env.IS_FORK != 'true'
         uses: docker/build-push-action@v6
@@ -140,8 +161,8 @@ jobs:
           file: ${{ steps.params.outputs.dockerfile }}
           push: true
           tags: ${{ steps.params.outputs.image }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: ${{ steps.params.outputs.cache_from }}
+          cache-to: ${{ steps.params.outputs.cache_to }}
           provenance: false
 
       # Fork PRs cannot push to GHCR or write the Actions cache, so build and
@@ -204,7 +225,7 @@ jobs:
 
   test-suite:
     needs: [changes, build-images]
-    if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       labels: "ubuntu-latest"
     permissions:
@@ -314,7 +335,7 @@ jobs:
 
   e2e-run:
     needs: [changes, build-images]
-    if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       labels: "ubuntu-latest"
     permissions:
@@ -484,7 +505,7 @@ jobs:
           done || true
 
   e2e-merge-reports:
-    if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
+    if: ${{ github.event_name != 'push' && !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
     needs: [changes, e2e-run]
     runs-on:
       labels: "ubuntu-latest"
@@ -525,7 +546,7 @@ jobs:
 
   tests:
     needs: [changes, build-images, test-suite]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on:
       labels: "ubuntu-latest"
     permissions:
@@ -547,7 +568,7 @@ jobs:
 
   e2e:
     needs: [changes, build-images, e2e-run]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on:
       labels: "ubuntu-latest"
     permissions:
