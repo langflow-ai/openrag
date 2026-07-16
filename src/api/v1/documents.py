@@ -45,6 +45,7 @@ async def ingest_endpoint(
     tweaks: str | None = Form(None),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
+    metadata: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
@@ -73,6 +74,7 @@ async def ingest_endpoint(
         # it. Pass an explicit value so the Form("false") default sentinel is not
         # forwarded when this function is called directly (not via form parsing).
         preview="false",
+        metadata_json=metadata if isinstance(metadata, str) else None,
         document_service=document_service,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,

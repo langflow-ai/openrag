@@ -115,6 +115,17 @@ export interface IngestSettings {
   embeddingModel: string;
   /** When true, index without an owner so all users in the instance can retrieve the document. COS only. */
   shared?: boolean;
+  /** Typed custom metadata applied to every document in the ingest batch. */
+  metadata?: CustomMetadataEntry[];
+}
+
+export type CustomMetadataType = "string" | "number" | "date" | "boolean";
+export type CustomMetadataValue = string | number | boolean;
+
+export interface CustomMetadataEntry {
+  key: string;
+  type: CustomMetadataType;
+  value: CustomMetadataValue;
 }
 
 /** Inline error message if chunk settings are invalid; otherwise null. */

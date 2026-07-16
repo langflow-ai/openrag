@@ -15,6 +15,10 @@ import {
   FilterIconPopover,
   type IconKey,
 } from "@/components/filter-icon-popover";
+import {
+  MetadataFilterBuilder,
+  type MetadataGroup,
+} from "@/components/metadata-filter-builder";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -103,6 +107,7 @@ export function KnowledgeFilterPanel() {
     document_types: ["*"] as string[], // Default to wildcard
     owners: ["*"] as string[], // Default to wildcard
     connector_types: ["*"] as string[], // Default to wildcard
+    metadata: undefined as MetadataGroup | undefined,
   });
   const [resultLimit, setResultLimit] = useState(10);
   const [scoreThreshold, setScoreThreshold] = useState(0);
@@ -131,6 +136,7 @@ export function KnowledgeFilterPanel() {
         document_types: filters.document_types ?? ["*"],
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
+        metadata: filters.metadata,
       };
 
       setSelectedFilters(processedFilters);
@@ -154,6 +160,7 @@ export function KnowledgeFilterPanel() {
         document_types: filters.document_types ?? ["*"],
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
+        metadata: filters.metadata,
       });
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
@@ -247,7 +254,7 @@ export function KnowledgeFilterPanel() {
   };
 
   const handleFilterChange = (
-    facetType: keyof typeof selectedFilters,
+    facetType: "data_sources" | "document_types" | "owners" | "connector_types",
     newValues: string[],
   ) => {
     setSelectedFilters((prev) => ({
@@ -326,6 +333,7 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
+
             {!createMode && selectedFilter?.created_at && (
               <div className="space-y-2 text-xs text-right text-muted-foreground">
                 <span className="text-placeholder-foreground">Created</span>{" "}
@@ -433,6 +441,16 @@ export function KnowledgeFilterPanel() {
                 }
                 placeholder="Select connectors..."
                 allOptionLabel="All connectors"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Custom metadata</Label>
+              <MetadataFilterBuilder
+                value={selectedFilters.metadata}
+                onChange={(metadata) =>
+                  setSelectedFilters((previous) => ({ ...previous, metadata }))
+                }
               />
             </div>
 

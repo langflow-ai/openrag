@@ -710,6 +710,19 @@ INDEX_BODY = {
             "modified_time": {"type": "date"},
             "indexed_time": {"type": "date"},
             "metadata": {"type": "object"},
+            "custom_metadata": {"type": "object", "enabled": False},
+            "metadata_entries": {
+                "type": "nested",
+                "properties": {
+                    "key": {"type": "keyword"},
+                    "type": {"type": "keyword"},
+                    "string_value": {"type": "keyword"},
+                    "string_value_text": {"type": "text"},
+                    "number_value": {"type": "double"},
+                    "date_value": {"type": "date"},
+                    "boolean_value": {"type": "boolean"},
+                },
+            },
         }
     },
 }

@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from api import custom_metadata
 from api.v1 import (
     chat as v1_chat,
 )
@@ -42,6 +43,18 @@ def register_public_v1_routes(app: FastAPI):
 
     # Search endpoint
     app.add_api_route("/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"])
+    app.add_api_route(
+        "/v1/metadata/fields",
+        custom_metadata.list_fields_v1,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/metadata/fields/{key}/values",
+        custom_metadata.list_values_v1,
+        methods=["GET"],
+        tags=["public"],
+    )
 
     # Documents endpoints
     app.add_api_route(

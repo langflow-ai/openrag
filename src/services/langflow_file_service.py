@@ -209,6 +209,7 @@ class LangflowFileService:
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
         connector_file_id: str | None = None,
+        metadata: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
             logger.warning(
@@ -245,6 +246,7 @@ class LangflowFileService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             connector_file_id=connector_file_id,
+            metadata=list(metadata or []),
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -374,6 +376,7 @@ class LangflowFileService:
         docling_task_id: str | None = None,
         original_filename: str | None = None,
         original_mimetype: str | None = None,
+        metadata: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -495,6 +498,7 @@ class LangflowFileService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             connector_file_id=connector_file_id,
+            metadata=metadata,
         )
         headers.update(
             self._ingest_callback_global_var_headers(
@@ -915,6 +919,7 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
         original_filename: str | None = None,
         original_mimetype: str | None = None,
+        metadata: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
@@ -1061,6 +1066,9 @@ class LangflowFileService:
                 allowed_principal_labels=allowed_principal_labels,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
+                metadata=metadata
+                if metadata is not None
+                else (settings.get("metadata") if isinstance(settings, dict) else None),
             )
             total_duration = round(time.time() - total_start_time, 2)
             logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")

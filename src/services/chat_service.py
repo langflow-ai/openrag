@@ -155,26 +155,9 @@ class ChatService:
         # Build the complete filter expression like the search service does
         filter_expression: dict[str, Any] = {}
         if filters:
-            filter_clauses = []
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner",
-                "connector_types": "connector_type",
-            }
+            from services.custom_metadata_service import CustomMetadataService
 
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list) and len(values) > 0:
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = await CustomMetadataService().build_filter_clauses(filters)
 
             if filter_clauses:
                 filter_expression["filter"] = filter_clauses
@@ -273,25 +256,9 @@ class ChatService:
         filter_clauses = []
 
         if filters:
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner",
-                "connector_types": "connector_type",
-            }
+            from services.custom_metadata_service import CustomMetadataService
 
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list) and len(values) > 0:
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = await CustomMetadataService().build_filter_clauses(filters)
 
             if filter_clauses:
                 has_user_filters = True

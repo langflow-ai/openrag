@@ -117,12 +117,14 @@ def test_ingest_token_round_trips_connector_file_id():
         owner="user-1",
         ingest_run_id="run-1",
         connector_file_id="my-bucket::報告書.pdf",
+        metadata=[{"key": "supplier", "type": "string", "value": "Dell"}],
     )
     token = token_service.create_token(context)
 
     restored_context, _jti = token_service.validate_token(token)
 
     assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
+    assert restored_context.metadata == [{"key": "supplier", "type": "string", "value": "Dell"}]
 
 
 @pytest.mark.asyncio

@@ -915,6 +915,15 @@ async def connector_sync(
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
+    metadata_entries = body.settings.get("metadata") if isinstance(body.settings, dict) else None
+    if metadata_entries is not None:
+        try:
+            from services.custom_metadata_service import CustomMetadataService
+
+            CustomMetadataService().normalize_entries(metadata_entries)
+        except ValueError as exc:
+            return JSONResponse({"error": f"Invalid metadata: {exc}"}, status_code=400)
+
     max_files = body.max_files
     selected_files_raw = body.selected_files
     selected_files = None

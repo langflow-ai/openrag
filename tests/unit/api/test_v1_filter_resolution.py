@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from api.v1._filter_resolution import merge_filter_overrides
+from api.v1._filter_resolution import _strip_wildcards, merge_filter_overrides
 
 
 class _RequestBody(BaseModel):
@@ -53,3 +53,14 @@ def test_merge_filter_overrides_merges_partial_inline_filters_per_field():
     assert filters == {"data_sources": ["beta.md"], "owners": ["alice"]}
     assert limit == 5
     assert score_threshold == 0.4
+
+
+def test_strip_wildcards_preserves_custom_metadata_expression():
+    expression = {
+        "op": "and",
+        "conditions": [{"key": "supplier", "operator": "equals", "value": "Dell"}],
+    }
+
+    assert _strip_wildcards(
+        {"data_sources": ["*"], "owners": ["alice"], "metadata": expression}
+    ) == {"owners": ["alice"], "metadata": expression}

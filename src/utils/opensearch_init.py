@@ -21,6 +21,7 @@ from config.settings import (
     get_index_name,
     get_openrag_config,
 )
+from services.custom_metadata_service import CUSTOM_METADATA_MAPPING
 from utils.embeddings import create_index_body
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -227,7 +228,11 @@ async def _ensure_opensearch_index():
             await _ensure_field_mappings(
                 clients.opensearch,
                 index_name,
-                {"allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING},
+                {
+                    "allowed_principal_labels": ACL_PRINCIPAL_LABELS_MAPPING,
+                    "custom_metadata": {"type": "object", "enabled": False},
+                    "metadata_entries": CUSTOM_METADATA_MAPPING,
+                },
             )
             await _ensure_index_replicas(clients.opensearch, index_name)
             return

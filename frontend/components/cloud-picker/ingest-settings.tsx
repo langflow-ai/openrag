@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/auth-context";
 import { knowledgeToIngestSettings } from "@/lib/ingest-settings-knowledge";
+import { CustomMetadataEditor } from "./custom-metadata-editor";
 import type { IngestSettings as IngestSettingsType } from "./types";
 
 interface IngestSettingsProps {
@@ -284,6 +285,12 @@ export const IngestSettings = ({
               />
             </div>
           </div>
+        )}
+        {showAdvancedSettings && (
+          <CustomMetadataEditor
+            value={currentSettings.metadata ?? []}
+            onChange={(metadata) => handleSettingsChange({ metadata })}
+          />
         )}
 
         <div className={showAdvancedSettings ? "" : "mt-6"}>

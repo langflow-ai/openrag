@@ -132,13 +132,22 @@ for result in results.results:
     print(f"  {result.text[:100]}...")
 
 # Search with filters
-from openrag_sdk import SearchFilters
+from openrag_sdk import MetadataFilterCondition, MetadataFilterGroup, SearchFilters
 
 results = await client.search.query(
     "API documentation",
     filters=SearchFilters(
         data_sources=["api-docs.pdf"],
-        document_types=["application/pdf"]
+        document_types=["application/pdf"],
+        metadata=MetadataFilterGroup(
+            op="and",
+            conditions=[
+                MetadataFilterCondition(key="supplier", operator="equals", value="Dell"),
+                MetadataFilterCondition(
+                    key="contract_end", operator="gte", value="2026-01-01"
+                ),
+            ],
+        ),
     ),
     limit=5,
     score_threshold=0.5
@@ -148,6 +157,17 @@ results = await client.search.query(
 ## Documents
 
 ```python
+from openrag_sdk import MetadataEntry
+
+# Typed metadata is available to search, chat, saved filters, and MCP.
+result = await client.documents.ingest(
+    file_path="./dell-contract.pdf",
+    metadata=[
+        MetadataEntry(key="supplier", type="string", value="Dell"),
+        MetadataEntry(key="contract_end", type="date", value="2026-12-31"),
+    ],
+)
+
 # Ingest a file (waits for completion by default)
 result = await client.documents.ingest(file_path="./report.pdf")
 print(f"Status: {result.status}")

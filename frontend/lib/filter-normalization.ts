@@ -1,8 +1,11 @@
+import type { MetadataGroup } from "@/components/metadata-filter-builder";
+
 export interface FilterInput {
   data_sources?: string[];
   document_types?: string[];
   owners?: string[];
   connector_types?: string[];
+  metadata?: MetadataGroup;
 }
 
 export interface NormalizedSelectedFilters {
@@ -10,6 +13,7 @@ export interface NormalizedSelectedFilters {
   document_types: string[];
   owners: string[];
   connector_types: string[];
+  metadata?: MetadataGroup;
 }
 
 function normalizeFilterDimension(values?: string[]): string[] {
@@ -27,6 +31,7 @@ function normalizeSelectedFilters(
     document_types: normalizeFilterDimension(filters?.document_types),
     owners: normalizeFilterDimension(filters?.owners),
     connector_types: normalizeFilterDimension(filters?.connector_types),
+    metadata: filters?.metadata,
   };
 }
 
@@ -47,6 +52,9 @@ export function buildSearchPayloadFilters(
   }
   if (normalized.connector_types.length > 0) {
     payloadFilters.connector_types = normalized.connector_types;
+  }
+  if (normalized.metadata?.conditions.length) {
+    payloadFilters.metadata = normalized.metadata;
   }
 
   return Object.keys(payloadFilters).length > 0 ? payloadFilters : undefined;

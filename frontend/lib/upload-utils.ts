@@ -82,12 +82,14 @@ export async function duplicateCheck(
 export async function uploadFiles(
   files: File[],
   replace = false,
+  metadata?: unknown[],
 ): Promise<{ taskId: string; fileCount: number }> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("file", file);
   }
   formData.append("replace_duplicates", replace.toString());
+  if (metadata?.length) formData.append("metadata", JSON.stringify(metadata));
 
   const uploadResponse = await fetch("/api/router/upload_ingest", {
     method: "POST",
@@ -129,6 +131,7 @@ export async function uploadFile(
   replace = false,
   createFilter = false,
   callbacks?: UploadFileCallbacks,
+  metadata?: unknown[],
 ): Promise<UploadFileResult> {
   try {
     const formData = new FormData();
@@ -137,6 +140,7 @@ export async function uploadFile(
     if (createFilter) {
       formData.append("create_filter", "true");
     }
+    if (metadata?.length) formData.append("metadata", JSON.stringify(metadata));
 
     const uploadResponse = await fetch("/api/router/upload_ingest", {
       method: "POST",

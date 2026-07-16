@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { MetadataGroup } from "@/components/metadata-filter-builder";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
 import { SEARCH_CONSTANTS } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
@@ -16,6 +17,7 @@ export interface SearchPayload {
     document_types?: string[];
     owners?: string[];
     connector_types?: string[];
+    metadata?: MetadataGroup;
   };
 }
 
@@ -39,6 +41,7 @@ export interface ChunkResult {
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
+  metadata?: Record<string, { type: string; value: unknown }>;
 }
 
 export interface File {

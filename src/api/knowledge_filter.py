@@ -60,6 +60,8 @@ def normalize_query_data(query_data: str | dict) -> str:
         "owners": filters.get("owners", ["*"]),
         "connector_types": filters.get("connector_types", ["*"]),
     }
+    if isinstance(filters.get("metadata"), dict):
+        normalized_filters["metadata"] = filters["metadata"]
 
     normalized = {
         "query": data.get("query", ""),
@@ -71,6 +73,17 @@ def normalize_query_data(query_data: str | dict) -> str:
     }
 
     return json.dumps(normalized)
+
+
+async def validate_metadata_query_data(normalized_query_data: str) -> None:
+    data = json.loads(normalized_query_data)
+    expression = (data.get("filters") or {}).get("metadata")
+    if not expression:
+        return
+    from services.custom_metadata_service import CustomMetadataService
+
+    service = CustomMetadataService()
+    service.compile_expression(expression, await service.get_field_types())
 
 
 class CreateFilterBody(BaseModel):
@@ -113,6 +126,7 @@ async def create_knowledge_filter(
 
     try:
         normalized_query_data = normalize_query_data(body.queryData)
+        await validate_metadata_query_data(normalized_query_data)
     except Exception as e:
         logger.error(f"Failed to normalize query_data: {e}")
         return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
@@ -195,6 +209,14 @@ async def update_knowledge_filter(
 
     existing_filter = existing_result["filter"]
 
+    query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
+    try:
+        normalized_query_data = normalize_query_data(query_data)
+        await validate_metadata_query_data(normalized_query_data)
+    except Exception as e:
+        logger.error(f"Failed to normalize query_data: {e}")
+        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+
     delete_result = await knowledge_filter_service.delete_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
@@ -202,13 +224,6 @@ async def update_knowledge_filter(
         return JSONResponse(
             {"error": "Failed to delete existing knowledge filter"}, status_code=500
         )
-
-    query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
-    try:
-        normalized_query_data = normalize_query_data(query_data)
-    except Exception as e:
-        logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
 
     updated_filter = {
         "id": filter_id,

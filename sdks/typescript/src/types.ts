@@ -9,6 +9,7 @@ export interface Source {
   score: number;
   page?: number | null;
   mimetype?: string | null;
+  metadata?: Record<string, { type: MetadataType; value: MetadataValue }>;
 }
 
 export interface ChatResponse {
@@ -43,6 +44,7 @@ export interface SearchResult {
   score: number;
   page?: number | null;
   mimetype?: string | null;
+  metadata?: Record<string, { type: MetadataType; value: MetadataValue }>;
 }
 
 export interface SearchResponse {
@@ -52,6 +54,42 @@ export interface SearchResponse {
 export interface SearchFilters {
   data_sources?: string[];
   document_types?: string[];
+  owners?: string[];
+  connector_types?: string[];
+  metadata?: MetadataGroup;
+}
+
+export type MetadataType = "string" | "number" | "date" | "boolean";
+export type MetadataValue = string | number | boolean | Array<string | number | boolean>;
+
+export interface MetadataEntry {
+  key: string;
+  type: MetadataType;
+  value: MetadataValue;
+}
+
+export interface MetadataCondition {
+  key: string;
+  operator:
+    | "equals"
+    | "not_equals"
+    | "in"
+    | "not_in"
+    | "contains"
+    | "not_contains"
+    | "exists"
+    | "not_exists"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "between";
+  value?: unknown;
+}
+
+export interface MetadataGroup {
+  op: "and" | "or";
+  conditions: Array<MetadataCondition | MetadataGroup>;
 }
 
 // Document types
@@ -169,6 +207,7 @@ export interface KnowledgeFilterQueryData {
     document_types?: string[];
     owners?: string[];
     connector_types?: string[];
+    metadata?: MetadataGroup;
   };
   /** Maximum number of results. */
   limit?: number;

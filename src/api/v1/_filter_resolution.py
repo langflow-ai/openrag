@@ -17,11 +17,11 @@ from fastapi import HTTPException
 _FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types")
 
 
-def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, list[str]]:
+def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, Any]:
     """Keep only filter dimensions that contain concrete values."""
     if not filters:
         return {}
-    cleaned: dict[str, list[str]] = {}
+    cleaned: dict[str, Any] = {}
     for key in _FILTER_DIMENSIONS:
         values = filters.get(key)
         if not values or not isinstance(values, list):
@@ -29,6 +29,9 @@ def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, list[str]]:
         if "*" in values:
             continue
         cleaned[key] = values
+    metadata_expression = filters.get("metadata")
+    if isinstance(metadata_expression, dict) and metadata_expression:
+        cleaned["metadata"] = metadata_expression
     return cleaned
 
 
@@ -83,7 +86,9 @@ def merge_filter_overrides(
 
     filters: dict[str, Any] | None = resolved["filters"]
     if "filters" in provided_fields:
-        inline_filters = request_body.filters
+        from api.schemas.custom_metadata import dump_search_filters
+
+        inline_filters = dump_search_filters(request_body.filters)
         if inline_filters:
             filters = {**resolved["filters"], **inline_filters}
         else:

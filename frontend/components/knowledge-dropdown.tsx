@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
+import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import {
   trackButton,
   trackProcessFailure,
@@ -136,6 +138,13 @@ export function KnowledgeDropdown() {
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const [ingestSettings, setIngestSettings] = useSessionIngestSettings();
+  const [ingestSettingsOpen, setIngestSettingsOpen] = useState(true);
+  const [pendingLocalUpload, setPendingLocalUpload] = useState<{
+    files: File[];
+    replace: boolean;
+    source: "file" | "folder";
+  } | null>(null);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
   const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
     Record<string, boolean>
@@ -336,7 +345,11 @@ export function KnowledgeDropdown() {
           resetFileInput();
           return;
         }
-        await uploadFile(file, false);
+        setPendingLocalUpload({
+          files: [file],
+          replace: false,
+          source: "file",
+        });
       } catch (error) {
         console.error("[Duplicate Check] Exception:", error);
         toast.error("Failed to check for duplicates", {
@@ -359,7 +372,13 @@ export function KnowledgeDropdown() {
     });
 
     try {
-      await uploadFileUtil(file, replace);
+      await uploadFileUtil(
+        file,
+        replace,
+        false,
+        undefined,
+        ingestSettings.metadata,
+      );
       refetchTasks();
     } catch (error) {
       trackProcessFailure({
@@ -405,7 +424,11 @@ export function KnowledgeDropdown() {
 
     for (const batch of batches) {
       try {
-        const result = await uploadFiles(batch, replace);
+        const result = await uploadFiles(
+          batch,
+          replace,
+          ingestSettings.metadata,
+        );
         addTask(result.taskId, { source: "folder" });
       } catch (error) {
         trackProcessFailure({
@@ -428,14 +451,12 @@ export function KnowledgeDropdown() {
   const handleOverwriteFile = async () => {
     if (pendingFolderUpload) {
       isFolderOverwriteConfirmedRef.current = true;
-      const { allFiles, duplicateNames, unsupportedCount } =
-        pendingFolderUpload;
-      await uploadFolderBatches(allFiles, true);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
-      );
+      const { allFiles } = pendingFolderUpload;
+      setPendingLocalUpload({
+        files: allFiles,
+        replace: true,
+        source: "folder",
+      });
       resetDuplicateDialogState();
       return;
     }
@@ -462,7 +483,11 @@ export function KnowledgeDropdown() {
         return oldData;
       });
 
-      await uploadFile(pendingFile, true);
+      setPendingLocalUpload({
+        files: [pendingFile],
+        replace: true,
+        source: "file",
+      });
 
       resetDuplicateDialogState();
     }
@@ -473,22 +498,13 @@ export function KnowledgeDropdown() {
       if (isFolderOverwriteConfirmedRef.current) {
         isFolderOverwriteConfirmedRef.current = false;
       } else {
-        const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
-          pendingFolderUpload;
+        const { nonDuplicateFiles } = pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
-          await uploadFolderBatches(nonDuplicateFiles, false);
-          const extraParts: string[] = [];
-          if (duplicateNames.length > 0) {
-            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
-          }
-          if (unsupportedCount > 0) {
-            extraParts.push(`skipped ${unsupportedCount} unsupported`);
-          }
-          const suffix =
-            extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-          toast.success(
-            `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
-          );
+          setPendingLocalUpload({
+            files: nonDuplicateFiles,
+            replace: false,
+            source: "folder",
+          });
         } else {
           toast.info(
             "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
@@ -592,12 +608,11 @@ export function KnowledgeDropdown() {
         return;
       }
 
-      await uploadFolderBatches(nonDuplicateFiles, false);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Successfully processed ${nonDuplicateFiles.length} file(s)${unsupportedMessage}`,
-      );
+      setPendingLocalUpload({
+        files: nonDuplicateFiles,
+        replace: false,
+        source: "folder",
+      });
     } catch (error) {
       console.error("Folder upload error:", error);
       toast.error("Folder upload failed", {
@@ -740,6 +755,17 @@ export function KnowledgeDropdown() {
 
   // Comprehensive loading state
   const isLoading = fileUploading || folderLoading || isNavigatingToCloud;
+
+  const confirmLocalUpload = async () => {
+    if (!pendingLocalUpload) return;
+    const pending = pendingLocalUpload;
+    setPendingLocalUpload(null);
+    if (pending.source === "file" && pending.files.length === 1) {
+      await uploadFile(pending.files[0], pending.replace);
+    } else {
+      await uploadFolderBatches(pending.files, pending.replace);
+    }
+  };
 
   if (!mounted) {
     return (
@@ -915,6 +941,36 @@ export function KnowledgeDropdown() {
         duplicateLabel={duplicateFilename}
         duplicateNames={pendingFolderUpload?.duplicateNames}
       />
+
+      <Dialog
+        open={!!pendingLocalUpload}
+        onOpenChange={(open) => !open && setPendingLocalUpload(null)}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Configure ingest</DialogTitle>
+            <DialogDescription>
+              These settings and metadata apply to all{" "}
+              {pendingLocalUpload?.files.length ?? 0} selected document(s).
+            </DialogDescription>
+          </DialogHeader>
+          <IngestSettings
+            isOpen={ingestSettingsOpen}
+            onOpenChange={setIngestSettingsOpen}
+            settings={ingestSettings}
+            onSettingsChange={setIngestSettings}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPendingLocalUpload(null)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmLocalUpload}>Upload</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

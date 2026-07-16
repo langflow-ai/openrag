@@ -1,3 +1,4 @@
+from services.custom_metadata_service import CUSTOM_METADATA_MAPPING
 from utils.embedding_fields import build_knn_vector_field, get_embedding_field_name
 from utils.logging_config import get_logger
 
@@ -53,6 +54,8 @@ async def create_index_body(
         "modified_time": {"type": "date"},
         "indexed_time": {"type": "date"},
         "metadata": {"type": "object"},
+        "custom_metadata": {"type": "object", "enabled": False},
+        "metadata_entries": CUSTOM_METADATA_MAPPING,
     }
 
     if embedding_dimensions:
