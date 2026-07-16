@@ -2,6 +2,10 @@ name: CI Tests
 
 on:
   pull_request:
+  # Push to main only warms the shared layer cache (build-images); the test/e2e
+  # jobs are gated off `push` below so a merge doesn't run the full suite.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       use_local_images:
@@ -10,6 +14,10 @@ on:
         type: boolean
         default: true
 
+concurrency:
+  group: test-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: "22"
   PYTHON_VERSION: "3.13"
@@ -17,6 +25,7 @@ env:
   PLAYWRIGHT_VERSION: "1.57.0"
   # Total number of parallel E2E test shards
   TOTAL_SHARDS: 8
+  IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
@@ -42,6 +51,8 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       e2e: ${{ steps.filter.outputs.e2e }}
       integration: ${{ steps.filter.outputs.integration }}
@@ -62,194 +73,141 @@ jobs:
               - '**'
               - '!docs/**'
               - '!**/*.md'
+              - '!frontend/**'
 
   build-images:
     needs: changes
-    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [opensearch, backend, frontend, langflow]
+    name: build-image (${{ matrix.image }})
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        continue-on-error: true
-        with:
-          root-reserve-mb: 40960
-          temp-reserve-mb: 30720
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
-
-      - name: Restart Docker
-        continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
-
-      - run: df -h
-
-      - name: Cleanup Docker cache
-        run: |
-          docker compose -f docker-compose.yml down -v --remove-orphans || true
-          docker system prune -f || true
-
-      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
-        run: |
-          for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-            echo "Attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || true
-
-      - run: df -h
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Verify workspace
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Workspace: ${GITHUB_WORKSPACE}"
-          ls -la
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Generate Image Cache Keys
-        id: cache-keys
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
         run: |
-          OPENSEARCH_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile patch-netty.sh securityconfig cloud_securityconfig opensearch-entrypoint-wrapper.sh)
-          BACKEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.backend src enhancements flows securityconfig cloud_securityconfig alembic.ini alembic openrag-documents scripts/backend-entrypoint.sh pyproject.toml uv.lock)
-          FRONTEND_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.frontend frontend)
-          LANGFLOW_HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.langflow flows scripts/langflow-entrypoint.py)
-          
-          echo "opensearch=$OPENSEARCH_HASH" >> $GITHUB_OUTPUT
-          echo "backend=$BACKEND_HASH" >> $GITHUB_OUTPUT
-          echo "frontend=$FRONTEND_HASH" >> $GITHUB_OUTPUT
-          echo "langflow=$LANGFLOW_HASH" >> $GITHUB_OUTPUT
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Cache OpenSearch Image
-        uses: actions/cache@v4
-        with:
-          path: /tmp/image-cache/opensearch.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-opensearch-${{ steps.cache-keys.outputs.opensearch }}
-
-      - name: Cache Backend Image
-        uses: actions/cache@v4
-        with:
-          path: /tmp/image-cache/backend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-backend-${{ steps.cache-keys.outputs.backend }}
-
-      - name: Cache Frontend Image
-        uses: actions/cache@v4
-        with:
-          path: /tmp/image-cache/frontend.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-frontend-${{ steps.cache-keys.outputs.frontend }}
-
-      - name: Cache Langflow Image
-        uses: actions/cache@v4
-        with:
-          path: /tmp/image-cache/langflow.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-langflow-${{ steps.cache-keys.outputs.langflow }}
-
-      - name: Build OpenRAG images
+      - name: Determine build parameters
+        id: params
         run: |
-          USE_LOCAL="${{ inputs.use_local_images }}"
-          
-          mkdir -p /tmp/image-cache
-          
-          build_or_load_image() {
-            local name=$1
-            local dockerfile=$2
-            local tar_path="/tmp/image-cache/${name}.tar"
-            local use_cache=false
-            
-            if [ -f "$tar_path" ]; then
-              echo "Found cache file for ${name}. Inspecting architecture..."
-              docker load -i "$tar_path"
-              
-              # Get host normalized architecture
-              local host_arch="$(uname -m)"
-              local host_arch_norm=""
-              if [[ "$host_arch" == "x86_64" ]]; then
-                host_arch_norm="amd64"
-              elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
-                host_arch_norm="arm64"
-              else
-                host_arch_norm="$host_arch"
-              fi
-              
-              local loaded_arch=""
-              loaded_arch=$(docker inspect --format '{{.Architecture}}' "langflowai/openrag-${name}:cached" 2>/dev/null || echo "unknown")
-              
-              if [ "$loaded_arch" = "$host_arch_norm" ]; then
-                echo "Cache hit for ${name}. Loaded image matches host architecture ($host_arch_norm)."
-                use_cache=true
-                echo "Tagging loaded image as langflowai/openrag-${name}:${CI_IMAGE_TAG}..."
-                docker tag "langflowai/openrag-${name}:cached" "langflowai/openrag-${name}:${CI_IMAGE_TAG}"
-              else
-                echo "Cache image architecture ($loaded_arch) does not match host architecture ($host_arch_norm). Discarding cache."
-                docker rmi "langflowai/openrag-${name}:cached" 2>/dev/null || true
-                rm -f "$tar_path"
-              fi
-            fi
-            
-            if [ "$use_cache" = "false" ]; then
-              echo "Cache miss/incompatible for ${name}. Building..."
-              if docker buildx build \
-                --load \
-                -t "langflowai/openrag-${name}:cached" \
-                -t "langflowai/openrag-${name}:${CI_IMAGE_TAG}" \
-                -f "$dockerfile" .; then
-                echo "Saving built image to ${tar_path}..."
-                docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
-              else
-                echo "Build failed for ${name}."
-                return 1
-              fi
-            fi
-          }
+          if [ "${{ matrix.image }}" = "opensearch" ]; then
+            echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfile=Dockerfile.${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ env.IS_FORK }}" = "true" ]; then
+            echo "image=langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+          # Build locally for PRs, local dispatch, and the OpenSearch image
+          # (which has no DockerHub publish); otherwise reuse the prebuilt
+          # DockerHub image.
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.use_local_images }}" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=pull" >> "$GITHUB_OUTPUT"
+          fi
+          # Shared, non-branch-scoped registry cache. `main` (push) writes it;
+          # every non-fork PR reads it, so a PR that doesn't touch this image
+          # gets its layers for free on the first run. PRs also keep a per-PR
+          # gha cache so a second commit in the same PR reuses its own layers.
+          REG_CACHE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:buildcache"
+          {
+            echo "cache_from<<EOF"
+            echo "type=registry,ref=${REG_CACHE}"
+            echo "type=gha,scope=${{ matrix.image }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "cache_to=type=registry,ref=${REG_CACHE},mode=max" >> "$GITHUB_OUTPUT"
+          else
+            echo "cache_to=type=gha,mode=max,scope=${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          fi
 
+      # Build with BuildKit layer caching (cache_from/cache_to computed above)
+      # so unchanged layers -- e.g. Langflow's torch/pip-install layer or the
+      # backend uv-sync layer -- are reused instead of rebuilt. Reads the shared
+      # registry cache seeded by main plus this PR's own gha cache; a flows-only
+      # change no longer forces a full re-install because that layer's cache key
+      # doesn't depend on flows/. Non-fork builds push straight to GHCR (no local
+      # load / docker save / tar shuttle).
+      - name: Build and push image (GHCR)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: ${{ steps.params.outputs.cache_from }}
+          cache-to: ${{ steps.params.outputs.cache_to }}
+          provenance: false
+
+      # Fork PRs cannot push to GHCR or write the Actions cache, so build and
+      # load locally (still reading any available layer cache). The fork
+      # fallback steps below save and upload the image as an artifact.
+      - name: Build image (fork fallback)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          load: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          provenance: false
+
+      - name: Pull prebuilt image from DockerHub
+        if: steps.params.outputs.mode == 'pull'
+        run: |
           for i in 1 2 3; do
-            echo "Build attempt $i..."
-            if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
-              echo "Building PR images locally..."
-              
-              if build_or_load_image "opensearch" "Dockerfile" && \
-                 build_or_load_image "backend" "Dockerfile.backend" && \
-                 build_or_load_image "frontend" "Dockerfile.frontend" && \
-                 build_or_load_image "langflow" "Dockerfile.langflow"; then
-                break
+            if docker pull "langflowai/openrag-${{ matrix.image }}:latest"; then
+              docker tag "langflowai/openrag-${{ matrix.image }}:latest" "${{ steps.params.outputs.image }}"
+              if [ "${{ env.IS_FORK }}" != "true" ]; then
+                docker push "${{ steps.params.outputs.image }}"
               fi
-            else
-              echo "Preparing DockerHub images..."
-              
-              if docker pull langflowai/openrag-backend:latest && \
-                 docker pull langflowai/openrag-frontend:latest && \
-                 docker pull langflowai/openrag-langflow:latest && \
-                 docker tag langflowai/openrag-backend:latest "langflowai/openrag-backend:${CI_IMAGE_TAG}" && \
-                 docker tag langflowai/openrag-frontend:latest "langflowai/openrag-frontend:${CI_IMAGE_TAG}" && \
-                 docker tag langflowai/openrag-langflow:latest "langflowai/openrag-langflow:${CI_IMAGE_TAG}" && \
-                 build_or_load_image "opensearch" "Dockerfile"; then
-                break
-              fi
+              exit 0
             fi
-            echo "Build attempt $i failed. Retrying in 10 seconds..."
+            echo "Pull attempt $i failed. Retrying in 10s..."
             sleep 10
-            if [ $i -eq 3 ]; then
-              echo "Build failed after 3 attempts."
-              exit 1
-            fi
           done
+          echo "Pull failed after 3 attempts."
+          exit 1
 
-      - name: Save OpenRAG images
-        run: OPENRAG_VERSION="${CI_IMAGE_TAG}" make ci-save-images
+      - name: Save OpenRAG image (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          mkdir -p .ci-artifacts
+          docker save -o .ci-artifacts/${{ matrix.image }}.tar langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}
 
-      - name: Upload OpenRAG image artifact
+      - name: Upload OpenRAG image artifact (Fork fallback)
+        if: env.IS_FORK == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: openrag-ci-images-${{ github.sha }}
-          path: .ci-artifacts/openrag-ci-images.tar
+          name: openrag-ci-image-${{ matrix.image }}-${{ github.sha }}
+          path: .ci-artifacts/${{ matrix.image }}.tar
           retention-days: 1
           compression-level: 0
 
@@ -267,62 +225,26 @@ jobs:
 
   test-suite:
     needs: [changes, build-images]
-    if: ${{ needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
         suite: [core, sdk-python, sdk-typescript]
     name: tests (${{ matrix.suite }})
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        continue-on-error: true
-        with:
-          root-reserve-mb: 40960
-          temp-reserve-mb: 30720
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
-
-      - name: Restart Docker
-        continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
-
-      - run: df -h
-
-      - name: Cleanup Docker cache
-        run: |
-          docker compose -f docker-compose.yml down -v --remove-orphans || true
-          docker system prune -f || true
-
-      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
-        run: |
-          for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-            echo "Attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || true
-
-      - run: df -h
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Verify workspace
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Workspace: ${GITHUB_WORKSPACE}"
-          ls -la
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v3
         with:
           version: latest
+          enable-cache: true
 
       - name: Set up Node.js
         if: matrix.suite == 'sdk-typescript'
@@ -335,16 +257,44 @@ jobs:
       - name: Python version
         run: uv python install 3.13
 
-      - name: Download OpenRAG image artifact
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: openrag-ci-images-${{ github.sha }}
+          pattern: openrag-ci-image-*-${{ github.sha }}
           path: .ci-artifacts
+          merge-multiple: true
 
-      - name: Load OpenRAG images
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
         run: |
-          docker load -i .ci-artifacts/openrag-ci-images.tar
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
           rm -rf .ci-artifacts
+
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        if: env.IS_FORK != 'true'
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
+        run: |
+          REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
+          for image in opensearch backend frontend langflow; do
+            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+          done
 
       - name: Run ${{ matrix.suite }} integration suite
         env:
@@ -385,9 +335,12 @@ jobs:
 
   e2e-run:
     needs: [changes, build-images]
-    if: ${{ needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -395,36 +348,6 @@ jobs:
         total_shards: [8]
     name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        continue-on-error: true
-        with:
-          root-reserve-mb: 40960
-          temp-reserve-mb: 30720
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          build-mount-path: '/var/lib/docker'
-
-      - name: Restart Docker
-        continue-on-error: true
-        run: sudo service docker restart || sudo systemctl restart docker || true
-
-      - name: Cleanup Docker cache
-        run: |
-          docker compose -f docker-compose.yml down -v --remove-orphans || true
-          docker system prune -f || true
-
-      - name: Cleanup root-owned files (OpenSearch data, config, Langflow data, keys, data, flows, documents)
-        run: |
-          for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
-            echo "Attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || true
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -455,6 +378,13 @@ jobs:
             sleep 5
           done
 
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+
       - name: Install Playwright Browsers
         working-directory: frontend
         run: |
@@ -471,16 +401,44 @@ jobs:
             fi
           done
 
-      - name: Download OpenRAG image artifact
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: openrag-ci-images-${{ github.sha }}
+          pattern: openrag-ci-image-*-${{ github.sha }}
           path: .ci-artifacts
+          merge-multiple: true
 
-      - name: Load OpenRAG images
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
         run: |
-          docker load -i .ci-artifacts/openrag-ci-images.tar
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
           rm -rf .ci-artifacts
+
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        if: env.IS_FORK != 'true'
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
+        run: |
+          REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
+          for image in opensearch backend frontend langflow; do
+            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+          done
 
       - name: Setup E2E infrastructure
         run: |
@@ -547,7 +505,7 @@ jobs:
           done || true
 
   e2e-merge-reports:
-    if: ${{ !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
+    if: ${{ github.event_name != 'push' && !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
     needs: [changes, e2e-run]
     runs-on:
       labels: "ubuntu-latest"
@@ -588,9 +546,11 @@ jobs:
 
   tests:
     needs: [changes, build-images, test-suite]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
     steps:
       - name: Check split integration result
         run: |
@@ -608,9 +568,11 @@ jobs:
 
   e2e:
     needs: [changes, build-images, e2e-run]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on:
       labels: "ubuntu-latest"
+    permissions:
+      contents: read
     steps:
       - name: Check E2E result
         run: |
@@ -625,3 +587,50 @@ jobs:
             fi
           fi
           echo "E2E tests passed or skipped"
+
+  cleanup-packages:
+    needs: [tests, e2e]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Delete package versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for image in opensearch backend frontend langflow; do
+            PACKAGE_NAME="openrag-${image}"
+            echo "Searching for version of package ${PACKAGE_NAME} with tag ${{ github.sha }}..."
+            OWNER="${{ github.repository_owner }}"
+            
+            IS_ORG=$(gh api "/users/${OWNER}" --jq '.type == "Organization"' || echo "false")
+            if [ "$IS_ORG" = "true" ]; then
+              ENDPOINT="orgs/${OWNER}"
+            else
+              ENDPOINT="users/${OWNER}"
+            fi
+            
+            VERSIONS_JSON=$(gh api "/${ENDPOINT}/packages/container/${PACKAGE_NAME}/versions" 2>/dev/null || echo "[]")
+            VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg tag "${{ github.sha }}" '.[] | select(.metadata.container.tags[] == $tag) | .id' 2>/dev/null || true)
+            
+            if [ -n "$VERSION_ID" ]; then
+              echo "Deleting package version ID ${VERSION_ID} for ${PACKAGE_NAME}..."
+              gh api -X DELETE "/${ENDPOINT}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" || true
+            else
+              echo "No package version found with tag ${{ github.sha }} for ${PACKAGE_NAME}"
+            fi
+          done

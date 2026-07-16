@@ -16,6 +16,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { decodeBase64 } from "@/lib/utils";
 
+// remove from localStorage any keys related to the OAuth flow
 function cleanupOAuthStorage() {
   localStorage.removeItem("connecting_connector_id");
   localStorage.removeItem("connecting_connector_type");

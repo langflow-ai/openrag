@@ -6,7 +6,7 @@ import {
   createContext,
   type HTMLAttributes,
   type MouseEventHandler,
-  useContext,
+  use,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -111,7 +111,7 @@ const _BannerClose = ({
   className,
   ...props
 }: BannerCloseProps) => {
-  const { setShow } = useContext(BannerContext);
+  const { setShow } = use(BannerContext);
 
   const handleClick: MouseEventHandler<HTMLButtonElement> = (e) => {
     setShow(false);

@@ -156,6 +156,10 @@ def get_langflow_file_service(services: dict = Depends(get_services)):
     return services["langflow_file_service"]
 
 
+def get_ingest_preview_service(services: dict = Depends(get_services)):
+    return services["ingest_preview_service"]
+
+
 def get_document_index_writer(services: dict = Depends(get_services)):
     return services["document_index_writer"]
 

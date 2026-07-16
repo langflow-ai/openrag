@@ -195,6 +195,12 @@ export function FileBrowserDialog({
       size: f.size,
     }));
 
+    // If any selected file is a stale re-ingest, default to replacing the
+    // indexed copy so the newer version overwrites the old chunks even if
+    // the duplicate check below is skipped (network error) or doesn't flag
+    // it. New files are unaffected by this flag.
+    const hasStale = selectedFiles.some((f) => f.is_stale);
+
     setIsCheckingDuplicates(true);
     try {
       const checkResponse = await fetch(
@@ -222,7 +228,7 @@ export function FileBrowserDialog({
           : duplicateNames.length;
 
       if (duplicateCount === 0) {
-        await submitSync(filesPayload, false);
+        await submitSync(filesPayload, hasStale);
         return;
       }
 
@@ -236,8 +242,9 @@ export function FileBrowserDialog({
     } catch (err) {
       console.error("[File Browser] Duplicate check failed:", err);
       // Fallback: proceed without overwrite (backend will still skip
-      // exact-duplicate filenames on its own).
-      await submitSync(filesPayload, false);
+      // exact-duplicate filenames on its own), unless we already know some
+      // selected files are stale re-ingests.
+      await submitSync(filesPayload, hasStale);
     } finally {
       setIsCheckingDuplicates(false);
     }
