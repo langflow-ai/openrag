@@ -8,6 +8,7 @@ import {
   type RemoteFile,
   useBrowseConnectionFiles,
 } from "@/app/api/queries/useBrowseConnectionFiles";
+import type { IngestSettings } from "@/components/cloud-picker/types";
 import { formatFileSize } from "@/lib/file-format";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -28,6 +29,11 @@ interface FileBrowserDialogProps {
   connectorType: string;
   connectionId: string;
   buckets?: string[];
+  onIngestSuccess?: (result: { task_ids?: string[]; message?: string }) => void;
+  /** When true, apply the "Make documents available to all users" setting from `ingestSettings`. */
+  showShared?: boolean;
+  /** Ingest settings (embedding model, chunking, OCR, shared toggle) configured on the parent screen. */
+  ingestSettings?: IngestSettings;
 }
 
 export function FileBrowserDialog({
@@ -36,6 +42,9 @@ export function FileBrowserDialog({
   connectorType,
   connectionId,
   buckets,
+  onIngestSuccess,
+  showShared,
+  ingestSettings,
 }: FileBrowserDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedBucket, setSelectedBucket] = useState<string | undefined>(
@@ -127,7 +136,7 @@ export function FileBrowserDialog({
     const hasStale = selectedFiles.some((f) => f.is_stale);
 
     try {
-      await syncMutation.mutateAsync({
+      const result = await syncMutation.mutateAsync({
         connectorType,
         body: {
           selected_files: selectedFiles.map((f) => ({
@@ -136,6 +145,8 @@ export function FileBrowserDialog({
             mimeType: "",
             size: f.size,
           })),
+          settings: ingestSettings,
+          shared: showShared ? (ingestSettings?.shared ?? false) : undefined,
           ...(hasStale ? { replace_duplicates: true } : {}),
         },
       });
@@ -146,12 +157,21 @@ export function FileBrowserDialog({
 
       setSelectedFileIds(new Set());
       onOpenChange(false);
+      onIngestSuccess?.(result);
     } catch (err) {
       toast.error("Ingestion failed", {
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [selectedFiles, connectorType, syncMutation, onOpenChange]);
+  }, [
+    selectedFiles,
+    connectorType,
+    syncMutation,
+    onOpenChange,
+    onIngestSuccess,
+    showShared,
+    ingestSettings,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

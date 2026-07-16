@@ -55,6 +55,11 @@ export function SharedBucketView({
   });
   const showIngestSettings =
     apiSettings?.show_provider_ingest_settings ?? false;
+  // The shared toggle can be exposed on its own (e.g. for SaaS deployments that
+  // hide the general per-upload ingest tuning knobs) via a dedicated flag.
+  const showSharedToggle =
+    showShared &&
+    (showIngestSettings || (apiSettings?.show_shared_upload_toggle ?? false));
 
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
     new Set(),
@@ -82,10 +87,16 @@ export function SharedBucketView({
         }
       }
     }
-  }, [buckets, initialSelectedBuckets]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [buckets, initialSelectedBuckets, selectedBuckets.size]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
+  };
+
+  const trackIngestTasks = (taskIds?: string[]) => {
+    for (const id of taskIds ?? []) {
+      addTask(id, { connectorType: connector.type, source: "connector" });
+    }
   };
 
   const toggleBucket = (bucketName: string) => {
@@ -122,7 +133,9 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
-          shared: showShared ? (ingestSettings.shared ?? false) : undefined,
+          shared: showSharedToggle
+            ? (ingestSettings.shared ?? false)
+            : undefined,
         },
       },
       {
@@ -131,12 +144,7 @@ export function SharedBucketView({
           if (result.task_ids?.length) {
             // The container path may return two tasks (new files + changed files);
             // track them all.
-            for (const id of result.task_ids) {
-              addTask(id, {
-                connectorType: connector.type,
-                source: "connector",
-              });
-            }
+            trackIngestTasks(result.task_ids);
             onDone();
           } else {
             toast.info(
@@ -298,13 +306,14 @@ export function SharedBucketView({
           </div>
         )}
 
-        {showIngestSettings && (
+        {(showIngestSettings || showSharedToggle) && (
           <IngestSettings
             isOpen={isSettingsOpen}
             onOpenChange={setIsSettingsOpen}
             settings={ingestSettings}
             onSettingsChange={setIngestSettings}
-            showShared={showShared}
+            showShared={showSharedToggle}
+            showAdvancedSettings={showIngestSettings}
           />
         )}
       </div>
@@ -342,6 +351,19 @@ export function SharedBucketView({
           connectorType={connector.type}
           connectionId={connector.connectionId}
           buckets={[browseDialogBucket]}
+          onIngestSuccess={(result) => {
+            invalidate();
+            if (result.task_ids?.length) {
+              trackIngestTasks(result.task_ids);
+              onDone();
+            } else {
+              toast.info(
+                result.message ?? "No files were queued for ingestion.",
+              );
+            }
+          }}
+          showShared={showSharedToggle}
+          ingestSettings={ingestSettings}
         />
       )}
     </>

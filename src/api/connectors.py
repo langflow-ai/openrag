@@ -28,10 +28,17 @@ from services.connector_access_service import (
     set_connector_access_bulk,
 )
 from session_manager import User
+from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+# Maximum number of buckets returned by a single OpenSearch terms aggregation.
+# Results are silently truncated when the true cardinality exceeds this value.
+# See get_synced_file_ids_for_connector / get_synced_id_to_filename_map.
+# TODO: replace with composite aggregation + pagination to handle arbitrary cardinality.
+OPENSEARCH_TERMS_AGG_LIMIT = 10_000
 
 
 async def _connector_access_denied(
@@ -98,10 +105,14 @@ async def get_synced_file_ids_for_connector(
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
                 "unique_connector_file_ids": {
-                    "terms": {"field": "connector_file_id", "size": 10000}
+                    "terms": {"field": "connector_file_id", "size": OPENSEARCH_TERMS_AGG_LIMIT}
                 },
-                "unique_document_ids": {"terms": {"field": "document_id", "size": 10000}},
-                "unique_filenames": {"terms": {"field": "filename", "size": 10000}},
+                "unique_document_ids": {
+                    "terms": {"field": "document_id", "size": OPENSEARCH_TERMS_AGG_LIMIT}
+                },
+                "unique_filenames": {
+                    "terms": {"field": "filename", "size": OPENSEARCH_TERMS_AGG_LIMIT}
+                },
             },
         }
 
@@ -113,7 +124,12 @@ async def get_synced_file_ids_for_connector(
             result.get("aggregations", {}).get("unique_connector_file_ids", {}).get("buckets", [])
         )
         connector_file_ids = [b["key"] for b in connector_file_id_buckets if b["key"]]
-
+        if len(connector_file_id_buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+            logger.warning(
+                "Connector file ID aggregation hit 10k limit - results may be truncated",
+                connector_type=connector_type,
+                returned_count=len(connector_file_ids),
+            )
         if connector_file_ids:
             file_ids = connector_file_ids
             id_field = "connector_file_id"
@@ -123,13 +139,24 @@ async def get_synced_file_ids_for_connector(
                 result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
             )
             file_ids = [b["key"] for b in doc_id_buckets if b["key"]]
+            if len(doc_id_buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+                logger.warning(
+                    "Document ID aggregation hit 10k limit - results may be truncated",
+                    connector_type=connector_type,
+                    returned_count=len(file_ids),
+                )
             id_field = "document_id"
 
         filename_buckets = (
             result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
         )
         filenames = [b["key"] for b in filename_buckets if b["key"]]
-
+        if len(filename_buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+            logger.warning(
+                "Filename aggregation hit 10k limit - results may be truncated",
+                connector_type=connector_type,
+                returned_count=len(filenames),
+            )
         logger.debug(
             "Found synced files for connector",
             connector_type=connector_type,
@@ -168,7 +195,7 @@ async def get_synced_id_to_filename_map(
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
                 "by_document_id": {
-                    "terms": {"field": "document_id", "size": 10000},
+                    "terms": {"field": "document_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
                     "aggs": {
                         "top_filename": {"terms": {"field": "filename", "size": 1}},
                     },
@@ -178,6 +205,12 @@ async def get_synced_id_to_filename_map(
 
         result = await opensearch_client.search(index=get_index_name(), body=query_body)
         buckets = result.get("aggregations", {}).get("by_document_id", {}).get("buckets", [])
+        if len(buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+            logger.warning(
+                "Document ID to filename mapping hit 10k limit - results may be truncated",
+                connector_type=connector_type,
+                returned_count=len(buckets),
+            )
 
         mapping: dict[str, str] = {}
         for bucket in buckets:
@@ -560,6 +593,8 @@ class ConnectorSyncBody(BaseModel):
     # rather than failing. Set by the provider upload UI after the user confirms
     # overwrite in the duplicate dialog.
     replace_duplicates: bool = False
+    # When True (OSS/SaaS), run the ingest in preview mode (same as direct upload).
+    preview: bool = False
     # When True (COS only), index chunks without an owner field so OpenSearch DLS
     # makes them visible to all users in the instance. Temporary CIO mechanism;
     # not a full ACL feature. Defaults to False (private).
@@ -953,6 +988,10 @@ async def connector_sync(
             selected_files = [f.get("id") for f in selected_files_raw if f.get("id")]
             file_infos = selected_files_raw
 
+    # Preview mode is opt-in from the connector upload UI (OSS/SaaS). It applies
+    # to user-initiated ingests (explicit file selection), not automated re-sync.
+    preview_mode = body.preview and is_ingest_preview_enabled()
+
     try:
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
@@ -1080,6 +1119,7 @@ async def connector_sync(
                 file_infos=file_infos,
                 ingest_settings=body.settings,
                 replace_duplicates=body.replace_duplicates,
+                preview_mode=preview_mode,
                 shared=body.shared,
             )
         elif body.sync_all or body.bucket_filter:
@@ -1184,6 +1224,8 @@ async def connector_sync(
                             new_ids,
                             jwt_token=jwt_token,
                             ingest_settings=body.settings,
+                            preview_mode=preview_mode,
+                            shared=body.shared,
                         )
                     )
                 if changed_ids:
@@ -1195,6 +1237,8 @@ async def connector_sync(
                             jwt_token=jwt_token,
                             ingest_settings=body.settings,
                             replace_duplicates=True,
+                            preview_mode=preview_mode,
+                            shared=body.shared,
                         )
                     )
             else:

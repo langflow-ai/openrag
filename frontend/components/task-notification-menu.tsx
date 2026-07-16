@@ -205,7 +205,7 @@ export function TaskNotificationMenu() {
     if (isInTerminal) {
       setIsPastOpen(true);
     }
-  }, [selectedTaskId, terminalTasks]);
+  }, [selectedTaskId, terminalTasks, selectedTaskTrigger]);
 
   // Don't render if menu is closed
   if (!isMenuOpen) return null;

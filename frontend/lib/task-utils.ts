@@ -168,7 +168,7 @@ export function countTaskFileEntriesByCategory(
   return counts;
 }
 
-function countTaskFilesByCategory(
+function _countTaskFilesByCategory(
   task: Task,
 ): Record<TaskFileStatusCategory, number> {
   return countTaskFileEntriesByCategory(getTaskFileEntries(task));

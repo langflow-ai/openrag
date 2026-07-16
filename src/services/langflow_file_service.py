@@ -168,7 +168,16 @@ class LangflowFileService:
         self,
         file_tuples: list[tuple[str, Any, str]] | None,
         document_id: str | None,
+        connector_file_id: str | None = None,
     ) -> str:
+        # Bucket-style connectors (COS/Azure/S3) pass their raw, potentially
+        # non-ASCII and unbounded "bucket::key" as connector_file_id. Hash it
+        # into a stable ASCII document_id instead of using it verbatim — the
+        # raw value still travels downstream as connector_file_id, but
+        # document_id must stay safe for HTTP headers and OpenSearch's chunk
+        # _id (mirrors the content-hash document_id used by manual upload).
+        if connector_file_id:
+            return hash_id(io.BytesIO(connector_file_id.encode("utf-8")))
         if document_id:
             return document_id
         if file_tuples and len(file_tuples[0]) > 1:
@@ -199,6 +208,7 @@ class LangflowFileService:
         parser: str | None = None,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
+        connector_file_id: str | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
             logger.warning(
@@ -234,6 +244,7 @@ class LangflowFileService:
             parser=parser,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            connector_file_id=connector_file_id,
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -353,6 +364,7 @@ class LangflowFileService:
         owner_email: str | None = None,
         connector_type: str | None = None,
         document_id: str | None = None,
+        connector_file_id: str | None = None,
         source_url: str | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
@@ -360,6 +372,8 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
         selected_embedding_model: str | None = None,
         docling_task_id: str | None = None,
+        original_filename: str | None = None,
+        original_mimetype: str | None = None,
     ) -> dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -409,13 +423,17 @@ class LangflowFileService:
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         # Extract file metadata if file_tuples is provided
-        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
-        mimetype = (
+        filename = original_filename or (
+            str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
+        )
+        mimetype = original_mimetype or (
             str(file_tuples[0][2])
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
             else ""
         )
-        resolved_document_id = self._resolve_document_id(file_tuples, document_id)
+        resolved_document_id = self._resolve_document_id(
+            file_tuples, document_id, connector_file_id
+        )
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
@@ -476,6 +494,7 @@ class LangflowFileService:
             parser="Docling Serve 1.20.0",
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            connector_file_id=connector_file_id,
         )
         headers.update(
             self._ingest_callback_global_var_headers(
@@ -888,11 +907,14 @@ class LangflowFileService:
         docling_polling_service: Any | None = None,
         file_task: Any | None = None,
         document_id: str | None = None,
+        connector_file_id: str | None = None,
         source_url: str | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
         allowed_principals: list[str] | None = None,
         allowed_principal_labels: list[dict[str, Any]] | None = None,
+        original_filename: str | None = None,
+        original_mimetype: str | None = None,
     ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
@@ -1030,12 +1052,15 @@ class LangflowFileService:
                 connector_type=connector_type,
                 docling_task_id=task_id,
                 document_id=document_id,
+                connector_file_id=connector_file_id,
                 source_url=source_url,
                 selected_embedding_model=selected_embedding,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
                 allowed_principal_labels=allowed_principal_labels,
+                original_filename=original_filename,
+                original_mimetype=original_mimetype,
             )
             total_duration = round(time.time() - total_start_time, 2)
             logger.info(f"[LF] Ingestion completed successfully in {total_duration}s")

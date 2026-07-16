@@ -58,6 +58,7 @@ class FileTask:
     docling_task_id: str | None = None
     docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
     phase: IngestionPhase = IngestionPhase.DOCLING
+    document_id: str | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -81,6 +82,7 @@ class UploadTask:
     processor: TaskProcessor | None = field(default=None, repr=False)
     background_task: asyncio.Task[None] | None = field(default=None, repr=False)
     temp_file_paths: list[str] | None = field(default=None, repr=False)
+    preview_mode: bool = False
     _sequence_number: int = field(init=False, repr=False)
 
     def __post_init__(self):

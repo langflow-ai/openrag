@@ -71,10 +71,10 @@ jobs:
       - name: React Doctor score check
         working-directory: frontend
         run: |
-          SCORE=$(npx -y react-doctor@0.5.8 --score --yes)
+          SCORE=$(npx -y react-doctor@0.7.2 --score --yes)
           echo "React Doctor score: $SCORE"
           if [ "$SCORE" -lt 40 ]; then
             echo "::error::React Doctor score $SCORE is below the minimum threshold of 40"
-            npx -y react-doctor@0.5.8 --verbose --yes
+            npx -y react-doctor@0.7.2 --verbose --yes
             exit 1
           fi

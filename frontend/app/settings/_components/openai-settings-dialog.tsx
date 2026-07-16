@@ -66,7 +66,7 @@ const OpenAISettingsDialog = ({
   useEffect(() => {
     // Reset form state on dialog open
     if (open) methods.reset();
-  }, [open]);
+  }, [open, methods.reset]);
 
   const { handleSubmit, watch } = methods;
   const apiKey = watch("apiKey");

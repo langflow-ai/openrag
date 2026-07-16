@@ -61,6 +61,7 @@ class EnvConfig:
     google_oauth_client_secret: str = ""
     microsoft_graph_oauth_client_id: str = ""
     microsoft_graph_oauth_client_secret: str = ""
+    microsoft_allowed_tenant_ids: str = ""
 
     # Optional settings
     webhook_base_url: str = ""
@@ -215,6 +216,7 @@ class EnvManager:
             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",  # pragma: allowlist secret
             "MICROSOFT_GRAPH_OAUTH_CLIENT_ID": "microsoft_graph_oauth_client_id",
             "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET": "microsoft_graph_oauth_client_secret",  # pragma: allowlist secret
+            "MICROSOFT_ALLOWED_TENANT_IDS": "microsoft_allowed_tenant_ids",
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
@@ -660,6 +662,10 @@ class EnvManager:
                     f.write(
                         f"MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={self._quote_env_value(self.config.microsoft_graph_oauth_client_secret)}\n"
                     )
+                    if self.config.microsoft_allowed_tenant_ids:
+                        f.write(
+                            f"MICROSOFT_ALLOWED_TENANT_IDS={self._quote_env_value(self.config.microsoft_allowed_tenant_ids)}\n"
+                        )
                     f.write("\n")
 
                 # Optional settings
@@ -768,6 +774,12 @@ class EnvManager:
             (
                 "microsoft_graph_oauth_client_secret",
                 "Microsoft Graph Client Secret",
+                "",
+                False,
+            ),
+            (
+                "microsoft_allowed_tenant_ids",
+                "Microsoft Allowed Tenant IDs",
                 "",
                 False,
             ),

@@ -1,11 +1,16 @@
 import json
-import logging
 import os
 from typing import Any
 
 import msal
 
-logger = logging.getLogger(__name__)
+from connectors.microsoft_oauth_utils import verify_ms_access_token
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# Backward-compat alias used by get_access_token() call sites in this module.
+_verify_access_token = verify_ms_access_token
 
 
 class SharePointOAuth:
@@ -116,9 +121,12 @@ class SharePointOAuth:
                 logger.debug(f"Found {len(accounts)} accounts in MSAL cache")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(
-                        f"Set current account: {accounts[0].get('username', 'no username')}"
+                    username = (
+                        self._current_account.get("username", "no username")
+                        if self._current_account
+                        else "no username"
                     )
+                    logger.debug(f"Set current account: {username}")
 
                     if needs_upgrade:
                         await self.save_cache()
@@ -179,9 +187,12 @@ class SharePointOAuth:
                 logger.debug(f"After refresh, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
-                    logger.debug(
-                        f"Set current account after refresh: {accounts[0].get('username', 'no username')}"
+                    username = (
+                        self._current_account.get("username", "no username")
+                        if self._current_account
+                        else "no username"
                     )
+                    logger.debug(f"Set current account after refresh: {username}")
                 return True
 
             # Error handling
@@ -360,8 +371,10 @@ class SharePointOAuth:
                     self.RESOURCE_SCOPES, account=self._current_account
                 )
                 if result and "access_token" in result:
+                    access_token = result["access_token"]
+                    _verify_access_token(access_token)  # raises JWTVerificationError on failure
                     logger.info("SharePoint get_access_token: Success with current account")
-                    return result["access_token"]
+                    return access_token
                 else:
                     logger.warning(
                         f"SharePoint get_access_token: Failed with account, result: {result}"
@@ -371,8 +384,10 @@ class SharePointOAuth:
             logger.info("SharePoint get_access_token: Fallback - trying without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
+                access_token = result["access_token"]
+                _verify_access_token(access_token)  # raises JWTVerificationError on failure
                 logger.info("SharePoint get_access_token: Fallback success")
-                return result["access_token"]
+                return access_token
 
             # If we get here, authentication has failed
             error_msg = (
@@ -417,10 +432,12 @@ class SharePointOAuth:
                     sharepoint_scopes, account=self._current_account
                 )
                 if result and "access_token" in result:
+                    access_token = result["access_token"]
+                    _verify_access_token(access_token)  # raises JWTVerificationError on failure
                     logger.info(
                         "SharePoint get_access_token_for_resource: Success with current account"
                     )
-                    return result["access_token"]
+                    return access_token
                 else:
                     error_msg = (
                         (result or {}).get("error_description")
@@ -437,8 +454,10 @@ class SharePointOAuth:
             )
             result = self.app.acquire_token_silent(sharepoint_scopes, account=None)
             if result and "access_token" in result:
+                access_token = result["access_token"]
+                _verify_access_token(access_token)  # raises JWTVerificationError on failure
                 logger.info("SharePoint get_access_token_for_resource: Fallback success")
-                return result["access_token"]
+                return access_token
 
             # If silent acquisition fails, we may need to acquire interactively or via refresh
             # Try using the refresh token if available
@@ -464,7 +483,7 @@ class SharePointOAuth:
             raise
         except Exception as e:
             logger.exception("[CONNECTOR] SharePoint get_access_token_for_resource failed")
-            raise ValueError(f"Failed to acquire SharePoint token: {e}") from e
+            raise ValueError(f"Failed to acquire SharePoint token: {str(e)}") from e
 
     async def revoke_credentials(self):
         """Clear token cache and remove token file (like Google Drive)."""

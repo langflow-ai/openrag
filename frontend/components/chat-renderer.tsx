@@ -53,6 +53,8 @@ export function ChatRenderer({
     setOnboardingComplete,
   } = useChat();
 
+  //TODO: comment to test CI
+
   // Initialize onboarding state from backend settings
   const [currentStep, setCurrentStep] = useState<number>(
     settings?.onboarding?.current_step ?? 0,
@@ -80,7 +82,7 @@ export function ChatRenderer({
       page("OpenRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showLayout]);
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -101,12 +103,12 @@ export function ChatRenderer({
     }
   }, [showLayout, pathname, router]);
 
+  const userDocFilterId = settings?.onboarding?.user_doc_filter_id;
+  const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
+
   // Helper to store default filter ID for new conversations after onboarding
   const storeDefaultFilterForNewConversations = useCallback(
     async (preferUserDoc: boolean, settingsToUse?: Settings) => {
-      // Use provided settings or fall back to prop
-      const currentSettings = settingsToUse || settings;
-
       if (typeof window === "undefined") {
         return;
       }
@@ -140,12 +142,18 @@ export function ChatRenderer({
 
       if (preferUserDoc) {
         // Completed full onboarding - prefer user document filter
-        filterId = currentSettings?.onboarding?.user_doc_filter_id || null;
+        filterId =
+          settingsToUse?.onboarding?.user_doc_filter_id ||
+          userDocFilterId ||
+          null;
       }
 
       // Fall back to OpenRAG docs filter
       if (!filterId) {
-        filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
+        filterId =
+          settingsToUse?.onboarding?.openrag_docs_filter_id ||
+          openragDocsFilterId ||
+          null;
       }
 
       if (filterId) {
@@ -165,11 +173,7 @@ export function ChatRenderer({
         }
       }
     },
-    [
-      setConversationFilter,
-      settings?.onboarding?.user_doc_filter_id,
-      settings?.onboarding?.openrag_docs_filter_id,
-    ],
+    [setConversationFilter, userDocFilterId, openragDocsFilterId],
   );
 
   // Note: Current step is now saved to backend via handleStepComplete
