@@ -8,6 +8,7 @@ indexing chunks into the documents index.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,8 +81,8 @@ class DocumentIndexWriter:
     ) -> dict[str, Any]:
         """Index one batch of chunks.
 
-        Repeated calls with the same chunk ids are idempotent because the write
-        operation is an index/upsert.
+        Repeated calls with the same chunk ids in the same ownership scope are
+        idempotent because the write operation is an index/upsert.
         """
         from config.settings import get_index_name
 
@@ -112,7 +113,14 @@ class DocumentIndexWriter:
                     "Embedding dimension mismatch in batch: "
                     f"expected {dimensions}, got {len(chunk.vector)} for {chunk.chunk_id}"
                 )
-            bulk_body.append({"index": {"_index": index_name, "_id": chunk.chunk_id}})
+            bulk_body.append(
+                {
+                    "index": {
+                        "_index": index_name,
+                        "_id": self._scoped_chunk_id(context, chunk.chunk_id),
+                    }
+                }
+            )
             bulk_body.append(
                 self._build_chunk_document(
                     context=context,
@@ -140,6 +148,13 @@ class DocumentIndexWriter:
             "ingest_run_id": context.ingest_run_id,
             "document_id": context.document_id,
         }
+
+    @staticmethod
+    def _scoped_chunk_id(context: DocumentIndexContext, chunk_id: str) -> str:
+        """Keep idempotent chunk upserts isolated to one ownership scope."""
+        scope = "shared" if context.owner is None else f"owner:{context.owner}"
+        scope_digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:24]
+        return f"{scope_digest}_{chunk_id}"
 
     async def delete_ingest_run(self, ingest_run_id: str, *, index_name: str | None = None) -> int:
         """Delete partially indexed chunks for a failed callback run."""

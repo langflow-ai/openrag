@@ -1,6 +1,6 @@
 """Unit tests for duplicate filename handling in DocumentFileProcessor."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,7 +87,11 @@ async def test_traditional_processor_duplicate_exists_with_replace():
     assert upload_task.successful_files == 1
 
     processor.check_filename_exists.assert_called_once()
-    processor.delete_document_by_filename.assert_called_once()
+    processor.delete_document_by_filename.assert_awaited_once_with(
+        "test.txt",
+        ANY,
+        owner_user_id="user-123",
+    )
     processor.process_document_standard.assert_called_once()
     mock_session_manager.get_user_opensearch_client.assert_called_once_with(
         "user-123", "mock-token"
