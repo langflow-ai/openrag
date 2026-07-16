@@ -104,132 +104,76 @@ jobs:
         run: |
           echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Generate Image Cache Key
-        id: cache-key
+      - name: Determine build parameters
+        id: params
         run: |
           if [ "${{ matrix.image }}" = "opensearch" ]; then
-            HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile patch-netty.sh securityconfig cloud_securityconfig opensearch-entrypoint-wrapper.sh)
-          elif [ "${{ matrix.image }}" = "backend" ]; then
-            HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.backend src enhancements flows securityconfig cloud_securityconfig alembic.ini alembic openrag-documents scripts/backend-entrypoint.sh pyproject.toml uv.lock)
-          elif [ "${{ matrix.image }}" = "frontend" ]; then
-            HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.frontend frontend)
-          elif [ "${{ matrix.image }}" = "langflow" ]; then
-            HASH=$(python3 scripts/ci/get_image_hash.py Dockerfile.langflow flows scripts/langflow-entrypoint.py)
+            echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfile=Dockerfile.${{ matrix.image }}" >> "$GITHUB_OUTPUT"
           fi
-          echo "key=$HASH" >> $GITHUB_OUTPUT
+          if [ "${{ env.IS_FORK }}" = "true" ]; then
+            echo "image=langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+          # Build locally for PRs, local dispatch, and the OpenSearch image
+          # (which has no DockerHub publish); otherwise reuse the prebuilt
+          # DockerHub image.
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.use_local_images }}" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=pull" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Cache Image
-        uses: actions/cache@v4
+      # Build with BuildKit's GitHub Actions layer cache (scoped per image) so
+      # unchanged layers -- e.g. Langflow's torch/pip-install layer or the
+      # backend uv-sync layer -- are reused across runs instead of rebuilt.
+      # A flows-only change no longer forces a full re-install because that
+      # layer's cache key doesn't depend on flows/. Non-fork builds push
+      # straight to GHCR (no local load / docker save / tar shuttle).
+      - name: Build and push image (GHCR)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK != 'true'
+        uses: docker/build-push-action@v6
         with:
-          path: /tmp/image-cache/${{ matrix.image }}.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.image }}-${{ steps.cache-key.outputs.key }}
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          provenance: false
 
-      - name: Build and Push OpenRAG image
+      # Fork PRs cannot push to GHCR or write the Actions cache, so build and
+      # load locally (still reading any available layer cache). The fork
+      # fallback steps below save and upload the image as an artifact.
+      - name: Build image (fork fallback)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          load: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          provenance: false
+
+      - name: Pull prebuilt image from DockerHub
+        if: steps.params.outputs.mode == 'pull'
         run: |
-          USE_LOCAL="${{ inputs.use_local_images }}"
-          IS_FORK="${{ env.IS_FORK }}"
-          
-          if [ "$IS_FORK" = "true" ]; then
-            REGISTRY_IMAGE="langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}"
-          else
-            REGISTRY_IMAGE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}"
-          fi
-          
-          mkdir -p /tmp/image-cache
-          
-          build_or_load_image() {
-            local name=$1
-            local dockerfile=$2
-            local tar_path="/tmp/image-cache/${name}.tar"
-            local use_cache=false
-            
-            if [ -f "$tar_path" ]; then
-              echo "Found cache file for ${name}. Inspecting architecture..."
-              docker load -i "$tar_path"
-              
-              # Get host normalized architecture
-              local host_arch="$(uname -m)"
-              local host_arch_norm=""
-              if [[ "$host_arch" == "x86_64" ]]; then
-                host_arch_norm="amd64"
-              elif [[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]]; then
-                host_arch_norm="arm64"
-              else
-                host_arch_norm="$host_arch"
-              fi
-              
-              local loaded_arch=""
-              loaded_arch=$(docker inspect --format '{{.Architecture}}' "langflowai/openrag-${name}:cached" 2>/dev/null || echo "unknown")
-              
-              if [ "$loaded_arch" = "$host_arch_norm" ]; then
-                echo "Cache hit for ${name}. Loaded image matches host architecture ($host_arch_norm)."
-                use_cache=true
-                echo "Tagging loaded image as ${REGISTRY_IMAGE}..."
-                docker tag "langflowai/openrag-${name}:cached" "${REGISTRY_IMAGE}"
-              else
-                echo "Cache image architecture ($loaded_arch) does not match host architecture ($host_arch_norm). Discarding cache."
-                docker rmi "langflowai/openrag-${name}:cached" 2>/dev/null || true
-                rm -f "$tar_path"
-              fi
-            fi
-            
-            if [ "$use_cache" = "false" ]; then
-              echo "Cache miss/incompatible for ${name}. Building..."
-              if docker buildx build \
-                --load \
-                -t "langflowai/openrag-${name}:cached" \
-                -t "${REGISTRY_IMAGE}" \
-                -f "$dockerfile" .; then
-                echo "Saving built image to ${tar_path}..."
-                docker save "langflowai/openrag-${name}:cached" -o "$tar_path"
-              else
-                echo "Build failed for ${name}."
-                return 1
-              fi
-            fi
-          }
-
-          pull_image() {
-            local name=$1
-            echo "Pulling latest image for ${name} from DockerHub..."
-            if docker pull "langflowai/openrag-${name}:latest"; then
-              docker tag "langflowai/openrag-${name}:latest" "${REGISTRY_IMAGE}"
-            else
-              echo "Pull failed for ${name}."
-              return 1
-            fi
-          }
-
-          if [ "${{ matrix.image }}" = "opensearch" ]; then
-            DOCKERFILE="Dockerfile"
-          else
-            DOCKERFILE="Dockerfile.${{ matrix.image }}"
-          fi
-
           for i in 1 2 3; do
-            echo "Build/pull attempt $i..."
-            if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
-              if build_or_load_image "${{ matrix.image }}" "$DOCKERFILE"; then
-                if [ "$IS_FORK" != "true" ]; then
-                  docker push "${REGISTRY_IMAGE}"
-                fi
-                break
+            if docker pull "langflowai/openrag-${{ matrix.image }}:latest"; then
+              docker tag "langflowai/openrag-${{ matrix.image }}:latest" "${{ steps.params.outputs.image }}"
+              if [ "${{ env.IS_FORK }}" != "true" ]; then
+                docker push "${{ steps.params.outputs.image }}"
               fi
-            else
-              if pull_image "${{ matrix.image }}"; then
-                if [ "$IS_FORK" != "true" ]; then
-                  docker push "${REGISTRY_IMAGE}"
-                fi
-                break
-              fi
+              exit 0
             fi
-            echo "Attempt $i failed. Retrying in 10 seconds..."
+            echo "Pull attempt $i failed. Retrying in 10s..."
             sleep 10
-            if [ $i -eq 3 ]; then
-              echo "Build/pull failed after 3 attempts."
-              exit 1
-            fi
           done
+          echo "Pull failed after 3 attempts."
+          exit 1
 
       - name: Save OpenRAG image (Fork fallback)
         if: env.IS_FORK == 'true'
