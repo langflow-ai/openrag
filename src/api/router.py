@@ -31,6 +31,7 @@ async def upload_ingest_router(
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     preview: str = Form("false"),
+    metadata_json: str | None = Form(None, alias="metadata"),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
@@ -54,6 +55,19 @@ async def upload_ingest_router(
         preview_mode=preview_mode,
     )
 
+    metadata_entries = None
+    if isinstance(metadata_json, str) and metadata_json:
+        try:
+            parsed_metadata = json.loads(metadata_json)
+            if not isinstance(parsed_metadata, list):
+                raise ValueError("metadata must be a JSON array of typed key/value entries")
+            from services.custom_metadata_service import CustomMetadataService
+
+            CustomMetadataService().normalize_entries(parsed_metadata)
+            metadata_entries = parsed_metadata
+        except (json.JSONDecodeError, ValueError) as e:
+            return JSONResponse({"error": f"Invalid metadata: {e}"}, status_code=400)
+
     if disable_ingest_with_langflow:
         logger.debug("Routing to traditional OpenRAG upload via task service")
         return await _traditional_upload_ingest_task(
@@ -65,6 +79,7 @@ async def upload_ingest_router(
             task_service=task_service,
             user=user,
             settings_json=settings_json,
+            metadata_entries=metadata_entries,
         )
 
     logger.debug("Routing to Langflow upload-ingest pipeline via task service")
@@ -80,6 +95,7 @@ async def upload_ingest_router(
         session_manager=session_manager,
         task_service=task_service,
         user=user,
+        metadata_entries=metadata_entries,
     )
 
 
@@ -92,6 +108,7 @@ async def _traditional_upload_ingest_task(
     task_service,
     user: User,
     settings_json: str | None = None,
+    metadata_entries: list[dict] | None = None,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
     try:
@@ -104,6 +121,9 @@ async def _traditional_upload_ingest_task(
                 settings = json.loads(settings_json)
             except json.JSONDecodeError as e:
                 return JSONResponse({"error": f"Invalid settings JSON: {e}"}, status_code=400)
+        if metadata_entries is not None:
+            settings = dict(settings or {})
+            settings["metadata"] = metadata_entries
 
         user_id = user.user_id
         user_name = user.name
@@ -197,6 +217,7 @@ async def _langflow_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    metadata_entries: list[dict] | None = None,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
     try:
@@ -217,6 +238,9 @@ async def _langflow_upload_ingest_task(
                 tweaks = json.loads(tweaks_json)
             except json.JSONDecodeError as e:
                 return JSONResponse({"error": f"Invalid tweaks JSON: {e}"}, status_code=400)
+        if metadata_entries is not None:
+            settings = dict(settings or {})
+            settings["metadata"] = metadata_entries
 
         user_id = user.user_id
         user_name = user.name

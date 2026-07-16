@@ -1,11 +1,17 @@
 """OpenRAG SDK documents client."""
 
 import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
 from .exceptions import NotFoundError
-from .models import DeleteDocumentResponse, IngestResponse, IngestTaskStatus
+from .models import (
+    DeleteDocumentResponse,
+    IngestResponse,
+    IngestTaskStatus,
+    MetadataEntry,
+)
 
 if TYPE_CHECKING:
     from .client import OpenRAGClient
@@ -26,6 +32,7 @@ class DocumentsClient:
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: float = 300.0,
+        metadata: list[MetadataEntry | dict] | None = None,
     ) -> IngestResponse | IngestTaskStatus:
         """
         Ingest a document into the knowledge base.
@@ -37,6 +44,7 @@ class DocumentsClient:
             wait: If True, poll until ingestion completes. If False, return immediately.
             poll_interval: Seconds between status checks when waiting.
             timeout: Maximum seconds to wait for completion.
+            metadata: Typed custom metadata applied to the document.
 
         Returns:
             IngestTaskStatus with final status if wait=True.
@@ -46,6 +54,9 @@ class DocumentsClient:
             ValueError: If neither file_path nor file is provided.
             TimeoutError: If ingestion doesn't complete within timeout.
         """
+        form_data = (
+            {"metadata": self._serialize_metadata(metadata)} if metadata else None
+        )
         if file_path is not None:
             path = Path(file_path)
             with open(path, "rb") as f:
@@ -54,6 +65,7 @@ class DocumentsClient:
                     "POST",
                     "/api/v1/documents/ingest",
                     files=files,
+                    data=form_data,
                 )
         elif file is not None:
             if filename is None:
@@ -63,6 +75,7 @@ class DocumentsClient:
                 "POST",
                 "/api/v1/documents/ingest",
                 files=files,
+                data=form_data,
             )
         else:
             raise ValueError("Either file_path or file must be provided")
@@ -78,6 +91,17 @@ class DocumentsClient:
             ingest_response.task_id,
             poll_interval=poll_interval,
             timeout=timeout,
+        )
+
+    @staticmethod
+    def _serialize_metadata(metadata: list[MetadataEntry | dict]) -> str:
+        return json.dumps(
+            [
+                item.model_dump(mode="json")
+                if isinstance(item, MetadataEntry)
+                else item
+                for item in metadata
+            ]
         )
 
     async def get_task_status(self, task_id: str) -> IngestTaskStatus:

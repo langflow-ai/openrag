@@ -417,6 +417,7 @@ class TaskProcessor:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         shared: bool = False,
+        metadata: list[dict[str, Any]] | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -618,6 +619,7 @@ class TaskProcessor:
             allowed_principals=allowed_principals,
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
+            metadata=list(metadata or []),
         )
         parser_name = slim_doc.get("parser")
         if not parser_name:
@@ -790,6 +792,8 @@ class DocumentFileProcessor(TaskProcessor):
                             standard_kwargs[param] = int(raw)
                         except (TypeError, ValueError):
                             pass
+                if isinstance(s.get("metadata"), list):
+                    standard_kwargs["metadata"] = s["metadata"]
 
             config = get_openrag_config()
             standard_kwargs["ocr"] = config.knowledge.ocr
@@ -1271,6 +1275,8 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
+                        if isinstance(s.get("metadata"), list):
+                            standard_kwargs["metadata"] = s["metadata"]
                     config = get_openrag_config()
                     standard_kwargs["ocr"] = config.knowledge.ocr
                     standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
@@ -1545,6 +1551,7 @@ class LangflowFileProcessor(TaskProcessor):
                 document_id=file_hash,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
+                metadata=self.settings.get("metadata") if isinstance(self.settings, dict) else None,
             )
 
             # Langflow returns "success" even when no text was extracted

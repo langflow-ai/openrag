@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from services.custom_metadata_service import CustomMetadataService
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
@@ -43,6 +44,7 @@ class DocumentIndexContext:
     parser: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    metadata: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -59,6 +61,7 @@ class DocumentIndexWriter:
 
     def __init__(self, opensearch_client: Any | None = None):
         self.opensearch_client = opensearch_client
+        self.custom_metadata = CustomMetadataService()
 
     def _get_write_client(self) -> Any:
         from config.settings import clients
@@ -106,6 +109,7 @@ class DocumentIndexWriter:
 
         now = datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
+        custom_entries_by_key: dict[str, dict[str, Any]] = {}
         for chunk in chunks:
             if len(chunk.vector) != dimensions:
                 raise ValueError(
@@ -113,14 +117,23 @@ class DocumentIndexWriter:
                     f"expected {dimensions}, got {len(chunk.vector)} for {chunk.chunk_id}"
                 )
             bulk_body.append({"index": {"_index": index_name, "_id": chunk.chunk_id}})
-            bulk_body.append(
-                self._build_chunk_document(
-                    context=context,
-                    chunk=chunk,
-                    embedding_field=embedding_field,
-                    indexed_time=now,
-                )
+            document = self._build_chunk_document(
+                context=context,
+                chunk=chunk,
+                embedding_field=embedding_field,
+                indexed_time=now,
             )
+            for key, item in document.get("custom_metadata", {}).items():
+                candidate = {"key": key, "type": item["type"], "value": item["value"]}
+                existing = custom_entries_by_key.get(key)
+                if existing is not None and existing["type"] != candidate["type"]:
+                    raise ValueError(
+                        f"Custom metadata '{key}' has conflicting types in one ingest batch"
+                    )
+                custom_entries_by_key[key] = candidate
+            bulk_body.append(document)
+
+        await self.custom_metadata.register_entries(list(custom_entries_by_key.values()))
 
         result = await client.bulk(body=bulk_body, refresh=refresh)
         self._raise_for_bulk_errors(result)
@@ -194,6 +207,7 @@ class DocumentIndexWriter:
         indexed_time: str,
     ) -> dict[str, Any]:
         metadata = self._normalized_metadata(chunk.metadata)
+        custom_metadata = self._custom_metadata(context, metadata)
         document_id = context.document_id or str(metadata.get("document_id") or chunk.chunk_id)
         filename = context.filename or str(metadata.get("filename") or "")
         mimetype = context.mimetype or str(metadata.get("mimetype") or "")
@@ -219,7 +233,8 @@ class DocumentIndexWriter:
                 context.allowed_principal_labels
             ),
             "indexed_time": indexed_time,
-            "metadata": metadata.get("metadata", {}),
+            "custom_metadata": custom_metadata.source,
+            "metadata_entries": custom_metadata.index_entries,
         }
 
         parser = context.parser or metadata.get("parser")
@@ -256,6 +271,58 @@ class DocumentIndexWriter:
                 doc[time_field] = metadata[time_field]
 
         return doc
+
+    def _custom_metadata(
+        self,
+        context: DocumentIndexContext,
+        chunk_metadata: dict[str, Any],
+    ):
+        explicit = chunk_metadata.get("metadata")
+        if isinstance(explicit, list):
+            chunk_entries = explicit
+        elif isinstance(explicit, dict):
+            chunk_entries = self.custom_metadata.entries_from_mapping(explicit)
+        else:
+            chunk_entries = []
+
+        known_chunk_fields = {
+            "allowed_groups",
+            "allowed_principal_labels",
+            "allowed_principals",
+            "allowed_users",
+            "chunk_overlap",
+            "chunk_size",
+            "connector_file_id",
+            "connector_type",
+            "created_time",
+            "document_id",
+            "file_size",
+            "filename",
+            "filesize",
+            "langflow_chunk_id",
+            "metadata",
+            "mimetype",
+            "modified_time",
+            "page",
+            "parser",
+            "source_url",
+        }
+        arbitrary = {
+            key: value for key, value in chunk_metadata.items() if key not in known_chunk_fields
+        }
+        chunk_entries.extend(self.custom_metadata.entries_from_mapping(arbitrary))
+
+        chunk_normalized = self.custom_metadata.normalize_entries(chunk_entries)
+        context_normalized = self.custom_metadata.normalize_entries(context.metadata)
+        merged_source = {**chunk_normalized.source, **context_normalized.source}
+        merged_entries = {entry["key"]: entry for entry in chunk_normalized.index_entries}
+        merged_entries.update({entry["key"]: entry for entry in context_normalized.index_entries})
+        from services.custom_metadata_service import NormalizedMetadata
+
+        return NormalizedMetadata(
+            source=merged_source,
+            index_entries=list(merged_entries.values()),
+        )
 
     @staticmethod
     def _normalized_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

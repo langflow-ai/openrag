@@ -52,6 +52,11 @@ export {
   ChatCreateOptions,
   SearchQueryOptions,
   SearchFilters,
+  MetadataType,
+  MetadataValue,
+  MetadataEntry,
+  MetadataCondition,
+  MetadataGroup,
   // Chat types
   ChatResponse,
   StreamEvent,

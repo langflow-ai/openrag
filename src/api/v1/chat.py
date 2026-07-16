@@ -7,12 +7,12 @@ Uses API key authentication. Routes through Langflow (chat_service.langflow_chat
 
 import json
 import time
-from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from api.schemas.custom_metadata import SearchFiltersRequest, dump_search_filters
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from dependencies import (
@@ -35,7 +35,7 @@ class ChatV1Body(BaseModel):
     message: str
     stream: bool = False
     chat_id: str | None = None
-    filters: dict[str, Any] | None = None
+    filters: SearchFiltersRequest | None = None
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
@@ -53,6 +53,7 @@ def _extract_sources(item: dict) -> list[dict]:
                     "score": result.get("score", 0),
                     "page": result.get("page"),
                     "mimetype": result.get("mimetype"),
+                    "metadata": result.get("metadata", {}),
                 }
             )
     return sources
@@ -137,7 +138,7 @@ async def chat_create_endpoint(
 
         await _assert_owns(body.chat_id, storage_user_id)
 
-    resolved_filters = body.filters
+    resolved_filters = dump_search_filters(body.filters)
     resolved_limit = body.limit
     resolved_score_threshold = body.score_threshold
     if body.filter_id:
@@ -150,6 +151,14 @@ async def chat_create_endpoint(
         resolved_filters, resolved_limit, resolved_score_threshold = merge_filter_overrides(
             resolved, body
         )
+
+    if resolved_filters:
+        from services.custom_metadata_service import CustomMetadataService
+
+        try:
+            await CustomMetadataService().build_filter_clauses(resolved_filters)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
     if resolved_filters:
         set_search_filters(resolved_filters)

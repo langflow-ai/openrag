@@ -1,6 +1,8 @@
 """OpenRAG SDK data models."""
 
-from typing import Literal
+from __future__ import annotations
+
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +16,7 @@ class Source(BaseModel):
     score: float
     page: int | None = None
     mimetype: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -60,6 +63,7 @@ class SearchResult(BaseModel):
     score: float
     page: int | None = None
     mimetype: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SearchResponse(BaseModel):
@@ -168,6 +172,46 @@ class SearchFilters(BaseModel):
 
     data_sources: list[str] | None = None
     document_types: list[str] | None = None
+    owners: list[str] | None = None
+    connector_types: list[str] | None = None
+    metadata: MetadataFilterGroup | None = None
+
+
+class MetadataFilterCondition(BaseModel):
+    """One typed custom metadata comparison."""
+
+    key: str
+    operator: Literal[
+        "equals",
+        "not_equals",
+        "in",
+        "not_in",
+        "contains",
+        "not_contains",
+        "exists",
+        "not_exists",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+    ]
+    value: Any | None = None
+
+
+class MetadataFilterGroup(BaseModel):
+    """Nested AND/OR expression over custom metadata conditions."""
+
+    op: Literal["and", "or"] = "and"
+    conditions: list[MetadataFilterCondition | MetadataFilterGroup]
+
+
+class MetadataEntry(BaseModel):
+    """Typed custom metadata attached to an ingested document."""
+
+    key: str
+    type: Literal["string", "number", "date", "boolean"]
+    value: str | int | float | bool | list[str | int | float | bool]
 
 
 # Settings update models
@@ -213,7 +257,7 @@ class KnowledgeFilterQueryData(BaseModel):
     """Query configuration stored in a knowledge filter."""
 
     query: str | None = None
-    filters: dict[str, list[str]] | None = None
+    filters: dict[str, Any] | None = None
     limit: int | None = None
     score_threshold: float | None = Field(default=None, alias="scoreThreshold")
     color: str | None = None

@@ -108,6 +108,8 @@ All tools are auto-exposed from the `/v1/` API, and they are available immediate
 | `openrag_get_chat` | Get a specific chat conversation by ID. |
 | `openrag_delete_chat` | Delete a chat conversation by ID. |
 | `openrag_search` | Semantic search over the knowledge base. Supports filters, score threshold, data sources. |
+| `openrag_list_metadata_fields` | List typed custom metadata fields visible to the caller. |
+| `openrag_list_metadata_values` | List suggested values for a visible custom metadata field. |
 | `openrag_ingest` | Ingest documents (files, URLs, text) into the knowledge base. Returns a `task_id`. |
 | `openrag_get_task_status` | Check the status of an ingestion task by `task_id`. |
 | `openrag_delete_document` | Delete a document from the knowledge base by filename. |

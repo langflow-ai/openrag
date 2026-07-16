@@ -10,6 +10,7 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.custom_metadata_service import CustomMetadataService
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -70,6 +71,7 @@ class SearchService:
     def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
         self.models_service = models_service
+        self.custom_metadata = CustomMetadataService()
         self._configure_provider_env()
 
     def _configure_provider_env(self):
@@ -139,28 +141,7 @@ class SearchService:
             # Build filter clauses first so we can use them in model detection
             filter_clauses: list[dict[str, Any]] = []
             if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+                filter_clauses = await self.custom_metadata.build_filter_clauses(filters)
 
             try:
                 # Build aggregation query with filters applied
@@ -287,28 +268,7 @@ class SearchService:
             # Wildcard query - no embedding needed
             filter_clauses = []
             if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+                filter_clauses = await self.custom_metadata.build_filter_clauses(filters)
 
         # Build query body
         if is_wildcard_match_all:
@@ -447,6 +407,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "custom_metadata",
             ],
             "size": limit,
         }
@@ -582,6 +543,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "metadata": source.get("custom_metadata", source.get("metadata", {})),
                 }
             )
 

@@ -88,6 +88,7 @@ export interface SelectedFilters {
   document_types: string[];
   owners: string[];
   connector_types: string[];
+  metadata?: import("@/components/metadata-filter-builder").MetadataGroup;
 }
 
 export interface KnowledgeFilterData {
@@ -109,6 +110,7 @@ export interface RequestBody {
     document_types?: string[];
     owners?: string[];
     connector_types?: string[];
+    metadata?: import("@/components/metadata-filter-builder").MetadataGroup;
   };
   filter_id?: string;
   limit?: number;

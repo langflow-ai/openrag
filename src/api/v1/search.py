@@ -5,12 +5,11 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
-from typing import Any
-
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.schemas.custom_metadata import SearchFiltersRequest, dump_search_filters
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context
 from dependencies import (
@@ -27,7 +26,7 @@ logger = get_logger(__name__)
 
 class SearchV1Body(BaseModel):
     query: str
-    filters: dict[str, Any] | None = None
+    filters: SearchFiltersRequest | None = None
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
@@ -48,7 +47,7 @@ async def search_endpoint(
     # resolving filters so search_tool() can still identify the caller.
     set_auth_context(user.user_id, user.jwt_token)
 
-    resolved_filters = body.filters
+    resolved_filters = dump_search_filters(body.filters)
     resolved_limit = body.limit
     resolved_score_threshold = body.score_threshold
     if body.filter_id:
@@ -89,12 +88,15 @@ async def search_endpoint(
                 "score": item.get("score"),
                 "page": item.get("page"),
                 "mimetype": item.get("mimetype"),
+                "metadata": item.get("metadata", {}),
             }
             for item in result.get("results", [])
         ]
 
         return JSONResponse({"results": results})
 
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OpenSearchDiskSpaceError as e:
         logger.error("Search blocked by disk space constraint", error=str(e), user_id=user.user_id)
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)

@@ -161,6 +161,13 @@ const results = await client.search.query("API documentation", {
   filters: {
     data_sources: ["api-docs.pdf"],
     document_types: ["application/pdf"],
+    metadata: {
+      op: "and",
+      conditions: [
+        { key: "supplier", operator: "equals", value: "Dell" },
+        { key: "contract_end", operator: "gte", value: "2026-01-01" },
+      ],
+    },
   },
   limit: 5,
   scoreThreshold: 0.5,
@@ -170,6 +177,15 @@ const results = await client.search.query("API documentation", {
 ## Documents
 
 ```typescript
+// Typed metadata is available to search, chat, saved filters, and MCP.
+await client.documents.ingest({
+  filePath: "./dell-contract.pdf",
+  metadata: [
+    { key: "supplier", type: "string", value: "Dell" },
+    { key: "contract_end", type: "date", value: "2026-12-31" },
+  ],
+});
+
 // Ingest a file (waits for completion by default)
 const result = await client.documents.ingest({
   filePath: "./report.pdf",

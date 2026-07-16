@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { FilterColor, IconKey } from "@/components/filter-icon-popover";
+import type { MetadataGroup } from "@/components/metadata-filter-builder";
 
 interface KnowledgeFilter {
   id: string;
@@ -26,6 +27,7 @@ export interface ParsedQueryData {
     document_types: string[];
     owners: string[];
     connector_types: string[];
+    metadata?: MetadataGroup;
   };
   limit: number;
   scoreThreshold: number;
@@ -103,6 +105,7 @@ export function KnowledgeFilterProvider({
             document_types: raw.filters?.document_types ?? ["*"],
             owners: raw.filters?.owners ?? ["*"],
             connector_types: raw.filters?.connector_types ?? ["*"],
+            metadata: raw.filters?.metadata,
           },
           limit: raw.limit ?? 10,
           scoreThreshold: raw.scoreThreshold ?? 0,

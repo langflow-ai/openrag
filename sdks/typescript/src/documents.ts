@@ -9,6 +9,7 @@ import type {
   IngestResponse,
   IngestTaskStatus,
   NotFoundError,
+  MetadataEntry,
 } from "./types";
 
 export interface IngestOptions {
@@ -24,6 +25,8 @@ export interface IngestOptions {
   pollInterval?: number;
   /** Maximum seconds to wait for completion. Default: 300. */
   timeout?: number;
+  /** Typed custom metadata applied to the document. */
+  metadata?: MetadataEntry[];
 }
 
 export class DocumentsClient {
@@ -62,6 +65,9 @@ export class DocumentsClient {
       formData.append("file", options.file, options.filename);
     } else {
       throw new Error("Either filePath or file must be provided");
+    }
+    if (options.metadata?.length) {
+      formData.append("metadata", JSON.stringify(options.metadata));
     }
 
     const response = await this.client._request(

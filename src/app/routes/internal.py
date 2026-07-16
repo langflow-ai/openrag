@@ -12,6 +12,7 @@ from api import (
     auth,
     chat,
     connectors,
+    custom_metadata,
     docling,
     documents,
     files,
@@ -120,6 +121,15 @@ def register_internal_routes(app: FastAPI):
 
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/metadata/fields", custom_metadata.list_fields, methods=["GET"], tags=["internal"]
+    )
+    app.add_api_route(
+        "/metadata/fields/{key}/values",
+        custom_metadata.list_values,
+        methods=["GET"],
+        tags=["internal"],
+    )
 
     # File listing/search endpoints
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])

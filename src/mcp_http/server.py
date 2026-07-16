@@ -96,9 +96,18 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "Returns matching document chunks with relevance scores. "
             "Optionally pass `filter_id` to scope results to a knowledge "
             "filter's data_sources, or inline `filters` (data_sources, "
-            "document_types, owners, connector_types) for a per-call scope. "
+            "document_types, owners, connector_types, and a nested metadata "
+            "expression) for a per-call scope. "
             "If both are provided, inline filters override per-field."
         ),
+    },
+    ("/v1/metadata/fields", "GET"): {
+        "name": "openrag_list_metadata_fields",
+        "description": "List typed custom metadata fields visible in documents the caller can access.",
+    },
+    ("/v1/metadata/fields/{key}/values", "GET"): {
+        "name": "openrag_list_metadata_values",
+        "description": "List suggested values for a visible custom metadata field.",
     },
     # Documents endpoints
     # NOTE: /v1/documents/ingest is intentionally NOT customized here because
