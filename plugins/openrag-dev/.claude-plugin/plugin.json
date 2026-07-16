@@ -1,0 +1,6 @@
+{
+  "name": "openrag-dev",
+  "version": "0.1.0",
+  "description": "OpenRAG contributor/QA workflow skills: QA handoff generation, cross-branch backporting.",
+  "repository": "https://github.com/langflow-ai/openrag"
+}

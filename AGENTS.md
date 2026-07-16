@@ -14,6 +14,7 @@ The `openrag-dev` plugin holds internal contributor/QA workflow skills (not dist
 | Skill | File | Purpose |
 | --- | --- | --- |
 | `openrag_dev_qa_handoff` | [`plugins/openrag-dev/skills/qa-handoff/SKILL.md`](plugins/openrag-dev/skills/qa-handoff/SKILL.md) | Generate a QA handoff message for a release branch: per-commit fix summary, PR link, and test steps within a date range. |
+| `openrag_dev_backport` | [`plugins/openrag-dev/skills/backport/SKILL.md`](plugins/openrag-dev/skills/backport/SKILL.md) | Backport commits/PRs from a source branch into a target branch: one PR per commit, ordered, conflicts resolved and verified. |
 
 ## How to use these skills
 

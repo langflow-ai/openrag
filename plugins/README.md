@@ -22,12 +22,14 @@ openrag/
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       └── skills/
-│           └── qa-handoff/SKILL.md # release-branch QA handoff generator
+│           ├── qa-handoff/SKILL.md # release-branch QA handoff generator
+│           └── backport/SKILL.md   # cross-branch PR backport automation
 ├── .claude/
 │   └── skills/                    # symlinks into plugins/<plugin>/skills
 │       ├── install    -> ../../plugins/openrag/skills/install
 │       ├── sdk         -> ../../plugins/openrag/skills/sdk
-│       └── qa-handoff -> ../../plugins/openrag-dev/skills/qa-handoff
+│       ├── qa-handoff -> ../../plugins/openrag-dev/skills/qa-handoff
+│       └── backport   -> ../../plugins/openrag-dev/skills/backport
 └── AGENTS.md                      # entry point for any agent working in the repo
 ```
 
@@ -46,7 +48,7 @@ There are five ways to get these skills in front of an agent. The examples below
 
 ### 1. Clone this repo and use Claude Code
 
-No install step. `.claude/skills/` symlinks into each plugin, so Claude Code auto-discovers every skill (`install`, `sdk`, `qa-handoff`, ...) when it starts in this directory. Invoke with `/install`, `/sdk`, `/qa-handoff`, etc., or let Claude trigger them automatically based on the `description` fields.
+No install step. `.claude/skills/` symlinks into each plugin, so Claude Code auto-discovers every skill (`install`, `sdk`, `qa-handoff`, `backport`, ...) when it starts in this directory. Invoke with `/install`, `/sdk`, `/qa-handoff`, `/backport`, etc., or let Claude trigger them automatically based on the `description` fields.
 
 ### 2. Install into Claude Code globally (any project)
 
