@@ -50,10 +50,17 @@ export default function ConnectorCards() {
     return <Icon />;
   }, []);
 
-  const connectors = queryConnectors.map((c) => ({
-    ...c,
-    icon: getConnectorIcon(c.type),
-  })) as Connector[];
+  const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    // Keep OAuth connectors regardless of availability
+    // Only hide credential-based connectors when unavailable
+    if (c.requiresOAuth || c.available !== false) {
+      acc.push({
+        ...c,
+        icon: getConnectorIcon(c.type),
+      } as Connector);
+    }
+    return acc;
+  }, []);
 
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({
@@ -94,36 +101,82 @@ export default function ConnectorCards() {
     (d) => d.SettingsDialog,
   );
 
+  // Split connectors into OAuth and credential-based
+  const oauthConnectors = connectors.filter((c) => c.requiresOAuth);
+  const credentialConnectors = connectors.filter((c) => !c.requiresOAuth);
+
   return (
     <>
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {connectorsLoading ? (
-          <>
-            <ConnectorsSkeleton />
-            <ConnectorsSkeleton />
-            <ConnectorsSkeleton />
-          </>
-        ) : (
-          connectors.map((connector) => (
-            <ConnectorCard
-              key={connector.id}
-              connector={connector}
-              isConnecting={
-                connectMutation.isPending &&
-                connectMutation.variables?.connector.id === connector.id
-              }
-              isDisconnecting={
-                disconnectMutation.isPending &&
-                (disconnectMutation.variables as any)?.type === connector.type
-              }
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-              onNavigateToKnowledge={navigateToKnowledgePage}
-              onConfigure={getConfigureHandler(connector)}
-            />
-          ))
-        )}
-      </div>
+      {/* OAuth Connectors Section */}
+      {(connectorsLoading || oauthConnectors.length > 0) && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">OAuth Connectors</h3>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {connectorsLoading ? (
+              <>
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+              </>
+            ) : (
+              oauthConnectors.map((connector) => (
+                <ConnectorCard
+                  key={connector.id}
+                  connector={connector}
+                  isConnecting={
+                    connectMutation.isPending &&
+                    connectMutation.variables?.connector.id === connector.id
+                  }
+                  isDisconnecting={
+                    disconnectMutation.isPending &&
+                    (disconnectMutation.variables as any)?.type ===
+                      connector.type
+                  }
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onConfigure={getConfigureHandler(connector)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Credential-Based Connectors Section */}
+      {(connectorsLoading || credentialConnectors.length > 0) && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Credential-Based Connectors</h3>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {connectorsLoading ? (
+              <>
+                <ConnectorsSkeleton />
+                <ConnectorsSkeleton />
+              </>
+            ) : (
+              credentialConnectors.map((connector) => (
+                <ConnectorCard
+                  key={connector.id}
+                  connector={connector}
+                  isConnecting={
+                    connectMutation.isPending &&
+                    connectMutation.variables?.connector.id === connector.id
+                  }
+                  isDisconnecting={
+                    disconnectMutation.isPending &&
+                    (disconnectMutation.variables as any)?.type ===
+                      connector.type
+                  }
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onConfigure={getConfigureHandler(connector)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {dialogDescriptors.map((descriptor) => {
         // Render only while open so the component unmounts on close, which
