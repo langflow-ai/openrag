@@ -106,9 +106,11 @@ export default function ConnectorCard({
               >
                 {isConnected
                   ? `${connector.name} is connected.`
-                  : isConfigured || connector?.available
+                  : isConfigured
                     ? `${connector.name} is configured.`
-                    : "Allowed for this workspace — OAuth credentials not configured yet."}
+                    : connector?.available && !connector.requiresOAuth
+                      ? `${connector.name} is available to connect.`
+                      : "Allowed for this workspace — OAuth credentials not configured yet."}
               </CardDescription>
             </div>
           </div>
