@@ -289,14 +289,14 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                 # existing DB roles untouched). RBAC on -> extract + 401 if none.
                 _stage_jwt_roles(request, claims, user_id)
 
-    from utils.run_mode_utils import is_run_mode_saas
+    from utils.run_mode_utils import get_run_mode, is_run_mode_on_prem, is_run_mode_saas
 
-    saas_rbac = is_run_mode_saas() and jwt_roles_enabled()
+    platform_rbac = (is_run_mode_saas() or is_run_mode_on_prem()) and jwt_roles_enabled()
 
     # The forwarded end-user JWT is the OpenSearch credential — OpenSearch's
     # openid_auth_domain validates it via the backend JWKS. Build it once; it's
-    # used both as the saas+rbac authoritative credential and as the header-less
-    # fallback in other modes.
+    # used both as the platform+rbac authoritative credential and as the
+    # header-less fallback in other modes.
     jwt_user = None
     if ibm_token and user_id:
         jwt_user = User(
@@ -310,37 +310,41 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
             opensearch_credentials=None,
         )
 
-    # In SaaS + RBAC the JWT is authoritative: the lakehouse `X-IBM-LH-Credentials`
-    # Basic credential must NOT override it (when the gateway began injecting that
-    # header, OpenSearch rejected the Basic cred with 401 and every data-plane call
-    # surfaced as a misleading 403 "insufficient permissions"). Return before
-    # `_resolve_lakehouse_credentials` so its connections-store upsert side effect
-    # is also skipped. Mirrors the /v1 surface, which already treats the JWT as
-    # primary.
-    if saas_rbac:
+    # In SaaS/on-prem + RBAC the JWT is authoritative: the lakehouse
+    # `X-IBM-LH-Credentials` Basic credential must NOT override it (when the
+    # gateway began injecting that header, OpenSearch rejected the Basic cred
+    # with 401 and every data-plane call surfaced as a misleading 403
+    # "insufficient permissions"). Return before `_resolve_lakehouse_credentials`
+    # so its connections-store upsert side effect is also skipped. Mirrors the
+    # /v1 surface, which already treats the JWT as primary.
+    if platform_rbac:
         if jwt_user:
             logger.debug(
-                "[AUTH] User created from forwarded JWT (saas+rbac; lakehouse creds bypassed)"
+                "[AUTH] User created from forwarded JWT (platform+rbac; lakehouse creds bypassed)",
+                run_mode=get_run_mode(),
             )
             request.state.user = jwt_user
             return jwt_user
-        # saas + RBAC but no valid forwarded JWT (missing header, undecodable, or no
-        # `sub`). Do NOT degrade to lakehouse Basic creds or the debug cookie — that
-        # would authenticate (and write DB user/role rows) under a roles-less
-        # identity. Fail loud, mirroring resolve_api_key_user's saas_rbac branch.
+        # SaaS/on-prem + RBAC but no valid forwarded JWT (missing header,
+        # undecodable, or no `sub`). Do NOT degrade to lakehouse Basic creds or
+        # the debug cookie — that would authenticate (and write DB user/role
+        # rows) under a roles-less identity. Fail loud, mirroring
+        # resolve_api_key_user's platform_rbac branch.
         request.state.user = None
         if required:
             logger.error(
-                "[AUTH] No valid forwarded JWT under saas+RBAC; refusing lakehouse/basic fallback",
+                "[AUTH] No valid forwarded JWT under platform+RBAC; refusing lakehouse/basic fallback",
                 jwt_present=bool(ibm_token),
+                run_mode=get_run_mode(),
             )
             raise HTTPException(
                 status_code=401,
                 detail={
                     "error": "invalid_jwt" if ibm_token else "missing_user_jwt",
                     "message": (
-                        "No valid user JWT was forwarded by the gateway. In SaaS/RBAC "
-                        "mode the gateway must forward the end-user JWT on every request."
+                        "No valid user JWT was forwarded by the gateway. In "
+                        "SaaS/on-prem RBAC mode the gateway must forward the "
+                        "end-user JWT on every request."
                     ),
                 },
             )
@@ -492,14 +496,15 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
         get_jwt_auth_header,
     )
     from config.utils import resolve_jwt_claims
-    from utils.run_mode_utils import is_run_mode_saas
+    from utils.run_mode_utils import get_run_mode, is_run_mode_on_prem, is_run_mode_saas
 
-    # SaaS/RBAC: the gateway MUST forward the end-user JWT on every /v1 request.
-    # When it doesn't, we must NOT silently degrade to lakehouse Basic creds —
-    # that path does DB user writes under a degraded identity and can clobber the
-    # shared users row the same person sees on UI login. Fail loud (401) with no
-    # DB side effects instead; explicit orag_ API-key auth still works.
-    saas_rbac = is_run_mode_saas() and jwt_roles_enabled()
+    # SaaS/on-prem + RBAC: the gateway MUST forward the end-user JWT on every
+    # /v1 request. When it doesn't, we must NOT silently degrade to lakehouse
+    # Basic creds — that path does DB user writes under a degraded identity and
+    # can clobber the shared users row the same person sees on UI login. Fail
+    # loud (401) with no DB side effects instead; explicit orag_ API-key auth
+    # still works.
+    platform_rbac = (is_run_mode_saas() or is_run_mode_on_prem()) and jwt_roles_enabled()
 
     # Primary: the gateway-forwarded JWT header (default Authorization).
     # Fallback: the API/MCP add-on header — FastMCP strips Authorization before
@@ -571,15 +576,15 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
             )
         # RBAC off + missing/invalid JWT -> fall through to the API-key path.
     else:
-        if saas_rbac:
-            # In saas the gateway is responsible for forwarding the end-user
-            # JWT on every API/MCP request; its absence is a gateway
+        if platform_rbac:
+            # In SaaS/on-prem the gateway is responsible for forwarding the
+            # end-user JWT on every API/MCP request; its absence is a gateway
             # misconfiguration, not a normal client state. Fail fast here —
             # before any lakehouse / X-Username / API-key fallback — so no DB
             # user/role write ever runs under a degraded (roles-less) identity.
             logger.error(
-                "[AUTH] JWT not found in request header — run_mode=saas with "
-                "RBAC enabled requires the gateway to forward the user JWT",
+                f"[AUTH] JWT not found in request header — run_mode={get_run_mode()} "
+                "with RBAC enabled requires the gateway to forward the user JWT",
                 header_name=jwt_header,
                 authorization_present=bool(request.headers.get("authorization")),
                 api_jwt_present=bool(request.headers.get(get_api_jwt_header())),
@@ -594,9 +599,9 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
                 detail={
                     "error": "missing_user_jwt",
                     "message": (
-                        "No user JWT was forwarded by the gateway. In SaaS/RBAC "
-                        "mode the gateway must forward the end-user JWT on every "
-                        "/v1 request."
+                        "No user JWT was forwarded by the gateway. In "
+                        "SaaS/on-prem RBAC mode the gateway must forward the "
+                        "end-user JWT on every /v1 request."
                     ),
                 },
             )
@@ -656,9 +661,9 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
                 api_key = token
 
     if not api_key:
-        # saas_rbac is already handled by the fail-fast 401 above (no JWT ->
-        # missing_user_jwt), so reaching here means non-saas_rbac: prompt for
-        # an API key as before.
+        # platform_rbac is already handled by the fail-fast 401 above (no JWT
+        # -> missing_user_jwt), so reaching here means non-platform_rbac:
+        # prompt for an API key as before.
         raise HTTPException(
             status_code=401,
             detail={
