@@ -1406,11 +1406,15 @@ async def connector_status(
     # Only count connections that are both active AND actually authenticated
     has_authenticated_connection = len(verified_active_connections) > 0
 
+    # Check if OAuth credentials are configured in environment (for OAuth connectors only)
+    has_env_credentials = connector_service.connection_manager.has_env_credentials(connector_type)
+
     return JSONResponse(
         {
             "connector_type": connector_type,
             "authenticated": has_authenticated_connection,
             "status": "connected" if has_authenticated_connection else "not_connected",
+            "has_env_credentials": has_env_credentials,
             "connections": [
                 {
                     "connection_id": conn.connection_id,
