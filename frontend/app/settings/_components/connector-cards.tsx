@@ -72,10 +72,13 @@ export default function ConnectorCards() {
 
   const confirmDisconnect = async () => {
     if (!disconnectTarget) return;
-    await disconnectMutation.mutateAsync(
-      disconnectTarget as unknown as QueryConnector,
-    );
-    setDisconnectTarget(null);
+    try {
+      await disconnectMutation.mutateAsync(
+        disconnectTarget as unknown as QueryConnector,
+      );
+    } finally {
+      setDisconnectTarget(null);
+    }
   };
 
   const navigateToKnowledgePage = (connector: Connector) => {
