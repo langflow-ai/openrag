@@ -1410,6 +1410,7 @@ async def connector_status(
     has_env_credentials = False
     try:
         from connectors.registry import get_connector_class
+
         connector_cls = get_connector_class(connector_type)
         if connector_cls and connector_cls.CONNECTOR_KIND == "oauth":
             # Try to instantiate and check for credentials
