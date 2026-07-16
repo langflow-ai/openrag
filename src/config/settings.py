@@ -278,14 +278,15 @@ def is_dev_ibm_cos_enabled() -> bool:
 
 
 def is_azure_blob_enabled() -> bool:
-    """Feature flag for the Azure Blob connector (default: disabled).
+    """Feature kill switch for the Azure Blob connector (default: enabled).
 
-    In OSS mode, both OPENRAG_AZURE_BLOB_ENABLED=true and OPENRAG_DEV_AZURE_BLOB=true
-    must be set to show the connector (mirrors IBM COS pattern). In Enterprise/SaaS
-    mode (IBM_AUTH_ENABLED), only this flag needs to be true. Set to false to
-    force-hide the connector even when IBM auth is on.
+    Independent of ``IBM_AUTH_ENABLED``. Set ``OPENRAG_AZURE_BLOB_ENABLED=false``
+    to force-hide the connector in the UI even when IBM auth is on. When true
+    (the default), availability still requires the Enterprise/SaaS gate
+    (``IBM_AUTH_ENABLED``) or the ``OPENRAG_DEV_AZURE_BLOB`` dev bypass -- this
+    flag is subtractive (AND-ed with that gate), not an override.
     """
-    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "false").strip().lower()
+    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
