@@ -50,17 +50,17 @@ export default function ConnectorCards() {
     return <Icon />;
   }, []);
 
-  const connectors = queryConnectors
-    .filter((c) => {
-      // Keep OAuth connectors regardless of availability
-      if (c.requiresOAuth) return true;
-      // Only hide credential-based connectors when unavailable
-      return c.available !== false;
-    })
-    .map((c) => ({
-      ...c,
-      icon: getConnectorIcon(c.type),
-    })) as Connector[];
+  const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    // Keep OAuth connectors regardless of availability
+    // Only hide credential-based connectors when unavailable
+    if (c.requiresOAuth || c.available !== false) {
+      acc.push({
+        ...c,
+        icon: getConnectorIcon(c.type),
+      } as Connector);
+    }
+    return acc;
+  }, []);
 
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({
