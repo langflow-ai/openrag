@@ -512,6 +512,24 @@ class ConnectionManager:
                 continue
         return False
 
+    def has_env_credentials(self, connector_type: str) -> bool:
+        """Check if OAuth connector has credentials configured in environment.
+
+        Returns True if the connector is OAuth-based and has valid environment
+        credentials (CLIENT_ID and CLIENT_SECRET), False otherwise.
+        """
+        try:
+            connector_cls = get_connector_class(connector_type)
+            if not connector_cls or connector_cls.CONNECTOR_KIND != "oauth":
+                return False
+            # Try to instantiate and check for credentials
+            test_connector = connector_cls({})
+            test_connector.get_client_id()
+            test_connector.get_client_secret()
+            return True
+        except Exception:
+            return False
+
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
         """Factory method to create connector instances via the registry."""
         try:

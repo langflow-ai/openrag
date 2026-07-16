@@ -1407,19 +1407,9 @@ async def connector_status(
     has_authenticated_connection = len(verified_active_connections) > 0
 
     # Check if OAuth credentials are configured in environment (for OAuth connectors only)
-    has_env_credentials = False
-    try:
-        from connectors.registry import get_connector_class
-        connector_cls = get_connector_class(connector_type)
-        if connector_cls and connector_cls.CONNECTOR_KIND == "oauth":
-            # Try to instantiate and check for credentials
-            test_connector = connector_cls({})
-            test_connector.get_client_id()
-            test_connector.get_client_secret()
-            has_env_credentials = True
-    except Exception:
-        # Credentials not found in environment
-        has_env_credentials = False
+    has_env_credentials = connector_service.connection_manager.has_env_credentials(
+        connector_type
+    )
 
     return JSONResponse(
         {
