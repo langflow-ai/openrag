@@ -153,7 +153,7 @@ class AuthService:
         try:
             connector_instance = connector_class_any({})
             client_id = connector_instance.get_client_id()
-            client_secret = connector_instance.get_client_secret()
+            connector_instance.get_client_secret()  # validate it's configured; not returned to the frontend
         except (ValueError, NotImplementedError, RuntimeError) as e:
             raise RuntimeError(
                 f"Missing OAuth credentials for {connector_class.__name__}: {e}"
