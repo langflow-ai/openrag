@@ -683,7 +683,7 @@ class ChatService:
                 )
 
         # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+        conversations.sort(key=lambda c: c.get("last_activity") or c.get("created_at") or "", reverse=True)
 
         return {
             "user_id": user_id,
@@ -799,7 +799,7 @@ class ChatService:
             # Continue with just in-memory conversations
 
         # Sort by last activity (most recent first)
-        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+        all_conversations.sort(key=lambda c: c.get("last_activity") or c.get("created_at") or "", reverse=True)
 
         logger.debug(
             "[CHAT] Returning conversations",
