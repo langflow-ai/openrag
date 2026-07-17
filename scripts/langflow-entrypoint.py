@@ -43,4 +43,17 @@ os.setuid(1000)
 os.environ["HOME"] = home
 os.environ["USER"] = user
 
+# Enable SQLite WAL (Write-Ahead Logging) mode and busy timeout to handle concurrent accesses cleanly.
+try:
+    import sqlite3
+    db_file = data_dir / "langflow.db"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_file), timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=60000;")
+    conn.close()
+except Exception as e:
+    sys.stderr.write(f"Warning: could not configure SQLite WAL mode: {e}\n")
+
 os.execvp(sys.argv[1], sys.argv[1:])
+
