@@ -312,75 +312,27 @@ export function IngestSettingsSection() {
   ]);
 
   useEffect(() => {
-    if (settings.knowledge?.chunk_size !== undefined)
-      setChunkSize(settings.knowledge.chunk_size);
-  }, [settings.knowledge?.chunk_size]);
-
-  useEffect(() => {
-    if (settings.knowledge?.chunk_overlap !== undefined)
-      setChunkOverlap(settings.knowledge.chunk_overlap);
-  }, [settings.knowledge?.chunk_overlap]);
-
-  useEffect(() => {
-    if (settings.knowledge?.table_structure !== undefined)
-      setTableStructure(settings.knowledge.table_structure);
-  }, [settings.knowledge?.table_structure]);
-
-  useEffect(() => {
-    if (settings.knowledge?.ocr !== undefined) setOcr(settings.knowledge.ocr);
-  }, [settings.knowledge?.ocr]);
-
-  useEffect(() => {
-    if (settings.knowledge?.picture_descriptions !== undefined)
-      setPictureDescriptions(settings.knowledge.picture_descriptions);
-  }, [settings.knowledge?.picture_descriptions]);
-
-  useEffect(() => {
-    if (settings.knowledge?.disable_ingest_with_langflow !== undefined)
-      setDisableIngestWithLangflow(
-        settings.knowledge.disable_ingest_with_langflow,
-      );
-  }, [settings.knowledge?.disable_ingest_with_langflow]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_provider !== undefined)
-      setVlmProvider(settings.knowledge.vlm_provider);
-  }, [settings.knowledge?.vlm_provider]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_model !== undefined)
-      setVlmModel(settings.knowledge.vlm_model);
-  }, [settings.knowledge?.vlm_model]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_prompt !== undefined)
-      setVlmPrompt(settings.knowledge.vlm_prompt);
-  }, [settings.knowledge?.vlm_prompt]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_response_format !== undefined)
-      setVlmResponseFormat(settings.knowledge.vlm_response_format);
-  }, [settings.knowledge?.vlm_response_format]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_max_tokens !== undefined)
-      setVlmMaxTokens(settings.knowledge.vlm_max_tokens);
-  }, [settings.knowledge?.vlm_max_tokens]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_concurrency !== undefined)
-      setVlmConcurrency(settings.knowledge.vlm_concurrency);
-  }, [settings.knowledge?.vlm_concurrency]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_timeout !== undefined)
-      setVlmTimeout(settings.knowledge.vlm_timeout);
-  }, [settings.knowledge?.vlm_timeout]);
-
-  useEffect(() => {
-    if (settings.knowledge?.vlm_watsonx_api_version !== undefined)
-      setVlmWatsonxApiVersion(settings.knowledge.vlm_watsonx_api_version);
-  }, [settings.knowledge?.vlm_watsonx_api_version]);
+    const k = settings.knowledge;
+    if (!k) return;
+    if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
+    if (k.chunk_overlap !== undefined) setChunkOverlap(k.chunk_overlap);
+    if (k.table_structure !== undefined) setTableStructure(k.table_structure);
+    if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.picture_descriptions !== undefined)
+      setPictureDescriptions(k.picture_descriptions);
+    if (k.disable_ingest_with_langflow !== undefined)
+      setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
+    if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
+    if (k.vlm_model !== undefined) setVlmModel(k.vlm_model);
+    if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
+    if (k.vlm_response_format !== undefined)
+      setVlmResponseFormat(k.vlm_response_format);
+    if (k.vlm_max_tokens !== undefined) setVlmMaxTokens(k.vlm_max_tokens);
+    if (k.vlm_concurrency !== undefined) setVlmConcurrency(k.vlm_concurrency);
+    if (k.vlm_timeout !== undefined) setVlmTimeout(k.vlm_timeout);
+    if (k.vlm_watsonx_api_version !== undefined)
+      setVlmWatsonxApiVersion(k.vlm_watsonx_api_version);
+  }, [settings.knowledge]);
 
   const [vlmAccordionValue, setVlmAccordionValue] = useState<string>("");
 
