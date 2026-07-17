@@ -106,13 +106,14 @@ class LangflowHistoryService:
                                 if content.get("type") == "tool_use":
                                     # Convert Langflow tool_use format to match streaming chunks format
                                     # Frontend expects: chunk.item.type === "tool_call" with tool_name, inputs, results
+                                    from utils.langflow_utils import parse_knowledge_chunks
                                     chunk = {
                                         "type": "response.output_item.added",
                                         "item": {
                                             "type": "tool_call",
                                             "tool_name": content.get("name", ""),
                                             "inputs": content.get("tool_input", {}),
-                                            "results": content.get("output", {}),
+                                            "results": parse_knowledge_chunks(content.get("output", {})),
                                             "id": content.get("id") or content.get("run_id", ""),
                                             "status": "completed" if not content.get("error") else "error"
                                         }
