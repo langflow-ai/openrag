@@ -13,8 +13,6 @@ from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_URL_INGEST_FLOW_ID,
     NUDGES_FLOW_ID,
-    OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     clients,
     get_openrag_config,
 )
@@ -608,22 +606,6 @@ class FlowsService:
                 found.append((node, i))
         return found
 
-    def _get_node_provider(self, node):
-        """Get the provider name currently set in a node."""
-        template = node.get("data", {}).get("node", {}).get("template", {})
-        model_val = template.get("model", {}).get("value")
-        if isinstance(model_val, list) and len(model_val) > 0:
-            return model_val[0].get("provider")
-        return None
-
-    def _get_provider_name_display(self, provider: str):
-        if provider == "watsonx":
-            return "IBM WatsonX"
-        if provider == "ollama":
-            return "Ollama"
-        if provider == "anthropic":
-            return "Anthropic"
-        return "OpenAI"
 
     async def _update_flow_field(
         self, flow_id: str, field_name: str, field_value: Any, node_display_name: str = None
@@ -693,18 +675,6 @@ class FlowsService:
                 f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}"
             )
 
-    async def update_chat_flow_model(self, model_name: str, provider: str):
-        """Helper function to update the model in the chat flow"""
-        if not LANGFLOW_CHAT_FLOW_ID:
-            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
-
-        # Determine target component IDs based on provider
-        target_llm_id = self._get_provider_component_ids(provider)[1]
-
-        await self._update_flow_field(
-            LANGFLOW_CHAT_FLOW_ID, "model_name", model_name, node_display_name=target_llm_id
-        )
-
     async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
@@ -753,25 +723,61 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-    async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
-        """Helper function to update embedding model in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
-        # Determine target component IDs based on provider
-        target_embedding_id = self._get_provider_component_ids(provider)[0]
 
-        await self._update_flow_field(
-            LANGFLOW_INGEST_FLOW_ID, "model", embedding_model, node_display_name=target_embedding_id
-        )
+    async def enable_model_in_langflow(self, provider_name: str, model_value: str):
+        """Ensure the specified model is enabled in Langflow."""
+        try:
+            enabled_data = None
+            async with self._enabled_models_lock:
+                # Check if cache is still valid
+                if (
+                    self._enabled_models_cache
+                    and self._enabled_models_cache_time
+                    and (datetime.now() - self._enabled_models_cache_time).total_seconds()
+                    < self._enabled_models_cache_ttl
+                ):
+                    enabled_data = self._enabled_models_cache
+                else:
+                    # Cache miss or stale, fetch from Langflow
+                    get_response = await clients.langflow_request(
+                        "GET", "/api/v1/models/enabled_models"
+                    )
+                    if get_response.status_code == 200:
+                        enabled_data = get_response.json().get("enabled_models", {})
+                        self._enabled_models_cache = enabled_data
+                        self._enabled_models_cache_time = datetime.now()
+                        logger.debug("Refreshed enabled models cache from Langflow")
 
-    def _replace_node_in_flow(self, flow_data, old_display_name, new_node):
-        """Replace a node in the flow data"""
-        nodes = flow_data.get("data", {}).get("nodes", [])
-        for i, node in enumerate(nodes):
-            if node.get("data", {}).get("node", {}).get("display_name") == old_display_name:
-                nodes[i] = new_node
+            if enabled_data:
+                provider_models = enabled_data.get(provider_name, {})
+                if provider_models.get(model_value) is True:
+                    logger.info(
+                        f"Model {model_value} for provider {provider_name} is already enabled. Skipping."
+                    )
+                    return False
+
+            enable_payload = [{"provider": provider_name, "model_id": model_value, "enabled": True}]
+
+            response = await clients.langflow_request(
+                "POST", "/api/v1/models/enabled_models", json=enable_payload
+            )
+
+            if response.status_code == 200:
+                logger.info(
+                    f"Successfully enabled model {model_value} for provider {provider_name}"
+                )
+                async with self._enabled_models_lock:
+                    self._enabled_models_cache = None
                 return True
+            else:
+                logger.warning(
+                    f"Failed to enable model: HTTP {response.status_code} - {response.text}"
+                )
+                async with self._enabled_models_lock:
+                    self._enabled_models_cache = None
+        except Exception as e:
+            logger.error(f"Error enabling model in Langflow: {str(e)}")
         return False
 
     def _normalize_flow_structure(self, flow_data):
@@ -984,397 +990,6 @@ class FlowsService:
         reset_flows = [r for r in results if r is not None]
         return reset_flows
 
-    async def change_langflow_model_value(
-        self,
-        provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
-        force_embedding_update: bool = False,
-        force_llm_update: bool = False,
-        flow_configs: list = None,
-    ):
-        """
-        Change dropdown values for provider-specific components across flows
 
-        Args:
-            provider: The provider ("watsonx", "ollama", "openai", "anthropic")
-            embedding_model: The embedding model name to set
-            llm_model: The LLM model name to set
-            force_embedding_update: If True, update embeddings even if model is None
-            force_llm_update: If True, update LLM even if model is None
-            flow_configs: Optional list of flow configs to update
-        """
-        if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-            raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
 
-        try:
-            # Use provided flow_configs or default to all flows
-            if flow_configs is None:
-                flow_configs = [
-                    {"name": "nudges", "flow_id": NUDGES_FLOW_ID},
-                    {"name": "retrieval", "flow_id": LANGFLOW_CHAT_FLOW_ID},
-                    {"name": "ingest", "flow_id": LANGFLOW_INGEST_FLOW_ID},
-                    {"name": "url_ingest", "flow_id": LANGFLOW_URL_INGEST_FLOW_ID},
-                ]
 
-            tasks = []
-            for config in flow_configs:
-                tasks.append(
-                    self._update_provider_components(
-                        config,
-                        provider,
-                        embedding_model=embedding_model,
-                        llm_model=llm_model,
-                        force_embedding_update=force_embedding_update,
-                        force_llm_update=force_llm_update,
-                    )
-                )
-
-            # Process all flows simultaneously
-            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            results: list[Any] = []
-            for i, result in enumerate(raw_results):
-                if isinstance(result, Exception):
-                    flow_name = flow_configs[i]["name"]
-                    logger.error(f"Error updating {flow_name} flow: {str(result)}")
-                    results.append({"flow": flow_name, "success": False, "error": str(result)})
-                else:
-                    results.append(result)
-
-            return {
-                "success": all(r.get("success", False) for r in results),
-                "results": results,
-            }
-        except Exception as e:
-            logger.error(f"Error in change_langflow_model_value: {str(e)}")
-            return {"success": False, "error": str(e)}
-
-    async def _update_provider_components(
-        self,
-        config,
-        provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
-        force_embedding_update: bool = False,
-        force_llm_update: bool = False,
-    ):
-        """Update provider components and their dropdown values in a flow"""
-        flow_name = config["name"]
-        flow_id = config["flow_id"]
-        # Use a flow-specific lock to prevent race conditions during the GET-Modify-PATCH cycle
-        flow_lock = await self._get_flow_lock(flow_id)
-        async with flow_lock:
-            # Get flow data from Langflow API instead of file
-            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-
-            if response.status_code != 200:
-                raise Exception(
-                    f"Failed to get flow from Langflow: HTTP {response.status_code} - {response.text}"
-                )
-
-            flow_data = response.json()
-            updates_made = []
-            node_tasks = []
-
-            async def wrap_node_update(node, p, m, label):
-                if await self._update_component_fields(node, p, m):
-                    return label
-                return None
-
-            # Update embedding component
-            if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
-                embedding_model or force_embedding_update
-            ):
-                # Get all embedding nodes in the flow
-                embedding_nodes = self._find_nodes_in_flow(
-                    flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
-                )
-                logger.info(
-                    f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
-                )
-
-                # Count configured embedding-enabled providers
-                if embedding_nodes:
-                    node, _idx = embedding_nodes[0]
-                    current_provider = self._get_node_provider(node)
-                    provider_display = self._get_provider_name_display(provider)
-
-                    if current_provider:
-                        logger.info(f"Embedding component already has a model set ({current_provider}). Enabling model in Langflow without patching component.")
-                        if embedding_model:
-                            async def enable_and_skip():
-                                await self._enable_model_in_langflow(provider_display, embedding_model)
-                                return None
-                            node_tasks.append(enable_and_skip())
-                    else:
-                        logger.info("Embedding component is not configured yet. Patching component.")
-                        node_tasks.append(
-                            wrap_node_update(
-                                node,
-                                provider,
-                                embedding_model,
-                                f"embedding model: {embedding_model} (initial setup)",
-                            )
-                        )
-
-            # Update LLM component (if exists in this flow)
-            if llm_model or force_llm_update:
-                llm_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
-                )
-                if llm_node:
-                    node_tasks.append(
-                        wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
-                    )
-
-                agent_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
-                )
-                if agent_node:
-                    node_tasks.append(
-                        wrap_node_update(
-                            agent_node, provider, llm_model, f"agent model: {llm_model}"
-                        )
-                    )
-
-            # Execute all node updates simultaneously
-            if node_tasks:
-                node_results = await asyncio.gather(*node_tasks)
-                updates_made.extend([r for r in node_results if r])
-
-            # If no updates were made, return skip message
-            if not updates_made:
-                return {
-                    "flow": flow_name,
-                    "success": True,
-                    "message": f"No compatible components found in {flow_name} flow (skipped)",
-                    "flow_id": flow_id,
-                }
-
-            logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
-
-            # PATCH the updated flow
-            response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
-            )
-
-            if response.status_code != 200:
-                raise Exception(
-                    f"Failed to update flow: HTTP {response.status_code} - {response.text}"
-                )
-
-            return {
-                "flow": flow_name,
-                "success": True,
-                "message": f"Successfully updated {', '.join(updates_made)}",
-                "flow_id": flow_id,
-            }
-
-    async def _update_component_langflow(self, template, model: Any):
-        # Call custom_component/update endpoint to get updated template
-        # Only call if code field exists (custom components should have code)
-        if "code" in template and "value" in template["code"]:
-            code_value = template["code"]["value"]
-
-            try:
-                update_payload = {
-                    "code": code_value,
-                    "template": template,
-                    "field": "model",
-                    "field_value": model,
-                    "tool_mode": False,
-                }
-
-                response = await clients.langflow_request(
-                    "POST", "/api/v1/custom_component/update", json=update_payload
-                )
-
-                if response.status_code == 200:
-                    response_data = response.json()
-                    # Update template with the new template from response.data
-                    if "template" in response_data:
-                        # Update the template in component_node
-                        return response_data["template"]
-                    else:
-                        logger.warning("Response from custom_component/update missing 'data' field")
-                else:
-                    logger.warning(
-                        f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
-                    )
-            except Exception as e:
-                logger.error(f"Error calling custom_component/update: {str(e)}")
-                # Continue with manual updates even if API call fails
-
-    async def _update_component_fields(
-        self,
-        component_node,
-        provider: str,
-        model_value: str,
-    ):
-        """Update fields in a component node based on provider and component type"""
-        template = component_node.get("data", {}).get("node", {}).get("template", {})
-        if not template:
-            return False
-
-        updated = False
-        provider_name = self._get_provider_name_display(provider)
-
-        # Update model field and call custom_component/update endpoint
-        if "model" in template:
-            if "options" not in template["model"]:
-                logger.warning(f"Model field not found in template for provider {provider_name}")
-                return False
-
-            # Enable the model in Langflow first
-            await self._enable_model_in_langflow(provider_name, model_value)
-            # Update template via Langflow API to get latest options
-            template = (
-                await self._update_component_langflow(template, template["model"]["value"])
-                or template
-            )
-            component_node["data"]["node"]["template"] = template
-
-            # Find the specific model option for the provider
-            if model_value:
-                model_options = [
-                    item
-                    for item in template["model"].get("options", [])
-                    if item.get("provider") == provider_name and item.get("name") == model_value
-                ]
-            else:
-                # If no specific model provided, pick the first available one for this provider
-                model_options = [
-                    item
-                    for item in template["model"].get("options", [])
-                    if item.get("provider") == provider_name
-                ][:1]
-                if model_options:
-                    logger.info(
-                        f"Using first available model '{model_options[0].get('name')}' for provider {provider_name}"
-                    )
-
-            if not model_options:
-                logger.warning(
-                    f"Model {model_value or 'ANY'} not found for provider {provider_name}"
-                )
-                return False
-
-            template["model"]["value"] = model_options
-
-            template = await self._update_component_langflow(template, model_options) or template
-            component_node["data"]["node"]["template"] = template
-
-            updated = True
-
-        # Update provider-specific fields using Langflow global variable names.
-        # "api_base" is the Ollama URL field on the Embedding Model component;
-        # "ollama_base_url" is the equivalent field on the Language Model / Agent component.
-        field_mappings = {
-            "api_key": {
-                "openai": "OPENAI_API_KEY",
-                "watsonx": "WATSONX_APIKEY",
-                "anthropic": "ANTHROPIC_API_KEY",
-            },
-            "api_base": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "ollama_base_url": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "base_url_ibm_watsonx": {
-                "watsonx": "WATSONX_URL",
-            },
-            "project_id": {
-                "watsonx": "WATSONX_PROJECT_ID",
-            },
-        }
-
-        for field, mapping in field_mappings.items():
-            if field in template:
-                target_value = mapping.get(provider)
-                if target_value:
-                    template[field]["value"] = target_value
-                    template[field]["load_from_db"] = True
-                else:
-                    template[field]["value"] = ""
-                    template[field]["load_from_db"] = False
-                updated = True
-
-        return updated
-
-    async def _enable_model_in_langflow(self, provider_name: str, model_value: str):
-        """Ensure the specified model is enabled in Langflow."""
-        try:
-            enabled_data = None
-            async with self._enabled_models_lock:
-                # Check if cache is still valid
-                if (
-                    self._enabled_models_cache
-                    and self._enabled_models_cache_time
-                    and (datetime.now() - self._enabled_models_cache_time).total_seconds()
-                    < self._enabled_models_cache_ttl
-                ):
-                    enabled_data = self._enabled_models_cache
-                else:
-                    # Cache miss or stale, fetch from Langflow
-                    get_response = await clients.langflow_request(
-                        "GET", "/api/v1/models/enabled_models"
-                    )
-                    if get_response.status_code == 200:
-                        enabled_data = get_response.json().get("enabled_models", {})
-                        self._enabled_models_cache = enabled_data
-                        self._enabled_models_cache_time = datetime.now()
-                        logger.debug("Refreshed enabled models cache from Langflow")
-
-            if enabled_data:
-                provider_models = enabled_data.get(provider_name, {})
-                if provider_models.get(model_value) is True:
-                    logger.info(
-                        f"Model {model_value} for provider {provider_name} is already enabled. Skipping."
-                    )
-                    return False
-
-            enable_payload = [{"provider": provider_name, "model_id": model_value, "enabled": True}]
-
-            response = await clients.langflow_request(
-                "POST", "/api/v1/models/enabled_models", json=enable_payload
-            )
-
-            if response.status_code == 200:
-                logger.info(
-                    f"Successfully enabled model {model_value} for provider {provider_name}"
-                )
-                async with self._enabled_models_lock:
-                    self._enabled_models_cache = None
-                return True
-            else:
-                logger.warning(
-                    f"Failed to enable model: HTTP {response.status_code} - {response.text}"
-                )
-                async with self._enabled_models_lock:
-                    self._enabled_models_cache = None
-        except Exception as e:
-            logger.error(f"Error enabling model in Langflow: {str(e)}")
-        return False
-
-    def _get_provider_component_ids(self, provider: str):
-        """Helper to get component display names for various providers."""
-        from config.settings import (
-            OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
-            OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
-            OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-            OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-            WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
-            WATSONX_LLM_COMPONENT_DISPLAY_NAME,
-        )
-
-        if provider == "openai":
-            return (OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME)
-        elif provider == "watsonx":
-            return (WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME, WATSONX_LLM_COMPONENT_DISPLAY_NAME)
-        elif provider == "ollama":
-            return (OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME)
-        elif provider == "anthropic":
-            return (None, "Anthropic")
-        return (None, None)

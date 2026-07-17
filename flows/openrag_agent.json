@@ -256,6 +256,33 @@
         "sourceHandle": "{œdataTypeœ:œMCPToolsœ,œidœ:œMCPTools-uu7m3œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-Nfw7u",
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "LanguageModelComponent",
+            "id": "LanguageModelComponent-MfLsT",
+            "name": "model_output",
+            "output_types": [
+              "LanguageModel"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "model",
+            "id": "Agent-Nfw7u",
+            "inputTypes": [
+              "LanguageModel"
+            ],
+            "type": "model"
+          }
+        },
+        "id": "xy-edge__LanguageModelComponent-MfLsT{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-MfLsTœ,œnameœ:œmodel_outputœ,œoutput_typesœ:[œLanguageModelœ]}-Agent-Nfw7u{œfieldNameœ:œmodelœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œLanguageModelœ],œtypeœ:œmodelœ}",
+        "selected": false,
+        "source": "LanguageModelComponent-MfLsT",
+        "sourceHandle": "{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-MfLsTœ,œnameœ:œmodel_outputœ,œoutput_typesœ:[œLanguageModelœ]}",
+        "target": "Agent-Nfw7u",
+        "targetHandle": "{œfieldNameœ:œmodelœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œLanguageModelœ],œtypeœ:œmodelœ}"
       }
     ],
     "nodes": [
@@ -893,6 +920,7 @@
       },
       {
         "data": {
+          "_connectionMode": true,
           "description": "Define the agent's instructions, then enter a task to complete using tools.",
           "display_name": "Agent",
           "id": "Agent-Nfw7u",
@@ -930,7 +958,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2026-07-16T18:31:34.862Z",
+            "last_updated": "2026-07-17T21:20:16.404Z",
             "legacy": false,
             "metadata": {
               "code_hash": "b956374c40f1",
@@ -1006,7 +1034,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "521f03bb-1efd-4936-904d-7440a72ec14b"
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
               },
               "_type": "Component",
               "add_calculator_tool": {
@@ -1058,7 +1086,7 @@
                 "dynamic": false,
                 "info": "Falls back to OPENAI_API_KEY environment variable",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "api_key",
                 "override_skip": false,
                 "password": true,
@@ -1069,11 +1097,11 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENAI_API_KEY"
+                "value": ""
               },
               "base_url_ibm_watsonx": {
                 "_input_type": "DropdownInput",
-                "advanced": false,
+                "advanced": true,
                 "combobox": true,
                 "dialog_inputs": {},
                 "display_name": "watsonx API Endpoint",
@@ -1103,7 +1131,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": ""
+                "value": "https://us-south.ml.cloud.ibm.com"
               },
               "code": {
                 "advanced": true,
@@ -1281,6 +1309,7 @@
                 "value": ""
               },
               "model": {
+                "_connection_mode": true,
                 "_input_type": "ModelInput",
                 "advanced": false,
                 "display_name": "Language Model",
@@ -1583,25 +1612,7 @@
                 "trace_as_input": true,
                 "track_in_telemetry": false,
                 "type": "model",
-                "value": [
-                  {
-                    "category": "OpenAI",
-                    "icon": "OpenAI",
-                    "metadata": {
-                      "api_key_param": "api_key",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatOpenAI",
-                      "model_name_param": "model",
-                      "reasoning": true,
-                      "reasoning_models": [
-                        "gpt-5.4-mini"
-                      ]
-                    },
-                    "name": "gpt-5.4-mini",
-                    "provider": "OpenAI"
-                  }
-                ]
+                "value": []
               },
               "n_messages": {
                 "_input_type": "IntInput",
@@ -1694,14 +1705,14 @@
               },
               "project_id": {
                 "_input_type": "StrInput",
-                "advanced": false,
+                "advanced": true,
                 "display_name": "watsonx Project ID",
                 "dynamic": false,
                 "info": "The project ID associated with the foundation model (IBM watsonx.ai only)",
                 "input_types": [],
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "project_id",
                 "override_skip": false,
                 "placeholder": "",
@@ -1712,7 +1723,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "WATSONX_PROJECT_ID"
               },
               "stream": {
                 "_input_type": "BoolInput",
@@ -1827,7 +1838,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-07-16T18:31:34.863Z",
+            "last_updated": "2026-07-17T21:19:51.324Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1848,7 +1859,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "JSON",
+                "display_name": "Toolset",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -1870,7 +1881,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "521f03bb-1efd-4936-904d-7440a72ec14b"
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
               },
               "_type": "Component",
               "code": {
@@ -1920,6 +1931,7 @@
               "tools_metadata": {
                 "_input_type": "ToolsInput",
                 "advanced": false,
+                "api_editable": false,
                 "display_name": "Actions",
                 "dynamic": false,
                 "info": "Modify tool names and descriptions to help agents understand when to use each tool.",
@@ -2032,7 +2044,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-07-16T18:31:34.863Z",
+            "last_updated": "2026-07-17T21:19:51.325Z",
             "legacy": false,
             "metadata": {
               "code_hash": "48fac82a63c3",
@@ -2087,7 +2099,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "521f03bb-1efd-4936-904d-7440a72ec14b"
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
               },
               "_type": "Component",
               "auth_mode": {
@@ -2098,7 +2110,7 @@
                 "display_name": "Authentication Mode",
                 "dynamic": false,
                 "external_options": {},
-                "info": "Authentication method: 'basic' for username/password authentication, 'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to delegate writes to the OpenRAG backend ingest callback (no direct OpenSearch credentials required — only OPENRAG_* fields).",
+                "info": "Authentication method: 'basic' for username/password authentication, or 'jwt' for JSON Web Token (Bearer) authentication.",
                 "load_from_db": false,
                 "name": "auth_mode",
                 "options": [
@@ -2723,6 +2735,7 @@
               "tools_metadata": {
                 "_input_type": "ToolsInput",
                 "advanced": false,
+                "api_editable": false,
                 "display_name": "Actions",
                 "dynamic": false,
                 "info": "Modify tool names and descriptions to help agents understand when to use each tool.",
@@ -2984,7 +2997,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "521f03bb-1efd-4936-904d-7440a72ec14b"
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
               },
               "_type": "Component",
               "api_base": {
@@ -3017,7 +3030,7 @@
                 "advanced": true,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Falls back to OPENAI_API_KEY environment variable",
+                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
                 "load_from_db": true,
                 "name": "api_key",
@@ -3144,7 +3157,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -3167,7 +3180,7 @@
               },
               "model": {
                 "_input_type": "ModelInput",
-                "advanced": false,
+                "advanced": true,
                 "display_name": "Embedding Model",
                 "dynamic": false,
                 "external_options": {
@@ -3402,13 +3415,13 @@
               },
               "model_name": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "display_name": "Model Name Override",
                 "dynamic": false,
                 "info": "Optional embedding model name to use instead of the selected model. Can be set from a global variable for runtime model selection.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "model_name",
                 "override_skip": false,
                 "placeholder": "",
@@ -3419,7 +3432,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_EMBEDDING_MODEL"
               },
               "ollama_base_url": {
                 "_input_type": "StrInput",
@@ -3470,13 +3483,13 @@
               },
               "provider": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "display_name": "Provider Override",
                 "dynamic": false,
                 "info": "Optional provider to use with Model Name Override. Leave blank to use the selected model's provider.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "provider",
                 "override_skip": false,
                 "placeholder": "",
@@ -3487,7 +3500,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_EMBEDDING_MODEL_PROVIDER"
               },
               "request_timeout": {
                 "_input_type": "FloatInput",
@@ -3552,18 +3565,18 @@
             },
             "tool_mode": false
           },
-          "showNode": true,
+          "showNode": false,
           "type": "EmbeddingModel"
         },
         "dragging": false,
         "id": "EmbeddingModel-zLHKs",
         "measured": {
-          "height": 207,
-          "width": 320
+          "height": 52,
+          "width": 192
         },
         "position": {
-          "x": 486.18806085134224,
-          "y": 1660.8098746148155
+          "x": 600.5344867217638,
+          "y": 1834.4470398254557
         },
         "selected": false,
         "type": "genericNode"
@@ -3966,7 +3979,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-07-16T18:31:34.871Z",
+            "last_updated": "2026-07-17T21:19:51.332Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -4017,7 +4030,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "521f03bb-1efd-4936-904d-7440a72ec14b"
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
               },
               "_type": "Component",
               "code": {
@@ -4241,6 +4254,7 @@
               "tools_metadata": {
                 "_input_type": "ToolsInput",
                 "advanced": false,
+                "api_editable": false,
                 "display_name": "Actions",
                 "dynamic": false,
                 "info": "Modify tool names and descriptions to help agents understand when to use each tool.",
@@ -4297,6 +4311,33 @@
                     "tags": [
                       "opensearch_url_ingestion_flow"
                     ]
+                  },
+                  {
+                    "approval_actions": [],
+                    "args": {
+                      "session_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "Optional session identifier used to persist conversation history across tool calls. Omit to start a new session.",
+                        "title": "Session Id"
+                      }
+                    },
+                    "description": "Powerful Prompts, Perfectly Positioned.",
+                    "display_description": "Powerful Prompts, Perfectly Positioned.",
+                    "display_name": "new_flow",
+                    "name": "new_flow",
+                    "readonly": false,
+                    "status": true,
+                    "tags": [
+                      "new_flow"
+                    ]
                   }
                 ]
               },
@@ -4349,7 +4390,7 @@
         "dragging": false,
         "id": "MCPTools-uu7m3",
         "measured": {
-          "height": 293,
+          "height": 321,
           "width": 320
         },
         "position": {
@@ -4358,19 +4399,755 @@
         },
         "selected": false,
         "type": "genericNode"
+      },
+      {
+        "data": {
+          "_connectionMode": false,
+          "id": "LanguageModelComponent-MfLsT",
+          "node": {
+            "base_classes": [
+              "LanguageModel",
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Runs a language model given a specified provider.",
+            "display_name": "Language Model",
+            "documentation": "https://docs.langflow.org/components-models",
+            "edited": false,
+            "field_order": [
+              "model",
+              "model_name",
+              "provider",
+              "api_key",
+              "base_url_ibm_watsonx",
+              "project_id",
+              "ollama_base_url",
+              "input_value",
+              "system_message",
+              "stream",
+              "temperature",
+              "max_tokens"
+            ],
+            "frozen": false,
+            "icon": "brain-circuit",
+            "last_updated": "2026-07-17T21:21:36.258Z",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "4942994b24a6",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "keywords": [
+                "model",
+                "llm",
+                "language model",
+                "large language model"
+              ],
+              "module": "lfx.components.models_and_agents.language_model.LanguageModelComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Model Response",
+                "group_outputs": false,
+                "loop_types": null,
+                "method": "text_response",
+                "name": "text_output",
+                "options": null,
+                "required_inputs": null,
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              },
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Language Model",
+                "group_outputs": false,
+                "loop_types": null,
+                "method": "build_model",
+                "name": "model_output",
+                "options": null,
+                "required_inputs": null,
+                "selected": "LanguageModel",
+                "tool_mode": true,
+                "types": [
+                  "LanguageModel"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_frontend_node_flow_id": {
+                "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+              },
+              "_frontend_node_folder_id": {
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
+              },
+              "_type": "Component",
+              "api_key": {
+                "_input_type": "SecretStrInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "API Key",
+                "dynamic": false,
+                "info": "Falls back to OPENAI_API_KEY environment variable",
+                "input_types": [],
+                "load_from_db": true,
+                "name": "api_key",
+                "override_skip": false,
+                "password": true,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "OPENAI_API_KEY"
+              },
+              "base_url_ibm_watsonx": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": true,
+                "dialog_inputs": {},
+                "display_name": "watsonx API Endpoint",
+                "dynamic": false,
+                "external_options": {},
+                "info": "The base URL of the API (IBM watsonx.ai only)",
+                "name": "base_url_ibm_watsonx",
+                "options": [
+                  "https://us-south.ml.cloud.ibm.com",
+                  "https://eu-de.ml.cloud.ibm.com",
+                  "https://eu-gb.ml.cloud.ibm.com",
+                  "https://au-syd.ml.cloud.ibm.com",
+                  "https://jp-tok.ml.cloud.ibm.com",
+                  "https://ca-tor.ml.cloud.ibm.com"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "https://us-south.ml.cloud.ibm.com"
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from lfx.base.models.model import LCModelComponent\nfrom lfx.base.models.unified_models import (\n    get_language_model_options,\n    get_llm,\n    handle_model_input_update,\n)\nfrom lfx.base.models.watsonx_constants import IBM_WATSONX_URLS\nfrom lfx.components.models_and_agents.model_selection import apply_model_overrides\nfrom lfx.field_typing.constants import LanguageModel\nfrom lfx.field_typing.range_spec import RangeSpec\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, StrInput\nfrom lfx.io import IntInput, MessageInput, ModelInput, MultilineInput, SecretStrInput, SliderInput\n\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass LanguageModelComponent(LCModelComponent):\n    display_name = \"Language Model\"\n    description = \"Runs a language model given a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-models\"\n    icon = \"brain-circuit\"\n    category = \"models\"\n\n    inputs = [\n        ModelInput(\n            name=\"model\",\n            display_name=\"Language Model\",\n            info=\"Select your model provider\",\n            real_time_refresh=True,\n            required=True,\n        ),\n        StrInput(\n            name=\"model_name\",\n            display_name=\"Model Name Override\",\n            info=(\n                \"Optional model name to use instead of the selected model. \"\n                \"Can be set from a global variable for runtime model selection.\"\n            ),\n            advanced=True,\n            load_from_db=False,\n        ),\n        StrInput(\n            name=\"provider\",\n            display_name=\"Provider Override\",\n            info=(\n                \"Optional provider to use with Model Name Override. Leave blank to use the selected model's provider.\"\n            ),\n            advanced=True,\n            load_from_db=False,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"API Key\",\n            info=\"Overrides global provider settings. Leave blank to use your pre-configured API Key.\",\n            required=False,\n            show=True,\n            real_time_refresh=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            combobox=True,\n            show=False,\n            real_time_refresh=True,\n        ),\n        StrInput(\n            name=\"project_id\",\n            display_name=\"watsonx Project ID\",\n            info=\"The project ID associated with the foundation model (IBM watsonx.ai only)\",\n            show=False,\n            required=False,\n        ),\n        StrInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n        ),\n        MessageInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            info=\"The input text to send to the model\",\n        ),\n        MultilineInput(\n            name=\"system_message\",\n            display_name=\"System Message\",\n            info=\"A system message that helps set the behavior of the assistant\",\n            advanced=False,\n        ),\n        BoolInput(\n            name=\"stream\",\n            display_name=\"Stream\",\n            info=\"Whether to stream the response\",\n            value=False,\n            advanced=True,\n        ),\n        SliderInput(\n            name=\"temperature\",\n            display_name=\"Temperature\",\n            value=0.1,\n            info=\"Controls randomness in responses\",\n            range_spec=RangeSpec(min=0, max=1, step=0.01),\n            advanced=True,\n        ),\n        IntInput(\n            name=\"max_tokens\",\n            display_name=\"Max Tokens\",\n            info=\"Maximum number of tokens to generate. Field name varies by provider.\",\n            advanced=True,\n            range_spec=RangeSpec(min=1, max=128000, step=1, step_type=\"int\"),\n        ),\n    ]\n\n    def build_model(self) -> LanguageModel:\n        model = apply_model_overrides(\n            self.model,\n            model_name=getattr(self, \"model_name\", None),\n            provider=getattr(self, \"provider\", None),\n            user_id=self.user_id,\n            get_options=get_language_model_options,\n        )\n        return get_llm(\n            model=model,\n            user_id=self.user_id,\n            api_key=self.api_key,\n            temperature=self.temperature,\n            stream=self.stream,\n            max_tokens=getattr(self, \"max_tokens\", None),\n            watsonx_url=getattr(self, \"base_url_ibm_watsonx\", None),\n            watsonx_project_id=getattr(self, \"project_id\", None),\n            ollama_base_url=getattr(self, \"ollama_base_url\", None),\n        )\n\n    def update_build_config(self, build_config: dict, field_value: str, field_name: str | None = None):\n        \"\"\"Dynamically update build config with user-filtered model options.\"\"\"\n        return handle_model_input_update(self, build_config, field_value, field_name)\n"
+              },
+              "input_value": {
+                "_input_type": "MessageInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Input",
+                "dynamic": false,
+                "info": "The input text to send to the model",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "is_refresh": false,
+              "max_tokens": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Max Tokens",
+                "dynamic": false,
+                "info": "Maximum number of tokens to generate. Field name varies by provider.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_tokens",
+                "override_skip": false,
+                "placeholder": "",
+                "range_spec": {
+                  "max": 128000,
+                  "min": 1,
+                  "step": 1,
+                  "step_type": "int"
+                },
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 0
+              },
+              "model": {
+                "_input_type": "ModelInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Language Model",
+                "dynamic": false,
+                "external_options": {
+                  "fields": {
+                    "data": {
+                      "node": {
+                        "display_name": "Connect other models",
+                        "icon": "CornerDownLeft",
+                        "name": "connect_other_models"
+                      }
+                    }
+                  }
+                },
+                "info": "Select your model provider",
+                "input_types": [
+                  "LanguageModel"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "model_type": "language",
+                "name": "model",
+                "options": [
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-5"
+                      ]
+                    },
+                    "name": "claude-sonnet-5",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-fable-5"
+                      ]
+                    },
+                    "name": "claude-fable-5",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-8"
+                      ]
+                    },
+                    "name": "claude-opus-4-8",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-7"
+                      ]
+                    },
+                    "name": "claude-opus-4-7",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-4-6"
+                      ]
+                    },
+                    "name": "claude-sonnet-4-6",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-terra"
+                      ]
+                    },
+                    "name": "gpt-5.6-terra",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6"
+                      ]
+                    },
+                    "name": "gpt-5.6",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-luna"
+                      ]
+                    },
+                    "name": "gpt-5.6-luna",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-sol"
+                      ]
+                    },
+                    "name": "gpt-5.6-sol",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-realtime-2.1"
+                      ]
+                    },
+                    "name": "gpt-realtime-2.1",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.4-mini"
+                      ]
+                    },
+                    "name": "gpt-5.4-mini",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-4-h-small",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-8b-code-instruct",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-guardian-3-8b",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "meta-llama/llama-3-3-70b-instruct",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+                    "provider": "IBM WatsonX"
+                  }
+                ],
+                "override_skip": false,
+                "placeholder": "Setup Provider",
+                "real_time_refresh": true,
+                "refresh_button": true,
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "track_in_telemetry": false,
+                "type": "model",
+                "value": [
+                  {
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.4-mini"
+                      ]
+                    },
+                    "name": "gpt-5.4-mini",
+                    "provider": "OpenAI"
+                  }
+                ]
+              },
+              "model_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Model Name Override",
+                "dynamic": false,
+                "info": "Optional model name to use instead of the selected model. Can be set from a global variable for runtime model selection.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "model_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "SELECTED_LANGUAGE_MODEL"
+              },
+              "ollama_base_url": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Ollama API URL",
+                "dynamic": false,
+                "info": "Endpoint of the Ollama API (Ollama only). Defaults to http://localhost:11434",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "ollama_base_url",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "http://localhost:11434"
+              },
+              "project_id": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "watsonx Project ID",
+                "dynamic": false,
+                "info": "The project ID associated with the foundation model (IBM watsonx.ai only)",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "project_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "provider": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Provider Override",
+                "dynamic": false,
+                "info": "Optional provider to use with Model Name Override. Leave blank to use the selected model's provider.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "provider",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "SELECTED_LANGUAGE_MODEL_PROVIDER"
+              },
+              "stream": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Stream",
+                "dynamic": false,
+                "info": "Whether to stream the response",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "stream",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "system_message": {
+                "_input_type": "MultilineInput",
+                "advanced": true,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "System Message",
+                "dynamic": false,
+                "info": "A system message that helps set the behavior of the assistant",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "system_message",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "temperature": {
+                "_input_type": "SliderInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Temperature",
+                "dynamic": false,
+                "info": "Controls randomness in responses",
+                "max_label": "",
+                "max_label_icon": "",
+                "min_label": "",
+                "min_label_icon": "",
+                "name": "temperature",
+                "override_skip": false,
+                "placeholder": "",
+                "range_spec": {
+                  "max": 1,
+                  "min": 0,
+                  "step": 0.01,
+                  "step_type": "float"
+                },
+                "required": false,
+                "show": true,
+                "slider_buttons": false,
+                "slider_buttons_options": [],
+                "slider_input": false,
+                "title_case": false,
+                "tool_mode": false,
+                "track_in_telemetry": false,
+                "type": "slider",
+                "value": 0.1
+              }
+            },
+            "tool_mode": false
+          },
+          "selected_output": "model_output",
+          "showNode": false,
+          "type": "LanguageModelComponent"
+        },
+        "dragging": false,
+        "id": "LanguageModelComponent-MfLsT",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
+        "position": {
+          "x": 1838.8695751205396,
+          "y": 1762.0514447612154
+        },
+        "selected": false,
+        "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -306.6381958849463,
-      "y": -634.8182456622638,
-      "zoom": 0.590340833355795
+      "x": 40.830817958516946,
+      "y": -359.22757959660464,
+      "zoom": 0.4467748994714936
     }
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "1.11.0.dev45",
+  "last_tested_version": "1.11.0",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [

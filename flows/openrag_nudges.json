@@ -1064,6 +1064,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
+            "last_updated": "2026-07-17T21:22:58.078Z",
             "legacy": false,
             "metadata": {
               "code_hash": "4942994b24a6",
@@ -1126,6 +1127,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "ebc01d31-1976-46ce-a385-b0240327226c"
+              },
+              "_frontend_node_folder_id": {
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
+              },
               "_type": "Component",
               "api_key": {
                 "_input_type": "SecretStrInput",
@@ -1227,6 +1234,7 @@
                 "type": "str",
                 "value": ""
               },
+              "is_refresh": true,
               "max_tokens": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -1256,7 +1264,7 @@
               },
               "model": {
                 "_input_type": "ModelInput",
-                "advanced": false,
+                "advanced": true,
                 "api_editable": false,
                 "display_name": "Language Model",
                 "dynamic": false,
@@ -1280,6 +1288,270 @@
                 "load_from_db": false,
                 "model_type": "language",
                 "name": "model",
+                "options": [
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-5"
+                      ]
+                    },
+                    "name": "claude-sonnet-5",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-fable-5"
+                      ]
+                    },
+                    "name": "claude-fable-5",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-8"
+                      ]
+                    },
+                    "name": "claude-opus-4-8",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-7"
+                      ]
+                    },
+                    "name": "claude-opus-4-7",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "Anthropic",
+                    "icon": "Anthropic",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-4-6"
+                      ]
+                    },
+                    "name": "claude-sonnet-4-6",
+                    "provider": "Anthropic"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-terra"
+                      ]
+                    },
+                    "name": "gpt-5.6-terra",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6"
+                      ]
+                    },
+                    "name": "gpt-5.6",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-luna"
+                      ]
+                    },
+                    "name": "gpt-5.6-luna",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.6-sol"
+                      ]
+                    },
+                    "name": "gpt-5.6-sol",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-realtime-2.1"
+                      ]
+                    },
+                    "name": "gpt-realtime-2.1",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.4-mini"
+                      ]
+                    },
+                    "name": "gpt-5.4-mini",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-4-h-small",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-8b-code-instruct",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "ibm/granite-guardian-3-8b",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "meta-llama/llama-3-3-70b-instruct",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "api_key_param": "apikey",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
+                    },
+                    "name": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+                    "provider": "IBM WatsonX"
+                  }
+                ],
                 "override_skip": false,
                 "placeholder": "Setup Provider",
                 "real_time_refresh": true,
@@ -1313,14 +1585,14 @@
               },
               "model_name": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "Model Name Override",
                 "dynamic": false,
                 "info": "Optional model name to use instead of the selected model. Can be set from a global variable for runtime model selection.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "model_name",
                 "override_skip": false,
                 "placeholder": "",
@@ -1331,7 +1603,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_LANGUAGE_MODEL"
               },
               "ollama_base_url": {
                 "_input_type": "StrInput",
@@ -1380,14 +1652,14 @@
               },
               "provider": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "Provider Override",
                 "dynamic": false,
                 "info": "Optional provider to use with Model Name Override. Leave blank to use the selected model's provider.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "provider",
                 "override_skip": false,
                 "placeholder": "",
@@ -1398,7 +1670,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_LANGUAGE_MODEL_PROVIDER"
               },
               "stream": {
                 "_input_type": "BoolInput",
@@ -1492,7 +1764,7 @@
         "dragging": false,
         "id": "LanguageModelComponent-KdXf9",
         "measured": {
-          "height": 371,
+          "height": 453,
           "width": 320
         },
         "position": {
@@ -2419,6 +2691,7 @@
             ],
             "frozen": false,
             "icon": "binary",
+            "last_updated": "2026-07-17T21:22:58.079Z",
             "legacy": false,
             "metadata": {
               "code_hash": "408487f1431c",
@@ -2457,6 +2730,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "ebc01d31-1976-46ce-a385-b0240327226c"
+              },
+              "_frontend_node_folder_id": {
+                "value": "539ef706-e27b-4e26-80ff-754fe9bba6f0"
+              },
               "_type": "Component",
               "api_base": {
                 "_input_type": "MessageTextInput",
@@ -2622,6 +2901,7 @@
                 "type": "bool",
                 "value": true
               },
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -2645,7 +2925,7 @@
               },
               "model": {
                 "_input_type": "ModelInput",
-                "advanced": false,
+                "advanced": true,
                 "api_editable": false,
                 "display_name": "Embedding Model",
                 "dynamic": false,
@@ -2669,6 +2949,161 @@
                 "load_from_db": false,
                 "model_type": "embedding",
                 "name": "model",
+                "options": [
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "embedding_class": "OpenAIEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_base": "base_url",
+                        "api_key": "api_key",
+                        "chunk_size": "chunk_size",
+                        "dimensions": "dimensions",
+                        "max_retries": "max_retries",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "request_timeout": "timeout",
+                        "show_progress_bar": "show_progress_bar"
+                      }
+                    },
+                    "name": "text-embedding-3-large",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "embedding_class": "OpenAIEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_base": "base_url",
+                        "api_key": "api_key",
+                        "chunk_size": "chunk_size",
+                        "dimensions": "dimensions",
+                        "max_retries": "max_retries",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "request_timeout": "timeout",
+                        "show_progress_bar": "show_progress_bar"
+                      }
+                    },
+                    "name": "text-embedding-3-small",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "embedding_class": "OpenAIEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_base": "base_url",
+                        "api_key": "api_key",
+                        "chunk_size": "chunk_size",
+                        "dimensions": "dimensions",
+                        "max_retries": "max_retries",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "request_timeout": "timeout",
+                        "show_progress_bar": "show_progress_bar"
+                      }
+                    },
+                    "name": "text-embedding-ada-002",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/granite-embedding-278m-multilingual",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-125m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "ibm/slate-30m-english-rtrvr-v2",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "intfloat/multilingual-e5-large",
+                    "provider": "IBM WatsonX"
+                  },
+                  {
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
+                    "metadata": {
+                      "embedding_class": "WatsonxEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "api_key": "apikey",
+                        "model_id": "model_id",
+                        "project_id": "project_id",
+                        "request_timeout": "request_timeout",
+                        "space_id": "space_id",
+                        "url": "url"
+                      }
+                    },
+                    "name": "sentence-transformers/all-minilm-l6-v2",
+                    "provider": "IBM WatsonX"
+                  }
+                ],
                 "override_skip": false,
                 "placeholder": "Setup Provider",
                 "real_time_refresh": true,
@@ -2727,14 +3162,14 @@
               },
               "model_name": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "Model Name Override",
                 "dynamic": false,
                 "info": "Optional embedding model name to use instead of the selected model. Can be set from a global variable for runtime model selection.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "model_name",
                 "override_skip": false,
                 "placeholder": "",
@@ -2745,7 +3180,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_EMBEDDING_MODEL"
               },
               "ollama_base_url": {
                 "_input_type": "StrInput",
@@ -2798,14 +3233,14 @@
               },
               "provider": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "Provider Override",
                 "dynamic": false,
                 "info": "Optional provider to use with Model Name Override. Leave blank to use the selected model's provider.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "provider",
                 "override_skip": false,
                 "placeholder": "",
@@ -2816,7 +3251,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": ""
+                "value": "SELECTED_EMBEDDING_MODEL_PROVIDER"
               },
               "request_timeout": {
                 "_input_type": "FloatInput",
@@ -2884,18 +3319,18 @@
             },
             "tool_mode": false
           },
-          "showNode": true,
+          "showNode": false,
           "type": "EmbeddingModel"
         },
         "dragging": false,
         "id": "EmbeddingModel-cONxU",
         "measured": {
-          "height": 207,
-          "width": 320
+          "height": 52,
+          "width": 192
         },
         "position": {
-          "x": -139.2636327403604,
-          "y": 1118.3911066056337
+          "x": -22.139984432593124,
+          "y": 1292.0572058205992
         },
         "selected": false,
         "type": "genericNode"
@@ -3265,9 +3700,9 @@
       }
     ],
     "viewport": {
-      "x": -316.09955642745126,
-      "y": -386.4197674521665,
-      "zoom": 0.6098209447566731
+      "x": 280.1752151722049,
+      "y": -534.9181328856223,
+      "zoom": 0.7428047303597393
     }
   },
   "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
