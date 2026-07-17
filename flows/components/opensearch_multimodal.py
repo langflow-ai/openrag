@@ -2408,19 +2408,19 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             for hit in hits
         ]
 
-    def search_documents(self) -> Table:
+    def search_documents(self) -> list[Data]:
 
-        """Search documents and return results as a Table.
+        """Search documents and return results as a list of Data objects.
 
         This is the main interface method that performs the multi-model search using the
-        configured search_query and returns results in Langflow's Table (DataFrame) format
-        so downstream Parser components can consume them directly.
+        configured search_query and returns results in a format that downstream Parser
+        components and tool wrappers can consume directly without DataFrame string truncation.
 
         Always builds the vector store (triggering ingestion if needed), then performs
         search only if a query is provided.
 
         Returns:
-            Table containing search results with text and metadata
+            List containing search results with text and metadata
 
         Raises:
             Exception: If search operation fails
@@ -2437,12 +2437,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             if not search_query:
                 self.log("No search query provided - ingestion completed, returning empty results")
 
-                return Table(data=[])
+                return []
 
             # Perform search with the provided query
             raw = self.search(search_query)
             raw_list = [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
-            return Table(data=raw_list)
+            return raw_list
 
         except Exception as e:
             self.log(f"search_documents error: {e}")
