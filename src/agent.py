@@ -228,6 +228,19 @@ async def async_response_stream(
                             total_tokens=usage.get("total_tokens"),
                         )
 
+                # Format native tool call results
+                if isinstance(chunk_data, dict):
+                    # Format: {"type": "response.output_item.added", "item": {"type": "tool_call", "results": ...}}
+                    item = chunk_data.get("item")
+                    if isinstance(item, dict) and item.get("type") == "tool_call" and "results" in item:
+                        from utils.langflow_utils import parse_knowledge_chunks
+                        item["results"] = parse_knowledge_chunks(item["results"])
+                        
+                    # Also check for direct tool_call chunks
+                    elif chunk_data.get("type") == "tool_call" and "results" in chunk_data:
+                        from utils.langflow_utils import parse_knowledge_chunks
+                        chunk_data["results"] = parse_knowledge_chunks(chunk_data["results"])
+
                 # Middleware: Detect implicit tool calls and inject standardized events
                 # This helps Granite 3.3 8b and other models that don't emit standard markers
                 if isinstance(chunk_data, dict) and not detected_tool_call:
