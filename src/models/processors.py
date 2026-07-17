@@ -733,7 +733,11 @@ class DocumentFileProcessor(TaskProcessor):
             elif filename_exists and self.replace_duplicates:
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
+                await self.delete_document_by_filename(
+                    original_filename,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
                 # Refresh index to make deletion visible before processing.
                 # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
                 # so it must run under the admin/service client, not the user client.

@@ -8,6 +8,7 @@ import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
 import { isSaasPolicyContext } from "@/lib/brand";
@@ -29,6 +30,9 @@ export default function ConnectorCards() {
   });
   const router = useRouter();
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<Connector | null>(
+    null,
+  );
 
   const { data: queryConnectors = [], isLoading: connectorsLoading } =
     useGetConnectorsQuery({
@@ -69,8 +73,19 @@ export default function ConnectorCards() {
     });
   };
 
-  const handleDisconnect = async (connector: Connector) => {
-    disconnectMutation.mutate(connector as unknown as QueryConnector);
+  const handleDisconnect = (connector: Connector) => {
+    setDisconnectTarget(connector);
+  };
+
+  const confirmDisconnect = async () => {
+    if (!disconnectTarget) return;
+    try {
+      await disconnectMutation.mutateAsync(
+        disconnectTarget as unknown as QueryConnector,
+      );
+    } finally {
+      setDisconnectTarget(null);
+    }
   };
 
   const navigateToKnowledgePage = (connector: Connector) => {
@@ -198,6 +213,25 @@ export default function ConnectorCards() {
           />
         );
       })}
+
+      <DeleteConfirmationDialog
+        open={disconnectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectTarget(null);
+        }}
+        title={`Disconnect ${disconnectTarget?.name ?? "connector"}?`}
+        description={`This will remove the ${disconnectTarget?.name ?? "connector"} connection from OpenRAG.`}
+        confirmText="Disconnect"
+        onConfirm={confirmDisconnect}
+        isLoading={disconnectMutation.isPending}
+      >
+        <p>
+          Any documents previously ingested from this connector will remain in
+          your knowledge base, but new syncs will no longer be possible until
+          you reconnect. Re-authenticating later will allow you to resume
+          syncing.
+        </p>
+      </DeleteConfirmationDialog>
     </>
   );
 }
