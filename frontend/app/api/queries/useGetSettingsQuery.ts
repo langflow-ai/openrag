@@ -92,6 +92,7 @@ export interface Settings {
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
   local_vlm_models?: string[];
+  show_shared_upload_toggle?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

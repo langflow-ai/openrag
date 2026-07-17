@@ -383,22 +383,6 @@ export function detectImplicitToolCall(
 
   const c = chunk as Chunk;
 
-  const toolRelatedKeys = Object.keys(c).filter(
-    (key) =>
-      key.toLowerCase().includes("tool") ||
-      key.toLowerCase().includes("call") ||
-      key.toLowerCase().includes("retrieval") ||
-      key.toLowerCase().includes("function") ||
-      key.toLowerCase().includes("result"),
-  );
-  if (toolRelatedKeys.length > 0) {
-    console.log(
-      "[Tool Detection] Found tool-related keys:",
-      toolRelatedKeys,
-      chunk,
-    );
-  }
-
   const data = c.data as Chunk | undefined;
 
   const nonEmpty = (v: unknown): v is unknown[] =>
@@ -415,8 +399,6 @@ export function detectImplicitToolCall(
         nonEmpty(data.retrieval_results)));
 
   if (!hasImplicitToolCall) return;
-
-  console.log("[Heuristic Detection] Detected implicit tool call:", chunk);
   const results =
     (nonEmpty(c.results) && c.results) ||
     (nonEmpty(c.outputs) && c.outputs) ||
@@ -433,7 +415,6 @@ export function detectImplicitToolCall(
     type: "retrieval_call",
     result: results as FunctionCall["result"],
   });
-  console.log("[Heuristic Detection] Created synthetic function call");
 }
 
 // Post-processing: detects RAG usage from citation/content patterns in final response text
@@ -446,8 +427,6 @@ export function detectRAGFromContent(content: string): FunctionCall | null {
     );
 
   if (!hasCitations && !hasRAGPattern) return null;
-
-  console.log("[Post-Processing] Detected RAG usage from content patterns");
   return {
     name: "Retrieval",
     arguments: {

@@ -292,6 +292,11 @@ async def async_response(
     previous_response_id: str = None,
     log_prefix: str = "response",
 ):
+    # extra_headers/request_params carry raw secrets (JWT, provider API keys,
+    # x-api-key — see langflow_headers.py). Never pass them to a logger call
+    # (e.g. logger.info(..., extra_headers=extra_headers)) — that logs the
+    # secrets directly, bypassing the show_locals=False traceback protection
+    # in utils/logging_config.py.
     try:
         logger.info("User prompt received", prompt=prompt)
 

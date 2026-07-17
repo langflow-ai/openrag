@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -49,12 +49,18 @@ export default function AzureBlobSettingsDialog({
   const [selectedContainers, setSelectedContainers] = useState<string[]>(
     defaults?.container_names ?? [],
   );
-  useEffect(() => {
-    if (defaults?.container_names?.length) {
-      setContainers(defaults.container_names);
-      setSelectedContainers(defaults.container_names);
-    }
-  }, [defaults]);
+  const [showContainers, setShowContainers] = useState(
+    !!defaults?.container_names?.length,
+  );
+
+  const [prevDefaults, setPrevDefaults] = useState(defaults);
+  if (defaults !== prevDefaults) {
+    setPrevDefaults(defaults);
+    const names = defaults?.container_names ?? [];
+    setContainers(names.length ? names : null);
+    setSelectedContainers(names);
+    setShowContainers(names.length > 0);
+  }
 
   const [isFetchingContainers, setIsFetchingContainers] = useState(false);
   const [containersError, setContainersError] = useState<string | null>(null);
@@ -62,7 +68,27 @@ export default function AzureBlobSettingsDialog({
 
   const configureMutation = useAzureBlobConfigureMutation();
 
+  // Holds the AbortController for the currently in-flight test request so it
+  // can be cancelled if the user closes the dialog or starts a new test.
+  const testAbortRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight test request when the dialog closes. The dialog
+  // component itself stays mounted (connector-cards renders it unconditionally
+  // and just toggles `open`), so an unmount-only cleanup would never fire here
+  // — without this, a canceled test could still resolve and repopulate the
+  // container list after the user closed the dialog.
+  useEffect(() => {
+    if (!open) {
+      testAbortRef.current?.abort();
+    }
+  }, [open]);
+
   const handleTestConnection = handleSubmit(async (data) => {
+    // Cancel any previous in-flight test before starting a new one.
+    testAbortRef.current?.abort();
+    const controller = new AbortController();
+    testAbortRef.current = controller;
+
     setIsFetchingContainers(true);
     setContainersError(null);
     setFormError(null);
@@ -74,6 +100,7 @@ export default function AzureBlobSettingsDialog({
       const res = await fetch("/api/connectors/azure_blob/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           auth_mode: data.auth_mode,
           connection_string: data.connection_string || undefined,
@@ -89,17 +116,30 @@ export default function AzureBlobSettingsDialog({
       const fetched: string[] = json.containers;
       setContainers(fetched);
       setSelectedContainers((prev) => prev.filter((c) => fetched.includes(c)));
+      setShowContainers(true);
     } catch (err: unknown) {
+      // Ignore cancellations — they are intentional (dialog closed or new test
+      // started) and must not surface an error message to the user.
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setContainersError(
         err instanceof Error ? err.message : "Connection failed",
       );
+      setShowContainers(false);
+      setContainers(null);
     } finally {
-      setIsFetchingContainers(false);
+      // Only clear the loading flag if this invocation is still the active one.
+      // If the user started a second test while this one was in flight, the
+      // second call already replaced testAbortRef.current; clearing here would
+      // flicker the spinner off for the still-running request.
+      if (testAbortRef.current === controller) {
+        setIsFetchingContainers(false);
+      }
     }
   });
 
   const onSubmit = handleSubmit(async (data) => {
     setFormError(null);
+    setContainersError(null);
     if (containers === null) {
       setFormError("Test the connection first to validate credentials.");
       return;
@@ -170,6 +210,13 @@ export default function AzureBlobSettingsDialog({
               connectionStringSet={defaults?.connection_string_set}
               accountKeySet={defaults?.account_key_set}
               formError={formError}
+              showContainers={showContainers}
+              onAuthModeChange={() => {
+                setShowContainers(false);
+                setContainers(null);
+                setContainersError(null);
+                setFormError(null);
+              }}
             />
 
             <DialogFooter className="mt-4">

@@ -76,7 +76,10 @@ class ChatService:
                 "LANGFLOW_URL and LANGFLOW_CHAT_FLOW_ID environment variables are required"
             )
 
-        # Prepare extra headers for JWT authentication and embedding model
+        # Prepare extra headers for JWT authentication and embedding model.
+        # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys —
+        # see add_provider_credentials_to_headers below). Never log this dict or
+        # pass it to a logger call (e.g. logger.info(..., extra_headers=...)).
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
@@ -249,7 +252,10 @@ class ChatService:
         if not LANGFLOW_URL or not NUDGES_FLOW_ID:
             raise ValueError("LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required")
 
-        # Prepare extra headers for JWT authentication and embedding model
+        # Prepare extra headers for JWT authentication and embedding model.
+        # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys —
+        # see add_provider_credentials_to_headers below). Never log this dict or
+        # pass it to a logger call (e.g. logger.info(..., extra_headers=...)).
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
@@ -493,7 +499,10 @@ class ChatService:
         conversation_user_id = storage_user_id or user_id
 
         if endpoint == "langflow":
-            # Prepare extra headers for JWT authentication and embedding model
+            # Prepare extra headers for JWT authentication and embedding model.
+            # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
+            # Never log this dict or pass it to a logger call
+            # (e.g. logger.info(..., extra_headers=...)).
             extra_headers = {}
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token

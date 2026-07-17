@@ -32,6 +32,7 @@ class DocumentIndexContext:
     file_size: int | None = None
     connector_type: str | None = None
     source_url: str | None = None
+    connector_file_id: str | None = None
     allowed_users: list[str] = field(default_factory=list)
     allowed_groups: list[str] = field(default_factory=list)
     allowed_principals: list[str] = field(default_factory=list)
@@ -244,7 +245,9 @@ class DocumentIndexWriter:
             doc["owner_email"] = context.owner_email
         if context.ingest_run_id:
             doc["ingest_run_id"] = context.ingest_run_id
-        if metadata.get("connector_file_id"):
+        if context.connector_file_id:
+            doc["connector_file_id"] = context.connector_file_id
+        elif metadata.get("connector_file_id"):
             doc["connector_file_id"] = metadata["connector_file_id"]
         if context.is_sample_data:
             doc["is_sample_data"] = "true"

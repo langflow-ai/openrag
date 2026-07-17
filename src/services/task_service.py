@@ -253,6 +253,7 @@ class TaskService:
         original_filenames: dict | None = None,
         replace_duplicates: bool = False,
         settings: dict | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
@@ -276,6 +277,7 @@ class TaskService:
             processor,
             original_filenames=original_filenames,
             temp_file_paths=file_paths,
+            preview_mode=preview_mode,
         )
 
     async def create_langflow_upload_task(
@@ -295,6 +297,7 @@ class TaskService:
         connector_type: str = "local",
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
         # Use LangflowFileProcessor with user context
@@ -321,6 +324,7 @@ class TaskService:
             original_filenames,
             existing_task_id=existing_task_id,
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
+            preview_mode=preview_mode,
         )
 
     async def create_langflow_url_upload_task(
@@ -366,6 +370,7 @@ class TaskService:
         original_filenames: dict | None = None,
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new task with custom processor for any type of items"""
         import os
@@ -400,6 +405,7 @@ class TaskService:
                 task_id=task_id,
                 total_files=len(items),
                 file_tasks=file_tasks,
+                preview_mode=preview_mode,
             )
             upload_task.processor = processor
             if store_user_id not in self.task_store:
@@ -753,6 +759,10 @@ class TaskService:
             ):
                 return self.task_store[candidate_user_id][task_id]
         return None
+
+    def get_upload_task(self, user_id: str, task_id: str) -> UploadTask | None:
+        """Public accessor for upload task lookup."""
+        return self._resolve_upload_task(user_id, task_id)
 
     def _resolve_upload_task_store(
         self, user_id: str, task_id: str
@@ -1216,7 +1226,11 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status != TaskStatus.COMPLETED:
+                    # The task panel only surfaces in-flight/failed files to keep
+                    # the list tidy. Preview-mode tasks instead need every file
+                    # (including completed ones) so the live preview carousel can
+                    # still enumerate them and render their cached Docling layout.
+                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)

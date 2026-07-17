@@ -244,13 +244,14 @@ export function KnowledgeDropdown() {
           } = {};
 
           const availableTypes = cloudConnectorTypes.filter(
-            (type) => connectorsResult.connectors[type],
+            (type) => connectorsResult.connectors?.[type],
           );
 
           for (const type of availableTypes) {
             connectorInfo[type] = {
-              name: connectorsResult.connectors[type].name,
-              available: connectorsResult.connectors[type].available,
+              name: connectorsResult.connectors?.[type]?.name ?? type,
+              available:
+                connectorsResult.connectors?.[type]?.available ?? false,
               connected: false,
               hasToken: false,
             };
@@ -325,11 +326,9 @@ export function KnowledgeDropdown() {
       // File selection will close dropdown automatically
 
       try {
-        console.log("[Duplicate Check] Checking file:", file.name);
         const exists = await isDuplicateFile(file);
 
         if (exists) {
-          console.log("[Duplicate Check] Duplicate detected, showing dialog");
           resetDuplicateDialogState();
           setPendingFile(file);
           setDuplicateFilename(file.name);
@@ -337,9 +336,6 @@ export function KnowledgeDropdown() {
           resetFileInput();
           return;
         }
-
-        // No duplicate, proceed with upload
-        console.log("[Duplicate Check] No duplicate, proceeding with upload");
         await uploadFile(file, false);
       } catch (error) {
         console.error("[Duplicate Check] Exception:", error);
@@ -406,10 +402,6 @@ export function KnowledgeDropdown() {
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
     }
-
-    console.log(
-      `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
-    );
 
     for (const batch of batches) {
       try {
@@ -584,9 +576,6 @@ export function KnowledgeDropdown() {
       }
 
       if (duplicateCount > 0) {
-        console.log(
-          `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
-        );
         resetDuplicateDialogState();
         setPendingFolderUpload({
           allFiles: cleanFiles,

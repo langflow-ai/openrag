@@ -31,7 +31,7 @@ export function ConnectorAccessSection() {
     null,
   );
 
-  const serverSnapshot = useMemo(
+  const _serverSnapshot = useMemo(
     () => connectors.map((c) => `${c.type}:${c.enabled}`).join("|"),
     [connectors],
   );
@@ -45,7 +45,7 @@ export function ConnectorAccessSection() {
       );
       return hasUnsavedEdits ? draft : null;
     });
-  }, [serverSnapshot, connectors]);
+  }, [connectors]);
 
   const accessForSave = useMemo(
     () =>

@@ -71,6 +71,8 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
         b"PDFDATA",
         user_id="owner-123",
         auth_header="Bearer jwt-token",
+        ocr=None,
+        picture_descriptions=None,
     )
 
     # Langflow was invoked exactly once, with the docling_task_id forwarded.

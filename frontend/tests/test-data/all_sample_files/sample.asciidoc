@@ -1,0 +1,17 @@
+= API Authentication Guide
+
+This document explains how to authenticate API requests.
+
+== Methods
+
+=== API Key
+Include the API key in the header:
+`Authorization: ApiKey <your_key>`
+
+=== OAuth 2.0
+Use access tokens obtained via authorization server.
+
+== Notes
+
+- Never expose your API key publicly
+- Rotate keys periodically
