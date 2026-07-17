@@ -53,8 +53,6 @@ export function ChatRenderer({
     setOnboardingComplete,
   } = useChat();
 
-  //TODO: comment to test CI
-
   // Initialize onboarding state from backend settings
   const [currentStep, setCurrentStep] = useState<number>(
     settings?.onboarding?.current_step ?? 0,
