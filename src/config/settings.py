@@ -1405,13 +1405,19 @@ class AppClients:
             raise last_error
         raise RuntimeError("Langflow request failed without a response")
 
-    async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
+    async def _create_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        modify: bool = False,
+        variable_type: str = "Credential",
+    ):
         """Create a global variable in Langflow via API"""
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
-            "type": "Credential",
+            "type": variable_type,
         }
 
         try:
@@ -1428,7 +1434,9 @@ class AppClients:
                         "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                    await self._update_langflow_global_variable(name, value)
+                    await self._update_langflow_global_variable(
+                        name, value, variable_type=variable_type
+                    )
                 else:
                     logger.info(
                         "Langflow global variable already exists",
@@ -1448,7 +1456,12 @@ class AppClients:
             )
             raise e
 
-    async def _update_langflow_global_variable(self, name: str, value: str):
+    async def _update_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        variable_type: str = "Credential",
+    ):
         """Update an existing global variable in Langflow via API"""
         try:
             # First, get all variables to find the one with the matching name
@@ -1480,12 +1493,58 @@ class AppClients:
                 logger.error("Variable ID not found for update", variable_name=name)
                 return
 
+            current_type = target_variable.get("type")
+            if current_type and current_type != variable_type:
+                delete_response = await self.langflow_request(
+                    "DELETE", f"/api/v1/variables/{variable_id}"
+                )
+                if delete_response.status_code not in [200, 204]:
+                    logger.warning(
+                        "Failed to delete Langflow global variable before type migration",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        current_type=current_type,
+                        target_type=variable_type,
+                        status_code=delete_response.status_code,
+                        response_text=delete_response.text,
+                    )
+                    return
+
+                recreate_payload = {
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                    "type": variable_type,
+                }
+                recreate_response = await self.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if recreate_response.status_code in [200, 201]:
+                    logger.info(
+                        "Migrated Langflow global variable type",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        old_type=current_type,
+                        new_type=variable_type,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to recreate Langflow global variable after type migration",
+                        variable_name=name,
+                        old_type=current_type,
+                        new_type=variable_type,
+                        status_code=recreate_response.status_code,
+                        response_text=recreate_response.text,
+                    )
+                return
+
             # Update the variable using PATCH
             update_payload = {
                 "id": variable_id,
                 "name": name,
                 "value": value,
                 "default_fields": target_variable.get("default_fields", []),
+                "type": variable_type,
             }
 
             patch_response = await self.langflow_request(

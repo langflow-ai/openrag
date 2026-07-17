@@ -169,6 +169,19 @@ async def startup_tasks(services):
             error=str(e),
         )
 
+    # Older Langflow databases may have plain-string globals stored as Credential
+    # variables because environment-seeded globals used Credential by default.
+    try:
+        from api.settings.langflow_sync import ensure_required_langflow_global_variables
+
+        await ensure_required_langflow_global_variables(get_openrag_config())
+        logger.info("Ensured required Langflow global variables")
+    except Exception as e:
+        logger.error(
+            "Failed to ensure required Langflow global variables at startup",
+            error=str(e),
+        )
+
     # Check if flows were reset and reapply settings if config is edited
     try:
         config = get_openrag_config()

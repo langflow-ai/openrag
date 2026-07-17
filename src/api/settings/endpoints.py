@@ -584,7 +584,10 @@ async def update_settings(
             # Also update global variable with new index name
             try:
                 await clients._create_langflow_global_variable(
-                    "OPENSEARCH_INDEX_NAME", new_index_name, modify=True
+                    "OPENSEARCH_INDEX_NAME",
+                    new_index_name,
+                    modify=True,
+                    variable_type="Generic",
                 )
                 logger.info(
                     f"Successfully updated global variable with new index name {new_index_name}"
