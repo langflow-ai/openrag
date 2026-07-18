@@ -102,11 +102,7 @@ class IngestPreviewService:
         known = self._task_keys.get(task_key)
         if not known:
             return set()
-        alive = {
-            file_path
-            for file_path in known
-            if (user_id, task_id, file_path) in self._entries
-        }
+        alive = {file_path for file_path in known if (user_id, task_id, file_path) in self._entries}
         if alive:
             self._task_keys[task_key] = alive
         else:
