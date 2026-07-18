@@ -52,3 +52,35 @@ export function pageFromDoclingRef(
   if (!Number.isFinite(n)) return null;
   return numbering === "zero-based" ? n - 1 : n;
 }
+
+function pageHasEmbeddedImage(page: unknown): boolean {
+  const image = (page as { image?: unknown } | null)?.image;
+  if (!image) return false;
+  if (typeof image === "string") return image.length > 0;
+  const { uri, data } = image as { uri?: unknown; data?: unknown };
+  return Boolean(uri) || Boolean(data);
+}
+
+/**
+ * Whether the Docling JSON embeds full-page renderings. Only PDFs and image
+ * inputs produce these; office formats parse to structured items without page
+ * rasters, so `docling-img` would render blank for them.
+ */
+export function doclingHasPageImages(
+  document: Record<string, unknown>,
+): boolean {
+  const pages = (document as { pages?: unknown }).pages;
+  if (!pages) return false;
+  if (Array.isArray(pages)) {
+    for (const page of pages) {
+      if (pageHasEmbeddedImage(page)) return true;
+    }
+    return false;
+  }
+  for (const key of Object.keys(pages as object)) {
+    if (pageHasEmbeddedImage((pages as Record<string, unknown>)[key])) {
+      return true;
+    }
+  }
+  return false;
+}

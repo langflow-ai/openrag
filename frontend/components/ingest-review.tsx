@@ -27,7 +27,6 @@ import {
 import {
   DoclingParseViewer,
   DoclingTextPreview,
-  doclingHasPageImages,
 } from "@/components/docling-preview";
 import { FileChunksPanel } from "@/components/file-chunks-panel";
 import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-open-control";
@@ -61,6 +60,7 @@ import {
 } from "@/hooks/use-ingest-preview-settings";
 import {
   chunkPageToDoclingRef,
+  doclingHasPageImages,
   pageFromDoclingRef,
   summarizeChunkPages,
 } from "@/lib/ingest-preview";
@@ -704,14 +704,18 @@ function IngestReviewContent({
     }
   }
 
-  const notifiedRef = useRef<Set<string>>(new Set());
+  const notifiedRef = useRef<Set<string> | null>(null);
+  if (notifiedRef.current === null) {
+    notifiedRef.current = new Set();
+  }
   const ready = Boolean(indexProof?.ready);
   const activeFilename = active?.filename;
   useEffect(() => {
     if (!settings.completionNotification || !ready || !activeFilename) return;
     const key = activeSelectionKey || activeFilename;
-    if (notifiedRef.current.has(key)) return;
-    notifiedRef.current.add(key);
+    const notified = notifiedRef.current;
+    if (!notified || notified.has(key)) return;
+    notified.add(key);
     toast.success("Task completed", {
       description: `${activeFilename} is indexed and searchable.`,
     });
@@ -862,19 +866,14 @@ export function IngestReviewDialog({
   const [expanded, setExpanded] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
-  // Reset expand state when the dialog re-opens (sync during render).
+  // Reset expand state + mark seen when the dialog re-opens (sync during render).
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setExpanded(false);
-    }
-  }
-
-  useEffect(() => {
-    if (open) {
       markIngestPreviewSeen();
     }
-  }, [open]);
+  }
 
   // Skip mounting while closed so preview polls don't run in the background.
   if (!open || (taskIds.length === 0 && previewFiles.length === 0)) {

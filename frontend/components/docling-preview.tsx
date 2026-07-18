@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -87,38 +88,6 @@ export function DoclingParseViewer({
   }, [ready, highlightItems]);
 
   return <div ref={containerRef} data-testid="docling-parse-viewer" />;
-}
-
-/**
- * Whether the Docling JSON embeds full-page renderings. Only PDFs and image
- * inputs produce these; office formats (docx/pptx/xlsx/…) parse to structured
- * items without page rasters, so `docling-img` would render blank for them.
- */
-function pageHasEmbeddedImage(page: unknown): boolean {
-  const image = (page as { image?: unknown } | null)?.image;
-  if (!image) return false;
-  if (typeof image === "string") return image.length > 0;
-  const { uri, data } = image as { uri?: unknown; data?: unknown };
-  return Boolean(uri) || Boolean(data);
-}
-
-export function doclingHasPageImages(
-  document: Record<string, unknown>,
-): boolean {
-  const pages = (document as { pages?: unknown }).pages;
-  if (!pages) return false;
-  if (Array.isArray(pages)) {
-    for (const page of pages) {
-      if (pageHasEmbeddedImage(page)) return true;
-    }
-    return false;
-  }
-  for (const key of Object.keys(pages as object)) {
-    if (pageHasEmbeddedImage((pages as Record<string, unknown>)[key])) {
-      return true;
-    }
-  }
-  return false;
 }
 
 type DoclingTextItem = {
@@ -295,11 +264,13 @@ function DoclingPictureBlock({ picture }: { picture: DoclingPictureItem }) {
   }
   return (
     <ParsedBlock style={FIGURE_STYLE}>
-      {/* biome-ignore lint/performance/noImgElement: data URI from parsed preview */}
-      <img
+      <Image
         src={uri}
         alt="Parsed figure"
-        className="max-h-48 rounded border border-border/40 bg-background object-contain"
+        width={640}
+        height={360}
+        unoptimized
+        className="max-h-48 h-auto w-auto rounded border border-border/40 bg-background object-contain"
       />
     </ParsedBlock>
   );
@@ -329,9 +300,9 @@ function resolveRef(
 }
 
 type ParsedItem =
-  | { kind: "text"; node: DoclingTextItem }
-  | { kind: "table"; node: DoclingTableItem }
-  | { kind: "picture"; node: DoclingPictureItem };
+  | { kind: "text"; id: string; node: DoclingTextItem }
+  | { kind: "table"; id: string; node: DoclingTableItem }
+  | { kind: "picture"; id: string; node: DoclingPictureItem };
 
 /**
  * Walks the DoclingDocument body in reading order, resolving refs to texts,
@@ -362,11 +333,11 @@ function collectParsedItems(
         continue;
       }
       if (path.startsWith("#/texts")) {
-        result.push({ kind: "text", node });
+        result.push({ kind: "text", id: path, node });
       } else if (path.startsWith("#/tables")) {
-        result.push({ kind: "table", node });
+        result.push({ kind: "table", id: path, node });
       } else if (path.startsWith("#/pictures")) {
-        result.push({ kind: "picture", node });
+        result.push({ kind: "picture", id: path, node });
       } else if (path.startsWith("#/groups")) {
         walk(node.children);
       }
@@ -377,21 +348,37 @@ function collectParsedItems(
   walk(body?.children);
 
   if (result.length === 0) {
+    let fallbackIndex = 0;
     for (const node of (document.texts as DoclingTextItem[] | undefined) ??
       []) {
       if (result.length >= limit) break;
-      result.push({ kind: "text", node });
+      result.push({
+        kind: "text",
+        id: `#/texts/${fallbackIndex}`,
+        node,
+      });
+      fallbackIndex += 1;
     }
     for (const node of (document.tables as DoclingTableItem[] | undefined) ??
       []) {
       if (result.length >= limit) break;
-      result.push({ kind: "table", node });
+      result.push({
+        kind: "table",
+        id: `#/tables/${fallbackIndex}`,
+        node,
+      });
+      fallbackIndex += 1;
     }
     for (const node of (document.pictures as
       | DoclingPictureItem[]
       | undefined) ?? []) {
       if (result.length >= limit) break;
-      result.push({ kind: "picture", node });
+      result.push({
+        kind: "picture",
+        id: `#/pictures/${fallbackIndex}`,
+        node,
+      });
+      fallbackIndex += 1;
     }
   }
   return result;
@@ -436,23 +423,14 @@ export function DoclingTextPreview({
       className="space-y-3 rounded-md border border-border/40 bg-white p-4 shadow-sm dark:bg-slate-900"
       data-testid="docling-text-preview"
     >
-      {visible.map((item, index) => {
+      {visible.map((item) => {
         if (item.kind === "table") {
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: parsed items are static
-            <DoclingTableBlock key={`item-${index}`} table={item.node} />
-          );
+          return <DoclingTableBlock key={item.id} table={item.node} />;
         }
         if (item.kind === "picture") {
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: parsed items are static
-            <DoclingPictureBlock key={`item-${index}`} picture={item.node} />
-          );
+          return <DoclingPictureBlock key={item.id} picture={item.node} />;
         }
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: parsed items are static
-          <DoclingTextLine key={`item-${index}`} item={item.node} />
-        );
+        return <DoclingTextLine key={item.id} item={item.node} />;
       })}
       {truncated && (
         <p className="text-xxs text-muted-foreground">
