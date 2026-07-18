@@ -459,8 +459,18 @@ export function KnowledgeDropdown() {
     }
 
     const taskIdsByBatch: (string | undefined)[] = [];
-    await Promise.all(
-      batches.map(async (batch, batchIndex) => {
+    const failedBatchIndexes: number[] = [];
+    // Cap parallel batch uploads so large folders don't open every request at once.
+    const batchConcurrency = Math.min(2, batches.length);
+    let nextBatchIndex = 0;
+
+    const runNextBatch = async () => {
+      while (nextBatchIndex < batches.length) {
+        const batchIndex = nextBatchIndex;
+        nextBatchIndex += 1;
+        const batch = batches[batchIndex];
+        if (!batch) continue;
+
         try {
           const result = await uploadFiles(
             batch,
@@ -477,8 +487,12 @@ export function KnowledgeDropdown() {
               ),
             }));
             refetchTasks();
+          } else {
+            // Preview was pre-opened; close it when the server rejects preview mode.
+            setPreview(EMPTY_PREVIEW);
           }
         } catch (error) {
+          failedBatchIndexes.push(batchIndex);
           trackProcessFailure({
             processType: "Ingestion",
             process: "Document Upload",
@@ -493,10 +507,20 @@ export function KnowledgeDropdown() {
               error instanceof Error ? error.message : "Unknown error",
           });
         }
-      }),
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: batchConcurrency }, () => runNextBatch()),
     );
 
     refetchTasks();
+
+    if (failedBatchIndexes.length > 0) {
+      throw new Error(
+        `${failedBatchIndexes.length} of ${batches.length} batch upload(s) failed`,
+      );
+    }
   };
 
   const handleOverwriteFile = async () => {
@@ -504,12 +528,20 @@ export function KnowledgeDropdown() {
       isFolderOverwriteConfirmedRef.current = true;
       const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
-      await uploadFolderBatches(allFiles, true);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
-      );
+      try {
+        await uploadFolderBatches(allFiles, true);
+        const unsupportedMessage =
+          unsupportedCount > 0
+            ? `, skipped ${unsupportedCount} unsupported`
+            : "";
+        toast.success(
+          `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
+        );
+      } catch (error) {
+        toast.error("Folder upload incomplete", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       resetDuplicateDialogState();
       return;
     }
@@ -550,19 +582,26 @@ export function KnowledgeDropdown() {
         const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
-          await uploadFolderBatches(nonDuplicateFiles, false);
-          const extraParts: string[] = [];
-          if (duplicateNames.length > 0) {
-            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
+          try {
+            await uploadFolderBatches(nonDuplicateFiles, false);
+            const extraParts: string[] = [];
+            if (duplicateNames.length > 0) {
+              extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
+            }
+            if (unsupportedCount > 0) {
+              extraParts.push(`skipped ${unsupportedCount} unsupported`);
+            }
+            const suffix =
+              extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
+            toast.success(
+              `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
+            );
+          } catch (error) {
+            toast.error("Folder upload incomplete", {
+              description:
+                error instanceof Error ? error.message : "Unknown error",
+            });
           }
-          if (unsupportedCount > 0) {
-            extraParts.push(`skipped ${unsupportedCount} unsupported`);
-          }
-          const suffix =
-            extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-          toast.success(
-            `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
-          );
         } else {
           toast.info(
             "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",

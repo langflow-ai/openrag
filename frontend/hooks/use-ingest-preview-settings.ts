@@ -50,28 +50,36 @@ export function readIngestPreviewSettings(): IngestPreviewSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_INGEST_PREVIEW_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<IngestPreviewSettings>;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return DEFAULT_INGEST_PREVIEW_SETTINGS;
+    }
+    const settings = parsed as Partial<IngestPreviewSettings>;
     return {
       autoOpen: AUTO_OPEN_VALUES.includes(
-        parsed.autoOpen as IngestPreviewAutoOpen,
+        settings.autoOpen as IngestPreviewAutoOpen,
       )
-        ? (parsed.autoOpen as IngestPreviewAutoOpen)
+        ? (settings.autoOpen as IngestPreviewAutoOpen)
         : DEFAULT_INGEST_PREVIEW_SETTINGS.autoOpen,
       showChunkBoundaries:
-        typeof parsed.showChunkBoundaries === "boolean"
-          ? parsed.showChunkBoundaries
+        typeof settings.showChunkBoundaries === "boolean"
+          ? settings.showChunkBoundaries
           : DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkBoundaries,
       showIndexingPipeline:
-        typeof parsed.showIndexingPipeline === "boolean"
-          ? parsed.showIndexingPipeline
+        typeof settings.showIndexingPipeline === "boolean"
+          ? settings.showIndexingPipeline
           : DEFAULT_INGEST_PREVIEW_SETTINGS.showIndexingPipeline,
       showChunkContents:
-        typeof parsed.showChunkContents === "boolean"
-          ? parsed.showChunkContents
+        typeof settings.showChunkContents === "boolean"
+          ? settings.showChunkContents
           : DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkContents,
       completionNotification:
-        typeof parsed.completionNotification === "boolean"
-          ? parsed.completionNotification
+        typeof settings.completionNotification === "boolean"
+          ? settings.completionNotification
           : DEFAULT_INGEST_PREVIEW_SETTINGS.completionNotification,
     };
   } catch {

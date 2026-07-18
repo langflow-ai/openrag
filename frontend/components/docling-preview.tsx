@@ -21,9 +21,13 @@ function loadDoclingComponents(): Promise<void> {
     return Promise.resolve();
   }
   if (!doclingComponentsLoaded) {
-    doclingComponentsLoaded = import("@docling/docling-components").then(
-      () => undefined,
-    );
+    doclingComponentsLoaded = import("@docling/docling-components")
+      .then(() => undefined)
+      .catch((error) => {
+        // Clear so a later mount can retry the dynamic import.
+        doclingComponentsLoaded = null;
+        throw error;
+      });
   }
   return doclingComponentsLoaded;
 }
@@ -38,14 +42,21 @@ export function DoclingParseViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<DoclingImgElement | null>(null);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    void loadDoclingComponents().then(() => {
-      if (!cancelled) {
+    void loadDoclingComponents()
+      .then(() => {
+        if (cancelled) return;
+        setLoadError(false);
         setReady(true);
-      }
-    });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReady(false);
+        setLoadError(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -86,6 +97,17 @@ export function DoclingParseViewer({
       viewer.removeAttribute("items");
     }
   }, [ready, highlightItems]);
+
+  if (loadError) {
+    return (
+      <div
+        className="flex h-40 items-center justify-center px-4 text-center text-xs text-muted-foreground"
+        data-testid="docling-parse-viewer-error"
+      >
+        Document preview failed to load. Try again in a moment.
+      </div>
+    );
+  }
 
   return <div ref={containerRef} data-testid="docling-parse-viewer" />;
 }
@@ -348,37 +370,25 @@ function collectParsedItems(
   walk(body?.children);
 
   if (result.length === 0) {
-    let fallbackIndex = 0;
-    for (const node of (document.texts as DoclingTextItem[] | undefined) ??
-      []) {
+    const texts = (document.texts as DoclingTextItem[] | undefined) ?? [];
+    for (let i = 0; i < texts.length; i += 1) {
       if (result.length >= limit) break;
-      result.push({
-        kind: "text",
-        id: `#/texts/${fallbackIndex}`,
-        node,
-      });
-      fallbackIndex += 1;
+      result.push({ kind: "text", id: `#/texts/${i}`, node: texts[i] });
     }
-    for (const node of (document.tables as DoclingTableItem[] | undefined) ??
-      []) {
+    const tables = (document.tables as DoclingTableItem[] | undefined) ?? [];
+    for (let i = 0; i < tables.length; i += 1) {
       if (result.length >= limit) break;
-      result.push({
-        kind: "table",
-        id: `#/tables/${fallbackIndex}`,
-        node,
-      });
-      fallbackIndex += 1;
+      result.push({ kind: "table", id: `#/tables/${i}`, node: tables[i] });
     }
-    for (const node of (document.pictures as
-      | DoclingPictureItem[]
-      | undefined) ?? []) {
+    const pictures =
+      (document.pictures as DoclingPictureItem[] | undefined) ?? [];
+    for (let i = 0; i < pictures.length; i += 1) {
       if (result.length >= limit) break;
       result.push({
         kind: "picture",
-        id: `#/pictures/${fallbackIndex}`,
-        node,
+        id: `#/pictures/${i}`,
+        node: pictures[i],
       });
-      fallbackIndex += 1;
     }
   }
   return result;

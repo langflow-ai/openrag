@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from cachetools import TTLCache
+
 from config.settings import get_index_name
 from models.tasks import IngestionPhase
 from utils.logging_config import get_logger
@@ -20,6 +22,9 @@ INDEX_PROOF_MAX_CHUNKS = 200
 # could otherwise grow the in-memory cache without limit. Previews beyond this
 # count are simply not cached (the UI falls back to the local/expired state).
 MAX_PREVIEWS_PER_TASK = 50
+
+# Global bound for the in-memory Docling preview cache (TTL + maxsize).
+MAX_PREVIEW_CACHE_ENTRIES = 500
 
 
 def summarize_docling_document(document: dict[str, Any]) -> dict[str, int]:
@@ -83,8 +88,30 @@ class IngestPreviewService:
     """
 
     def __init__(self, ttl_seconds: int = 1800):
-        self._ttl_seconds = ttl_seconds
-        self._entries: dict[tuple[str, str, str | None], _PreviewEntry] = {}
+        self._ttl_seconds = max(ttl_seconds, 1)
+        self._entries: TTLCache[tuple[str, str, str | None], _PreviewEntry] = TTLCache(
+            maxsize=MAX_PREVIEW_CACHE_ENTRIES,
+            ttl=self._ttl_seconds,
+        )
+        # Per-task file_path set for O(task) cap checks (not a full-cache scan).
+        self._task_keys: dict[tuple[str, str], set[str | None]] = {}
+
+    def _prune_task_keys(self, user_id: str, task_id: str) -> set[str | None]:
+        """Drop file paths whose cache entries already expired or were evicted."""
+        task_key = (user_id, task_id)
+        known = self._task_keys.get(task_key)
+        if not known:
+            return set()
+        alive = {
+            file_path
+            for file_path in known
+            if (user_id, task_id, file_path) in self._entries
+        }
+        if alive:
+            self._task_keys[task_key] = alive
+        else:
+            self._task_keys.pop(task_key, None)
+        return alive
 
     def store_docling_preview(
         self,
@@ -97,21 +124,17 @@ class IngestPreviewService:
         filename: str | None = None,
     ) -> None:
         key = (user_id, task_id, file_path)
-        if key not in self._entries:
-            existing = sum(
-                1
-                for (entry_user, entry_task, _entry_file) in self._entries
-                if entry_user == user_id and entry_task == task_id
+        task_key = (user_id, task_id)
+        alive = self._prune_task_keys(user_id, task_id)
+        if key not in self._entries and len(alive) >= MAX_PREVIEWS_PER_TASK:
+            logger.debug(
+                "Skipping ingest parse preview cache (per-task cap reached)",
+                user_id=user_id,
+                task_id=task_id,
+                file_path=file_path,
+                cap=MAX_PREVIEWS_PER_TASK,
             )
-            if existing >= MAX_PREVIEWS_PER_TASK:
-                logger.debug(
-                    "Skipping ingest parse preview cache (per-task cap reached)",
-                    user_id=user_id,
-                    task_id=task_id,
-                    file_path=file_path,
-                    cap=MAX_PREVIEWS_PER_TASK,
-                )
-                return
+            return
         stats = summarize_docling_document(document)
         self._entries[key] = _PreviewEntry(
             user_id=user_id,
@@ -122,6 +145,8 @@ class IngestPreviewService:
             expires_at=time.time() + self._ttl_seconds,
             document_id=document_id,
         )
+        alive.add(file_path)
+        self._task_keys[task_key] = alive
         logger.info(
             "Stored ingest parse preview",
             user_id=user_id,
@@ -141,18 +166,12 @@ class IngestPreviewService:
         if file_path is not None:
             entry = self._entries.get((user_id, task_id, file_path))
         else:
-            entry = next(
-                (
-                    candidate
-                    for (entry_user, entry_task, _entry_file), candidate in self._entries.items()
-                    if entry_user == user_id and entry_task == task_id
-                ),
-                None,
-            )
+            entry = None
+            for known_path in self._prune_task_keys(user_id, task_id):
+                entry = self._entries.get((user_id, task_id, known_path))
+                if entry is not None:
+                    break
         if entry is None:
-            return None
-        if time.time() > entry.expires_at:
-            self._entries.pop((entry.user_id, task_id, entry.file_path), None)
             return None
         return {
             "document": entry.document,

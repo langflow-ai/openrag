@@ -83,7 +83,7 @@ export function KnowledgeSearchInput({
     }
   };
 
-  const showClear = controlled ? Boolean(value) : Boolean(queryOverride);
+  const showClear = Boolean(inputValue);
 
   return (
     <form

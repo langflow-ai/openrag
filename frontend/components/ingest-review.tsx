@@ -519,7 +519,13 @@ function PreviewFileSelector({
             <CommandGroup>
               {files.map((file, index) => {
                 const key = fileSelectionKey(file);
-                const ready = isPreviewReady(file.entry);
+                const failed = isFileEntryFailed(file.entry);
+                const ready = !failed && isPreviewReady(file.entry);
+                const status = failed
+                  ? "failed"
+                  : ready
+                    ? "ready"
+                    : "processing";
                 return (
                   <CommandItem
                     key={key}
@@ -546,12 +552,14 @@ function PreviewFileSelector({
                     <span
                       className={cn(
                         "shrink-0 text-xs",
-                        ready
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-muted-foreground",
+                        failed
+                          ? "text-destructive"
+                          : ready
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-muted-foreground",
                       )}
                     >
-                      {ready ? "ready" : "processing"}
+                      {status}
                     </span>
                   </CommandItem>
                 );
@@ -820,7 +828,7 @@ function IngestReviewContent({
           failed={failed}
           failedStepIndex={failedStepIndex}
           failureMessage={failureMessage}
-          awaitingChunks={!ready && !failed}
+          awaitingChunks={chunkCount === 0 && !failed}
           highlightItems={highlightItems}
           pageNumbering={pageNumbering}
           onHighlightChunk={setHighlightItems}

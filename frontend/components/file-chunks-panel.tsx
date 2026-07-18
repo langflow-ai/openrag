@@ -145,7 +145,10 @@ export function FileChunksPanel({
 }: FileChunksPanelProps) {
   const { file, isFetching } = useFileScopedChunksQuery(filename);
   const allChunks =
-    file?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) ?? [];
+    file?.chunks?.map((chunk, i) => ({
+      ...chunk,
+      index: chunk.index ?? i + 1,
+    })) ?? [];
 
   const filterControlled = filterQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState("");
@@ -175,13 +178,17 @@ export function FileChunksPanel({
     [],
   );
 
-  const handleCopy = (text: string, listIndex: number) => {
+  const handleCopy = async (text: string, listIndex: number) => {
     trackButton({
       CTA: "Copy Chunk Text",
       elementId: "copy-chunk-button",
       namespace: "knowledge",
     });
-    void navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
+    try {
+      await navigator.clipboard.writeText(text.trim());
+    } catch {
+      return;
+    }
     setCopiedIndex(listIndex);
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     copyTimerRef.current = setTimeout(() => setCopiedIndex(null), 10_000);
