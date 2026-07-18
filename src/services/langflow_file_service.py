@@ -36,12 +36,14 @@ class LangflowFileService:
         docling_service=None,
         document_index_writer=None,
         ingest_token_service=None,
+        ingest_preview_service=None,
     ):
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
         self.docling_service = docling_service
         self.document_index_writer = document_index_writer
         self.ingest_token_service = ingest_token_service
+        self.ingest_preview_service = ingest_preview_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
         self._embedding_dimension_cache: dict[str, int] = {}
 
@@ -850,6 +852,47 @@ class LangflowFileService:
             raise last_error
         raise RuntimeError("Unable to validate/import URL ingest flow")
 
+    async def _cache_docling_preview_if_enabled(
+        self,
+        *,
+        preview_mode: bool,
+        upload_task_id: str | None,
+        preview_user_id: str | None,
+        docling_task_id: str,
+        document_id: str | None,
+        owner: str | None,
+        jwt_token: str | None,
+        file_path: str | None = None,
+        filename: str | None = None,
+    ) -> None:
+        if not (
+            preview_mode and self.ingest_preview_service and upload_task_id and preview_user_id
+        ):
+            return
+        try:
+            doc_json = await self.docling_service.fetch_task_result(
+                docling_task_id,
+                user_id=owner,
+                auth_header=jwt_token,
+            )
+            self.ingest_preview_service.store_docling_preview(
+                preview_user_id,
+                upload_task_id,
+                doc_json,
+                file_path=file_path,
+                document_id=document_id,
+                filename=filename,
+            )
+        except Exception as preview_error:
+            logger.warning(
+                "[LF] Failed to cache parse preview after Docling success",
+                extra={
+                    "task_id": docling_task_id,
+                    "upload_task_id": upload_task_id,
+                    "error": str(preview_error),
+                },
+            )
+
     async def submit_to_docling(
         self,
         filename: str,
@@ -859,6 +902,7 @@ class LangflowFileService:
         *,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
@@ -879,6 +923,7 @@ class LangflowFileService:
                 auth_header=jwt_token,
                 ocr=ocr,
                 picture_descriptions=picture_descriptions,
+                preview_mode=preview_mode,
             )
             logger.debug(
                 "[LF] Docling submission accepted",
@@ -914,6 +959,9 @@ class LangflowFileService:
         allowed_principal_labels: list[dict[str, Any]] | None = None,
         original_filename: str | None = None,
         original_mimetype: str | None = None,
+        preview_mode: bool = False,
+        upload_task_id: str | None = None,
+        preview_user_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Two-phase Docling upload + Langflow ingest operation.
@@ -961,6 +1009,7 @@ class LangflowFileService:
             jwt_token=jwt_token,
             ocr=ocr_override,
             picture_descriptions=pic_desc_override,
+            preview_mode=preview_mode,
         )
 
         if file_task is not None:
@@ -1012,6 +1061,17 @@ class LangflowFileService:
 
             if file_task is not None:
                 file_task.docling_status = DoclingPhaseStatus.SUCCESS
+            await self._cache_docling_preview_if_enabled(
+                preview_mode=preview_mode,
+                upload_task_id=upload_task_id,
+                preview_user_id=preview_user_id,
+                docling_task_id=task_id,
+                document_id=document_id,
+                owner=owner,
+                jwt_token=jwt_token,
+                file_path=file_task.file_path if file_task is not None else None,
+                filename=filename,
+            )
             logger.info(
                 "[LF] Docling conversion ready; proceeding to Langflow",
                 extra={

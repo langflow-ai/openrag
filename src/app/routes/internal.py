@@ -75,7 +75,13 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/upload_options", upload.upload_options, methods=["GET"], tags=["internal"])
     app.add_api_route("/upload_bucket", upload.upload_bucket, methods=["POST"], tags=["internal"])
 
-    # Ingest preview endpoint (index proof for preview-mode ingests)
+    # Ingest preview endpoints (Docling layout + index proof for preview-mode ingests)
+    app.add_api_route(
+        "/ingest/preview/{task_id}/docling",
+        ingest_preview.get_parse_preview,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route(
         "/ingest/preview/{task_id}/index-proof",
         ingest_preview.get_index_proof,

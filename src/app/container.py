@@ -121,6 +121,7 @@ async def initialize_services():
         docling_service=clients.docling_service,
         document_index_writer=document_index_writer,
         ingest_token_service=langflow_ingest_token_service,
+        ingest_preview_service=ingest_preview_service,
     )
     langflow_mcp_service = LangflowMCPService()
 

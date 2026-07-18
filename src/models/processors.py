@@ -858,6 +858,7 @@ class ConnectorFileProcessor(TaskProcessor):
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         connector_type: str | None = None,
+        preview_mode: bool = False,
         shared: bool = False,
     ):
         super().__init__(
@@ -875,6 +876,7 @@ class ConnectorFileProcessor(TaskProcessor):
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
+        self.preview_mode = preview_mode
         self.shared = shared
 
     async def _reconcile_shared_owner(self, filename: str) -> None:
@@ -1225,6 +1227,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         if self.connector_service.task_service
                         else None,
                         file_task=file_task,
+                        document_id=document.id,
                         connector_file_id=document.id,
                         source_url=document.source_url,
                         allowed_users=allowed_users,
@@ -1233,6 +1236,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         allowed_principal_labels=allowed_principal_labels,
                         original_filename=file_task.filename,
                         original_mimetype=document.mimetype,
+                        preview_mode=self.preview_mode,
+                        upload_task_id=upload_task.task_id,
+                        preview_user_id=self.user_id,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
@@ -1442,6 +1448,7 @@ class LangflowFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str = "local",
         docling_polling_service=None,
+        preview_mode: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1456,6 +1463,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
+        self.preview_mode = preview_mode
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -1556,6 +1564,9 @@ class LangflowFileProcessor(TaskProcessor):
                 document_id=file_hash,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
+                preview_mode=self.preview_mode,
+                upload_task_id=upload_task.task_id,
+                preview_user_id=self.owner_user_id,
             )
 
             # Langflow returns "success" even when no text was extracted
