@@ -69,10 +69,12 @@ from config.settings import (
     LOCALHOST_URL,
     OPENRAG_INGEST_VIA_CHAT,
     OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
+    OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
     get_openrag_config,
+    is_workspace_oauth_overrides_enabled,
 )
 from dependencies import (
     get_chat_service,
@@ -242,6 +244,8 @@ async def get_settings(
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
+            show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
+            show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
@@ -1196,7 +1200,9 @@ async def onboarding(
                 except Exception as e:
                     logger.error("Failed to complete sample data ingestion", error=str(e))
                     return JSONResponse(
-                        {"error": f"Failed to ingest sample documents: {str(e)}"},
+                        {
+                            "error": "Failed to ingest sample documents. Please try again or contact support."
+                        },
                         status_code=500,
                     )
 
@@ -1279,7 +1285,7 @@ async def onboarding(
         logger.error("Failed to update onboarding settings", error=str(e))
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_FAILED)
         return JSONResponse(
-            {"error": str(e)},
+            {"error": "Failed to complete onboarding. Please try again or contact support."},
             status_code=500,
         )
 
@@ -1315,7 +1321,7 @@ async def update_onboarding_state(
     except Exception as e:
         logger.error(f"Error updating onboarding state: {str(e)}")
         return JSONResponse(
-            {"error": f"Failed to update onboarding state: {str(e)}"},
+            {"error": "Failed to update onboarding state. Please try again or contact support."},
             status_code=500,
         )
 
@@ -1659,5 +1665,5 @@ async def refresh_openrag_docs(
         logger.error("Failed to refresh OpenRAG docs on demand", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to refresh OpenRAG docs: {str(e)}",
+            detail="Failed to refresh OpenRAG docs. Please try again or contact support.",
         ) from e

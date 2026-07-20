@@ -1,4 +1,5 @@
 """Utilities for determining the OpenRAG application run mode."""
+
 import os
 
 RUN_MODE_OSS: str = "oss"

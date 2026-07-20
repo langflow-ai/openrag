@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
@@ -35,9 +35,11 @@ export const ModelProviders = () => {
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
-  const allProviderKeys = isCloudBrand
-    ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-    : ALL_PROVIDERS;
+  const allProviderKeys = useMemo(() => {
+    return isCloudBrand
+      ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+      : ALL_PROVIDERS;
+  }, [isCloudBrand]);
 
   // Handle URL search param to open dialogs
   useEffect(() => {
@@ -45,7 +47,7 @@ export const ModelProviders = () => {
     if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
       setDialogOpen(searchParam as ModelProvider);
     }
-  }, [searchParams]);
+  }, [searchParams, allProviderKeys]);
 
   // Function to close dialog and remove search param
   const handleCloseDialog = () => {

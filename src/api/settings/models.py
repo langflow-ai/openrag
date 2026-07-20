@@ -195,6 +195,8 @@ class SettingsResponse(BaseModel):
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
     show_provider_ingest_settings: bool = False
+    show_shared_upload_toggle: bool = False
+    show_workspace_oauth_overrides: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None

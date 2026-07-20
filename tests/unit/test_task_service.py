@@ -281,3 +281,46 @@ async def test_concurrent_mixed_counter_updates(task_service):
     assert task.failed_files == 7
     assert task.successful_files == 13
     assert task.processed_files == task.successful_files + task.failed_files
+
+
+def test_enhanced_drops_completed_files_for_normal_tasks(task_service):
+    """Task panel keeps its list tidy: completed files are not surfaced."""
+    task = UploadTask(
+        task_id="normal_task",
+        total_files=2,
+        file_tasks={
+            "fileA": FileTask(file_path="fileA", status=TaskStatus.COMPLETED),
+            "fileB": FileTask(file_path="fileB", status=TaskStatus.RUNNING),
+        },
+        status=TaskStatus.RUNNING,
+    )
+    task_service.task_store["user1"] = {"normal_task": task}
+
+    tasks = task_service.get_all_tasks2("user1")
+
+    files = tasks[0]["files"]
+    assert "fileA" not in files  # completed dropped
+    assert "fileB" in files
+
+
+def test_enhanced_keeps_completed_files_for_preview_tasks(task_service):
+    """Preview tasks must retain completed files so the live preview carousel
+    can still enumerate them and render their cached Docling layout."""
+    task = UploadTask(
+        task_id="preview_task",
+        total_files=2,
+        file_tasks={
+            "fileA": FileTask(file_path="fileA", status=TaskStatus.COMPLETED),
+            "fileB": FileTask(file_path="fileB", status=TaskStatus.RUNNING),
+        },
+        status=TaskStatus.RUNNING,
+        preview_mode=True,
+    )
+    task_service.task_store["user1"] = {"preview_task": task}
+
+    tasks = task_service.get_all_tasks2("user1")
+
+    files = tasks[0]["files"]
+    assert "fileA" in files  # completed retained for preview
+    assert files["fileA"]["status"] == "completed"
+    assert "fileB" in files

@@ -2,7 +2,7 @@ import hashlib
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -221,7 +221,7 @@ class SessionManager:
         expires_delta: timedelta,
     ) -> str:
         # Create JWT token with OIDC-compliant claims
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         roles = ["openrag_user"]
         token_payload = {
             # OIDC standard claims

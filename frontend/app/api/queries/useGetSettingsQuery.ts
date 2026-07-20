@@ -79,6 +79,8 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  show_shared_upload_toggle?: boolean;
+  show_workspace_oauth_overrides?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

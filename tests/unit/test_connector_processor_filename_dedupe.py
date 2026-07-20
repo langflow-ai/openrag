@@ -582,7 +582,7 @@ async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_
 
     shoulds = captured["query"]["bool"]["filter"][0]["bool"]["should"]
     fields = {next(iter(c["term"])) for c in shoulds}
-    assert fields == {"document_id", "connector_file_id"}
+    assert fields == {"document_id", "connector_file_id", "connector_file_id.keyword"}
     excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
     assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))
 

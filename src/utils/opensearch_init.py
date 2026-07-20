@@ -216,7 +216,13 @@ async def _ensure_opensearch_index():
             await _ensure_keyword_mappings(
                 clients.opensearch,
                 index_name,
-                ["allowed_users", "allowed_groups", "allowed_principals", "ingest_run_id"],
+                [
+                    "allowed_users",
+                    "allowed_groups",
+                    "allowed_principals",
+                    "ingest_run_id",
+                    "connector_file_id",
+                ],
             )
             await _ensure_field_mappings(
                 clients.opensearch,
@@ -297,7 +303,13 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             await _ensure_keyword_mappings(
                 os_client,
                 index_name,
-                ["allowed_users", "allowed_groups", "allowed_principals", "ingest_run_id"],
+                [
+                    "allowed_users",
+                    "allowed_groups",
+                    "allowed_principals",
+                    "ingest_run_id",
+                    "connector_file_id",
+                ],
             )
             await _ensure_field_mappings(
                 os_client,

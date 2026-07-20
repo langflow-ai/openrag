@@ -13,10 +13,10 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
-    IBM_AUTH_ENABLED,
     get_openrag_config,
 )
 from utils.logging_config import get_logger
+from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
 logger = get_logger(__name__)
 
@@ -176,14 +176,10 @@ class DoclingService:
     def _get_auth_headers(
         self, user_id: str | None = None, auth_header: str | None = None
     ) -> dict[str, str]:
-        """Build authentication headers for Docling Serve if IBM auth is enabled."""
+        """Build authentication headers for Docling Serve in saas run mode."""
         headers = {}
-        if IBM_AUTH_ENABLED:
-            if auth_header:
-                headers["Authorization"] = auth_header
-
-            if user_id:
-                headers["X-Tenant-Id"] = user_id
+        if (is_run_mode_saas() or is_run_mode_on_prem()) and auth_header:
+            headers["Authorization"] = auth_header
         return headers
 
     async def upload_to_docling_direct_async(
@@ -380,10 +376,10 @@ class DoclingService:
         if payload.get("status") == "failure" or payload.get("errors"):
             raise DoclingServeError(f"Docling processing failed: {_format_docling_error(payload)}")
 
-        doc_content = payload.get("document", {}).get("json_content")
-        if doc_content is None:
+        document = payload.get("document") or {}
+        if document.get("json_content") is None:
             raise DoclingServeError("docling-serve response missing document.json_content")
-        return doc_content
+        return document["json_content"]
 
     async def _poll_result(
         self,
@@ -418,7 +414,8 @@ class DoclingService:
                 result_json = result_response.json()
 
                 # Extract the json_content which matches the old convert_file/bytes return
-                doc_content = result_json.get("document", {}).get("json_content")
+                document = result_json.get("document") or {}
+                doc_content = document.get("json_content")
                 if doc_content is None:
                     raise DoclingServeError("docling-serve response missing document.json_content")
 
