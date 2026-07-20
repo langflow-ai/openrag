@@ -3,6 +3,7 @@ ENV_FILE ?= .env
 
 # Load variables from $(ENV_FILE) if present so `make` commands pick them up
 # Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
+
 ifneq (,$(wildcard $(ENV_FILE)))
   include $(ENV_FILE)
   export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))

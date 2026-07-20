@@ -79,6 +79,7 @@ class TaskProcessor:
         on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
         *,
         wait_for_visibility: bool = False,
+        field: str = "document_id",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -102,6 +103,26 @@ class TaskProcessor:
         max_retries = 3
         retry_delay = 1.0
 
+        # Some deployments' indices predate connector_file_id's addition to the
+        # explicit mapping (config/settings.py), so OpenSearch dynamically
+        # mapped it as analyzed `text` (with a `.keyword` multi-field) instead
+        # of the intended `keyword` type. A plain term query against such a
+        # field tokenizes the query value and rarely matches the raw id, so
+        # also match its `.keyword` multi-field. document_id has always been
+        # explicitly `keyword` since index creation and never has this issue.
+        query: dict[str, Any]
+        if field == "connector_file_id":
+            query = {
+                "bool": {
+                    "should": [
+                        {"term": {field: file_hash}},
+                        {"term": {f"{field}.keyword": file_hash}},
+                    ]
+                }
+            }
+        else:
+            query = {"term": {field: file_hash}}
+
         for attempt in range(max_retries):
             try:
                 response = await opensearch_client.search(
@@ -109,7 +130,7 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {"document_id": file_hash}},
+                        "query": query,
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
@@ -342,6 +363,11 @@ class TaskProcessor:
                                 "should": [
                                     {"term": {"document_id": file_id}},
                                     {"term": {"connector_file_id": file_id}},
+                                    # Some deployments' indices predate this field's
+                                    # addition to the explicit mapping, so it was
+                                    # dynamically mapped as analyzed text with a
+                                    # `.keyword` multi-field instead of `keyword`.
+                                    {"term": {"connector_file_id.keyword": file_id}},
                                 ],
                                 "minimum_should_match": 1,
                             }
@@ -411,8 +437,14 @@ class TaskProcessor:
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
         # but OpenRAG processors still need a concrete embedding model.
-        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        config = get_openrag_config()
+        configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
+
+        if chunk_size is None:
+            chunk_size = config.knowledge.chunk_size
+        if chunk_overlap is None:
+            chunk_overlap = config.knowledge.chunk_overlap
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -482,12 +514,13 @@ class TaskProcessor:
             else embedding_model
         )
 
-        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        max_tokens = (
-            2000
-            if litellm_embedding_model and "ollama" in litellm_embedding_model.lower()
-            else 8000
-        )
+        litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
+        if "watsonx" in litellm_model_lower:
+            max_tokens = 500
+        elif "ollama" in litellm_model_lower:
+            max_tokens = 2000
+        else:
+            max_tokens = 8000
 
         # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
         slim_doc["chunks"] = split_chunks_by_max_tokens(
@@ -707,7 +740,11 @@ class DocumentFileProcessor(TaskProcessor):
             elif filename_exists and self.replace_duplicates:
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
+                await self.delete_document_by_filename(
+                    original_filename,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
                 # Refresh index to make deletion visible before processing.
                 # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
                 # so it must run under the admin/service client, not the user client.
@@ -1091,10 +1128,25 @@ class ConnectorFileProcessor(TaskProcessor):
                             delete_document_ids,
                         )
 
+                        # Match both fields: bucket-connector chunks carry the
+                        # raw connector id in connector_file_id (document_id is
+                        # a hash), while pre-migration chunks only have it in
+                        # document_id.
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),
-                            query={"term": {"document_id": document.id}},
+                            query={
+                                "bool": {
+                                    "should": [
+                                        {"term": {"document_id": document.id}},
+                                        {"term": {"connector_file_id": document.id}},
+                                        # See check_document_exists: some indices
+                                        # predate the explicit keyword mapping for
+                                        # this field.
+                                        {"term": {"connector_file_id.keyword": document.id}},
+                                    ]
+                                }
+                            },
                         )
                         deleted_count = await delete_document_ids(
                             opensearch_client,
@@ -1173,7 +1225,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         if self.connector_service.task_service
                         else None,
                         file_task=file_task,
-                        document_id=document.id,
+                        connector_file_id=document.id,
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
@@ -1193,6 +1245,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         _verification_client(opensearch_client),
                         on_error="assume_exists",
                         wait_for_visibility=True,
+                        field="connector_file_id",
                     ):
                         result = {
                             "status": "error",
@@ -1209,7 +1262,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="document_id",
                             indexed_filename=file_task.filename,
                         )
                 else:
@@ -1257,7 +1309,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
 

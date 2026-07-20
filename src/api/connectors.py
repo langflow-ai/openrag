@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_index_name
+from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -76,6 +76,15 @@ def _connector_sync_should_replace(connector_type: str) -> bool:
     return connector_type in ["google_drive", "sharepoint", "onedrive"]
 
 
+def _is_unmapped_keyword_agg_error(err: Exception) -> bool:
+    """True when a terms aggregation failed because the target field is an
+    analyzed `text` field without fielddata enabled — the error OpenSearch
+    raises for connector_file_id on indices that predate its addition to the
+    explicit `keyword` mapping in config/settings.py."""
+    msg = str(err)
+    return "Text fields are not optimised" in msg or "fielddata" in msg
+
+
 async def get_synced_file_ids_for_connector(
     connector_type: str,
     user_id: str,
@@ -100,7 +109,7 @@ async def get_synced_file_ids_for_connector(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -116,7 +125,19 @@ async def get_synced_file_ids_for_connector(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # Some indices predate connector_file_id's addition to the explicit
+            # mapping (config/settings.py), so it was dynamically mapped as
+            # analyzed text instead of keyword — terms aggs need the
+            # `.keyword` multi-field on those indices.
+            query_body["aggs"]["unique_connector_file_ids"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
 
         # Prefer connector_file_id — these are set by ConnectorFileProcessor (non-Langflow)
         # and hold the actual connector source IDs (e.g. SharePoint GUIDs), not SHA hashes.
@@ -190,7 +211,7 @@ async def get_synced_id_to_filename_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -253,7 +274,7 @@ async def get_synced_id_to_modified_time_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -268,7 +289,17 @@ async def get_synced_id_to_modified_time_map(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # See get_synced_file_ids_for_connector: some indices predate the
+            # explicit keyword mapping for connector_file_id.
+            query_body["aggs"]["by_connector_file_id"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
         aggs = result.get("aggregations", {})
 
         mapping: dict[str, float | None] = {}
@@ -604,6 +635,11 @@ class ConnectorSyncBody(BaseModel):
 class ConnectorCheckDuplicatesBody(BaseModel):
     connection_id: str | None = None
     selected_files: list[Any] | None = None
+    # Bucket-kind connectors (aws_s3, azure_blob, ibm_cos) select whole
+    # buckets rather than individual files; when set (and selected_files is
+    # not), the check lists files from these buckets and classifies each as
+    # new/changed/unchanged instead of a plain filename match.
+    bucket_filter: list[str] | None = None
 
 
 def _connector_file_response(file_info: dict[str, Any], cleaned_name: str | None = None) -> dict:
@@ -738,6 +774,83 @@ async def _classify_connector_duplicates(
     }
 
 
+async def _classify_bucket_connector_duplicates(
+    connector,
+    connector_type: str,
+    bucket_filter: list[str],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> dict[str, Any]:
+    """Preview a bucket_filter sync: classify remote blobs new/changed/unchanged
+    without ingesting anything, mirroring the reconciliation in connector_sync's
+    bucket_filter branch. "changed" blobs are reported as duplicates (they would
+    overwrite an already-indexed version); "unchanged" blobs are silently
+    dropped (the real sync would skip them too); "new" blobs are returned as
+    ``non_duplicate_files`` so the caller can sync just those when the user
+    chooses to skip duplicates.
+    """
+    original_buckets = connector.bucket_names
+    connector.bucket_names = bucket_filter
+    try:
+        all_files: list[dict[str, Any]] = []
+        page_token = None
+        while True:
+            result = await connector.list_files(page_token=page_token)
+            all_files.extend(result.get("files", []))
+            page_token = result.get("next_page_token")
+            if not page_token:
+                break
+    finally:
+        connector.bucket_names = original_buckets
+
+    if not all_files:
+        return {
+            "duplicate_names": [],
+            "duplicate_files": [],
+            "non_duplicate_files": [],
+            "duplicate_count": 0,
+            "total_files": 0,
+        }
+
+    existing_ids, _, _ = await get_synced_file_ids_for_connector(
+        connector_type=connector_type,
+        user_id=user_id,
+        session_manager=session_manager,
+        jwt_token=jwt_token,
+    )
+    existing_set = set(existing_ids)
+
+    # Existence-based, like the OAuth connector duplicate check: any blob
+    # already ingested under this connector_type is a "duplicate" regardless
+    # of whether the remote copy is newer. (The real bucket_filter sync uses
+    # modified_time to auto-skip unchanged blobs on ITS OWN — that's a
+    # separate, silent optimization; the confirm dialog here is about whether
+    # the user wants to touch an already-indexed file at all, same as it
+    # would for Google Drive/OneDrive/SharePoint.)
+    duplicate_files: list[dict[str, Any]] = []
+    duplicate_names: list[str] = []
+    non_duplicate_files: list[dict[str, Any]] = []
+    for f in all_files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        if fid in existing_set:
+            response_file = _connector_file_response(f)
+            duplicate_files.append(response_file)
+            duplicate_names.append(response_file["name"])
+        else:
+            non_duplicate_files.append(_connector_file_response(f))
+
+    return {
+        "duplicate_names": list(dict.fromkeys(duplicate_names)),
+        "duplicate_files": duplicate_files,
+        "non_duplicate_files": non_duplicate_files,
+        "duplicate_count": len(duplicate_files),
+        "total_files": len(all_files),
+    }
+
+
 async def connector_check_duplicates(
     connector_type: str,
     body: ConnectorCheckDuplicatesBody,
@@ -752,7 +865,7 @@ async def connector_check_duplicates(
         return denied
 
     selected_files_raw = body.selected_files
-    if not selected_files_raw:
+    if not selected_files_raw and not body.bucket_filter:
         return JSONResponse({"duplicate_names": []})
 
     try:
@@ -792,6 +905,18 @@ async def connector_check_duplicates(
             return JSONResponse(
                 {"error": f"Connection '{working_connection.connection_id}' not found"},
                 status_code=404,
+            )
+
+        if body.bucket_filter and not selected_files_raw:
+            return JSONResponse(
+                await _classify_bucket_connector_duplicates(
+                    connector=connector,
+                    connector_type=connector_type,
+                    bucket_filter=body.bucket_filter,
+                    session_manager=session_manager,
+                    user_id=user.user_id,
+                    jwt_token=jwt_token,
+                )
             )
 
         return JSONResponse(
@@ -899,6 +1024,82 @@ async def update_connector_user_access(
     )
     connectors = await list_access_for_admin(session, metadata)
     return JSONResponse({"connectors": connectors})
+
+
+class UpdateConnectorOAuthConfigBody(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
+def _oauth_config_unavailable_response() -> JSONResponse:
+    return JSONResponse(
+        {"error": "Workspace OAuth connector credential overrides are not enabled"},
+        status_code=404,
+    )
+
+
+async def get_connector_oauth_config(
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Per OAuth-kind connector: whether a workspace credential override is set,
+    plus env-var fallback visibility. Never returns the decrypted secret."""
+    from services.connector_oauth_config_service import get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    status = await get_oauth_config_status(session)
+    return JSONResponse({"credentials": status})
+
+
+async def update_connector_oauth_config(
+    credential_key: str,
+    body: UpdateConnectorOAuthConfigBody,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Save (partial update) a workspace OAuth client id/secret override."""
+    from services.connector_oauth_config_service import get_oauth_config_status, set_oauth_config
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await set_oauth_config(
+            session,
+            credential_key,
+            body.client_id,
+            body.client_secret,
+            user.db_user_id or user.user_id,
+        )
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config update", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
+async def delete_connector_oauth_config(
+    credential_key: str,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Clear a workspace OAuth client id/secret override, reverting to the env var."""
+    from services.connector_oauth_config_service import clear_oauth_config, get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await clear_oauth_config(session, credential_key, user.db_user_id or user.user_id)
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config clear", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
 
 
 async def connector_sync(
@@ -1406,11 +1607,15 @@ async def connector_status(
     # Only count connections that are both active AND actually authenticated
     has_authenticated_connection = len(verified_active_connections) > 0
 
+    # Check if OAuth credentials are configured in environment (for OAuth connectors only)
+    has_env_credentials = connector_service.connection_manager.has_env_credentials(connector_type)
+
     return JSONResponse(
         {
             "connector_type": connector_type,
             "authenticated": has_authenticated_connection,
             "status": "connected" if has_authenticated_connection else "not_connected",
+            "has_env_credentials": has_env_credentials,
             "connections": [
                 {
                     "connection_id": conn.connection_id,

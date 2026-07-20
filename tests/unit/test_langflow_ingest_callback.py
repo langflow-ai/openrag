@@ -103,6 +103,28 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
         )
 
 
+def test_ingest_token_round_trips_connector_file_id():
+    """Bucket-connector chunks (COS/Azure/S3) rely on connector_file_id
+    surviving the JWT round trip so post-ingest verification (which queries
+    by connector_file_id) and dedupe/ACL sync can find them. Regression guard
+    for the field being dropped by _context_to_payload/_payload_to_context."""
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="hashed-id",
+        filename="report.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        owner="user-1",
+        ingest_run_id="run-1",
+        connector_file_id="my-bucket::報告書.pdf",
+    )
+    token = token_service.create_token(context)
+
+    restored_context, _jti = token_service.validate_token(token)
+
+    assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
+
+
 @pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
