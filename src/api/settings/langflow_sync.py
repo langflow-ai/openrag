@@ -19,7 +19,7 @@ from api.settings.helpers import (
     _configured_provider_names,
     _get_flows_service,
 )
-from utils.langflow_headers import map_embedding_provider
+from utils.langflow_headers import map_provider
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from utils.logging_config import get_logger
@@ -135,7 +135,7 @@ def _required_generic_global_values(config) -> dict[str, str]:
             getattr(knowledge, "embedding_model", None),
             "text-embedding-3-small",
         ),
-        "SELECTED_EMBEDDING_MODEL_PROVIDER": (lambda: map_embedding_provider(_env_or_config(
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": (lambda: map_provider(_env_or_config(
             "SELECTED_EMBEDDING_MODEL_PROVIDER",
             getattr(knowledge, "embedding_provider", None),
             "openai",
@@ -218,7 +218,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
                 f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
             )
         if config.knowledge.embedding_provider:
-            mapped_provider = map_embedding_provider(config.knowledge.embedding_provider)
+            mapped_provider = map_provider(config.knowledge.embedding_provider)
             await _upsert_langflow_global_variable(
                 "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider
             )
