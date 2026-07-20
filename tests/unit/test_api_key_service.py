@@ -1,12 +1,12 @@
 import sys
 from pathlib import Path
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -19,7 +19,7 @@ async def session_factory():
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool
+        poolclass=StaticPool,
     )
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
@@ -55,10 +55,15 @@ async def test_create_then_validate_roundtrip_stamps_last_used(session_factory, 
     service = APIKeyService(session_factory=session_factory)
 
     async with session_factory() as session:
-        session.add(User(
-            id="user-1", oauth_provider="google", oauth_subject="user-1",
-            email="user@example.com", email_lookup_hash=email_lookup_hash("user@example.com"),
-        ))
+        session.add(
+            User(
+                id="user-1",
+                oauth_provider="google",
+                oauth_subject="user-1",
+                email="user@example.com",
+                email_lookup_hash=email_lookup_hash("user@example.com"),
+            )
+        )
         await session.commit()
 
     created = await service.create_key(user_id="user-1", name="my key")
@@ -73,7 +78,7 @@ async def test_create_then_validate_roundtrip_stamps_last_used(session_factory, 
     # mark_used ran (parity with the OpenSearch last_used_at update)
     async with session_factory() as session:
         row = await ApiKeyRepo(session).get_by_id(created["key_id"])
-    
+
     assert row is not None
     assert row.last_used_at is not None
 
@@ -110,14 +115,24 @@ async def test_validate_key_accepts_and_migrates_legacy_hash(session_factory, mo
     api_key = "orag_legacy_key"
 
     async with session_factory() as session:
-        session.add(User(
-            id="user-1", oauth_provider="google", oauth_subject="user-1",
-            email="user@example.com", email_lookup_hash=email_lookup_hash("user@example.com"),
-        ))
-        session.add(ApiKey(
-            id="key-1", user_id="user-1", name="legacy key",
-            key_hash=service._legacy_hash_key(api_key), key_prefix="orag_legacy1",
-        ))
+        session.add(
+            User(
+                id="user-1",
+                oauth_provider="google",
+                oauth_subject="user-1",
+                email="user@example.com",
+                email_lookup_hash=email_lookup_hash("user@example.com"),
+            )
+        )
+        session.add(
+            ApiKey(
+                id="key-1",
+                user_id="user-1",
+                name="legacy key",
+                key_hash=service._legacy_hash_key(api_key),
+                key_prefix="orag_legacy1",
+            )
+        )
         await session.commit()
 
     user_info = await service.validate_key(api_key)
@@ -128,8 +143,11 @@ async def test_validate_key_accepts_and_migrates_legacy_hash(session_factory, mo
         "name": "legacy key",
     }
 
+
 @pytest.mark.asyncio
-async def test_validate_key_opensearch_fallback_accepts_and_migrates_legacy_has(session_factory, monkeypatch) -> None:
+async def test_validate_key_opensearch_fallback_accepts_and_migrates_legacy_has(
+    session_factory, monkeypatch
+) -> None:
     from services.api_key_service import APIKeyService
 
     monkeypatch.setattr("config.settings.SESSION_SECRET", "unit-test-session-secret")
@@ -182,25 +200,41 @@ async def test_list_keys_returns_only_non_revoked_api_keys(session_factory, monk
 
     service = APIKeyService(session_factory=session_factory)
     async with session_factory() as session:
-        session.add(ApiKey(id="k1", user_id="user-1", name="active",
-                           key_hash="h1", key_prefix="orag_a"))
-        session.add(ApiKey(id="k2", user_id="user-1", name="revoked",
-                           key_hash="h2", key_prefix="orag_b", revoked=True))
+        session.add(
+            ApiKey(id="k1", user_id="user-1", name="active", key_hash="h1", key_prefix="orag_a")
+        )
+        session.add(
+            ApiKey(
+                id="k2",
+                user_id="user-1",
+                name="revoked",
+                key_hash="h2",
+                key_prefix="orag_b",
+                revoked=True,
+            )
+        )
         await session.commit()
 
     result = await service.list_keys("user-1")
     assert [k["key_id"] for k in result["keys"]] == ["k1"]
     assert set(result["keys"][0]) == {
-        "key_id", "key_prefix", "name", "created_at", "last_used_at", "revoked",
+        "key_id",
+        "key_prefix",
+        "name",
+        "created_at",
+        "last_used_at",
+        "revoked",
     }
 
 
 @pytest.mark.asyncio
-async def test_list_keys_opensearch_fallback_when_sqlite_empty(session_factory, monkeypatch) -> None:
+async def test_list_keys_opensearch_fallback_when_sqlite_empty(
+    session_factory, monkeypatch
+) -> None:
     from services.api_key_service import APIKeyService
 
     service = APIKeyService(session_factory=session_factory)
-    
+
     opensearch_client = AsyncMock()
     opensearch_client.search.return_value = {
         "hits": {

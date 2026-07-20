@@ -43,6 +43,7 @@ CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 API_KEYS_OS_TO_DB_V1 = "api_keys_os_to_db_v1"
 
+
 class RuntimeMigrationError(RuntimeError):
     """Raised when a required startup data migration fails."""
 
@@ -268,7 +269,7 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
 
 async def migrate_api_keys_os_to_sql_db(session: AsyncSession) -> int:
     """Copy API keys from OpenSearch `api_keys` index into SQL DB
-    
+
     Resolves each key's OpenSearch ``user_id`` (an OAuth subject) to the
     internal ``users.id`` — by id, then by the denormalized ``user_email``.
     Keys whose user can't be resolved are skipped; they stay valid via the
@@ -281,16 +282,16 @@ async def migrate_api_keys_os_to_sql_db(session: AsyncSession) -> int:
     client = getattr(clients, "opensearch", None)
     if client is None:
         return 0
-    
+
     try:
         result = await client.search(
             index=API_KEYS_INDEX_NAME,
             body={"query": {"match_all": {}}, "size": 10000},
         )
-    except Exception as exc: # noqa: BLE001 — index may be absent / OS down
+    except Exception as exc:  # noqa: BLE001 — index may be absent / OS down
         logger.warning("api_keys_os_to_db_v1: OpenSearch read failed; skipping", error=str(exc))
         return 0
-    
+
     user_repo = UserRepo(session)
     inserted = 0
     for hit in result.get("hits", {}).get("hits", []):
@@ -307,7 +308,7 @@ async def migrate_api_keys_os_to_sql_db(session: AsyncSession) -> int:
         db_user = await user_repo.get_by_id(os_user_id) if os_user_id else None
         if db_user is None and doc.get("user_email"):
             db_user = await user_repo.get_by_email(doc["user_email"])
-        if db_user is None: 
+        if db_user is None:
             continue
 
         session.add(
@@ -323,9 +324,10 @@ async def migrate_api_keys_os_to_sql_db(session: AsyncSession) -> int:
             )
         )
         inserted += 1
-    
+
     await session.flush()
     return inserted
+
 
 async def run(session: AsyncSession) -> None:
     """Top-level entry. Caller is responsible for committing."""
@@ -362,15 +364,12 @@ async def run(session: AsyncSession) -> None:
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
         logger.info("chat_history_json_to_db_v1 completed", **stats)
-    
+
     if not await _already_done(session, API_KEYS_OS_TO_DB_V1):
         try:
             migrated = await migrate_api_keys_os_to_sql_db(session)
-        except Exception as exc: # noqa: BLE001
-            logger.error(
-                "api_keys_os_to_db_v1 failed: aborting startup",
-                error=str(exc)
-            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("api_keys_os_to_db_v1 failed: aborting startup", error=str(exc))
             raise RuntimeMigrationError(f"{API_KEYS_OS_TO_DB_V1} failed") from exc
         await _mark_done(session, API_KEYS_OS_TO_DB_V1, notes=f"api_keys_migrated={migrated}")
         logger.info("api_keys_os_to_db_v1 completed", migrated=migrated)
