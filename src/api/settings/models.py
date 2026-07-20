@@ -213,6 +213,7 @@ class SettingsResponse(BaseModel):
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
     show_provider_ingest_settings: bool = False
+    show_vlm_settings: bool = True
     local_vlm_models: list[str] = Field(default_factory=list)
     show_shared_upload_toggle: bool = False
     segment_write_key: str | None = None

@@ -554,6 +554,15 @@ OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
 ).lower() in ("true", "1", "yes")
 
+# Show the "Advanced Vision Model (VLM) Settings" section in ingest settings.
+# On by default; set to "false" to hide the VLM UI (kill switch — the backend
+# VLM settings endpoints stay functional either way).
+OPENRAG_SHOW_VLM_SETTINGS = os.getenv("OPENRAG_SHOW_VLM_SETTINGS", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 # Show the "Make documents available to all users" (shared) toggle for COS bucket
 # ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
 # hide the general per-upload ingest tuning knobs (e.g. SaaS) still get just this

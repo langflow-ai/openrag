@@ -93,6 +93,8 @@ export function IngestSettingsSection() {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const showVlmSettings = settings.show_vlm_settings ?? true;
+
   const { data: openaiModels, isLoading: openaiLoading } =
     useGetOpenAIModelsQuery(
       { apiKey: "" },
@@ -338,6 +340,7 @@ export function IngestSettingsSection() {
 
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
+    if (!showVlmSettings) return;
     if (settings.knowledge?.vlm_model) {
       autoSelectedVlm.current = false;
       return;
@@ -353,7 +356,12 @@ export function IngestSettingsSection() {
       setVlmProvider(fallback.provider || "openai");
       autoSelectedVlm.current = true;
     }
-  }, [settings.knowledge?.vlm_model, settings.local_vlm_models, allVlmOptions]);
+  }, [
+    showVlmSettings,
+    settings.knowledge?.vlm_model,
+    settings.local_vlm_models,
+    allVlmOptions,
+  ]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setVlmModel(value);
@@ -363,16 +371,17 @@ export function IngestSettingsSection() {
 
   const k = settings.knowledge;
   const vlmDirty =
-    pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
-    vlmProvider !== (k?.vlm_provider ?? vlmProvider) ||
-    vlmModel !== (k?.vlm_model ?? vlmModel) ||
-    vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
-    vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
-    vlmMaxTokens !== (k?.vlm_max_tokens ?? vlmMaxTokens) ||
-    vlmConcurrency !== (k?.vlm_concurrency ?? vlmConcurrency) ||
-    vlmTimeout !== (k?.vlm_timeout ?? vlmTimeout) ||
-    vlmWatsonxApiVersion !==
-      (k?.vlm_watsonx_api_version ?? vlmWatsonxApiVersion);
+    showVlmSettings &&
+    (pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
+      vlmProvider !== (k?.vlm_provider ?? vlmProvider) ||
+      vlmModel !== (k?.vlm_model ?? vlmModel) ||
+      vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
+      vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
+      vlmMaxTokens !== (k?.vlm_max_tokens ?? vlmMaxTokens) ||
+      vlmConcurrency !== (k?.vlm_concurrency ?? vlmConcurrency) ||
+      vlmTimeout !== (k?.vlm_timeout ?? vlmTimeout) ||
+      vlmWatsonxApiVersion !==
+        (k?.vlm_watsonx_api_version ?? vlmWatsonxApiVersion));
 
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
@@ -418,6 +427,22 @@ export function IngestSettingsSection() {
   };
 
   const handleKnowledgeIngestSave = () => {
+    // Only include VLM fields when the VLM UI is enabled; a hidden section
+    // must not drive backend VLM state or trip its validation.
+    const vlmPayload = showVlmSettings
+      ? {
+          vlm_enabled: pictureDescriptions,
+          vlm_provider: vlmProvider,
+          vlm_model: vlmModel.trim() || undefined,
+          vlm_prompt: vlmPrompt,
+          vlm_response_format: vlmResponseFormat,
+          vlm_max_tokens: vlmMaxTokens,
+          vlm_concurrency: vlmConcurrency,
+          vlm_timeout: vlmTimeout,
+          vlm_watsonx_api_version: vlmWatsonxApiVersion,
+        }
+      : {};
+
     trackButton({
       CTA: "Save Ingest Settings",
       elementId: "save-ingest-settings-button",
@@ -429,15 +454,7 @@ export function IngestSettingsSection() {
         ocr,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
-        vlm_enabled: pictureDescriptions,
-        vlm_provider: vlmProvider,
-        vlm_model: vlmModel,
-        vlm_prompt: vlmPrompt,
-        vlm_response_format: vlmResponseFormat,
-        vlm_max_tokens: vlmMaxTokens,
-        vlm_concurrency: vlmConcurrency,
-        vlm_timeout: vlmTimeout,
-        vlm_watsonx_api_version: vlmWatsonxApiVersion,
+        ...vlmPayload,
       },
     });
 
@@ -454,7 +471,7 @@ export function IngestSettingsSection() {
       return;
     }
 
-    if (pictureDescriptions) {
+    if (showVlmSettings && pictureDescriptions) {
       if (!vlmModel.trim()) {
         const msg =
           "Model name is required when picture descriptions are enabled";
@@ -478,16 +495,7 @@ export function IngestSettingsSection() {
         ocr,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
-        // VLM Settings
-        vlm_enabled: pictureDescriptions,
-        vlm_provider: vlmProvider,
-        vlm_model: vlmModel.trim() || undefined,
-        vlm_prompt: vlmPrompt,
-        vlm_response_format: vlmResponseFormat,
-        vlm_max_tokens: vlmMaxTokens,
-        vlm_concurrency: vlmConcurrency,
-        vlm_timeout: vlmTimeout,
-        vlm_watsonx_api_version: vlmWatsonxApiVersion,
+        ...vlmPayload,
       },
       {
         onSuccess: () => {
@@ -811,159 +819,163 @@ export function IngestSettingsSection() {
                 onCheckedChange={setPictureDescriptions}
               />
             </div>
-            <div
-              className={cn(
-                "mt-4 border border-border rounded-lg bg-muted/5 overflow-hidden transition-all duration-200",
-                !pictureDescriptions &&
-                  "opacity-50 cursor-not-allowed select-none",
-              )}
-            >
-              <Accordion
-                type="single"
-                collapsible
-                disabled={!pictureDescriptions}
-                value={pictureDescriptions ? vlmAccordionValue : ""}
-                onValueChange={setVlmAccordionValue}
+            {showVlmSettings && (
+              <div
+                className={cn(
+                  "mt-4 border border-border rounded-lg bg-muted/5 overflow-hidden transition-all duration-200",
+                  !pictureDescriptions &&
+                    "opacity-50 cursor-not-allowed select-none",
+                )}
               >
-                <AccordionItem value="vlm-settings" className="border-none">
-                  <AccordionTrigger
-                    className={cn(
-                      "hover:no-underline font-medium text-foreground px-4 py-3 bg-muted/10 border-b border-border",
-                      !pictureDescriptions && "pointer-events-none",
-                    )}
-                  >
-                    Advanced Vision Model (VLM) Settings
-                  </AccordionTrigger>
-                  <AccordionContent className="p-4 space-y-6">
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-model"
-                        label="Vision model"
-                        helperText="Pick a vision-capable model; the provider is set from your selection"
-                        required={pictureDescriptions}
-                      >
-                        <ModelSelector
-                          groupedOptions={groupedVlmModels}
-                          noOptionsPlaceholder={
-                            isLoadingAnyVlmModels
-                              ? "Loading models..."
-                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
-                          }
-                          value={vlmModel}
-                          onValueChange={handleVlmModelChange}
-                          hasError={!!validationError}
-                        />
-                      </LabelWrapper>
-                      {providerWarning && (
-                        <p className="text-sm text-destructive" role="alert">
-                          {providerLabel} is not configured. Configure it in
-                          Settings &gt; Providers first.
-                        </p>
+                <Accordion
+                  type="single"
+                  collapsible
+                  disabled={!pictureDescriptions}
+                  value={pictureDescriptions ? vlmAccordionValue : ""}
+                  onValueChange={setVlmAccordionValue}
+                >
+                  <AccordionItem value="vlm-settings" className="border-none">
+                    <AccordionTrigger
+                      className={cn(
+                        "hover:no-underline font-medium text-foreground px-4 py-3 bg-muted/10 border-b border-border",
+                        !pictureDescriptions && "pointer-events-none",
                       )}
-                    </div>
-
-                    {vlmProvider === "watsonx" && (
+                    >
+                      Advanced Vision Model (VLM) Settings
+                    </AccordionTrigger>
+                    <AccordionContent className="p-4 space-y-6">
                       <div className="space-y-2">
                         <LabelWrapper
-                          id="vlm-watsonx-api-version"
-                          label="watsonx API version"
-                          helperText="API version date sent to watsonx.ai"
+                          id="vlm-model"
+                          label="Vision model"
+                          helperText="Pick a vision-capable model; the provider is set from your selection"
+                          required={pictureDescriptions}
                         >
-                          <Input
-                            id="vlm-watsonx-api-version"
-                            type="text"
-                            placeholder={DEFAULT_WATSONX_API_VERSION}
-                            value={vlmWatsonxApiVersion}
-                            onChange={(e) =>
-                              setVlmWatsonxApiVersion(e.target.value)
+                          <ModelSelector
+                            groupedOptions={groupedVlmModels}
+                            noOptionsPlaceholder={
+                              isLoadingAnyVlmModels
+                                ? "Loading models..."
+                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                             }
+                            value={vlmModel}
+                            onValueChange={handleVlmModelChange}
+                            hasError={!!validationError}
+                          />
+                        </LabelWrapper>
+                        {providerWarning && (
+                          <p className="text-sm text-destructive" role="alert">
+                            {providerLabel} is not configured. Configure it in
+                            Settings &gt; Providers first.
+                          </p>
+                        )}
+                      </div>
+
+                      {vlmProvider === "watsonx" && (
+                        <div className="space-y-2">
+                          <LabelWrapper
+                            id="vlm-watsonx-api-version"
+                            label="watsonx API version"
+                            helperText="API version date sent to watsonx.ai"
+                          >
+                            <Input
+                              id="vlm-watsonx-api-version"
+                              type="text"
+                              placeholder={DEFAULT_WATSONX_API_VERSION}
+                              value={vlmWatsonxApiVersion}
+                              onChange={(e) =>
+                                setVlmWatsonxApiVersion(e.target.value)
+                              }
+                            />
+                          </LabelWrapper>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-prompt"
+                          label="Prompt"
+                          helperText="Sent to the VLM for every page"
+                        >
+                          <Textarea
+                            id="vlm-prompt"
+                            rows={3}
+                            value={vlmPrompt}
+                            onChange={(e) => setVlmPrompt(e.target.value)}
                           />
                         </LabelWrapper>
                       </div>
-                    )}
 
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-prompt"
-                        label="Prompt"
-                        helperText="Sent to the VLM for every page"
-                      >
-                        <Textarea
-                          id="vlm-prompt"
-                          rows={3}
-                          value={vlmPrompt}
-                          onChange={(e) => setVlmPrompt(e.target.value)}
-                        />
-                      </LabelWrapper>
-                    </div>
-
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-response-format"
-                        label="Response format"
-                        helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
-                      >
-                        <Select
-                          value={vlmResponseFormat}
-                          onValueChange={setVlmResponseFormat}
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-response-format"
+                          label="Response format"
+                          helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
                         >
-                          <SelectTrigger id="vlm-response-format">
-                            <SelectValue placeholder="Select a format" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {RESPONSE_FORMATS.map((format) => (
-                              <SelectItem
-                                key={format.value}
-                                value={format.value}
-                              >
-                                {format.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </LabelWrapper>
-                    </div>
+                          <Select
+                            value={vlmResponseFormat}
+                            onValueChange={setVlmResponseFormat}
+                          >
+                            <SelectTrigger id="vlm-response-format">
+                              <SelectValue placeholder="Select a format" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {RESPONSE_FORMATS.map((format) => (
+                                <SelectItem
+                                  key={format.value}
+                                  value={format.value}
+                                >
+                                  {format.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </LabelWrapper>
+                      </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                      <NumberInput
-                        id="vlm-max-tokens"
-                        label="Max tokens per page"
-                        value={vlmMaxTokens}
-                        onChange={(value) =>
-                          setVlmMaxTokens(Math.max(1, value))
-                        }
-                        unit="tokens"
-                        min={1}
-                      />
-                      <NumberInput
-                        id="vlm-concurrency"
-                        label="Concurrency"
-                        value={vlmConcurrency}
-                        onChange={(value) =>
-                          setVlmConcurrency(Math.max(1, value))
-                        }
-                        unit="requests"
-                        min={1}
-                      />
-                      <NumberInput
-                        id="vlm-timeout"
-                        label="API timeout"
-                        value={vlmTimeout}
-                        onChange={(value) => setVlmTimeout(Math.max(1, value))}
-                        unit="seconds"
-                        min={1}
-                      />
-                    </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <NumberInput
+                          id="vlm-max-tokens"
+                          label="Max tokens per page"
+                          value={vlmMaxTokens}
+                          onChange={(value) =>
+                            setVlmMaxTokens(Math.max(1, value))
+                          }
+                          unit="tokens"
+                          min={1}
+                        />
+                        <NumberInput
+                          id="vlm-concurrency"
+                          label="Concurrency"
+                          value={vlmConcurrency}
+                          onChange={(value) =>
+                            setVlmConcurrency(Math.max(1, value))
+                          }
+                          unit="requests"
+                          min={1}
+                        />
+                        <NumberInput
+                          id="vlm-timeout"
+                          label="API timeout"
+                          value={vlmTimeout}
+                          onChange={(value) =>
+                            setVlmTimeout(Math.max(1, value))
+                          }
+                          unit="seconds"
+                          min={1}
+                        />
+                      </div>
 
-                    {validationError && (
-                      <p className="text-sm text-destructive" role="alert">
-                        {validationError}
-                      </p>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
+                      {validationError && (
+                        <p className="text-sm text-destructive" role="alert">
+                          {validationError}
+                        </p>
+                      )}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+            )}
           </div>
           <div className="flex justify-end pt-2">
             <Button
